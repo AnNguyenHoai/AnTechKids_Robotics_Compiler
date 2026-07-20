@@ -1,0 +1,50 @@
+{
+    "Forward": {
+        "id": 1,
+        "opcode": "Forward",
+        "function": "forward",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "Backward": {
+        "id": 2,
+        "opcode": "Backward",
+        "function": "backward",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "TurnLeft": {
+        "id": 3,
+        "opcode": "TurnLeft",
+        "function": "turn_left",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "TurnRight": {
+        "id": 4,
+        "opcode": "TurnRight",
+        "function": "turn_right",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "Wait": {
+        "id": 5,
+        "opcode": "Wait",
+        "function": "wait",
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler"
+    },
+    "Stop": {
+        "id": 6,
+        "opcode": "Stop",
+        "function": "stop",
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler"
+    }
+}

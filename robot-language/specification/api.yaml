@@ -1,0 +1,78 @@
+
+language:
+  name: Robot Language
+  version: 1.0.0
+  description: Robot Language Specification
+
+categories:
+
+  motion:
+    description: Motion control APIs
+    module: motion_handler
+    handler: MotionHandler
+
+    functions:
+
+      - name: forward
+        opcode: Forward
+        opcode_id: 1
+        description: Move robot forward
+
+        args:
+
+          - name: speed
+            type: int
+
+      - name: backward
+        opcode: Backward
+        opcode_id: 2
+        description: Move robot backward
+
+        args:
+
+          - name: speed
+            type: int
+
+      - name: turn_left
+        opcode: TurnLeft
+        opcode_id: 3
+        description: Rotate robot left
+
+        args:
+
+          - name: speed
+            type: int
+
+      - name: turn_right
+        opcode: TurnRight
+        opcode_id: 4
+        description: Rotate robot right
+
+        args:
+
+          - name: speed
+            type: int
+
+  system:
+
+    module: system_handler
+    handler: SystemHandler
+
+    functions:
+
+      - name: wait
+        opcode: Wait
+        opcode_id: 5
+        description: Wait milliseconds
+
+        args:
+
+          - name: milliseconds
+            type: int
+
+      - name: stop
+        opcode: Stop
+        opcode_id: 6
+        description: Stop robot
+
+        args: []
