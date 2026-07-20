@@ -1,63 +1,36 @@
 from pathlib import Path
 import sys
-
 ROOT = Path(__file__).resolve().parent.parent
-
 sys.path.insert(0, str(ROOT))
 
 from compiler.compiler import RobotCompiler
+from compiler.generated.opcode import Opcode
 
 EXAMPLES = ROOT / "examples"
-
 compiler = RobotCompiler()
 
-
 def compile_file(filename):
+    return compiler.compile(EXAMPLES / filename)
 
-    return compiler.compile(
-        EXAMPLES / filename
-    )
-
-
-def assert_instruction(actual, opcode, p1, p2, p3):
-
-    opcode_name = compiler.opcodes.get_name(actual.opcode)
-
-    assert opcode_name == opcode
-
+def assert_instruction(actual, opcode_name, p1, p2, p3):
+    # Lấy tên từ enum bằng giá trị số
+    actual_name = Opcode(actual.opcode).name
+    assert actual_name == opcode_name, f"Expected {opcode_name}, got {actual_name}"
     assert actual.p1 == p1
-
     assert actual.p2 == p2
-
     assert actual.p3 == p3
 
-
-
-
 def expect_program(program, expected):
-
-    #
-    # Check instruction count
-    #
     assert len(program.instructions) == len(expected), (
-        f"Expected {len(expected)} instructions, "
-        f"but got {len(program.instructions)}"
+        f"Expected {len(expected)} instructions, got {len(program.instructions)}"
     )
+    for i, (opcode, p1, p2, p3) in enumerate(expected):
+        assert_instruction(program.instructions[i], opcode, p1, p2, p3)
 
-    #
-    # Check every instruction
-    #
-    for i in range(len(expected)):
-
-        opcode, p1, p2, p3 = expected[i]
-
-        assert_instruction(
-            program.instructions[i],
-            opcode,
-            p1,
-            p2,
-            p3
-        )
+def expect_last_opcode(filename, opcode_name):
+    program = compile_file(filename)
+    expected_opcode = Opcode[opcode_name].value
+    assert program.instructions[-1].opcode == expected_opcode, f"Expected {opcode_name}"
 
 program = compile_file("demo_forward.py")
 
@@ -205,24 +178,6 @@ expect_program(
 print("Test demo_function_multiple.py : PASS")
 
 
-
-
-
-def expect_last_opcode(
-    filename,
-    opcode_name
-):
-
-    program = compile_file(filename)
-
-    opcode = compiler.opcodes.get(opcode_name)
-
-    assert (
-        program.instructions[-1].opcode
-        == opcode
-    ), (
-        f"Expected {opcode_name}"
-    )
 
 program = compile_file(
     "demo_compare_gt.py"

@@ -1,5 +1,6 @@
 from build import Builder
 from generators.registry_json_generator import RegistryJsonGenerator
+from generators.opcode_header_generator import OpcodeHeaderGenerator
 
 from generators import (
     SDKGenerator,
@@ -47,5 +48,7 @@ builder.register(
 builder.register(
     OpcodeJsonGenerator()
 )
+
+builder.register(OpcodeHeaderGenerator())
 
 builder.build()

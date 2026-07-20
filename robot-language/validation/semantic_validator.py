@@ -59,8 +59,10 @@ class SemanticValidator(BaseValidator):
                 )
 
     def _validate_names(self, language):
-
-        for category_name, _ in language.all_categories():
+        for category_name, category in language.all_categories():
+            # Bỏ qua category internal (chứa các opcode nội bộ)
+            if category_name == "internal":
+                continue
 
             self._validate_name(
                 category_name,
@@ -68,14 +70,14 @@ class SemanticValidator(BaseValidator):
                 "Category"
             )
 
-        for function_name in language.function_names():
+            for function in category["functions"]:
+                self._validate_name(
+                    function["name"],
+                    self.SNAKE_CASE,
+                    "Function"
+                )
 
-            self._validate_name(
-                function_name,
-                self.SNAKE_CASE,
-                "Function"
-            )
-
+        # Opcode vẫn kiểm tra PascalCase
         for opcode in language.opcodes():
             self._validate_name(
                 opcode,

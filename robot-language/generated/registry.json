@@ -1,0 +1,155 @@
+{
+    "forward": {
+        "opcode": "Forward",
+        "opcode_id": 2,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 1,
+        "description": "Move robot forward"
+    },
+    "backward": {
+        "opcode": "Backward",
+        "opcode_id": 3,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 1,
+        "description": "Move robot backward"
+    },
+    "turn_left": {
+        "opcode": "TurnLeft",
+        "opcode_id": 4,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 1,
+        "description": "Rotate robot left"
+    },
+    "turn_right": {
+        "opcode": "TurnRight",
+        "opcode_id": 5,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 1,
+        "description": "Rotate robot right"
+    },
+    "wait": {
+        "opcode": "Wait",
+        "opcode_id": 7,
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler",
+        "arguments": 1,
+        "description": "Wait milliseconds"
+    },
+    "stop": {
+        "opcode": "Stop",
+        "opcode_id": 6,
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler",
+        "arguments": 0,
+        "description": "Stop robot"
+    },
+    "LoadConst": {
+        "opcode": "LoadConst",
+        "opcode_id": 1,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Load constant to variable"
+    },
+    "CompareEQ": {
+        "opcode": "CompareEQ",
+        "opcode_id": 8,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare equal"
+    },
+    "CompareNE": {
+        "opcode": "CompareNE",
+        "opcode_id": 9,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare not equal"
+    },
+    "CompareLT": {
+        "opcode": "CompareLT",
+        "opcode_id": 10,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare less than"
+    },
+    "CompareLE": {
+        "opcode": "CompareLE",
+        "opcode_id": 11,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare less or equal"
+    },
+    "CompareGT": {
+        "opcode": "CompareGT",
+        "opcode_id": 12,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare greater than"
+    },
+    "CompareGE": {
+        "opcode": "CompareGE",
+        "opcode_id": 13,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare greater or equal"
+    },
+    "Jump": {
+        "opcode": "Jump",
+        "opcode_id": 14,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Unconditional jump"
+    },
+    "JumpIfFalse": {
+        "opcode": "JumpIfFalse",
+        "opcode_id": 15,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Jump if false"
+    },
+    "JumpIfTrue": {
+        "opcode": "JumpIfTrue",
+        "opcode_id": 16,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Jump if true"
+    },
+    "Label": {
+        "opcode": "Label",
+        "opcode_id": 17,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Label placeholder"
+    }
+}

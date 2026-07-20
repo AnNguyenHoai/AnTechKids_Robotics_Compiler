@@ -10,28 +10,28 @@ FUNCTION_REGISTRY = {
         "handler": MotionHandler.forward,
         "opcode": "Forward",
         "arguments": 1,
-        "category": "system",
+        "category": "motion",
         "description": "Move robot forward"
     },
     "backward": {
         "handler": MotionHandler.backward,
         "opcode": "Backward",
         "arguments": 1,
-        "category": "system",
+        "category": "motion",
         "description": "Move robot backward"
     },
     "turn_left": {
         "handler": MotionHandler.turn_left,
         "opcode": "TurnLeft",
         "arguments": 1,
-        "category": "system",
+        "category": "motion",
         "description": "Rotate robot left"
     },
     "turn_right": {
         "handler": MotionHandler.turn_right,
         "opcode": "TurnRight",
         "arguments": 1,
-        "category": "system",
+        "category": "motion",
         "description": "Rotate robot right"
     },
     "wait": {

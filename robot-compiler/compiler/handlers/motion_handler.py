@@ -1,51 +1,22 @@
-class MotionHandler:
+from ..generated.opcode import Opcode
 
+class MotionHandler:
     @staticmethod
     def forward(compiler, node):
-
-        index = compiler.resolve_argument(
-            node.args[0]
-        )
-        compiler.program.emit(
-            compiler.opcodes.get("Forward"),
-            index
-        )
+        index = compiler.resolve_argument(node.args[0])
+        compiler.program.emit(Opcode.Forward.value, index)
 
     @staticmethod
     def backward(compiler, node):
-
-
-
-        index = compiler.resolve_argument(
-            node.args[0]
-        )
-
-        compiler.program.emit(
-            compiler.opcodes.get("Backward"),
-            index
-        )
+        index = compiler.resolve_argument(node.args[0])
+        compiler.program.emit(Opcode.Backward.value, index)
 
     @staticmethod
     def turn_left(compiler, node):
-
-
-        index = compiler.resolve_argument(
-            node.args[0]
-        )
-
-        compiler.program.emit(
-            compiler.opcodes.get("TurnLeft"),
-            index
-        )
+        index = compiler.resolve_argument(node.args[0])
+        compiler.program.emit(Opcode.TurnLeft.value, index)
 
     @staticmethod
     def turn_right(compiler, node):
-
-        index = compiler.resolve_argument(
-            node.args[0]
-        )
-
-        compiler.program.emit(
-            compiler.opcodes.get("TurnRight"),
-            index
-        )
+        index = compiler.resolve_argument(node.args[0])
+        compiler.program.emit(Opcode.TurnRight.value, index)
