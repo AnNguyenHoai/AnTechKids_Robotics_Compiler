@@ -1,7 +1,3 @@
-import rcu
-
-import rcu
-
-rcu.SetWaitForTime(2)
-
+rcu.SetMoveRun("forward", 80)
+rcu.SetWaitForTime(1000)
 rcu.SetMoveStop()

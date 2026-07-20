@@ -120,6 +120,8 @@ Current
 -   opcode.py
 -   opcode.json
 -   function_registry.py
+-   opcode.h
+-   registry.json
 -   sdk/
 
 Future

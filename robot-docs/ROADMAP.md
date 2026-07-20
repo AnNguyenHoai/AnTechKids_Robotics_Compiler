@@ -96,6 +96,14 @@ Hoàn thiện Robot Language.
 -   Artifact System
 -   Generator Framework
 
+### Sprint 1 (Completed – Opcode Synchronization)
+
+-   Đồng bộ opcode giữa compiler và VM thông qua artifact.
+-   Thêm `internal` category cho opcode nội bộ.
+-   Sinh `opcode.h` cho C++ runtime.
+-   Cập nhật install để copy artifact sang compiler và platform.
+-   Sửa compiler và VM để dùng chung opcode enum.
+
 ### Future Features
 
 -   Platform Description
