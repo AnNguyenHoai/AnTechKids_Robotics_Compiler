@@ -27,4 +27,11 @@ enum class Opcode : uint8_t
     JumpIfFalse = 15,
     JumpIfTrue = 16,
     Label = 17,
+    Add = 20,
+    Sub = 21,
+    Mul = 22,
+    Div = 23,
+    Mod = 24,
+    Pow = 25,
+    Neg = 26,
 };

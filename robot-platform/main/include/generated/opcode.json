@@ -134,5 +134,61 @@
         "category": "internal",
         "module": "internal",
         "handler": "None"
+    },
+    "Add": {
+        "id": 20,
+        "opcode": "Add",
+        "function": "Add",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Sub": {
+        "id": 21,
+        "opcode": "Sub",
+        "function": "Sub",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Mul": {
+        "id": 22,
+        "opcode": "Mul",
+        "function": "Mul",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Div": {
+        "id": 23,
+        "opcode": "Div",
+        "function": "Div",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Mod": {
+        "id": 24,
+        "opcode": "Mod",
+        "function": "Mod",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Pow": {
+        "id": 25,
+        "opcode": "Pow",
+        "function": "Pow",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Neg": {
+        "id": 26,
+        "opcode": "Neg",
+        "function": "Neg",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
     }
 }

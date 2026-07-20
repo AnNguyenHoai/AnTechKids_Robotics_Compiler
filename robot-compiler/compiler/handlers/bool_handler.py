@@ -2,7 +2,9 @@ import ast
 from ..error import CompilerError
 from ..generated.opcode import Opcode
 
+
 class BoolHandler:
+
     @staticmethod
     def bool_op(compiler, node):
         if isinstance(node.op, ast.And):
@@ -24,5 +26,6 @@ class BoolHandler:
 
         compiler.program.emit_label(false_label)
         compiler.program.emit(Opcode.LoadConst.value, result, 0)
+
         compiler.program.emit_label(end_label)
         return result

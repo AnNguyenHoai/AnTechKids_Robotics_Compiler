@@ -123,3 +123,39 @@ categories:
         opcode_id: 17
         description: Label placeholder
         args: []
+      # --- Arithmetic opcodes ---
+      - name: Add
+        opcode: Add
+        opcode_id: 20
+        description: Addition
+        args: []
+      - name: Sub
+        opcode: Sub
+        opcode_id: 21
+        description: Subtraction
+        args: []
+      - name: Mul
+        opcode: Mul
+        opcode_id: 22
+        description: Multiplication
+        args: []
+      - name: Div
+        opcode: Div
+        opcode_id: 23
+        description: Integer division
+        args: []
+      - name: Mod
+        opcode: Mod
+        opcode_id: 24
+        description: Modulo
+        args: []
+      - name: Pow
+        opcode: Pow
+        opcode_id: 25
+        description: Power (integer exponent)
+        args: []
+      - name: Neg
+        opcode: Neg
+        opcode_id: 26
+        description: Negate
+        args: []

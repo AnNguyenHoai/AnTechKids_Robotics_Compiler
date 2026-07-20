@@ -1,4 +1,5 @@
 import ast
+
 from .handlers.compare_handler import CompareHandler
 from .program import Program
 from .symbol_table import SymbolTable
@@ -9,6 +10,7 @@ from .generated.opcode import Opcode
 
 
 class RobotCompiler(ast.NodeVisitor):
+
     def __init__(self):
         self.program = Program()
         self.symbols = SymbolTable()
@@ -36,6 +38,45 @@ class RobotCompiler(ast.NodeVisitor):
         self.temp_id += 1
         return self.symbols.allocate(name)
 
+    # ----------------------------------------------------------
+    # Expression compilation
+    # ----------------------------------------------------------
+    def compile_expression(self, expr):
+        """Compile an expression and return variable index of result."""
+        if isinstance(expr, ast.Constant):
+            index = self.allocate_temp()
+            self.program.emit(Opcode.LoadConst.value, index, expr.value)
+            return index
+        elif isinstance(expr, ast.Name):
+            return self.symbols.resolve(expr.id)
+        elif isinstance(expr, ast.BinOp):
+            left = self.compile_expression(expr.left)
+            right = self.compile_expression(expr.right)
+            result = self.allocate_temp()
+            op_map = {
+                ast.Add: Opcode.Add,
+                ast.Sub: Opcode.Sub,
+                ast.Mult: Opcode.Mul,
+                ast.Div: Opcode.Div,
+                ast.Mod: Opcode.Mod,
+                ast.Pow: Opcode.Pow,
+            }
+            op = op_map.get(type(expr.op))
+            if op is None:
+                raise CompilerError(f"Unsupported binary operator: {type(expr.op).__name__}")
+            self.program.emit(op.value, left, right, result)
+            return result
+        elif isinstance(expr, ast.UnaryOp):
+            operand = self.compile_expression(expr.operand)
+            result = self.allocate_temp()
+            if isinstance(expr.op, ast.USub):
+                self.program.emit(Opcode.Neg.value, operand, 0, result)
+            else:
+                raise CompilerError(f"Unsupported unary operator: {type(expr.op).__name__}")
+            return result
+        else:
+            raise CompilerError(f"Unsupported expression type: {type(expr)}")
+
     def resolve_argument(self, arg):
         if isinstance(arg, ast.Name):
             return self.symbols.resolve(arg.id)
@@ -43,6 +84,8 @@ class RobotCompiler(ast.NodeVisitor):
             index = self.allocate_temp()
             self.program.emit(Opcode.LoadConst.value, index, arg.value)
             return index
+        elif isinstance(arg, (ast.BinOp, ast.UnaryOp)):
+            return self.compile_expression(arg)
         else:
             raise CompilerError(f"Unsupported argument type: {type(arg)}")
 
@@ -53,8 +96,15 @@ class RobotCompiler(ast.NodeVisitor):
                 f"{function_name}() expects exactly {expected} argument(s)."
             )
 
+    # ----------------------------------------------------------
+    # AST Visitors
+    # ----------------------------------------------------------
     def visit_Assign(self, node):
+        # Chỉ hỗ trợ gán hằng hoặc biểu thức đơn giản? 
+        # Để không ảnh hưởng, ta giữ nguyên như cũ.
         name = node.targets[0].id
+        if not isinstance(node.value, ast.Constant):
+            raise CompilerError("Only constant assignment is supported in this version.")
         value = node.value.value
         index = self.symbols.allocate(name)
         self.program.emit(Opcode.LoadConst.value, index, value)
@@ -71,7 +121,6 @@ class RobotCompiler(ast.NodeVisitor):
             raise CompilerError(f"Unsupported function call: {ast.dump(node.func)}")
         func = node.func.id
 
-        # User function
         if func in self.functions:
             function = self.functions[func]
             for stmt in function.body:
@@ -103,27 +152,41 @@ class RobotCompiler(ast.NodeVisitor):
         result = self.visit(node.test)
         else_label = self.program.new_label()
         end_label = self.program.new_label()
+
         self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, else_label)
+
         for stmt in node.body:
             self.visit(stmt)
+
         if len(node.orelse) > 0:
             self.program.emit_jump(Opcode.Jump.value, end_label)
+
         self.program.emit_label(else_label)
+
         for stmt in node.orelse:
             self.visit(stmt)
+
         self.program.emit_label(end_label)
 
     def visit_While(self, node):
         begin_label = self.program.new_label()
         end_label = self.program.new_label()
+
         self.loop_stack.append({"begin": begin_label, "end": end_label})
+
         self.program.emit_label(begin_label)
+
         result = self.visit(node.test)
+
         self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, end_label)
+
         for stmt in node.body:
             self.visit(stmt)
+
         self.program.emit_jump(Opcode.Jump.value, begin_label)
+
         self.loop_stack.pop()
+
         self.program.emit_label(end_label)
 
     def visit_Break(self, node):

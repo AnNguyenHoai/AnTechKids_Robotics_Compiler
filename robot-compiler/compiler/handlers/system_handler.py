@@ -1,6 +1,8 @@
 from ..generated.opcode import Opcode
 
+
 class SystemHandler:
+
     @staticmethod
     def wait(compiler, node):
         compiler.validate_argument_count(node, "wait", 1)

@@ -135,6 +135,61 @@ void VM::ExecuteInstruction(const Instruction& instruction)
                 mContext.mProgramCounter++;
             break;
 
+        // --- Arithmetic operations ---
+        case Opcode::Add:
+            mContext.mVariables[instruction.p3] =
+                mContext.mVariables[instruction.p1] + mContext.mVariables[instruction.p2];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Sub:
+            mContext.mVariables[instruction.p3] =
+                mContext.mVariables[instruction.p1] - mContext.mVariables[instruction.p2];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Mul:
+            mContext.mVariables[instruction.p3] =
+                mContext.mVariables[instruction.p1] * mContext.mVariables[instruction.p2];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Div:
+            if (mContext.mVariables[instruction.p2] == 0)
+                mContext.mVariables[instruction.p3] = 0;
+            else
+                mContext.mVariables[instruction.p3] =
+                    mContext.mVariables[instruction.p1] / mContext.mVariables[instruction.p2];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Mod:
+            if (mContext.mVariables[instruction.p2] == 0)
+                mContext.mVariables[instruction.p3] = 0;
+            else
+                mContext.mVariables[instruction.p3] =
+                    mContext.mVariables[instruction.p1] % mContext.mVariables[instruction.p2];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Pow:
+        {
+            int16_t base = mContext.mVariables[instruction.p1];
+            int16_t exp = mContext.mVariables[instruction.p2];
+            int32_t result = 1;
+            for (int16_t i = 0; i < exp; ++i) {
+                result *= base;
+            }
+            mContext.mVariables[instruction.p3] = (int16_t)result;
+            mContext.mProgramCounter++;
+            break;
+        }
+
+        case Opcode::Neg:
+            mContext.mVariables[instruction.p3] = -mContext.mVariables[instruction.p1];
+            mContext.mProgramCounter++;
+            break;
+
         default:
             mContext.mRunning = false;
             break;

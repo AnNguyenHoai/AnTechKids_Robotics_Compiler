@@ -1,6 +1,8 @@
 from ..generated.opcode import Opcode
 
+
 class MotionHandler:
+
     @staticmethod
     def forward(compiler, node):
         index = compiler.resolve_argument(node.args[0])
