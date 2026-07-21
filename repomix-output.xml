@@ -1,0 +1,6988 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+robot-compiler/
+  compiler/
+    generated/
+      __init__.py
+      function_registry.py
+      opcode.py
+    handlers/
+      __init__.py
+      bool_handler.py
+      compare_handler.py
+      motion_handler.py
+      system_handler.py
+    __init__.py
+    compiler.py
+    emitter.py
+    error.py
+    instruction.py
+    label.py
+    main.py
+    patch.py
+    program.py
+    symbol_table.py
+  examples/
+    demo_arithmetic.py
+    demo_backward.py
+    demo_bool_and.py
+    demo_break.py
+    demo_compare_eq.py
+    demo_compare_ge.py
+    demo_compare_gt.py
+    demo_compare_le.py
+    demo_compare_lt.py
+    demo_compare_ne.py
+    demo_continue.py
+    demo_forward.py
+    demo_function_multiple.py
+    demo_function.py
+    demo_if_else.py
+    demo_if.py
+    demo_nested_if.py
+    demo_nested_while.py
+    demo_unknown_function.py
+    demo_variable.py
+    demo_while.py
+    demo_wrong_argument.py
+    demo.py
+  generated/
+    __init__.py
+  test/
+    run_tests.py
+    testcases.py
+  main.py
+  test_language.py
+robot-docs/
+  ARCHITECTURE.md
+  BUILD_SYSTEM.md
+  DESIGN_CONTRACT.md
+  DEVELOPMENT_GUIDE.md
+  ENGINEERING_PHILOSOPHY.md
+  ROADMAP.md
+robot-frontend-robosim/
+  examples/
+    robosim_demo.py
+    robosim_move_second.py
+    robosim_variable.py
+    robosim_wait.py
+  frontend/
+    __init__.py
+    compiler.py
+    mapping.py
+    transformer.py
+  test/
+    run_tests.py
+robot-language/
+  build/
+    __init__.py
+    artifacts.py
+    builder.py
+    context.py
+    install.py
+  generated/
+    __init__.py
+    function_registry.py
+    opcode.h
+    opcode.json
+    opcode.py
+    registry.json
+  generators/
+    __init__.py
+    base_generator.py
+    opcode_generator.py
+    opcode_header_generator.py
+    opcode_json_generator.py
+    registry_generator.py
+    registry_json_generator.py
+    sdk_generator.py
+  language/
+    __init__.py
+    model.py
+  sdk/
+    __init__.py
+    motion.py
+    system.py
+  specification/
+    api.yaml
+  tools/
+    generate_registry.py
+  validation/
+    __init__.py
+    base_validator.py
+    duplicate_validator.py
+    reference_validator.py
+    semantic_validator.py
+  build.py
+robot-platform/
+  main/
+    include/
+      generated/
+        opcode.h
+        opcode.json
+    src/
+      Application/
+        generated_program.h
+        LineFollowerApp.cpp
+        LineFollowerApp.h
+        RobotProgramApp.cpp
+        RobotProgramApp.h
+      Communication/
+        ProgramLoader.cpp
+        UART.cpp
+        UART.h
+      Devices/
+        Motor.cpp
+        Sensor.cpp
+        Sensor.h
+      Drivers/
+        Sensor_TRCT5000_3CH.cpp
+        Sensor_TRCT5000_3CH.h
+      HardwareAbstraction/
+        GPIO.h
+      Services/
+        Robot/
+          RobotAPI.cpp
+          RobotAPI.h
+        VM/
+          Instruction.h
+          Program.h
+          VM.cpp
+          VM.h
+          VMContext.h
+    main.ino
+04_Robotics_SW_DeepSeek.code-workspace
+PROJECT_STATUS_v2.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="robot-compiler/compiler/generated/__init__.py">
+
+</file>
+
+<file path="robot-compiler/compiler/handlers/__init__.py">
+
+</file>
+
+<file path="robot-compiler/compiler/__init__.py">
+
+</file>
+
+<file path="robot-compiler/compiler/error.py">
+class CompilerError(Exception):
+
+    def __init__(self, message):
+
+        super().__init__(message)
+</file>
+
+<file path="robot-compiler/compiler/instruction.py">
+from dataclasses import dataclass
+
+@dataclass
+class Instruction:
+    opcode: int
+    p1: int = 0
+    p2: int = 0
+    p3: int = 0
+</file>
+
+<file path="robot-compiler/compiler/label.py">
+class Label:
+
+    def __init__(self, id):
+
+        self.id = id
+        self.position = None
+</file>
+
+<file path="robot-compiler/compiler/main.py">
+from pathlib import Path
+from compiler.compiler import RobotCompiler
+from compiler.emitter import HeaderEmitter
+
+ROOT = Path(__file__).resolve().parent
+demo_file = ROOT / "examples" / "demo.py"
+output_file = (
+    ROOT.parent
+    / "robot-platform"
+    / "main"
+    / "src"
+    / "Application"
+    / "generated_program.h"
+)
+
+compiler = RobotCompiler()
+program = compiler.compile(demo_file)
+HeaderEmitter().emit(program, output_file)
+print("Generate successfully!")
+</file>
+
+<file path="robot-compiler/compiler/patch.py">
+class Patch:
+
+    def __init__(
+        self,
+        instruction_index,
+        label
+    ):
+
+        self.instruction_index = instruction_index
+        self.label = label
+</file>
+
+<file path="robot-compiler/compiler/symbol_table.py">
+class SymbolTable:
+
+    def __init__(self):
+
+        self.variables = {}
+
+        self.next_index = 0
+
+    def allocate(self, name):
+
+        if name not in self.variables:
+
+            self.variables[name] = self.next_index
+            self.next_index += 1
+
+        return self.variables[name]
+
+    def resolve(self, name):
+
+        return self.variables[name]
+</file>
+
+<file path="robot-compiler/examples/demo_arithmetic.py">
+forward(5 + 3)
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_backward.py">
+backward(30)
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_bool_and.py">
+if 5 > 2 and 8 > 3:
+    forward(50)
+</file>
+
+<file path="robot-compiler/examples/demo_break.py">
+speed = 80
+
+while speed > 50:
+
+    forward(80)
+
+    break
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_compare_eq.py">
+speed = 80
+
+speed == 50
+</file>
+
+<file path="robot-compiler/examples/demo_compare_ge.py">
+speed = 80
+
+speed >= 50
+</file>
+
+<file path="robot-compiler/examples/demo_compare_gt.py">
+speed = 80
+
+speed > 50
+</file>
+
+<file path="robot-compiler/examples/demo_compare_le.py">
+speed = 80
+
+speed <= 50
+</file>
+
+<file path="robot-compiler/examples/demo_compare_lt.py">
+speed = 80
+
+speed < 50
+</file>
+
+<file path="robot-compiler/examples/demo_compare_ne.py">
+speed = 80
+
+speed != 50
+</file>
+
+<file path="robot-compiler/examples/demo_continue.py">
+speed = 80
+
+while speed > 50:
+
+    if speed > 70:
+        continue
+
+    forward(80)
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_forward.py">
+forward(80)
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_function_multiple.py">
+def task():
+
+    forward(80)
+
+task()
+
+task()
+</file>
+
+<file path="robot-compiler/examples/demo_function.py">
+def task():
+
+    forward(80)
+
+    stop()
+
+task()
+</file>
+
+<file path="robot-compiler/examples/demo_if_else.py">
+speed = 80
+
+if speed > 50:
+
+    forward(80)
+
+else:
+
+    backward(30)
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_if.py">
+speed = 80
+
+if speed > 50:
+
+    forward(80)
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_nested_if.py">
+speed = 80
+turn = 40
+
+if speed > 50:
+
+    if turn < 60:
+
+        forward(80)
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_nested_while.py">
+speed = 80
+turn = 40
+
+while speed > 50:
+
+    while turn < 60:
+
+        forward(80)
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_unknown_function.py">
+abc(100)
+</file>
+
+<file path="robot-compiler/examples/demo_variable.py">
+speed = 80
+
+turn = 50
+
+forward(speed)
+
+turn_left(turn)
+
+backward(speed)
+
+turn_right(turn)
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_while.py">
+speed = 80
+
+while speed > 50:
+
+    forward(80)
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo_wrong_argument.py">
+forward()
+
+stop()
+</file>
+
+<file path="robot-compiler/examples/demo.py">
+wait(1000)
+
+stop()
+</file>
+
+<file path="robot-compiler/generated/__init__.py">
+
+</file>
+
+<file path="robot-compiler/test/testcases.py">
+from dataclasses import dataclass
+
+@dataclass
+class ExpectedInstruction:
+
+    opcode: str
+
+    p1: int
+
+    p2: int
+
+    p3: int
+</file>
+
+<file path="robot-compiler/test_language.py">
+from language import RobotLanguage
+
+lang = RobotLanguage()
+
+print(lang.name)
+
+print(lang.version)
+
+for category, func in lang.all_functions():
+
+    print(category, func["name"])
+</file>
+
+<file path="robot-docs/DESIGN_CONTRACT.md">
+# DESIGN_CONTRACT.md
+
+# Robot Development Platform
+
+## Design Contract
+
+Version: Foundation v1 (Draft)
+
+------------------------------------------------------------------------
+
+# 1. Purpose
+
+Design Contract định nghĩa ranh giới trách nhiệm giữa các repository.
+
+Mọi repository phải tuân thủ tài liệu này.
+
+Nếu có mâu thuẫn giữa implementation và Design Contract thì Design
+Contract được ưu tiên xem xét trước khi thay đổi kiến trúc.
+
+------------------------------------------------------------------------
+
+# 2. Core Principles
+
+-   Single Source of Truth
+-   Single Responsibility
+-   Layered Architecture
+-   Artifact Driven Development
+-   Dependency Direction
+-   Hardware Independence
+-   Frontend Independence
+-   Generated Code First
+
+------------------------------------------------------------------------
+
+# 3. Repository Contracts
+
+## robot-language
+
+### Owns
+
+-   Language Specification
+-   Validator
+-   Generator
+-   Artifact Definition
+-   SDK Generation
+
+### Provides
+
+-   Language API
+-   Generated Artifacts
+
+### Must Never
+
+-   Compile Robot Program
+-   Execute Robot Program
+-   Access Robot Hardware
+-   Parse AST
+
+------------------------------------------------------------------------
+
+## robot-frontend
+
+### Owns
+
+-   Frontend Adapter
+-   AST Rewrite
+-   API Mapping
+
+### Provides
+
+-   Standard Python Source
+
+### Must Never
+
+-   Generate Bytecode
+-   Execute Program
+-   Access Hardware
+-   Parse Specification
+
+------------------------------------------------------------------------
+
+## robot-compiler
+
+### Owns
+
+-   AST Traversal
+-   Bytecode Generation
+-   Program Construction
+-   Symbol Management
+
+### Provides
+
+-   Robot Program
+-   Bytecode
+
+### Must Never
+
+-   Read api.yaml
+-   Access Hardware
+-   Execute Program
+-   Rewrite Frontend Source
+
+------------------------------------------------------------------------
+
+## robot-platform
+
+### Owns
+
+-   Runtime
+-   Virtual Machine
+-   RobotAPI
+-   Instruction Dispatch
+
+### Provides
+
+-   Robot Execution
+
+### Must Never
+
+-   Compile
+-   Parse AST
+-   Parse Specification
+-   Rewrite Source Code
+
+------------------------------------------------------------------------
+
+# 4. Layer Contracts
+
+Application Layer
+
+-   Business Logic
+
+Frontend Layer
+
+-   Rewrite Source
+
+Language Layer
+
+-   Specification
+-   Validation
+-   Artifact
+
+Compiler Layer
+
+-   AST
+-   Bytecode
+
+Runtime Layer
+
+-   Execute
+
+Hardware Layer
+
+-   Device Driver
+
+------------------------------------------------------------------------
+
+# 5. Dependency Contract
+
+Allowed
+
+    robot-language
+          │
+          ▼
+    Generated Artifact
+          │
+     ┌────┼────┐
+     ▼    ▼    ▼
+    Frontend Compiler Runtime
+
+Forbidden
+
+-   Circular Dependency
+-   Reverse Dependency
+-   Shared Mutable State
+-   Repository-to-Repository Business Logic
+
+------------------------------------------------------------------------
+
+# 6. Artifact Contract
+
+Rules
+
+-   Một Artifact chỉ có một Producer.
+-   Artifact chỉ được sinh từ Specification.
+-   Consumer không được sửa Artifact.
+-   Generated File không sửa bằng tay.
+
+------------------------------------------------------------------------
+
+# 7. Specification Contract
+
+Rules
+
+-   Chỉ robot-language được đọc api.yaml.
+-   Không repository nào khác parse Specification.
+-   Mọi dữ liệu đều phải đi qua RobotLanguage.
+
+------------------------------------------------------------------------
+
+# 8. Build Contract
+
+Build Flow
+
+Specification
+
+↓
+
+Validation
+
+↓
+
+Generation
+
+↓
+
+Artifact
+
+↓
+
+Install
+
+↓
+
+Consumer
+
+Rules
+
+-   Validation luôn chạy trước.
+-   Generator không copy file.
+-   Install không generate file.
+-   Consumer không build Artifact.
+
+------------------------------------------------------------------------
+
+# 9. Runtime Contract
+
+Compiler tạo Program.
+
+VM thực thi Program.
+
+RobotAPI giao tiếp Hardware.
+
+Compiler không gọi RobotAPI.
+
+VM không compile.
+
+Hardware không biết Compiler.
+
+------------------------------------------------------------------------
+
+# 10. Development Contract
+
+Khi thêm Feature mới
+
+1.  Cập nhật Specification.
+2.  Validation.
+3.  Generation.
+4.  Artifact.
+5.  Compiler.
+6.  Runtime.
+7.  Regression.
+
+Không được bỏ qua bước.
+
+------------------------------------------------------------------------
+
+# 11. Naming Contract
+
+-   Một khái niệm chỉ có một tên.
+-   Không viết tắt khi không cần thiết.
+-   Tên Generator kết thúc bằng Generator.
+-   Tên Validator kết thúc bằng Validator.
+-   Generated Folder chỉ chứa Generated File.
+
+------------------------------------------------------------------------
+
+# 12. Architecture Freeze
+
+Foundation được xem là ổn định khi:
+
+-   Repository Responsibility không đổi.
+-   Dependency không đổi.
+-   Build Pipeline không đổi.
+-   Runtime Pipeline không đổi.
+
+Sau thời điểm này chỉ bổ sung Feature, không thay đổi kiến trúc nền nếu
+không có quyết định thiết kế mới.
+
+------------------------------------------------------------------------
+
+# 13. Definition of Done
+
+Design Contract hoàn thành khi:
+
+-   Mọi repository có trách nhiệm rõ ràng.
+-   Không còn dependency mơ hồ.
+-   Không còn repository làm nhiều vai trò.
+-   Mọi thành viên có thể xác định nơi cần thay đổi khi thêm một tính
+    năng mới.
+</file>
+
+<file path="robot-docs/ENGINEERING_PHILOSOPHY.md">
+# ENGINEERING_PHILOSOPHY.md
+
+# Robot Development Platform
+
+## Engineering Philosophy
+
+Version: Foundation v1 (Draft)
+
+------------------------------------------------------------------------
+
+# 1. Purpose
+
+Tài liệu này mô tả triết lý thiết kế của Robot Development Platform.
+
+Nó không giải thích cách code.
+
+Nó giải thích **vì sao** hệ thống được thiết kế như hiện tại.
+
+Mọi quyết định kiến trúc trong dự án nên được đối chiếu với tài liệu
+này.
+
+------------------------------------------------------------------------
+
+# 2. Engineering Goal
+
+Mục tiêu của dự án không phải chỉ tạo ra một Robot Compiler.
+
+Mục tiêu là xây dựng một **Robot Development Platform** có thể phát
+triển trong nhiều năm mà vẫn giữ được kiến trúc ổn định.
+
+Ưu tiên:
+
+1.  Khả năng mở rộng.
+2.  Khả năng bảo trì.
+3.  Tính độc lập giữa các thành phần.
+4.  Tính nhất quán.
+
+------------------------------------------------------------------------
+
+# 3. Foundation Before Feature
+
+Nguyên tắc quan trọng nhất của dự án:
+
+> Foundation luôn quan trọng hơn Feature.
+
+Không bổ sung tính năng mới nếu nền tảng chưa đủ ổn định.
+
+Một nền tảng tốt sẽ giúp việc phát triển tính năng sau này nhanh và an
+toàn hơn.
+
+------------------------------------------------------------------------
+
+# 4. Separation of Responsibility
+
+Mỗi repository chỉ có một trách nhiệm duy nhất.
+
+robot-language
+
+-   Định nghĩa ngôn ngữ.
+
+robot-frontend
+
+-   Chuyển đổi chương trình đầu vào.
+
+robot-compiler
+
+-   Biên dịch.
+
+robot-platform
+
+-   Thực thi.
+
+Không repository nào được đảm nhận nhiều vai trò.
+
+------------------------------------------------------------------------
+
+# 5. Single Source of Truth
+
+Mọi định nghĩa về Robot Language chỉ tồn tại ở một nơi.
+
+    api.yaml
+
+Không sao chép Specification.
+
+Không tạo nhiều nguồn dữ liệu giống nhau.
+
+Mọi Artifact đều được sinh từ Specification.
+
+------------------------------------------------------------------------
+
+# 6. Artifact Driven Development
+
+Repository không giao tiếp trực tiếp với nhau.
+
+Chúng giao tiếp thông qua Artifact.
+
+    Specification
+
+    ↓
+
+    Artifact
+
+    ↓
+
+    Consumer
+
+Điều này giúp giảm phụ thuộc và tăng khả năng mở rộng.
+
+------------------------------------------------------------------------
+
+# 7. Frontend Independence
+
+Frontend chỉ là nơi tạo ra chương trình.
+
+Frontend không được ảnh hưởng tới Compiler hoặc Runtime.
+
+Một Frontend mới có thể được bổ sung mà không cần thay đổi Compiler.
+
+------------------------------------------------------------------------
+
+# 8. Hardware Independence
+
+Compiler không biết Robot Hardware.
+
+Runtime là lớp duy nhất giao tiếp với RobotAPI.
+
+Điều này cho phép thay đổi phần cứng mà không cần thay đổi Compiler.
+
+------------------------------------------------------------------------
+
+# 9. Layered Architecture
+
+Mỗi Layer chỉ biết Layer ngay bên dưới.
+
+    Application
+
+    ↓
+
+    Frontend
+
+    ↓
+
+    Language
+
+    ↓
+
+    Compiler
+
+    ↓
+
+    Runtime
+
+    ↓
+
+    Hardware
+
+Không được bỏ qua Layer.
+
+------------------------------------------------------------------------
+
+# 10. Generated Code Philosophy
+
+Generated File không phải nơi để chỉnh sửa.
+
+Nếu muốn thay đổi Generated File thì phải thay đổi:
+
+-   Specification
+-   Generator
+
+Không sửa trực tiếp kết quả sinh ra.
+
+------------------------------------------------------------------------
+
+# 11. Stable Interfaces
+
+Interface phải ổn định.
+
+Implementation có thể thay đổi.
+
+Nếu cần thay đổi Interface thì phải cân nhắc ảnh hưởng tới toàn bộ
+Platform.
+
+------------------------------------------------------------------------
+
+# 12. Small Changes
+
+Một thay đổi nhỏ tốt hơn một thay đổi lớn.
+
+Một Commit chỉ nên giải quyết một vấn đề.
+
+Điều này giúp:
+
+-   Review dễ hơn.
+-   Regression dễ hơn.
+-   Khôi phục dễ hơn.
+
+------------------------------------------------------------------------
+
+# 13. Regression First
+
+Mỗi thay đổi đều phải có Regression.
+
+Không xem việc build thành công là đủ.
+
+Hệ thống phải hoạt động đúng sau khi thay đổi.
+
+------------------------------------------------------------------------
+
+# 14. Documentation Is Part of the Product
+
+Tài liệu là một phần của sản phẩm.
+
+Một tính năng chỉ được xem là hoàn thành khi:
+
+-   Code hoàn thành.
+-   Test hoàn thành.
+-   Documentation được cập nhật.
+
+------------------------------------------------------------------------
+
+# 15. Long-Term Thinking
+
+Mọi quyết định nên ưu tiên lợi ích dài hạn.
+
+Không tối ưu cho tốc độ phát triển ngắn hạn nếu điều đó làm giảm chất
+lượng kiến trúc.
+
+------------------------------------------------------------------------
+
+# 16. Engineering Values
+
+Khi có nhiều phương án, ưu tiên phương án:
+
+-   Đơn giản hơn.
+-   Dễ hiểu hơn.
+-   Ít phụ thuộc hơn.
+-   Dễ kiểm thử hơn.
+-   Dễ mở rộng hơn.
+
+------------------------------------------------------------------------
+
+# 17. Architecture Evolution
+
+Kiến trúc được phát triển theo từng giai đoạn.
+
+Foundation
+
+↓
+
+Stable Architecture
+
+↓
+
+Feature Expansion
+
+↓
+
+Optimization
+
+↓
+
+Production
+
+Không đảo ngược thứ tự này.
+
+------------------------------------------------------------------------
+
+# 18. Final Principle
+
+Một quyết định kỹ thuật được xem là tốt khi:
+
+-   Không làm tăng phụ thuộc không cần thiết.
+-   Không phá vỡ Design Contract.
+-   Không làm mờ trách nhiệm của repository.
+-   Không làm giảm khả năng mở rộng trong tương lai.
+-   Giúp Platform trở nên ổn định hơn sau mỗi Sprint.
+</file>
+
+<file path="robot-frontend-robosim/examples/robosim_move_second.py">
+import rcu
+
+rcu.SetMoveRunSecond(
+    "forward",
+    80,
+    2
+)
+</file>
+
+<file path="robot-frontend-robosim/examples/robosim_variable.py">
+import rcu
+
+speed = 80
+
+rcu.SetMoveRun(
+    "forward",
+    speed
+)
+
+rcu.SetMoveStop()
+</file>
+
+<file path="robot-frontend-robosim/examples/robosim_wait.py">
+import rcu
+
+rcu.SetWaitForTime(2)
+</file>
+
+<file path="robot-frontend-robosim/frontend/__init__.py">
+
+</file>
+
+<file path="robot-frontend-robosim/frontend/compiler.py">
+from pathlib import Path
+import sys
+import ast
+
+ROOT = Path(__file__).resolve().parent.parent
+
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+ROBOT_COMPILER = ROOT.parent / "robot-compiler"
+
+if str(ROBOT_COMPILER) not in sys.path:
+    sys.path.insert(0, str(ROBOT_COMPILER))
+
+from compiler.compiler import RobotCompiler
+from frontend.transformer import RoboSimTransformer
+
+
+class RoboSimCompiler:
+
+    def __init__(self):
+
+        self.transformer = RoboSimTransformer()
+        self.compiler = RobotCompiler()
+
+    def compile(self, filename):
+
+        #
+        # Parse source
+        #
+        with open(filename, "r", encoding="utf8") as f:
+
+            tree = ast.parse(f.read())
+
+        #
+        # Transform RoboSim AST
+        #
+        tree = self.transformer.visit(tree)
+
+        ast.fix_missing_locations(tree)
+
+        #
+        # Compile Robot Language AST
+        #
+        return self.compiler.compile_ast(tree)
+</file>
+
+<file path="robot-frontend-robosim/frontend/mapping.py">
+ROBOSIM_API = {
+
+    "forward": "forward",
+    "backward": "backward",
+    "turnleft": "turn_left",
+    "turnright": "turn_right",
+
+}
+</file>
+
+<file path="robot-language/build/__init__.py">
+from .builder import Builder
+</file>
+
+<file path="robot-language/build/artifacts.py">
+from pathlib import Path
+
+
+class BuildArtifacts:
+
+    def __init__(self, root):
+
+        self.root = Path(root)
+
+    @property
+    def generated(self):
+
+        return self.root / "generated"
+
+    @property
+    def sdk(self):
+
+        return self.root / "sdk"
+</file>
+
+<file path="robot-language/build/builder.py">
+from .context import BuildContext
+
+
+class Builder:
+
+    def __init__(self):
+
+        self.context = BuildContext()
+
+        self.generators = []
+
+        self.validators = []
+
+    def register(
+        self,
+        generator
+    ):
+
+        self.generators.append(generator)
+
+    def register_validator(self, validator):
+
+        self.validators.append(
+            validator
+        )
+
+
+    def validate(self):
+
+        for validator in self.validators:
+
+            print(f"Running {validator.name}...")
+
+            validator.validate(
+                self.context.language
+            )
+
+            print("PASS")
+            print()
+
+    def _print_summary(self):
+
+        language = self.context.language
+
+        print("=" * 60)
+        print("Build Summary")
+        print()
+
+        print(f"Categories : {len(language.categories)}")
+        print(f"Functions  : {sum(1 for _ in language.all_functions())}")
+        print(f"Opcodes    : {sum(1 for _ in language.opcodes())}")
+        print(f"Validators : {len(self.validators)}")
+        print(f"Generators : {len(self.generators)}")
+        print()
+
+    def build(self):
+
+        print()
+
+        print("=" * 60)
+
+        print("Robot Language Build")
+
+        print("=" * 60)
+
+        print()
+
+        self.validate()
+        for generator in self.generators:
+
+            print(f"Running {generator.name}...")
+
+            generator.generate(
+                self.context
+            )
+
+            print("PASS")
+            print()
+        self._print_summary()
+
+        print("=" * 60)
+
+        print("BUILD SUCCESS")
+
+        print("=" * 60)
+</file>
+
+<file path="robot-language/build/context.py">
+from pathlib import Path
+
+from language import RobotLanguage
+
+
+class BuildContext:
+
+    def __init__(self):
+
+        self.root = Path(__file__).resolve().parent.parent
+
+        self.language = RobotLanguage()
+
+    @property
+    def sdk_dir(self):
+
+        return self.root / "sdk"
+
+    @property
+    def generated_dir(self):
+
+        return self.root / "generated"
+
+    @property
+    def docs_dir(self):
+
+        return self.root / "docs"
+</file>
+
+<file path="robot-language/generated/__init__.py">
+
+</file>
+
+<file path="robot-language/generated/function_registry.py">
+"""
+AUTO GENERATED FILE
+"""
+
+from compiler.handlers.motion_handler import MotionHandler
+from compiler.handlers.system_handler import SystemHandler
+
+FUNCTION_REGISTRY = {
+    "forward": {
+        "handler": MotionHandler.forward,
+        "opcode": "Forward",
+        "arguments": 1,
+        "category": "motion",
+        "description": "Move robot forward"
+    },
+    "backward": {
+        "handler": MotionHandler.backward,
+        "opcode": "Backward",
+        "arguments": 1,
+        "category": "motion",
+        "description": "Move robot backward"
+    },
+    "turn_left": {
+        "handler": MotionHandler.turn_left,
+        "opcode": "TurnLeft",
+        "arguments": 1,
+        "category": "motion",
+        "description": "Rotate robot left"
+    },
+    "turn_right": {
+        "handler": MotionHandler.turn_right,
+        "opcode": "TurnRight",
+        "arguments": 1,
+        "category": "motion",
+        "description": "Rotate robot right"
+    },
+    "wait": {
+        "handler": SystemHandler.wait,
+        "opcode": "Wait",
+        "arguments": 1,
+        "category": "system",
+        "description": "Wait milliseconds"
+    },
+    "stop": {
+        "handler": SystemHandler.stop,
+        "opcode": "Stop",
+        "arguments": 0,
+        "category": "system",
+        "description": "Stop robot"
+    },
+}
+</file>
+
+<file path="robot-language/generators/__init__.py">
+from .sdk_generator import SDKGenerator
+from .registry_generator import RegistryGenerator
+from .opcode_generator import OpcodeGenerator
+from .opcode_json_generator import OpcodeJsonGenerator
+</file>
+
+<file path="robot-language/generators/base_generator.py">
+from abc import ABC
+from abc import abstractmethod
+
+
+class BaseGenerator(ABC):
+
+    name = "Generator"
+
+    @abstractmethod
+    def generate(self, context):
+        pass
+</file>
+
+<file path="robot-language/generators/opcode_generator.py">
+from .base_generator import BaseGenerator
+
+
+class OpcodeGenerator(BaseGenerator):
+
+    name = "Opcode Generator"
+
+    def generate(self, context):
+
+        language = context.language
+        generated = context.generated_dir
+
+        generated.mkdir(exist_ok=True)
+
+        output = generated / "opcode.py"
+
+        with open(output, "w", encoding="utf8") as f:
+
+            f.write('"""\n')
+            f.write("AUTO GENERATED FILE\n")
+            f.write('"""\n\n')
+
+            f.write("from enum import IntEnum\n\n")
+
+            f.write("class Opcode(IntEnum):\n")
+
+            for _, _, function in language.all_functions():
+
+                f.write(
+                    f"    {function['opcode']} = {function['opcode_id']}\n"
+                )
+</file>
+
+<file path="robot-language/generators/opcode_header_generator.py">
+from .base_generator import BaseGenerator
+
+class OpcodeHeaderGenerator(BaseGenerator):
+    name = "Opcode Header Generator"
+
+    def generate(self, context):
+        language = context.language
+        generated = context.generated_dir
+        generated.mkdir(exist_ok=True)
+
+        output = generated / "opcode.h"
+
+        with open(output, "w", encoding="utf8") as f:
+            f.write("""
+/******************************************************************************
+ * AUTO GENERATED FILE
+ * DO NOT EDIT MANUALLY
+ ******************************************************************************/
+
+#pragma once
+
+#include <stdint.h>
+
+enum class Opcode : uint8_t
+{
+""")
+            for _, _, func in language.all_functions():
+                f.write(f"    {func['opcode']} = {func['opcode_id']},\n")
+
+            f.write("};\n")
+</file>
+
+<file path="robot-language/generators/opcode_json_generator.py">
+import json
+
+from .base_generator import BaseGenerator
+
+
+class OpcodeJsonGenerator(BaseGenerator):
+
+    name = "Opcode JSON Generator"
+
+    def generate(self, context):
+
+        language = context.language
+        generated = context.generated_dir
+
+        generated.mkdir(exist_ok=True)
+
+        output = generated / "opcode.json"
+
+        data = {}
+
+        for category_name, category, function in language.all_functions():
+
+            data[function["opcode"]] = {
+                "id": function["opcode_id"],
+                "opcode": function["opcode"],
+                "function": function["name"],
+                "category": category_name,
+                "module": category["module"],
+                "handler": category["handler"]
+            }
+
+        with open(output, "w", encoding="utf8") as f:
+
+            json.dump(
+                data,
+                f,
+                indent=4,
+                ensure_ascii=False
+            )
+</file>
+
+<file path="robot-language/generators/registry_json_generator.py">
+import json
+
+from .base_generator import BaseGenerator
+
+
+class RegistryJsonGenerator(BaseGenerator):
+
+    name = "Registry JSON Generator"
+
+    def generate(self, context):
+
+        language = context.language
+
+        output = context.generated_dir / "registry.json"
+
+        registry = {}
+
+        for category_name, category, func in language.all_functions():
+
+            registry[func["name"]] = {
+                "opcode": func["opcode"],
+                "opcode_id": func["opcode_id"],
+                "category": category_name,
+                "module": category["module"],
+                "handler": category["handler"],
+                "arguments": len(func["args"]),
+                "description": func["description"],
+            }
+
+        with open(output, "w", encoding="utf8") as f:
+            json.dump(
+                registry,
+                f,
+                indent=4,
+                ensure_ascii=False,
+            )
+</file>
+
+<file path="robot-language/language/__init__.py">
+from .model import RobotLanguage
+</file>
+
+<file path="robot-language/language/model.py">
+from pathlib import Path
+import yaml
+
+
+class RobotLanguage:
+
+    def __init__(self):
+
+        root = Path(__file__).resolve().parent.parent
+
+        spec_file = (
+            root /
+            "specification" /
+            "api.yaml"
+        )
+
+        with open(spec_file, encoding="utf8") as f:
+
+            self.data = yaml.safe_load(f)
+
+    @property
+    def name(self):
+
+        return self.data["language"]["name"]
+
+    @property
+    def version(self):
+
+        return self.data["language"]["version"]
+
+    @property
+    def categories(self):
+
+        return self.data["categories"]
+
+    def all_categories(self):
+
+        return self.categories.items()
+
+    def get_category(self, name):
+
+        return self.categories[name]
+
+    def all_functions(self):
+
+        for category_name, category in self.categories.items():
+
+            for function in category["functions"]:
+
+                yield category_name, category, function
+
+    def opcodes(self):
+
+        for _, _, function in self.all_functions():
+
+            yield function["opcode"]
+
+    def opcode_ids(self):
+
+        for _, _, function in self.all_functions():
+
+            yield function["opcode_id"]
+
+    def function_names(self):
+
+        for _, _, function in self.all_functions():
+
+            yield function["name"]
+
+    def find_function(self, name):
+
+        for _, _, function in self.all_functions():
+
+            if function["name"] == name:
+
+                return function
+
+        return None
+
+    def function_exists(self, name):
+
+        return self.find_function(name) is not None
+    
+    def handler_of(self, category_name):
+
+        return self.categories[category_name]["handler"]
+
+
+    def module_of(self, category_name):
+
+        return self.categories[category_name]["module"]    
+
+    def handlers(self):
+
+        for _, category in self.all_categories():
+
+            yield category["handler"]
+
+    def modules(self):
+
+        for _, category in self.all_categories():
+
+            yield category["module"]
+</file>
+
+<file path="robot-language/sdk/__init__.py">
+from .motion import *
+from .system import *
+</file>
+
+<file path="robot-language/sdk/motion.py">
+"""
+AUTO GENERATED FILE
+"""
+
+def forward(speed):
+    pass
+
+def backward(speed):
+    pass
+
+def turn_left(speed):
+    pass
+
+def turn_right(speed):
+    pass
+</file>
+
+<file path="robot-language/sdk/system.py">
+"""
+AUTO GENERATED FILE
+"""
+
+def wait(milliseconds):
+    pass
+
+def stop():
+    pass
+</file>
+
+<file path="robot-language/tools/generate_registry.py">
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from language import RobotLanguage
+
+lang = RobotLanguage()
+
+generated = ROOT / "generated"
+generated.mkdir(exist_ok=True)
+
+with open(
+    generated / "function_registry.py",
+    "w",
+    encoding="utf8"
+) as f:
+
+    f.write('"""\n')
+    f.write("AUTO GENERATED FILE\n")
+    f.write('"""\n\n')
+
+    imports = set()
+
+    for _, category, _ in lang.all_functions():
+
+        imports.add(
+            (
+                category["module"],
+                category["handler"]
+            )
+        )
+
+    for module, handler in sorted(imports):
+
+        f.write(
+            f"from compiler.handlers.{module} import {handler}\n"
+        )
+
+    f.write("\n")
+
+    f.write("FUNCTION_REGISTRY = {\n")
+
+    for _, category, function in lang.all_functions():
+
+        handler = category["handler"]
+
+        f.write(
+
+            f'    "{function["name"]}": {handler}.{function["name"]},\n'
+
+        )
+
+    f.write("}\n")
+</file>
+
+<file path="robot-language/validation/__init__.py">
+from .duplicate_validator import DuplicateValidator
+from .semantic_validator import SemanticValidator
+from .reference_validator import ReferenceValidator
+</file>
+
+<file path="robot-language/validation/base_validator.py">
+class BaseValidator:
+
+    name = "Base Validator"
+
+    def validate(self, language):
+
+        raise NotImplementedError()
+</file>
+
+<file path="robot-language/validation/duplicate_validator.py">
+from .base_validator import BaseValidator
+
+
+class DuplicateValidator(BaseValidator):
+
+    name = "Duplicate Validator"
+
+    def validate(self, language):
+
+        self._check(
+            language.function_names(),
+            "Function"
+        )
+
+        self._check(
+            language.opcodes(),
+            "Opcode"
+        )
+
+        self._check(
+            language.opcode_ids(),
+            "Opcode ID"
+        )
+
+        self._check(
+            language.handlers(),
+            "Handler"
+        )
+
+        self._check(
+            language.modules(),
+            "Module"
+        )
+
+    def _check(
+        self,
+        values,
+        object_name
+    ):
+
+        visited = set()
+
+        for value in values:
+
+            if value in visited:
+
+                raise ValueError(
+                    f"Duplicate {object_name}: {value}"
+                )
+
+            visited.add(value)
+</file>
+
+<file path="robot-language/validation/reference_validator.py">
+from .base_validator import BaseValidator
+
+
+class ReferenceValidator(BaseValidator):
+
+    name = "Reference Validator"
+
+    def validate(self, language):
+
+        #
+        # Reserved for cross-reference validation.
+        #
+        pass
+</file>
+
+<file path="robot-platform/main/src/Application/generated_program.h">
+/******************************************************************************
+ * AUTO GENERATED FILE
+ *
+ * DO NOT EDIT MANUALLY.
+ ******************************************************************************/
+
+#pragma once
+
+const Instruction generatedProgram[] =
+{
+    Instruction(Opcode::LoadConst, 0, 1000, 0),
+    Instruction(Opcode::Wait, 0, 0, 0),
+    Instruction(Opcode::Stop, 0, 0, 0),
+};
+
+const uint16_t generatedProgramSize = 3;
+</file>
+
+<file path="robot-platform/main/src/Application/LineFollowerApp.cpp">
+#include "LineFollowerApp.h"
+#include "Arduino.h"
+
+
+void LineFollowerApp::LineFollowerApp_init() {
+    _sensors.LineSensor_init();
+    Serial.println("[APP] Ứng dụng dò đường đã sẵn sàng kích hoạt.");
+}
+
+
+void LineFollowerApp::LineFollowerApp_Main()
+{
+    bool left = _sensors.LineSensor_isLeftSensorDetected_BlackColor();
+    bool center = _sensors.LineSensor_isCenterSensorDetected_BlackColor();
+    bool right = _sensors.LineSensor_isRightSensorDetected_BlackColor();
+
+    if (left == true)
+    {
+        //Serial.println("Left Channel Detected Dark Color.");
+    }
+    if (center == true)
+    {
+        Serial.println("Center Channel Detected Dark Color.");
+    }
+    if (right == true)
+    {
+        //Serial.println("Right Channel Detected Dark Color.");
+    }  
+    if ((left == true)&&(center == true)&&(right == true))
+    {
+        //Serial.println("All Channel Detected Dark Color.");
+    }
+    if ((left == true)||(center == true)||(right == true))
+    {
+        //Serial.println("No Any Channel Detected Dark Color.");
+    } 
+    int value = digitalRead(16);
+    Serial.println(value);
+
+}
+</file>
+
+<file path="robot-platform/main/src/Application/LineFollowerApp.h">
+#ifndef LINE_FOLLOWER_APP_H
+#define LINE_FOLLOWER_APP_H
+
+#include "../Devices/Sensor.h"
+
+
+class LineFollowerApp {
+private:
+    Sensor _sensors;          // Con trỏ liên kết sang lớp quản lý thiết bị Sensor
+
+public:
+    // Khởi tạo ứng dụng
+    void LineFollowerApp_init();
+
+    void LineFollowerApp_Main();
+    
+};
+
+#endif
+</file>
+
+<file path="robot-platform/main/src/Application/RobotProgramApp.cpp">
+#include "RobotProgramApp.h"
+#include "generated_program.h"
+
+void BuildProgram(Program& program)
+{
+    program.Clear();
+
+    for (uint16_t i = 0; i < generatedProgramSize; i++)
+    {
+        program.AddInstruction(generatedProgram[i]);
+    }
+}
+</file>
+
+<file path="robot-platform/main/src/Application/RobotProgramApp.h">
+#include "src/Services/VM/VM.h"
+
+
+
+extern VM vm;
+extern Program program;
+
+void BuildProgram(Program& program);
+</file>
+
+<file path="robot-platform/main/src/Communication/ProgramLoader.cpp">
+
+</file>
+
+<file path="robot-platform/main/src/Communication/UART.cpp">
+
+</file>
+
+<file path="robot-platform/main/src/Communication/UART.h">
+
+</file>
+
+<file path="robot-platform/main/src/Devices/Motor.cpp">
+
+</file>
+
+<file path="robot-platform/main/src/Devices/Sensor.cpp">
+#include "Sensor.h"
+
+
+void Sensor::LineSensor_init()
+{
+#ifdef USE_LINE_SENSOR_TCRT5000
+    // Gọi đúng tên hàm init() từ class driver
+    Sensor_LineDetected.TRCT5000_init(); 
+#endif 
+}
+
+bool Sensor::LineSensor_isLeftSensorDetected_BlackColor() {
+#ifdef USE_LINE_SENSOR_TCRT5000
+    // Sửa lỗi: Gọi đúng tên hàm trong class driver (Bỏ tiền tố TRCT5000_)
+    return Sensor_LineDetected.TRCT5000_isLeftDetected_BlackColor();
+#endif
+    return false; 
+}
+
+bool Sensor::LineSensor_isCenterSensorDetected_BlackColor() {
+#ifdef USE_LINE_SENSOR_TCRT5000
+    return Sensor_LineDetected.TRCT5000_isCenterDetected_BlackColor();
+#endif
+    return false;
+}
+
+bool Sensor::LineSensor_isRightSensorDetected_BlackColor() {
+#ifdef USE_LINE_SENSOR_TCRT5000
+    return Sensor_LineDetected.TRCT5000_isRightDetected_BlackColor();
+#endif
+    return false;
+}
+
+bool Sensor::LineSensor_all_BlackColorDetected() {
+#ifdef USE_LINE_SENSOR_TCRT5000
+    return Sensor_LineDetected.TRCT5000_all_BlackColorDetected();
+#endif
+    return false;
+}
+
+bool Sensor::LineSensor_any_BlackColorDetected() {
+#ifdef USE_LINE_SENSOR_TCRT5000
+    return Sensor_LineDetected.TRCT5000_any_BlackColorDetected();
+#endif
+    return false;
+}
+
+void Sensor::LineSensor_printStatus() {
+#ifdef USE_LINE_SENSOR_TCRT5000
+    return Sensor_LineDetected.TRCT5000_printStatus();
+#endif
+}
+</file>
+
+<file path="robot-platform/main/src/Devices/Sensor.h">
+#ifndef _SENSOR_H
+#define _SENSOR_H
+
+#define USE_LINE_SENSOR_TCRT5000 
+
+#ifdef USE_LINE_SENSOR_TCRT5000
+#include "../Drivers/Sensor_TRCT5000_3CH.h"
+#endif
+
+class Sensor
+{
+public:
+
+#ifdef USE_LINE_SENSOR_TCRT5000
+    Sensor_TRCT5000_3CH Sensor_LineDetected;
+#endif    
+
+    void LineSensor_init();
+    bool LineSensor_isLeftSensorDetected_BlackColor();
+    bool LineSensor_isCenterSensorDetected_BlackColor();
+    bool LineSensor_isRightSensorDetected_BlackColor();    
+    bool LineSensor_all_BlackColorDetected(); 
+    bool LineSensor_any_BlackColorDetected();     
+    void LineSensor_printStatus();
+};
+
+
+#endif
+</file>
+
+<file path="robot-platform/main/src/Drivers/Sensor_TRCT5000_3CH.cpp">
+#include "Sensor_TRCT5000_3CH.h"
+
+void Sensor_TRCT5000_3CH::TRCT5000_init()
+{
+  pinMode(_pin_L, INPUT);
+  pinMode(_pin_C, INPUT);
+  pinMode(_pin_R, INPUT); 
+}
+
+// Gặp màu đen (hấp thụ tia hồng ngoại) -> Chân xuất mức HIGH (1)
+bool Sensor_TRCT5000_3CH::TRCT5000_isLeftDetected_BlackColor()
+{
+  return digitalRead(_pin_L) == LINE_DETECTED_LEVEL;
+}
+
+bool Sensor_TRCT5000_3CH::TRCT5000_isCenterDetected_BlackColor()
+{
+  return digitalRead(_pin_C) == LINE_DETECTED_LEVEL;
+}
+
+bool Sensor_TRCT5000_3CH::TRCT5000_isRightDetected_BlackColor()
+{
+  return digitalRead(_pin_R) == LINE_DETECTED_LEVEL;
+}
+
+// Bất kỳ mắt nào gặp màu đen (true)
+bool Sensor_TRCT5000_3CH::TRCT5000_any_BlackColorDetected()
+{
+  return (TRCT5000_isLeftDetected_BlackColor() || TRCT5000_isCenterDetected_BlackColor() || TRCT5000_isRightDetected_BlackColor());
+}
+
+// Tất cả các mắt đều gặp màu đen (true)
+bool Sensor_TRCT5000_3CH::TRCT5000_all_BlackColorDetected()
+{
+  return (TRCT5000_isLeftDetected_BlackColor() && TRCT5000_isCenterDetected_BlackColor() && TRCT5000_isRightDetected_BlackColor());
+}
+
+void Sensor_TRCT5000_3CH::TRCT5000_printStatus()
+{
+  Serial.print("Trạng thái [L|C|R]: ");
+  Serial.print(TRCT5000_isLeftDetected_BlackColor() ? "[Đen]" : "[Trắng]");
+  Serial.print(TRCT5000_isCenterDetected_BlackColor() ? " [Đen]" : " [Trắng]");
+  Serial.print(TRCT5000_isRightDetected_BlackColor() ? " [Đen]" : " [Trắng]");
+  
+  Serial.print(" | Any Black: ");
+  Serial.print(TRCT5000_any_BlackColorDetected() ? "Có" : "Không");
+  Serial.print(" | All Black: ");
+  Serial.println(TRCT5000_all_BlackColorDetected() ? "Có" : "Không");
+}
+</file>
+
+<file path="robot-platform/main/src/Drivers/Sensor_TRCT5000_3CH.h">
+//When infrared sensor TRCT5000 3CH is emmitted a light source and encourted a dark color, the light is aborted, resulting in a weak reflection itensity
+//Vin < Vout => HIGH(dark color)// Vin>Vout ==> LOW(light color)
+#ifndef SENSOR_TRCT5000_3CH_H
+#define SENSOR_TRCT5000_3CH_H
+
+#include "../HardwareAbstraction/GPIO.h"
+#include "Arduino.h"
+
+#define LINE_DETECTED_LEVEL HIGH
+
+class Sensor_TRCT5000_3CH
+{
+private:
+    // Thêm const bảo vệ giá trị chân cấu hình phần cứng
+    const int _pin_L = SENSOR_TRCT5000_L_PIN;
+    const int _pin_C = SENSOR_TRCT5000_C_PIN;
+    const int _pin_R = SENSOR_TRCT5000_R_PIN;
+
+public:
+    void TRCT5000_init();
+    
+    // Trả về true nếu phát hiện màu đen (Mức LOW), false nếu màu trắng (Mức HIGH)
+    bool TRCT5000_isLeftDetected_BlackColor();
+    bool TRCT5000_isCenterDetected_BlackColor();
+    bool TRCT5000_isRightDetected_BlackColor();
+    
+    // Trả về true nếu BẤT KỲ kênh nào gặp màu đen
+    bool TRCT5000_any_BlackColorDetected();
+    
+    // Trả về true nếu TẤT CẢ các kênh đều gặp màu đen
+    bool TRCT5000_all_BlackColorDetected();
+
+    // Hàm in trạng thái hệ thống ra Serial để debug
+    void TRCT5000_printStatus();    
+};
+
+#endif
+</file>
+
+<file path="robot-platform/main/src/HardwareAbstraction/GPIO.h">
+#ifndef GPIO_H
+#define GPIO_H
+
+#include "Arduino.h"
+
+// --- ĐỊNH NGHĨA TIỀN TỐ CHÂN CHO ROBOT (Dập tắt hoàn toàn nguy cơ trùng tên hệ thống) ---
+#define ROBOT_PIN_5     5
+#define ROBOT_PIN_14    14
+#define ROBOT_PIN_16    16
+#define ROBOT_PIN_17    17
+#define ROBOT_PIN_18    18
+#define ROBOT_PIN_19    19
+#define ROBOT_PIN_22    22
+#define ROBOT_PIN_23    23
+#define ROBOT_PIN_25    25
+#define ROBOT_PIN_26    26
+#define ROBOT_PIN_27    27
+#define ROBOT_PIN_32    32
+#define ROBOT_PIN_33    33
+
+// --- ĐẶT ALIAS (TÊN GỢI NHỚ) THEO CHỨC NĂNG PHẦN CỨNG ---
+
+// Cảm biến vạch đường TCRT5000 3CH
+#define SENSOR_TRCT5000_L_PIN   ROBOT_PIN_18  
+#define SENSOR_TRCT5000_C_PIN   ROBOT_PIN_16   // Lưu ý: Nếu dùng GPIO5, hãy đổi dòng trên thành ROBOT_PIN_5 5
+#define SENSOR_TRCT5000_R_PIN   ROBOT_PIN_17  
+
+// Còi báo và Đầu ra đèn LED lớn
+#define OUTPUT_BUZZER_PIN       ROBOT_PIN_19
+#define OUTPUT_LED_LEFT_PIN     ROBOT_PIN_32
+#define OUTPUT_LED_RIGHT_PIN    ROBOT_PIN_33
+
+// Cảm biến siêu âm HC-SR04
+#define SONIC_TRIG_PIN          ROBOT_PIN_23
+#define SONIC_ECHO_PIN          ROBOT_PIN_22
+
+// Mạch cầu H điều khiển 4 động cơ
+#define MOTOR_L_IN1_PIN         ROBOT_PIN_25
+#define MOTOR_L_IN2_PIN         ROBOT_PIN_26
+#define MOTOR_R_IN3_PIN         ROBOT_PIN_27
+#define MOTOR_R_IN4_PIN         ROBOT_PIN_14
+
+#endif
+</file>
+
+<file path="robot-platform/main/src/Services/Robot/RobotAPI.cpp">
+/******************************************************************************
+ * File        : RobotAPI.cpp
+ *
+ * Description :
+ *      Robot Hardware Abstraction API Implementation.
+ *
+ ******************************************************************************/
+
+#include "RobotAPI.h"
+
+#include <Arduino.h>
+
+namespace RobotAPI
+{
+
+/******************************************************************************
+ * Motion Control
+ ******************************************************************************/
+
+void Forward(int16_t speed)
+{
+    Serial.print("[RobotAPI] Forward : ");
+    Serial.println(speed);
+
+    /*
+     * TODO (Commit002)
+     *
+     * MotorDevice::Forward(speed);
+     */
+}
+
+void Backward(int16_t speed)
+{
+    Serial.print("[RobotAPI] Backward : ");
+    Serial.println(speed);
+}
+
+void TurnLeft(int16_t speed)
+{
+    Serial.print("[RobotAPI] TurnLeft : ");
+    Serial.println(speed);
+}
+
+void TurnRight(int16_t speed)
+{
+    Serial.print("[RobotAPI] TurnRight : ");
+    Serial.println(speed);
+}
+
+void Stop()
+{
+    Serial.println("[RobotAPI] Stop");
+}
+
+/******************************************************************************
+ * Sensor
+ ******************************************************************************/
+
+int16_t ReadUltrasonic()
+{
+    Serial.println("[RobotAPI] Read Ultrasonic");
+
+    /*
+     * Prototype
+     *
+     * Always return 50 cm.
+     */
+
+    return 50;
+}
+
+/******************************************************************************
+ * Utility
+ ******************************************************************************/
+
+void Wait(uint16_t ms)
+{
+    Serial.print("[RobotAPI] Wait : ");
+    Serial.print(ms);
+    Serial.println(" ms");
+
+    delay(ms);
+}
+
+}
+</file>
+
+<file path="robot-platform/main/src/Services/Robot/RobotAPI.h">
+/******************************************************************************
+ * File        : RobotAPI.h
+ *
+ * Description :
+ *      Robot Hardware Abstraction API.
+ *
+ *      Robot VM is only allowed to access robot hardware through this API.
+ *
+ ******************************************************************************/
+
+#pragma once
+
+#include <stdint.h>
+
+namespace RobotAPI
+{
+
+/******************************************************************************
+ * Motion Control
+ ******************************************************************************/
+
+/**
+ * Move forward.
+ *
+ * @param speed
+ *      Motor speed.
+ */
+void Forward(int16_t speed);
+
+/**
+ * Move backward.
+ *
+ * @param speed
+ *      Motor speed.
+ */
+void Backward(int16_t speed);
+
+/**
+ * Turn left.
+ *
+ * @param speed
+ *      Motor speed.
+ */
+void TurnLeft(int16_t speed);
+
+/**
+ * Turn right.
+ *
+ * @param speed
+ *      Motor speed.
+ */
+void TurnRight(int16_t speed);
+
+/**
+ * Stop robot.
+ */
+void Stop();
+
+/******************************************************************************
+ * Sensor
+ ******************************************************************************/
+
+/**
+ * Read ultrasonic sensor.
+ *
+ * @return Distance (cm)
+ */
+int16_t ReadUltrasonic();
+
+/******************************************************************************
+ * Utility
+ ******************************************************************************/
+
+/**
+ * Blocking delay.
+ *
+ * @param ms
+ *      Delay time.
+ */
+void Wait(uint16_t ms);
+
+}
+</file>
+
+<file path="robot-platform/main/src/Services/VM/Program.h">
+/******************************************************************************
+ * File        : Program.h
+ *
+ * Description :
+ *      Robot VM Program Container.
+ *
+ *      A Program is simply a collection of VM Instructions.
+ *
+ ******************************************************************************/
+
+#pragma once
+
+#include <stdint.h>
+
+#include "Instruction.h"
+
+/*----------------------------------------------------------------------------
+ * Configuration
+ *---------------------------------------------------------------------------*/
+
+constexpr uint16_t MAX_PROGRAM_SIZE = 128;
+
+/*----------------------------------------------------------------------------
+ * Program
+ *---------------------------------------------------------------------------*/
+
+class Program
+{
+public:
+
+    Program()
+    {
+        Clear();
+    }
+
+    /**
+     * Remove all instructions.
+     */
+    void Clear()
+    {
+        mInstructionCount = 0;
+    }
+
+    /**
+     * Add instruction.
+     *
+     * @return true  Success
+     * @return false Program Full
+     */
+    bool AddInstruction(const Instruction& instruction)
+    {
+        if (mInstructionCount >= MAX_PROGRAM_SIZE)
+        {
+            return false;
+        }
+
+        mInstructions[mInstructionCount++] = instruction;
+
+        return true;
+    }
+
+public:
+
+    /**
+     * Instruction List.
+     *
+     * VM reads directly from this array.
+     */
+    Instruction mInstructions[MAX_PROGRAM_SIZE];
+
+    /**
+     * Number of valid instructions.
+     */
+    uint16_t mInstructionCount;
+};
+</file>
+
+<file path="robot-platform/main/src/Services/VM/VM.h">
+/******************************************************************************
+ * File        : VM.h
+ *
+ * Description :
+ *      Robot Virtual Machine.
+ *
+ ******************************************************************************/
+
+#pragma once
+
+#include "Program.h"
+#include "VMContext.h"
+
+/******************************************************************************
+ * Robot VM
+ ******************************************************************************/
+
+class VM
+{
+public:
+
+    /**
+     * Constructor.
+     */
+    VM();
+
+    /**
+     * Reset VM runtime.
+     */
+    void Reset();
+
+    /**
+     * Load program.
+     */
+    bool LoadProgram(const Program* program);
+
+    /**
+     * Execute one instruction.
+     */
+    void Step();
+
+    /**
+     * Check whether VM is still running.
+     */
+    bool IsRunning() const;
+
+    /**
+     * Get current program counter.
+     */
+    uint16_t GetProgramCounter() const;
+
+private:
+
+    /**
+     * Execute current instruction.
+     */
+    void ExecuteInstruction(const Instruction& instruction);
+
+private:
+
+    /**
+     * Loaded Program.
+     */
+    const Program* mProgram;
+
+    /**
+     * Runtime Context.
+     */
+    VMContext mContext;
+};
+</file>
+
+<file path="robot-platform/main/src/Services/VM/VMContext.h">
+/******************************************************************************
+ * File        : VMContext.h
+ *
+ * Description :
+ *      Robot Virtual Machine Runtime Context.
+ *
+ *      VMContext contains the complete runtime state of Robot VM.
+ *
+ ******************************************************************************/
+
+#pragma once
+
+#include <stdint.h>
+#include <string.h>
+
+/*----------------------------------------------------------------------------
+ * Configuration
+ *---------------------------------------------------------------------------*/
+
+constexpr uint8_t MAX_VARIABLE_COUNT = 32;
+
+constexpr uint8_t MAX_LOOP_DEPTH = 8;
+
+/*----------------------------------------------------------------------------
+ * Loop Frame
+ *---------------------------------------------------------------------------*/
+
+/**
+ * FOR loop runtime information.
+ */
+struct LoopFrame
+{
+    /**
+     * Loop variable ID.
+     */
+    uint8_t variableId;
+
+    /**
+     * Current iteration.
+     */
+    uint16_t current;
+
+    /**
+     * Total loop count.
+     */
+    uint16_t count;
+
+    /**
+     * Instruction index after FOR_BEGIN.
+     */
+    uint16_t startPc;
+};
+
+/*----------------------------------------------------------------------------
+ * VM Context
+ *---------------------------------------------------------------------------*/
+
+class VMContext
+{
+public:
+
+    VMContext()
+    {
+        Reset();
+    }
+
+    /**
+     * Reset VM runtime state.
+     */
+    void Reset()
+    {
+        memset(mVariables, 0, sizeof(mVariables));
+
+        mRegister0 = 0;
+
+        mFlag = false;
+
+        mProgramCounter = 0;
+
+        mRunning = true;
+
+        mLoopStackPointer = 0;
+    }
+
+public:
+
+    /**
+     * VM Variables.
+     */
+    int16_t mVariables[MAX_VARIABLE_COUNT];
+
+    /**
+     * General purpose register.
+     */
+    int16_t mRegister0;
+
+    /**
+     * Compare result.
+     */
+    bool mFlag;
+
+    /**
+     * Current instruction index.
+     */
+    uint16_t mProgramCounter;
+
+    /**
+     * VM running state.
+     */
+    bool mRunning;
+
+    /**
+     * Loop stack.
+     */
+    LoopFrame mLoopStack[MAX_LOOP_DEPTH];
+
+    /**
+     * Stack pointer.
+     */
+    uint8_t mLoopStackPointer;
+};
+</file>
+
+<file path="robot-platform/main/main.ino">
+#include "src/Application/RobotProgramApp.h"
+
+VM vm;
+Program program;
+
+void setup()
+{
+    Serial.begin(115200);
+
+    while (!Serial)
+    {
+    }
+
+    Serial.println();
+    Serial.println("==================================");
+    Serial.println(" Robot VM Prototype");
+    Serial.println("==================================");
+
+    BuildProgram(program);
+
+    vm.LoadProgram(&program);
+
+    Serial.println("Program Loaded");
+    Serial.println();
+}
+
+/******************************************************************************
+ * Loop
+ ******************************************************************************/
+
+void loop()
+{
+    if (vm.IsRunning())
+    {
+        Serial.print("[VM] PC = ");
+        Serial.println(vm.GetProgramCounter());
+
+        vm.Step();
+
+        delay(100);
+    }
+    else
+    {
+        Serial.println();
+        Serial.println("========== VM FINISHED ==========");
+
+        while (true)
+        {
+        }
+    }
+}
+</file>
+
+<file path="04_Robotics_SW_DeepSeek.code-workspace">
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}
+</file>
+
+<file path="PROJECT_STATUS_v2.md">
+# PROJECT_STATUS.md
+
+# Robot Development Platform
+
+**Version:** Foundation v0.2
+
+**Last Update:** Foundation Architecture Review
+
+------------------------------------------------------------------------
+
+# 1. Project Vision
+
+Robot Development Platform là một nền tảng hoàn chỉnh dành cho Robotics
+Education.
+
+Mục tiêu của hệ thống là cho phép học sinh lập trình Robot bằng nhiều
+Frontend khác nhau (RoboSim, Blockly, Scratch, Python...), sau đó biên
+dịch thành Robot Bytecode và thực thi trên nhiều nền tảng phần cứng khác
+nhau.
+
+Toàn bộ hệ thống được thiết kế theo hướng:
+
+-   Hardware Independent
+-   Frontend Independent
+-   Modular
+-   Extensible
+
+Robot Hardware chỉ là tầng cuối cùng của hệ thống.
+
+------------------------------------------------------------------------
+
+# 2. High Level Architecture
+
+``` text
+                  Student
+                     │
+                     ▼
+          RoboSim / Blockly / IDE
+                     │
+                     ▼
+              Robot Frontend
+                     │
+              Standard Python
+                     │
+                     ▼
+             Python Standard AST
+                     │
+                     ▼
+             Robot Compiler
+                     │
+              Bytecode Program
+                     │
+                     ▼
+          Robot Virtual Machine
+                     │
+                     ▼
+                Robot API
+                     │
+                     ▼
+              Robot Hardware
+```
+
+------------------------------------------------------------------------
+
+# 3. Repository Overview
+
+## robot-language
+
+Single Source of Truth.
+
+-   Định nghĩa Robot Language Specification.
+-   Không compile.
+-   Không execute.
+-   Không biết AST.
+-   Sinh toàn bộ Artifact cho các repository khác.
+
+## robot-frontend-robosim
+
+Frontend Adapter.
+
+-   Rewrite RoboSim API sang Robot Language API.
+-   Không compile.
+-   Không biết VM.
+-   Không biết Hardware.
+
+## robot-compiler
+
+Compiler.
+
+-   Compile Standard Python AST.
+-   Sinh Robot Bytecode.
+-   Không biết RoboSim.
+-   Không execute.
+
+## robot-platform
+
+Runtime.
+
+-   Execute Robot Bytecode.
+-   Không parse Python.
+-   Không compile.
+-   Giao tiếp phần cứng thông qua RobotAPI.
+
+------------------------------------------------------------------------
+
+# 4. Repository Structure
+
+## robot-language
+
+### specification/
+
+-   **api.yaml** --- Single Source of Truth.
+
+### language/
+
+-   **model.py** --- RobotLanguage Service, load specification và cung
+    cấp Query API.
+
+### validation/
+
+-   **base_validator.py** --- Abstract validator.
+-   **duplicate_validator.py** --- Duplicate validation.
+-   **semantic_validator.py** --- Semantic validation.
+-   **reference_validator.py** --- Reference validation.
+
+### generators/
+
+-   **base_generator.py** --- Abstract generator.
+-   **registry_generator.py** --- Sinh function registry.
+-   **opcode_generator.py** --- Sinh opcode.py.
+-   **opcode_json_generator.py** --- Sinh opcode.json.
+-   **sdk_generator.py** --- Sinh Python SDK.
+
+### build/
+
+-   **build.py** --- Build entry.
+-   **builder.py** --- Điều phối Build Pipeline.
+-   **context.py** --- BuildContext.
+-   **artifacts.py** --- Đăng ký Artifact.
+-   **install.py** --- Cài đặt Artifact sang project khác.
+
+### generated/
+
+-   Artifact sinh tự động. Không sửa bằng tay.
+
+### sdk/
+
+-   Python SDK.
+
+------------------------------------------------------------------------
+
+## robot-compiler
+
+### compiler/
+
+-   **compiler.py** --- Compiler chính.
+-   **instruction.py** --- Instruction model.
+-   **program.py** --- Bytecode Program.
+-   **opcode.py** --- Opcode definition.
+-   **emitter.py** --- Sinh generatedProgram.h.
+-   **symbol_table.py** --- Symbol management.
+-   **patch.py** --- Jump backpatch.
+-   **label.py** --- Label management.
+
+### handlers/
+
+-   **motion_handler.py** --- Motion instruction.
+-   **compare_handler.py** --- Compare instruction.
+-   **bool_handler.py** --- Boolean instruction.
+-   **system_handler.py** --- Wait/System instruction.
+
+### generated/
+
+-   Artifact từ robot-language.
+
+------------------------------------------------------------------------
+
+## robot-frontend-robosim
+
+### frontend/
+
+-   **compiler.py** --- Frontend entry.
+-   **transformer.py** --- AST rewrite.
+-   **mapping.py** --- RoboSim ↔ Robot Language mapping.
+
+### examples/
+
+-   Ví dụ.
+
+### test/
+
+-   Regression test.
+
+------------------------------------------------------------------------
+
+## robot-platform
+
+### VM/
+
+-   **VM.cpp** --- Main execution loop.
+-   **Instruction.h** --- Instruction format.
+-   **Opcode.h** --- Opcode definition.
+-   **Program.h** --- Program model.
+-   **VMContext.h** --- Runtime context.
+
+### Robot/
+
+-   **RobotAPI.h** --- Hardware abstraction.
+-   **RobotAPI.cpp** --- Hardware implementation.
+
+------------------------------------------------------------------------
+
+# 5. Current End-to-End Flow
+
+``` text
+RoboSim Program
+        │
+        ▼
+Frontend Rewrite
+        │
+        ▼
+Standard Python
+        │
+        ▼
+Python AST
+        │
+        ▼
+Robot Compiler
+        │
+        ▼
+Bytecode Program
+        │
+        ▼
+generatedProgram.h
+        │
+        ▼
+Robot VM
+        │
+        ▼
+RobotAPI
+        │
+        ▼
+Robot Hardware
+```
+
+------------------------------------------------------------------------
+
+# 6. Artifact Flow
+
+``` text
+api.yaml
+   │
+   ▼
+RobotLanguage
+   │
+   ▼
+Validator
+   │
+   ▼
+Generator
+   │
+   ▼
+Artifacts
+   │
+   ├── function_registry.py
+   ├── opcode.py
+   ├── opcode.json
+   └── sdk/
+```
+
+  Artifact               Producer         Consumer
+  ---------------------- ---------------- ----------------
+  function_registry.py   robot-language   robot-compiler
+  opcode.py              robot-language   robot-compiler
+  opcode.json            robot-language   robot-compiler
+  sdk/\*                 robot-language   robot-frontend
+
+------------------------------------------------------------------------
+
+# 7. Dependency Graph
+
+``` text
+robot-language
+        │
+        ▼
+Generated Artifact
+        │
+        ▼
+robot-compiler
+        │
+        ▼
+Program
+        │
+        ▼
+robot-platform
+        │
+        ▼
+RobotAPI
+        │
+        ▼
+Robot Hardware
+```
+
+------------------------------------------------------------------------
+
+# 8. Current Progress
+
+## robot-language
+
+-   ★★★★★ Specification
+-   ★★★★★ Validator
+-   ★★★★★ Generator
+-   ★★★★☆ Build Pipeline
+-   ★★★☆☆ Artifact Management
+
+## robot-compiler
+
+-   ★★★★★ AST Traversal
+-   ★★★★★ Variable
+-   ★★★★★ If / While
+-   ★★★★☆ Motion
+-   ★★★☆☆ Boolean
+-   ★★☆☆☆ Compare
+-   ☆☆☆☆☆ Function
+-   ☆☆☆☆☆ Expression
+
+## robot-platform
+
+-   ★★★★☆ VM Core
+-   ★★★★☆ Instruction
+-   ★★★★☆ Program
+-   ★★★☆☆ Compare
+-   ★★☆☆☆ Boolean
+-   ☆☆☆☆☆ Call Stack
+-   ☆☆☆☆☆ Memory Model
+
+## robot-frontend
+
+-   ★★★★☆ RoboSim Adapter
+-   ★★★★☆ AST Rewrite
+-   ★★★☆☆ Mapping
+-   ☆☆☆☆☆ Blockly
+-   ☆☆☆☆☆ Scratch
+
+------------------------------------------------------------------------
+
+# 9. Design Principles
+
+1.  Specification chỉ tồn tại tại api.yaml.
+2.  RobotLanguage là Single Source of Truth.
+3.  Compiler chỉ Compile.
+4.  Frontend chỉ Rewrite.
+5.  VM chỉ Execute.
+6.  Hardware chỉ nằm trong RobotAPI.
+7.  Không sửa Generated File.
+8.  Một Commit = Một Feature.
+9.  Regression sau mỗi Commit.
+10. BuildContext quản lý Build Environment.
+11. Generator không quản lý Path.
+12. Các project chỉ sử dụng Artifact.
+
+------------------------------------------------------------------------
+
+# 10. AI Working Rules
+
+1.  Không suy đoán source code.
+2.  Nếu thiếu context phải yêu cầu cung cấp file.
+3.  Không refactor khi chưa xem source.
+4.  Luôn ghi rõ Modified / Added / Deleted.
+5.  Một Commit = Một Feature.
+6.  Ưu tiên thay đổi nhỏ.
+7.  Regression sau thay đổi.
+8.  Không hardcode Opcode.
+9.  Không đọc api.yaml ngoài RobotLanguage.
+10. Không bypass Artifact.
+11. Không sửa Generated File.
+12. Không duplicate Specification.
+
+------------------------------------------------------------------------
+
+# 11. Foundation Roadmap
+
+-   Phase 1 --- Language Specification ✅
+-   Phase 2 --- Validator Pipeline ✅
+-   Phase 3 --- Generator Pipeline ✅
+-   Phase 4 --- Artifact Expansion 🔄
+-   Phase 5 --- Compiler Synchronization
+-   Phase 6 --- VM Synchronization
+-   Phase 7 --- Regression
+-   Phase 8 --- Distribution
+
+------------------------------------------------------------------------
+
+# 12. AI Context
+
+PROJECT_STATUS.md là tài liệu trung tâm của Robot Development Platform.
+
+Mọi AI Assistant phải đọc tài liệu này trước khi sửa code.
+
+Nếu có mâu thuẫn giữa suy luận và tài liệu này thì ưu tiên
+PROJECT_STATUS.md.
+
+Sau mỗi Sprint cần cập nhật lại tài liệu.
+</file>
+
+<file path="robot-compiler/compiler/generated/function_registry.py">
+"""
+AUTO GENERATED FILE
+"""
+
+from compiler.handlers.motion_handler import MotionHandler
+from compiler.handlers.system_handler import SystemHandler
+
+FUNCTION_REGISTRY = {
+    "forward": {
+        "handler": MotionHandler.forward,
+        "opcode": "Forward",
+        "arguments": 1,
+        "category": "motion",
+        "description": "Move robot forward"
+    },
+    "backward": {
+        "handler": MotionHandler.backward,
+        "opcode": "Backward",
+        "arguments": 1,
+        "category": "motion",
+        "description": "Move robot backward"
+    },
+    "turn_left": {
+        "handler": MotionHandler.turn_left,
+        "opcode": "TurnLeft",
+        "arguments": 1,
+        "category": "motion",
+        "description": "Rotate robot left"
+    },
+    "turn_right": {
+        "handler": MotionHandler.turn_right,
+        "opcode": "TurnRight",
+        "arguments": 1,
+        "category": "motion",
+        "description": "Rotate robot right"
+    },
+    "wait": {
+        "handler": SystemHandler.wait,
+        "opcode": "Wait",
+        "arguments": 1,
+        "category": "system",
+        "description": "Wait milliseconds"
+    },
+    "stop": {
+        "handler": SystemHandler.stop,
+        "opcode": "Stop",
+        "arguments": 0,
+        "category": "system",
+        "description": "Stop robot"
+    },
+}
+</file>
+
+<file path="robot-compiler/compiler/generated/opcode.py">
+"""
+AUTO GENERATED FILE
+"""
+
+from enum import IntEnum
+
+class Opcode(IntEnum):
+    Forward = 2
+    Backward = 3
+    TurnLeft = 4
+    TurnRight = 5
+    Wait = 7
+    Stop = 6
+    LoadConst = 1
+    CompareEQ = 8
+    CompareNE = 9
+    CompareLT = 10
+    CompareLE = 11
+    CompareGT = 12
+    CompareGE = 13
+    Jump = 14
+    JumpIfFalse = 15
+    JumpIfTrue = 16
+    Label = 17
+    Add = 20
+    Sub = 21
+    Mul = 22
+    Div = 23
+    Mod = 24
+    Pow = 25
+    Neg = 26
+</file>
+
+<file path="robot-compiler/compiler/program.py">
+from .instruction import Instruction
+from .label import Label
+from .patch import Patch
+
+class Program:
+    def __init__(self):
+        self.instructions = []
+        self.labels = []
+        self.patches = []
+        self.next_label_id = 0
+
+    def emit(self, opcode, p1=0, p2=0, p3=0):
+        self.instructions.append(Instruction(opcode, p1, p2, p3))
+
+    def new_label(self):
+        label = Label(self.next_label_id)
+        self.next_label_id += 1
+        self.labels.append(label)
+        return label
+
+    def mark(self, label):
+        if label.position is not None:
+            raise Exception("Label already marked.")
+        label.position = len(self.instructions)
+
+    def add_patch(self, instruction_index, label):
+        if label is None:
+            raise Exception("Invalid label.")
+        self.patches.append(Patch(instruction_index, label))
+
+    def resolve_labels(self):
+        for patch in self.patches:
+            if patch.label.position is None:
+                raise Exception(f"Unresolved label {patch.label.id}")
+            instruction = self.instructions[patch.instruction_index]
+            instruction.p2 = patch.label.position
+
+    def emit_label(self, label):
+        self.mark(label)
+
+    def emit_jump(self, opcode, label):
+        instruction_index = len(self.instructions)
+        self.emit(opcode)
+        self.add_patch(instruction_index, label)
+
+    def emit_jump_if_false(self, opcode, result, label):
+        instruction_index = len(self.instructions)
+        self.emit(opcode, result)
+        self.add_patch(instruction_index, label)
+</file>
+
+<file path="robot-compiler/main.py">
+from pathlib import Path
+from compiler.compiler import RobotCompiler
+from compiler.emitter import HeaderEmitter
+
+ROOT = Path(__file__).resolve().parent
+demo_file = ROOT / "examples" / "demo.py"
+output_file = (
+    ROOT.parent
+    / "robot-platform"
+    / "main"
+    / "src"
+    / "Application"
+    / "generated_program.h"
+)
+
+compiler = RobotCompiler()
+program = compiler.compile(demo_file)
+HeaderEmitter().emit(program, output_file)
+print("Generate successfully!")
+</file>
+
+<file path="robot-docs/ARCHITECTURE.md">
+# ARCHITECTURE.md
+
+# Robot Development Platform Architecture
+
+## 1. Vision
+
+Robot Development Platform là nền tảng Robotics độc lập với Frontend và
+Hardware.
+
+## 2. Architecture Principles
+
+-   Single Source of Truth
+-   Frontend Independent
+-   Hardware Independent
+-   Layered Architecture
+-   Artifact Driven Development
+-   Repository Separation
+
+## 3. High Level Architecture
+
+``` text
+Student
+  │
+  ▼
+Frontend
+  │
+  ▼
+Standard Python
+  │
+  ▼
+Python AST
+  │
+  ▼
+Robot Compiler
+  │
+  ▼
+Bytecode
+  │
+  ▼
+Robot VM
+  │
+  ▼
+RobotAPI
+  │
+  ▼
+Hardware
+4. Repository Responsibilities
+robot-language
+Define Specification
+
+Validate
+
+Generate Artifacts
+
+Never: - Compile - Execute - Access Hardware
+
+robot-frontend
+Rewrite AST
+
+Mapping
+
+Never: - Compile - Execute
+
+robot-compiler
+Compile AST
+
+Generate Bytecode
+
+Never: - Access Hardware - Parse Specification
+
+robot-platform
+Execute Bytecode
+
+RobotAPI
+
+Never: - Compile - Parse AST
+
+5. Artifact Flow
+text
+api.yaml
+   ↓
+RobotLanguage
+   ↓
+Validator
+   ↓
+Generator
+   ↓
+Artifacts
+   ↓
+Compiler / Frontend / Runtime
+Current Artifacts
+
+opcode.py (Python enum cho compiler)
+
+opcode.h (C++ enum cho VM – giúp đồng bộ opcode)
+
+opcode.json (JSON metadata cho tooling)
+
+function_registry.py (Registry cho compiler handlers)
+
+registry.json (JSON metadata cho function registry)
+
+sdk/ (Python SDK stubs)
+
+Lưu ý: opcode.h được sinh từ spec và copy sang robot-platform để đảm bảo VM dùng chính xác cùng một bảng opcode với compiler. Không sửa tay.
+
+6. Dependency Rules
+Dependency một chiều.
+
+Không circular dependency.
+
+Không duplicate specification.
+
+Mọi project chỉ đọc Artifact.
+
+7. Runtime Flow
+text
+Program
+ ↓
+Fetch
+ ↓
+Decode
+ ↓
+Dispatch
+ ↓
+RobotAPI
+ ↓
+Hardware
+8. Architecture Constraints
+Một Specification duy nhất.
+
+Không sửa Generated File.
+
+Compiler không biết Hardware.
+
+VM không biết AST.
+
+Frontend không biết Bytecode.
+
+Chỉ robot-language được đọc api.yaml.
+
+9. Future Architecture
+Foundation ↓ Artifact System ↓ Platform Description ↓ Runtime ABI ↓
+Compiler Sync ↓ VM Sync ↓ Regression
+
+text
+
+---
+
+## 2. `BUILD_SYSTEM.md` (cập nhật mục 3 – Artifact)
+
+```markdown
+# BUILD_SYSTEM.md
+
+# Robot Development Platform
+
+## Build System
+
+Version: Foundation v1 (Draft)
+
+------------------------------------------------------------------------
+
+# 1. Purpose
+
+Build System chịu trách nhiệm chuyển Robot Language Specification thành
+các Artifact phục vụ cho toàn bộ nền tảng.
+
+Build System không compile chương trình Robot.
+
+Build System không execute chương trình Robot.
+
+Build System chỉ sinh và phân phối Artifact.
+
+------------------------------------------------------------------------
+
+# 2. Build Architecture
+
+``` text
+api.yaml
+    │
+    ▼
+RobotLanguage
+    │
+    ▼
+Validation
+    │
+    ▼
+Generation
+    │
+    ▼
+Artifact
+    │
+    ▼
+Install
+    │
+    ▼
+Consumer Repository
+3. Build Components
+Specification
+Input duy nhất của Build System.
+
+api.yaml
+
+Specification định nghĩa:
+
+Category
+
+Function
+
+Opcode
+
+Argument
+
+Module
+
+Handler
+
+RobotLanguage
+RobotLanguage là lớp truy cập duy nhất tới Specification.
+
+Responsibilities
+
+Load Specification
+
+Query Specification
+
+Cung cấp API cho Validator
+
+Cung cấp API cho Generator
+
+Forbidden
+
+Generate File
+
+Install Artifact
+
+Compile Program
+
+Validation
+Validation chạy trước Generation.
+
+Validator bao gồm:
+
+Duplicate Validator
+
+Semantic Validator
+
+Reference Validator
+
+Build sẽ dừng nếu Validation thất bại.
+
+Generation
+Generator chuyển Specification thành Artifact.
+
+Generator chỉ đọc RobotLanguage.
+
+Generator không đọc trực tiếp api.yaml.
+
+Generator không ghi ra Repository khác.
+
+Artifact
+Artifact là đầu ra chuẩn của Build.
+
+Current
+
+opcode.py
+
+opcode.json
+
+function_registry.py
+
+opcode.h (C++ enum cho VM)
+
+registry.json (JSON metadata)
+
+sdk/
+
+Ghi chú: opcode.h được sinh từ spec và dùng cho robot-platform để đảm bảo đồng bộ opcode với compiler. Không chỉnh sửa thủ công.
+> **Lưu ý:** Các opcode số học (`Add`, `Sub`, `Mul`, ...) đã được thêm vào spec và sinh ra trong artifact.
+Future
+
+runtime_abi.json
+
+dispatch_table
+
+mapping_metadata
+
+documentation
+
+Install
+Install chịu trách nhiệm phân phối Artifact.
+
+Install không sinh Artifact.
+
+Install không chỉnh sửa Artifact.
+
+Install chỉ copy đúng phiên bản mới nhất.
+
+Consumer hiện tại:
+
+robot-compiler/compiler/generated/ (nhận .py)
+
+robot-platform/main/include/generated/ (nhận .h)
+
+4. Build Pipeline
+text
+Specification
+
+↓
+
+Load
+
+↓
+
+Validation
+
+↓
+
+Generation
+
+↓
+
+Artifact
+
+↓
+
+Install
+
+↓
+
+Consumer
+5. Build Order
+Load Specification
+
+Validation
+
+Create Build Context
+
+Run Generators
+
+Produce Artifacts
+
+Install Artifacts
+
+Finish Build
+
+6. Build Context
+BuildContext quản lý toàn bộ trạng thái Build.
+
+Responsibilities
+
+Output Path
+
+Generated Path
+
+Temporary State
+
+Build Configuration
+
+Không chứa Business Logic.
+
+7. Generator Rules
+Generator
+
+Có quyền
+
+Đọc RobotLanguage
+
+Sinh Artifact
+
+Không được
+
+Đọc api.yaml
+
+Copy File
+
+Sửa Repository khác
+
+Thay đổi Build Context
+
+8. Artifact Rules
+Một Artifact chỉ có một Producer.
+
+Artifact là Read Only đối với Consumer.
+
+Không sửa Generated Artifact bằng tay.
+
+Artifact luôn được sinh từ Specification.
+
+9. Install Rules
+Install chỉ có nhiệm vụ:
+
+Copy
+
+Replace
+
+Synchronize
+
+Không
+
+Validate
+
+Generate
+
+Compile
+
+10. Consumer Rules
+Các Consumer
+
+robot-compiler
+
+robot-frontend
+
+robot-platform
+
+Chỉ được đọc Artifact.
+
+Không được chỉnh sửa Artifact.
+
+11. Failure Policy
+Build phải dừng khi:
+
+Specification không hợp lệ.
+
+Validation thất bại.
+
+Generator thất bại.
+
+Artifact không sinh thành công.
+
+Install thất bại.
+
+Không được bỏ qua lỗi.
+
+12. Future Build System
+Future Build Pipeline
+
+text
+api.yaml
+
+↓
+
+RobotLanguage
+
+↓
+
+Validation
+
+↓
+
+Platform Description
+
+↓
+
+Generator
+
+↓
+
+Artifact
+
+↓
+
+Package
+
+↓
+
+Install
+
+↓
+
+Consumer
+Future Features
+
+Incremental Build
+
+Parallel Generator
+
+Artifact Cache
+
+Build Manifest
+
+Versioned Artifact
+
+Runtime ABI Generation
+
+13. Design Rules
+Build chỉ có một Entry Point.
+
+BuildContext là nơi duy nhất quản lý Build State.
+
+RobotLanguage là nơi duy nhất truy cập Specification.
+
+Generator không biết Repository.
+
+Install không biết Generator.
+
+Consumer không biết Specification.
+
+Artifact là hợp đồng giữa các Repository.
+
+14. Definition of Done
+Build System được xem là hoàn chỉnh khi:
+
+Build chạy từ một Entry Point.
+
+Validation luôn chạy trước Generation.
+
+Artifact được sinh đầy đủ.
+
+Install đồng bộ tất cả Consumer.
+
+Không còn Repository nào đọc trực tiếp Specification ngoài
+robot-language.
+</file>
+
+<file path="robot-docs/BUILD_SYSTEM.md">
+# BUILD_SYSTEM.md
+
+# Robot Development Platform
+
+## Build System
+
+Version: Foundation v1 (Draft)
+
+------------------------------------------------------------------------
+
+# 1. Purpose
+
+Build System chịu trách nhiệm chuyển Robot Language Specification thành
+các Artifact phục vụ cho toàn bộ nền tảng.
+
+Build System không compile chương trình Robot.
+
+Build System không execute chương trình Robot.
+
+Build System chỉ sinh và phân phối Artifact.
+
+------------------------------------------------------------------------
+
+# 2. Build Architecture
+
+``` text
+api.yaml
+    │
+    ▼
+RobotLanguage
+    │
+    ▼
+Validation
+    │
+    ▼
+Generation
+    │
+    ▼
+Artifact
+    │
+    ▼
+Install
+    │
+    ▼
+Consumer Repository
+```
+
+------------------------------------------------------------------------
+
+# 3. Build Components
+
+## Specification
+
+Input duy nhất của Build System.
+
+    api.yaml
+
+Specification định nghĩa:
+
+-   Category
+-   Function
+-   Opcode
+-   Argument
+-   Module
+-   Handler
+
+------------------------------------------------------------------------
+
+## RobotLanguage
+
+RobotLanguage là lớp truy cập duy nhất tới Specification.
+
+Responsibilities
+
+-   Load Specification
+-   Query Specification
+-   Cung cấp API cho Validator
+-   Cung cấp API cho Generator
+
+Forbidden
+
+-   Generate File
+-   Install Artifact
+-   Compile Program
+
+------------------------------------------------------------------------
+
+## Validation
+
+Validation chạy trước Generation.
+
+Validator bao gồm:
+
+-   Duplicate Validator
+-   Semantic Validator
+-   Reference Validator
+
+Build sẽ dừng nếu Validation thất bại.
+
+------------------------------------------------------------------------
+
+## Generation
+
+Generator chuyển Specification thành Artifact.
+
+Generator chỉ đọc RobotLanguage.
+
+Generator không đọc trực tiếp api.yaml.
+
+Generator không ghi ra Repository khác.
+
+------------------------------------------------------------------------
+
+## Artifact
+
+Artifact là đầu ra chuẩn của Build.
+
+Current
+
+-   opcode.py
+-   opcode.json
+-   function_registry.py
+-   opcode.h
+-   registry.json
+-   sdk/
+
+Future
+
+-   runtime_abi.json
+-   dispatch_table
+-   mapping_metadata
+-   documentation
+
+------------------------------------------------------------------------
+
+## Install
+
+Install chịu trách nhiệm phân phối Artifact.
+
+Install không sinh Artifact.
+
+Install không chỉnh sửa Artifact.
+
+Install chỉ copy đúng phiên bản mới nhất.
+
+------------------------------------------------------------------------
+
+# 4. Build Pipeline
+
+``` text
+Specification
+
+↓
+
+Load
+
+↓
+
+Validation
+
+↓
+
+Generation
+
+↓
+
+Artifact
+
+↓
+
+Install
+
+↓
+
+Consumer
+```
+
+------------------------------------------------------------------------
+
+# 5. Build Order
+
+1.  Load Specification
+2.  Validation
+3.  Create Build Context
+4.  Run Generators
+5.  Produce Artifacts
+6.  Install Artifacts
+7.  Finish Build
+
+------------------------------------------------------------------------
+
+# 6. Build Context
+
+BuildContext quản lý toàn bộ trạng thái Build.
+
+Responsibilities
+
+-   Output Path
+-   Generated Path
+-   Temporary State
+-   Build Configuration
+
+Không chứa Business Logic.
+
+------------------------------------------------------------------------
+
+# 7. Generator Rules
+
+Generator
+
+Có quyền
+
+-   Đọc RobotLanguage
+-   Sinh Artifact
+
+Không được
+
+-   Đọc api.yaml
+-   Copy File
+-   Sửa Repository khác
+-   Thay đổi Build Context
+
+------------------------------------------------------------------------
+
+# 8. Artifact Rules
+
+-   Một Artifact chỉ có một Producer.
+-   Artifact là Read Only đối với Consumer.
+-   Không sửa Generated Artifact bằng tay.
+-   Artifact luôn được sinh từ Specification.
+
+------------------------------------------------------------------------
+
+# 9. Install Rules
+
+Install chỉ có nhiệm vụ:
+
+-   Copy
+-   Replace
+-   Synchronize
+
+Không
+
+-   Validate
+-   Generate
+-   Compile
+
+------------------------------------------------------------------------
+
+# 10. Consumer Rules
+
+Các Consumer
+
+-   robot-compiler
+-   robot-frontend
+-   robot-platform (future)
+
+Chỉ được đọc Artifact.
+
+Không được chỉnh sửa Artifact.
+
+------------------------------------------------------------------------
+
+# 11. Failure Policy
+
+Build phải dừng khi:
+
+-   Specification không hợp lệ.
+-   Validation thất bại.
+-   Generator thất bại.
+-   Artifact không sinh thành công.
+-   Install thất bại.
+
+Không được bỏ qua lỗi.
+
+------------------------------------------------------------------------
+
+# 12. Future Build System
+
+Future Build Pipeline
+
+``` text
+api.yaml
+
+↓
+
+RobotLanguage
+
+↓
+
+Validation
+
+↓
+
+Platform Description
+
+↓
+
+Generator
+
+↓
+
+Artifact
+
+↓
+
+Package
+
+↓
+
+Install
+
+↓
+
+Consumer
+```
+
+Future Features
+
+-   Incremental Build
+-   Parallel Generator
+-   Artifact Cache
+-   Build Manifest
+-   Versioned Artifact
+-   Runtime ABI Generation
+
+------------------------------------------------------------------------
+
+# 13. Design Rules
+
+-   Build chỉ có một Entry Point.
+-   BuildContext là nơi duy nhất quản lý Build State.
+-   RobotLanguage là nơi duy nhất truy cập Specification.
+-   Generator không biết Repository.
+-   Install không biết Generator.
+-   Consumer không biết Specification.
+-   Artifact là hợp đồng giữa các Repository.
+
+------------------------------------------------------------------------
+
+# 14. Definition of Done
+
+Build System được xem là hoàn chỉnh khi:
+
+-   Build chạy từ một Entry Point.
+-   Validation luôn chạy trước Generation.
+-   Artifact được sinh đầy đủ.
+-   Install đồng bộ tất cả Consumer.
+-   Không còn Repository nào đọc trực tiếp Specification ngoài
+    robot-language.
+</file>
+
+<file path="robot-docs/DEVELOPMENT_GUIDE.md">
+# DEVELOPMENT_GUIDE.md
+
+# Robot Development Platform
+
+## Development Guide
+
+Version: Foundation v1 (Draft)
+
+------------------------------------------------------------------------
+
+
+# 1. Purpose
+
+Tài liệu này định nghĩa quy trình phát triển chuẩn của Robot Development
+Platform.
+
+Mọi tính năng mới đều phải tuân theo quy trình này.
+
+------------------------------------------------------------------------
+
+# 2. Development Workflow
+
+``` text
+Requirement
+    │
+    ▼
+Specification
+    │
+    ▼
+Validation
+    │
+    ▼
+Generation
+    │
+    ▼
+Artifact
+    │
+    ▼
+Compiler
+    │
+    ▼
+Runtime
+    │
+    ▼
+Regression
+
+------------------------------------------------------------------------
+
+3. Feature Development Flow
+Phân tích yêu cầu.
+
+Xác định ảnh hưởng tới Specification.
+
+Cập nhật Specification.
+
+Build Artifact.
+
+Cập nhật Consumer.
+
+Regression Test.
+
+Cập nhật Documentation.
+
+4. Build and Install Artifacts
+Sau khi thay đổi api.yaml (thêm hàm mới, sửa opcode, v.v.), cần chạy build để sinh artifact mới:
+
+bash
+cd robot-language
+python build.py
+Lệnh này sẽ:
+
+Load specification
+
+Chạy validators (Duplicate, Semantic, Reference)
+
+Sinh các artifact (opcode.py, opcode.h, function_registry.py, sdk, ...)
+
+Sau đó, chạy install để phân phối artifact đến các consumer:
+
+bash
+python install.py
+Install sẽ copy các file sinh ra vào đúng thư mục của từng consumer:
+
+robot-compiler/compiler/generated/ (các file .py)
+
+robot-platform/main/include/generated/ (opcode.h)
+
+Quy tắc: Tuyệt đối không sửa tay bất kỳ file nào trong thư mục generated/. Mọi thay đổi đều phải thông qua api.yaml và build.
+
+5. Adding a New Robot API
+text
+Requirement
+    ↓
+api.yaml
+    ↓
+Validation
+    ↓
+Generator
+    ↓
+Artifact
+    ↓
+Compiler
+    ↓
+Runtime
+    ↓
+Test
+Checklist
+
+□ Specification
+□ Validation
+□ Artifact
+□ Compiler
+□ Runtime
+□ Documentation
+□ Regression
+6. Adding a New Generator
+Tạo Generator mới.
+
+Đăng ký trong Build System.
+
+Sinh Artifact.
+
+Kiểm tra Output.
+
+Cập nhật Install.
+
+Không sửa Generator hiện có nếu không cần thiết.
+
+7. Adding a New Artifact
+Quy trình
+
+Thiết kế Artifact.
+
+Xây dựng Generator.
+
+Sinh Artifact.
+
+Install.
+
+Consumer sử dụng Artifact.
+
+Rule
+
+Một Artifact chỉ có một Producer.
+
+8. Modifying Compiler
+Được phép
+
+AST
+
+Opcode Handling
+
+Bytecode
+
+Optimization
+
+Không được
+
+Parse Specification
+
+Gọi RobotAPI
+
+Chỉnh Frontend
+
+9. Modifying Runtime
+Được phép
+
+VM
+
+Dispatch
+
+RobotAPI
+
+Không được
+
+Compile
+
+Parse AST
+
+Parse Specification
+
+10. Modifying Frontend
+Được phép
+
+Rewrite
+
+Mapping
+
+Không được
+
+Generate Bytecode
+
+Execute
+
+Parse Specification
+
+11. Build Checklist
+□ Build thành công
+□ Artifact được sinh
+□ Install hoàn tất
+□ Consumer đồng bộ
+12. Regression Checklist
+□ Build
+□ Compiler
+□ VM
+□ Existing Demo
+□ Existing Artifact
+□ Documentation
+Không merge nếu Regression chưa hoàn thành.
+
+13. Commit Guideline
+Một Commit chỉ nên:
+
+Một Feature
+
+Một Bug Fix
+
+Một Refactor
+
+Một Documentation Update
+
+Không trộn nhiều mục đích trong cùng một Commit.
+
+14. Pull Request Checklist
+□ Build thành công
+□ Regression thành công
+□ Documentation cập nhật
+□ Không phá Design Contract
+□ Không tạo Circular Dependency
+15. Code Review Checklist
+Đúng Responsibility.
+
+Đúng Layer.
+
+Không duplicate logic.
+
+Không sửa Generated File.
+
+Không thêm dependency không cần thiết.
+
+16. Documentation Checklist
+Sau mỗi Feature cần cập nhật nếu cần:
+
+PROJECT_STATUS.md
+
+ARCHITECTURE.md
+
+BUILD_SYSTEM.md
+
+DESIGN_CONTRACT.md
+
+DEVELOPMENT_GUIDE.md
+
+ENGINEERING_PHILOSOPHY.md
+
+ROADMAP.md
+
+17. Definition of Done
+Một Feature được xem là hoàn thành khi:
+
+Requirement hoàn thành.
+
+Code hoàn thành.
+
+Build thành công.
+
+Regression thành công.
+
+Documentation cập nhật.
+
+Pull Request được review.
+
+Không vi phạm Design Contract.
+
+## Using Arithmetic Expressions
+
+Trong lời gọi robot API, bạn có thể sử dụng biểu thức số học:
+
+```python
+forward(80 + 20)          # → forward(100)
+turn_left(speed * 2)      # sử dụng biến
+wait(seconds * 1000)      # chuyển đổi đơn vị
+</file>
+
+<file path="robot-docs/ROADMAP.md">
+Robot Development Platform
+Development Roadmap
+Version: Foundation v1 (Draft) – Updated after Sprint 3
+
+Vision
+Xây dựng một Robot Development Platform hoàn chỉnh, mở rộng được, độc
+lập với Frontend và Hardware, có khả năng hỗ trợ nhiều loại Robot, nhiều
+ngôn ngữ lập trình và nhiều môi trường phát triển.
+
+Roadmap Overview
+Foundation (✅ Phase 0)
+↓
+Language Platform (✅ Sprint 1)
+↓
+Compiler Platform (✅ Sprint 2, ✅ Sprint 3)
+↓
+Runtime Platform (🔄 Sprint 4, 5)
+↓
+Developer Experience (⏳ Sprint 6+)
+↓
+Production Platform (📅 Future)
+↓
+Robot Ecosystem (📅 Future)
+
+Legend: ✅ Completed, 🔄 In Progress, ⏳ Planned, 📅 Future
+
+Phase 0 – Foundation (Completed)
+Goal
+Hoàn thiện nền tảng kiến trúc và build system.
+
+Objectives
+Architecture Documentation
+
+Build System
+
+Design Contract
+
+Engineering Philosophy
+
+Development Guide
+
+Repository Structure
+
+Deliverables
+☑ Foundation Documentation (7 files)
+☑ Stable Repository Structure
+☑ Build Pipeline (robot-language)
+☑ Design Contract
+Exit Criteria
+☑ Architecture Freeze
+☑ Repository Responsibility ổn định
+☑ Build Pipeline ổn định
+Phase 1 – Language Platform (Completed)
+Goal
+Hoàn thiện Robot Language và Build System.
+
+Objectives
+Language API (api.yaml)
+
+Validation Framework
+
+Generator Framework
+
+Artifact System
+
+SDK Generation
+
+Deliverables
+☑ Stable Robot Language Specification
+☑ Validators (Duplicate, Semantic, Reference)
+☑ Generators (opcode.py, opcode.h, opcode.json, function_registry.py, registry.json, SDK)
+☑ Artifact Installation (compiler + platform)
+Sprint 1 – Opcode Synchronization (Completed)
+Mục tiêu: Đồng bộ opcode giữa compiler và VM thông qua artifact.
+
+Công việc:
+
+Thêm internal category cho opcode nội bộ (LoadConst, Compare, Jump...).
+
+Sinh opcode.h cho C++ runtime.
+
+Cập nhật install.py để copy artifact sang compiler và platform.
+
+Sửa compiler và VM để dùng chung opcode enum.
+
+Kết quả:
+
+Bytecode từ compiler được VM hiểu đúng.
+
+Tất cả test basic pass.
+
+Phase 2 – Compiler Platform (In Progress)
+Goal
+Hoàn thiện Robot Compiler với các tính năng cốt lõi.
+
+Objectives
+AST Traversal
+
+Bytecode Generation
+
+Program Construction
+
+Symbol Management
+
+Error Handling
+
+Deliverables
+☑ AST traversal cơ bản (assign, function def, call, expr)
+☑ Bytecode generation
+☑ Symbol table (biến, tạm)
+☑ Control flow: if, while, break, continue
+☑ Comparisons and boolean logic
+☑ Arithmetic expressions (Sprint 3)
+□ User-defined functions with parameters (Sprint 4)
+□ Scope management (Sprint 4)
+Sprint 2 – Compiler Uses Artifacts (Completed)
+Mục tiêu: Compiler chỉ dùng artifact, không còn opcode tự viết tay.
+
+Công việc:
+
+Xóa OpcodeTable và các file opcode cũ.
+
+Import Opcode enum từ generated/opcode.py.
+
+Cập nhật tất cả handlers, emitter, tests.
+
+Đồng bộ import function_registry từ artifact.
+
+Kết quả:
+
+Compiler hoàn toàn phụ thuộc vào artifact.
+
+Không còn vi phạm Single Source of Truth.
+
+Tất cả test pass.
+
+Sprint 3 – Arithmetic Expressions (Completed)
+Mục tiêu: Hỗ trợ biểu thức số học trong đối số hàm.
+
+Công việc:
+
+Thêm opcode số học vào spec: Add, Sub, Mul, Div, Mod, Pow, Neg.
+
+Compiler: compile_expression xử lý ast.BinOp và ast.UnaryOp.
+
+VM: Implement các opcode số học.
+
+Frontend RoboSim: Chuyển đổi SetMoveRunSecond → seconds * 1000.
+
+Kết quả:
+
+Hỗ trợ: forward(5 + 3), wait(seconds * 1000).
+
+Biểu thức chỉ hỗ trợ trong đối số hàm, không trong phép gán.
+
+Tất cả test pass.
+
+Sprint 4 – User-Defined Functions and Scope (Upcoming)
+Mục tiêu: Compiler hỗ trợ hàm do người dùng định nghĩa với tham số và giá trị trả về.
+
+Công việc dự kiến:
+
+Symbol table có scope stack.
+
+Function definition: lưu tham số và body.
+
+Function call: truyền tham số, tạo frame mới.
+
+Return value: lưu kết quả vào biến tạm.
+
+Các tính năng con:
+
+Hàm không tham số.
+
+Hàm có tham số.
+
+Hàm có giá trị trả về.
+
+Hàm lồng nhau (nested functions) – có thể bỏ qua ban đầu.
+
+Scope variables (local vs global).
+
+Exit Criteria:
+
+Demo chạy được với hàm tự định nghĩa.
+
+Test pass.
+
+Thời gian dự kiến: 5-7 ngày.
+
+Sprint 5 – Sensor Integration (Upcoming)
+Mục tiêu: Robot có thể đọc cảm biến và phản hồi.
+
+Công việc dự kiến:
+
+Thêm API cảm biến vào spec (read_ultrasonic, read_light, ...).
+
+Thêm opcode ReadSensor.
+
+Compiler: xử lý hàm đọc cảm biến.
+
+VM: gọi RobotAPI để đọc giá trị và lưu vào biến.
+
+Demo: vòng lặp đọc cảm biến, điều khiển động cơ dựa trên giá trị.
+
+Exit Criteria:
+
+Chương trình while distance < 20: forward(80) hoạt động.
+
+Test pass.
+
+Thời gian dự kiến: 3-4 ngày.
+
+Phase 3 – Runtime Platform (Planning)
+Goal
+Hoàn thiện Robot VM với hiệu suất và tính năng nâng cao.
+
+Objectives
+Virtual Machine
+
+Dispatch System
+
+Runtime Context
+
+RobotAPI
+
+Debugging Support
+
+Deliverables (Future)
+□ Runtime ABI
+□ Debug runtime (step-by-step)
+□ Performance profiling
+□ Error handling (division by zero, out-of-range)
+Phase 4 – Developer Experience (Planning)
+Goal
+Tăng năng suất phát triển với công cụ hỗ trợ.
+
+Objectives
+CLI Tool
+
+Build Tool
+
+Testing Framework
+
+Debugger
+
+Features (Future)
+Incremental Build
+
+Build Cache
+
+Auto Documentation
+
+Code completion
+
+Phase 5 – Production Platform (Planning)
+Goal
+Đưa nền tảng vào sử dụng thực tế.
+
+Objectives
+Packaging
+
+Versioning
+
+Release Process
+
+CI/CD
+
+Deliverables (Future)
+Stable Release v1.0
+
+Production Build
+
+Release Package
+
+Package Manager
+
+Phase 6 – Robot Ecosystem (Vision)
+Goal
+Mở rộng hệ sinh thái với nhiều frontend và hardware.
+
+Supported Frontends (Future)
+☑ RoboSim (basic)
+□ Blockly
+□ Scratch
+□ Python (direct)
+Supported Hardware (Future)
+□ Arduino (Uno, Mega)
+□ ESP32
+□ Raspberry Pi
+□ STM32
+Future Features
+Cloud Build
+
+Online Simulator
+
+Remote Deployment
+
+Plugin System
+
+Cross-Project Roadmap
+Documentation
+☑ ARCHITECTURE.md
+☑ BUILD_SYSTEM.md
+☑ DESIGN_CONTRACT.md
+☑ DEVELOPMENT_GUIDE.md
+☑ ENGINEERING_PHILOSOPHY.md
+☑ ROADMAP.md
+☑ PROJECT_STATUS.md
+□ CHANGELOG.md (optional)
+Build System (robot-language)
+☑ Artifact System
+☑ Opcode Header Generator (C++)
+☑ SDK Generation
+□ Platform Description
+□ Runtime ABI Generation
+□ Incremental Build
+□ Build Manifest
+Compiler (robot-compiler)
+☑ Variables
+☑ Comparisons & Boolean
+☑ Control flow (if, while, break, continue)
+☑ Arithmetic Expressions
+□ Functions
+□ Scope
+□ Collections (list, dict)
+□ Classes (basic)
+□ Optimization (constant folding, dead code elimination)
+Runtime (robot-platform)
+☑ Basic VM Skeleton
+☑ Instruction Dispatch
+☑ Comparisons & Arithmetic
+□ Sensor Support
+□ Error Handling
+□ Debugger
+□ Profiler
+□ Runtime ABI
+Frontend (robot-frontend-robosim)
+☑ SetMoveRun, SetMoveStop, SetWaitForTime
+☑ SetMoveRunSecond (with arithmetic)
+□ Additional RoboSim APIs (SetLed, SetBeep...)
+□ Error reporting (invalid direction)
+Tooling
+□ CLI Tool
+□ Regression Test Framework
+□ Packaging Scripts
+□ CI/CD (GitHub Actions)
+Milestones Timeline
+Foundation v1 (✅ Completed)
+Documentation Complete
+
+Stable Architecture
+
+Stable Build
+
+Foundation v2 (✅ Completed)
+Artifact System
+
+Opcode Synchronization (Sprint 1)
+
+Compiler Uses Artifacts (Sprint 2)
+
+Compiler v1 (✅ Sprint 3)
+Arithmetic Expressions (Sprint 3)
+
+Compiler v2 (📅 Sprint 4)
+Functions and Scope (Sprint 4)
+
+Compiler v3 (📅 Sprint 5)
+Sensor Integration (Sprint 5)
+
+Runtime v1 (📅 Sprint 5)
+Sensor Support
+
+Basic Error Handling
+
+Developer Tools v1 (📅 Sprint 6)
+CLI Tool
+
+Regression Test Framework
+
+Production v1 (📅 Future)
+Packaging
+
+CI/CD
+
+Ecosystem v1 (📅 Future)
+Multi Frontend
+
+Multi Hardware
+
+Success Criteria
+Dự án được xem là thành công khi:
+
+☑ Có thể bổ sung Frontend mới mà không thay đổi Compiler.
+☑ Có thể bổ sung Hardware mới mà không thay đổi Compiler.
+☑ Mọi Repository có trách nhiệm rõ ràng.
+☑ Build Pipeline ổn định.
+□ Runtime ổn định.
+□ Documentation luôn đồng bộ với hệ thống.
+□ Platform có thể phát triển lâu dài mà không cần tái cấu trúc kiến trúc nền.
+</file>
+
+<file path="robot-frontend-robosim/examples/robosim_demo.py">
+rcu.SetMoveRun("forward", 80)
+rcu.SetWaitForTime(1000)
+rcu.SetMoveStop()
+</file>
+
+<file path="robot-frontend-robosim/frontend/transformer.py">
+import ast
+from frontend.mapping import ROBOSIM_API
+
+class RoboSimTransformer(ast.NodeTransformer):
+
+    def visit_Call(self, node):
+        self.generic_visit(node)
+
+        # rcu.SetMoveRun(direction, speed)
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "SetMoveRun"
+        ):
+            direction = node.args[0].value
+            speed = node.args[1]
+            return ast.Call(
+                func=ast.Name(
+                    id=ROBOSIM_API[direction],
+                    ctx=ast.Load()
+                ),
+                args=[speed],
+                keywords=[]
+            )
+
+        # rcu.SetMoveStop()
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "SetMoveStop"
+        ):
+            return ast.Call(
+                func=ast.Name(
+                    id="stop",
+                    ctx=ast.Load()
+                ),
+                args=[],
+                keywords=[]
+            )
+
+        # rcu.SetWaitForTime(ms)
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "SetWaitForTime"
+        ):
+            return ast.Call(
+                func=ast.Name(
+                    id="wait",
+                    ctx=ast.Load()
+                ),
+                args=[node.args[0]],
+                keywords=[]
+            )
+
+        return node
+
+    def visit_Expr(self, node):
+        # rcu.SetMoveRunSecond(direction, speed, seconds)
+        if (
+            isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "SetMoveRunSecond"
+        ):
+            call = node.value
+            direction = call.args[0].value
+            speed = call.args[1]
+            seconds = call.args[2]
+
+            # Chuyển đổi giây sang milliseconds: seconds * 1000
+            wait_arg = ast.BinOp(
+                left=seconds,
+                op=ast.Mult(),
+                right=ast.Constant(value=1000)
+            )
+
+            return [
+                ast.Expr(
+                    value=ast.Call(
+                        func=ast.Name(
+                            id=ROBOSIM_API[direction],
+                            ctx=ast.Load()
+                        ),
+                        args=[speed],
+                        keywords=[]
+                    )
+                ),
+                ast.Expr(
+                    value=ast.Call(
+                        func=ast.Name(
+                            id="wait",
+                            ctx=ast.Load()
+                        ),
+                        args=[wait_arg],
+                        keywords=[]
+                    )
+                ),
+                ast.Expr(
+                    value=ast.Call(
+                        func=ast.Name(
+                            id="stop",
+                            ctx=ast.Load()
+                        ),
+                        args=[],
+                        keywords=[]
+                    )
+                )
+            ]
+
+        return self.generic_visit(node)
+</file>
+
+<file path="robot-language/build/install.py">
+from pathlib import Path
+import shutil
+
+ROOT = Path(__file__).resolve().parent.parent
+SOURCE = ROOT / "generated"
+
+# Đích cho compiler
+DEST_COMPILER = ROOT.parent / "robot-compiler" / "compiler" / "generated"
+DEST_COMPILER.mkdir(parents=True, exist_ok=True)
+
+# Đích cho platform (VM)
+DEST_PLATFORM = ROOT.parent / "robot-platform" / "main" / "include" / "generated"
+DEST_PLATFORM.mkdir(parents=True, exist_ok=True)
+
+# Copy các file .py sang compiler
+for file in SOURCE.glob("*.py"):
+    print("Copy to compiler:", file.name)
+    shutil.copy2(file, DEST_COMPILER / file.name)
+
+# Copy opcode.h và opcode.json sang platform
+opcode_h = SOURCE / "opcode.h"
+if opcode_h.exists():
+    print("Copy to platform:", opcode_h.name)
+    shutil.copy2(opcode_h, DEST_PLATFORM / opcode_h.name)
+
+opcode_json = SOURCE / "opcode.json"
+if opcode_json.exists():
+    print("Copy to platform:", opcode_json.name)
+    shutil.copy2(opcode_json, DEST_PLATFORM / opcode_json.name)
+
+print("Artifacts installed.")
+</file>
+
+<file path="robot-language/generated/opcode.h">
+/******************************************************************************
+ * AUTO GENERATED FILE
+ * DO NOT EDIT MANUALLY
+ ******************************************************************************/
+
+#pragma once
+
+#include <stdint.h>
+
+enum class Opcode : uint8_t
+{
+    Forward = 2,
+    Backward = 3,
+    TurnLeft = 4,
+    TurnRight = 5,
+    Wait = 7,
+    Stop = 6,
+    LoadConst = 1,
+    CompareEQ = 8,
+    CompareNE = 9,
+    CompareLT = 10,
+    CompareLE = 11,
+    CompareGT = 12,
+    CompareGE = 13,
+    Jump = 14,
+    JumpIfFalse = 15,
+    JumpIfTrue = 16,
+    Label = 17,
+    Add = 20,
+    Sub = 21,
+    Mul = 22,
+    Div = 23,
+    Mod = 24,
+    Pow = 25,
+    Neg = 26,
+};
+</file>
+
+<file path="robot-language/generated/registry.json">
+{
+    "forward": {
+        "opcode": "Forward",
+        "opcode_id": 2,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 1,
+        "description": "Move robot forward"
+    },
+    "backward": {
+        "opcode": "Backward",
+        "opcode_id": 3,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 1,
+        "description": "Move robot backward"
+    },
+    "turn_left": {
+        "opcode": "TurnLeft",
+        "opcode_id": 4,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 1,
+        "description": "Rotate robot left"
+    },
+    "turn_right": {
+        "opcode": "TurnRight",
+        "opcode_id": 5,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 1,
+        "description": "Rotate robot right"
+    },
+    "wait": {
+        "opcode": "Wait",
+        "opcode_id": 7,
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler",
+        "arguments": 1,
+        "description": "Wait milliseconds"
+    },
+    "stop": {
+        "opcode": "Stop",
+        "opcode_id": 6,
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler",
+        "arguments": 0,
+        "description": "Stop robot"
+    },
+    "LoadConst": {
+        "opcode": "LoadConst",
+        "opcode_id": 1,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Load constant to variable"
+    },
+    "CompareEQ": {
+        "opcode": "CompareEQ",
+        "opcode_id": 8,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare equal"
+    },
+    "CompareNE": {
+        "opcode": "CompareNE",
+        "opcode_id": 9,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare not equal"
+    },
+    "CompareLT": {
+        "opcode": "CompareLT",
+        "opcode_id": 10,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare less than"
+    },
+    "CompareLE": {
+        "opcode": "CompareLE",
+        "opcode_id": 11,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare less or equal"
+    },
+    "CompareGT": {
+        "opcode": "CompareGT",
+        "opcode_id": 12,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare greater than"
+    },
+    "CompareGE": {
+        "opcode": "CompareGE",
+        "opcode_id": 13,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Compare greater or equal"
+    },
+    "Jump": {
+        "opcode": "Jump",
+        "opcode_id": 14,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Unconditional jump"
+    },
+    "JumpIfFalse": {
+        "opcode": "JumpIfFalse",
+        "opcode_id": 15,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Jump if false"
+    },
+    "JumpIfTrue": {
+        "opcode": "JumpIfTrue",
+        "opcode_id": 16,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Jump if true"
+    },
+    "Label": {
+        "opcode": "Label",
+        "opcode_id": 17,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Label placeholder"
+    },
+    "Add": {
+        "opcode": "Add",
+        "opcode_id": 20,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Addition"
+    },
+    "Sub": {
+        "opcode": "Sub",
+        "opcode_id": 21,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Subtraction"
+    },
+    "Mul": {
+        "opcode": "Mul",
+        "opcode_id": 22,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Multiplication"
+    },
+    "Div": {
+        "opcode": "Div",
+        "opcode_id": 23,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Integer division"
+    },
+    "Mod": {
+        "opcode": "Mod",
+        "opcode_id": 24,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Modulo"
+    },
+    "Pow": {
+        "opcode": "Pow",
+        "opcode_id": 25,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Power (integer exponent)"
+    },
+    "Neg": {
+        "opcode": "Neg",
+        "opcode_id": 26,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Negate"
+    }
+}
+</file>
+
+<file path="robot-language/generators/registry_generator.py">
+from pathlib import Path
+
+from .base_generator import BaseGenerator
+
+
+class RegistryGenerator(BaseGenerator):
+
+    name = "Registry Generator"
+
+    def generate(self, context):
+        language = context.language
+        generated = context.generated_dir
+        generated.mkdir(exist_ok=True)
+
+        output = generated / "function_registry.py"
+
+        with open(output, "w", encoding="utf8") as f:
+            f.write('"""\nAUTO GENERATED FILE\n"""\n\n')
+
+            imports = {}
+            for category_name, category in language.categories.items():
+                if category_name == "internal":
+                    continue
+                module = category["module"]
+                handler = category["handler"]
+                imports[module] = handler
+
+            for module, handler in imports.items():
+                f.write(f"from compiler.handlers.{module} import {handler}\n")
+
+            f.write("\nFUNCTION_REGISTRY = {\n")
+
+            for category_name, category, func in language.all_functions():
+                if category_name == "internal":
+                    continue
+                handler = category["handler"]
+                f.write(f'    "{func["name"]}": {{\n')
+                f.write(f'        "handler": {handler}.{func["name"]},\n')
+                f.write(f'        "opcode": "{func["opcode"]}",\n')
+                f.write(f'        "arguments": {len(func["args"])},\n')
+                f.write(f'        "category": "{category_name}",\n')
+                f.write(f'        "description": "{func["description"]}"\n')
+                f.write("    },\n")
+
+            f.write("}\n")
+</file>
+
+<file path="robot-language/generators/sdk_generator.py">
+from pathlib import Path
+
+from .base_generator import BaseGenerator
+
+
+class SDKGenerator(BaseGenerator):
+
+    name = "SDK Generator"
+
+    def generate(self, context):
+        language = context.language
+        sdk_dir = context.sdk_dir
+
+        for category_name, category in language.categories.items():
+            if category_name == "internal":
+                continue
+            filename = sdk_dir / f"{category_name}.py"
+            with open(filename, "w", encoding="utf8") as f:
+                f.write('"""\nAUTO GENERATED FILE\n"""\n\n')
+                for func in category["functions"]:
+                    args = ", ".join(arg["name"] for arg in func["args"])
+                    f.write(f"def {func['name']}({args}):\n    pass\n\n")
+</file>
+
+<file path="robot-language/validation/semantic_validator.py">
+import re
+
+from .base_validator import BaseValidator
+
+
+class SemanticValidator(BaseValidator):
+
+    name = "Semantic Validator"
+
+    SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
+    PASCAL_CASE = re.compile(
+        r"^[A-Z][a-zA-Z0-9]*$"
+    )
+
+    def validate(self, language):
+
+        self._validate_categories(language)
+        self._validate_functions(language)
+        self._validate_opcode_ids(language)
+        self._validate_names(language)
+
+    def _validate_categories(self, language):
+
+        for category_name, category in language.all_categories():
+
+            if not category["functions"]:
+
+                raise ValueError(
+                    f"Category '{category_name}' has no functions."
+                )
+
+    def _validate_functions(self, language):
+
+        required_fields = (
+            "name",
+            "opcode",
+            "opcode_id"
+        )
+
+        for _, _, function in language.all_functions():
+
+            for field in required_fields:
+
+                if field not in function:
+
+                    raise ValueError(
+                        f"Function '{function.get('name', '<unknown>')}' "
+                        f"is missing field '{field}'."
+                    )
+
+    def _validate_opcode_ids(self, language):
+
+        for opcode_id in language.opcode_ids():
+
+            if opcode_id <= 0:
+
+                raise ValueError(
+                    f"Invalid Opcode ID: {opcode_id}"
+                )
+
+    def _validate_names(self, language):
+        for category_name, category in language.all_categories():
+            # Bỏ qua category internal (chứa các opcode nội bộ)
+            if category_name == "internal":
+                continue
+
+            self._validate_name(
+                category_name,
+                self.SNAKE_CASE,
+                "Category"
+            )
+
+            for function in category["functions"]:
+                self._validate_name(
+                    function["name"],
+                    self.SNAKE_CASE,
+                    "Function"
+                )
+
+        # Opcode vẫn kiểm tra PascalCase
+        for opcode in language.opcodes():
+            self._validate_name(
+                opcode,
+                self.PASCAL_CASE,
+                "Opcode"
+            )
+
+    def _validate_name(
+        self,
+        value,
+        pattern,
+        object_name
+    ):
+
+        if not pattern.fullmatch(value):
+
+            raise ValueError(
+                f"Invalid {object_name} name: {value}"
+            )
+</file>
+
+<file path="robot-language/build.py">
+from build import Builder
+from generators.registry_json_generator import RegistryJsonGenerator
+from generators.opcode_header_generator import OpcodeHeaderGenerator
+
+from generators import (
+    SDKGenerator,
+    RegistryGenerator,
+    OpcodeGenerator,
+    OpcodeJsonGenerator
+)
+
+from validation import (
+    DuplicateValidator,
+    SemanticValidator,
+    ReferenceValidator
+)
+
+builder = Builder()
+
+builder.register_validator(
+    DuplicateValidator()
+)
+
+builder.register_validator(
+    SemanticValidator()
+)
+
+builder.register_validator(
+    ReferenceValidator()
+)
+
+builder.register(
+    SDKGenerator()
+)
+
+builder.register(
+    RegistryGenerator()
+)
+
+builder.register(
+    RegistryJsonGenerator()
+)
+
+builder.register(
+    OpcodeGenerator()
+)
+
+builder.register(
+    OpcodeJsonGenerator()
+)
+
+builder.register(OpcodeHeaderGenerator())
+
+builder.build()
+</file>
+
+<file path="robot-platform/main/include/generated/opcode.h">
+/******************************************************************************
+ * AUTO GENERATED FILE
+ * DO NOT EDIT MANUALLY
+ ******************************************************************************/
+
+#pragma once
+
+#include <stdint.h>
+
+enum class Opcode : uint8_t
+{
+    Forward = 2,
+    Backward = 3,
+    TurnLeft = 4,
+    TurnRight = 5,
+    Wait = 7,
+    Stop = 6,
+    LoadConst = 1,
+    CompareEQ = 8,
+    CompareNE = 9,
+    CompareLT = 10,
+    CompareLE = 11,
+    CompareGT = 12,
+    CompareGE = 13,
+    Jump = 14,
+    JumpIfFalse = 15,
+    JumpIfTrue = 16,
+    Label = 17,
+    Add = 20,
+    Sub = 21,
+    Mul = 22,
+    Div = 23,
+    Mod = 24,
+    Pow = 25,
+    Neg = 26,
+};
+</file>
+
+<file path="robot-platform/main/include/generated/opcode.json">
+{
+    "Forward": {
+        "id": 2,
+        "opcode": "Forward",
+        "function": "forward",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "Backward": {
+        "id": 3,
+        "opcode": "Backward",
+        "function": "backward",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "TurnLeft": {
+        "id": 4,
+        "opcode": "TurnLeft",
+        "function": "turn_left",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "TurnRight": {
+        "id": 5,
+        "opcode": "TurnRight",
+        "function": "turn_right",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "Wait": {
+        "id": 7,
+        "opcode": "Wait",
+        "function": "wait",
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler"
+    },
+    "Stop": {
+        "id": 6,
+        "opcode": "Stop",
+        "function": "stop",
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler"
+    },
+    "LoadConst": {
+        "id": 1,
+        "opcode": "LoadConst",
+        "function": "LoadConst",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareEQ": {
+        "id": 8,
+        "opcode": "CompareEQ",
+        "function": "CompareEQ",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareNE": {
+        "id": 9,
+        "opcode": "CompareNE",
+        "function": "CompareNE",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareLT": {
+        "id": 10,
+        "opcode": "CompareLT",
+        "function": "CompareLT",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareLE": {
+        "id": 11,
+        "opcode": "CompareLE",
+        "function": "CompareLE",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareGT": {
+        "id": 12,
+        "opcode": "CompareGT",
+        "function": "CompareGT",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareGE": {
+        "id": 13,
+        "opcode": "CompareGE",
+        "function": "CompareGE",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Jump": {
+        "id": 14,
+        "opcode": "Jump",
+        "function": "Jump",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "JumpIfFalse": {
+        "id": 15,
+        "opcode": "JumpIfFalse",
+        "function": "JumpIfFalse",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "JumpIfTrue": {
+        "id": 16,
+        "opcode": "JumpIfTrue",
+        "function": "JumpIfTrue",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Label": {
+        "id": 17,
+        "opcode": "Label",
+        "function": "Label",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Add": {
+        "id": 20,
+        "opcode": "Add",
+        "function": "Add",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Sub": {
+        "id": 21,
+        "opcode": "Sub",
+        "function": "Sub",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Mul": {
+        "id": 22,
+        "opcode": "Mul",
+        "function": "Mul",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Div": {
+        "id": 23,
+        "opcode": "Div",
+        "function": "Div",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Mod": {
+        "id": 24,
+        "opcode": "Mod",
+        "function": "Mod",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Pow": {
+        "id": 25,
+        "opcode": "Pow",
+        "function": "Pow",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Neg": {
+        "id": 26,
+        "opcode": "Neg",
+        "function": "Neg",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    }
+}
+</file>
+
+<file path="robot-platform/main/src/Services/VM/Instruction.h">
+#pragma once
+#include <stdint.h>
+#include "generated/opcode.h"
+
+struct Instruction
+{
+    Opcode opcode;
+    int16_t p1;
+    int16_t p2;
+    int16_t p3;
+
+    Instruction() : opcode(Opcode::LoadConst), p1(0), p2(0), p3(0) {}
+    Instruction(Opcode op, int16_t param1, int16_t param2, int16_t param3)
+        : opcode(op), p1(param1), p2(param2), p3(param3) {}
+};
+</file>
+
+<file path="robot-compiler/compiler/handlers/bool_handler.py">
+import ast
+from ..error import CompilerError
+from ..generated.opcode import Opcode
+
+
+class BoolHandler:
+
+    @staticmethod
+    def bool_op(compiler, node):
+        if isinstance(node.op, ast.And):
+            return BoolHandler._compile_and(compiler, node)
+        raise CompilerError(f"Unsupported boolean operator: {type(node.op).__name__}")
+
+    @staticmethod
+    def _compile_and(compiler, node):
+        result = compiler.allocate_result()
+        false_label = compiler.program.new_label()
+        end_label = compiler.program.new_label()
+
+        for expr in node.values:
+            value = compiler.visit(expr)
+            compiler.program.emit_jump_if_false(Opcode.JumpIfFalse.value, value, false_label)
+
+        compiler.program.emit(Opcode.LoadConst.value, result, 1)
+        compiler.program.emit_jump(Opcode.Jump.value, end_label)
+
+        compiler.program.emit_label(false_label)
+        compiler.program.emit(Opcode.LoadConst.value, result, 0)
+
+        compiler.program.emit_label(end_label)
+        return result
+</file>
+
+<file path="robot-compiler/compiler/handlers/compare_handler.py">
+import ast
+from ..error import CompilerError
+from ..generated.opcode import Opcode
+
+
+class CompareHandler:
+
+    COMPARE_OPCODE = {
+        ast.Eq: Opcode.CompareEQ,
+        ast.NotEq: Opcode.CompareNE,
+        ast.Lt: Opcode.CompareLT,
+        ast.LtE: Opcode.CompareLE,
+        ast.Gt: Opcode.CompareGT,
+        ast.GtE: Opcode.CompareGE,
+    }
+
+    @staticmethod
+    def compare(compiler, node):
+        left = compiler.resolve_argument(node.left)
+        right = compiler.resolve_argument(node.comparators[0])
+        result = compiler.allocate_result()
+
+        operator = type(node.ops[0])
+        opcode = CompareHandler.COMPARE_OPCODE.get(operator)
+
+        if opcode is None:
+            raise CompilerError(f"Unsupported comparison operator: {operator.__name__}")
+
+        compiler.program.emit(opcode.value, left, right, result)
+        return result
+</file>
+
+<file path="robot-compiler/compiler/handlers/motion_handler.py">
+from ..generated.opcode import Opcode
+
+
+class MotionHandler:
+
+    @staticmethod
+    def forward(compiler, node):
+        index = compiler.resolve_argument(node.args[0])
+        compiler.program.emit(Opcode.Forward.value, index)
+
+    @staticmethod
+    def backward(compiler, node):
+        index = compiler.resolve_argument(node.args[0])
+        compiler.program.emit(Opcode.Backward.value, index)
+
+    @staticmethod
+    def turn_left(compiler, node):
+        index = compiler.resolve_argument(node.args[0])
+        compiler.program.emit(Opcode.TurnLeft.value, index)
+
+    @staticmethod
+    def turn_right(compiler, node):
+        index = compiler.resolve_argument(node.args[0])
+        compiler.program.emit(Opcode.TurnRight.value, index)
+</file>
+
+<file path="robot-compiler/compiler/handlers/system_handler.py">
+from ..generated.opcode import Opcode
+
+
+class SystemHandler:
+
+    @staticmethod
+    def wait(compiler, node):
+        compiler.validate_argument_count(node, "wait", 1)
+        index = compiler.resolve_argument(node.args[0])
+        compiler.program.emit(Opcode.Wait.value, index)
+
+    @staticmethod
+    def stop(compiler, node):
+        compiler.validate_argument_count(node, "stop", 0)
+        compiler.program.emit(Opcode.Stop.value)
+</file>
+
+<file path="robot-compiler/compiler/compiler.py">
+import ast
+
+from .handlers.compare_handler import CompareHandler
+from .program import Program
+from .symbol_table import SymbolTable
+from .error import CompilerError
+from .generated.function_registry import FUNCTION_REGISTRY
+from .handlers.bool_handler import BoolHandler
+from .generated.opcode import Opcode
+
+
+class RobotCompiler(ast.NodeVisitor):
+
+    def __init__(self):
+        self.program = Program()
+        self.symbols = SymbolTable()
+        self.temp_id = 0
+        self.functions = {}
+        self.loop_stack = []
+
+    def compile_ast(self, tree):
+        self.program = Program()
+        self.symbols = SymbolTable()
+        self.temp_id = 0
+        self.functions = {}
+        self.loop_stack = []
+        self.visit(tree)
+        self.program.resolve_labels()
+        return self.program
+
+    def compile(self, filename):
+        with open(filename, "r", encoding="utf8") as f:
+            tree = ast.parse(f.read())
+        return self.compile_ast(tree)
+
+    def allocate_temp(self):
+        name = f"__temp{self.temp_id}"
+        self.temp_id += 1
+        return self.symbols.allocate(name)
+
+    # ----------------------------------------------------------
+    # Expression compilation
+    # ----------------------------------------------------------
+    def compile_expression(self, expr):
+        """Compile an expression and return variable index of result."""
+        if isinstance(expr, ast.Constant):
+            index = self.allocate_temp()
+            self.program.emit(Opcode.LoadConst.value, index, expr.value)
+            return index
+        elif isinstance(expr, ast.Name):
+            return self.symbols.resolve(expr.id)
+        elif isinstance(expr, ast.BinOp):
+            left = self.compile_expression(expr.left)
+            right = self.compile_expression(expr.right)
+            result = self.allocate_temp()
+            op_map = {
+                ast.Add: Opcode.Add,
+                ast.Sub: Opcode.Sub,
+                ast.Mult: Opcode.Mul,
+                ast.Div: Opcode.Div,
+                ast.Mod: Opcode.Mod,
+                ast.Pow: Opcode.Pow,
+            }
+            op = op_map.get(type(expr.op))
+            if op is None:
+                raise CompilerError(f"Unsupported binary operator: {type(expr.op).__name__}")
+            self.program.emit(op.value, left, right, result)
+            return result
+        elif isinstance(expr, ast.UnaryOp):
+            operand = self.compile_expression(expr.operand)
+            result = self.allocate_temp()
+            if isinstance(expr.op, ast.USub):
+                self.program.emit(Opcode.Neg.value, operand, 0, result)
+            else:
+                raise CompilerError(f"Unsupported unary operator: {type(expr.op).__name__}")
+            return result
+        else:
+            raise CompilerError(f"Unsupported expression type: {type(expr)}")
+
+    def resolve_argument(self, arg):
+        if isinstance(arg, ast.Name):
+            return self.symbols.resolve(arg.id)
+        elif isinstance(arg, ast.Constant):
+            index = self.allocate_temp()
+            self.program.emit(Opcode.LoadConst.value, index, arg.value)
+            return index
+        elif isinstance(arg, (ast.BinOp, ast.UnaryOp)):
+            return self.compile_expression(arg)
+        else:
+            raise CompilerError(f"Unsupported argument type: {type(arg)}")
+
+    def validate_argument_count(self, node, function_name, expected):
+        actual = len(node.args)
+        if actual != expected:
+            raise CompilerError(
+                f"{function_name}() expects exactly {expected} argument(s)."
+            )
+
+    # ----------------------------------------------------------
+    # AST Visitors
+    # ----------------------------------------------------------
+    def visit_Assign(self, node):
+        # Chỉ hỗ trợ gán hằng hoặc biểu thức đơn giản? 
+        # Để không ảnh hưởng, ta giữ nguyên như cũ.
+        name = node.targets[0].id
+        if not isinstance(node.value, ast.Constant):
+            raise CompilerError("Only constant assignment is supported in this version.")
+        value = node.value.value
+        index = self.symbols.allocate(name)
+        self.program.emit(Opcode.LoadConst.value, index, value)
+
+    def visit_FunctionDef(self, node):
+        self.functions[node.name] = node
+        return
+
+    def visit_Expr(self, node):
+        self.visit(node.value)
+
+    def visit_Call(self, node):
+        if not isinstance(node.func, ast.Name):
+            raise CompilerError(f"Unsupported function call: {ast.dump(node.func)}")
+        func = node.func.id
+
+        if func in self.functions:
+            function = self.functions[func]
+            for stmt in function.body:
+                self.visit(stmt)
+            return
+
+        info = FUNCTION_REGISTRY.get(func)
+        if info is None:
+            raise CompilerError(f"Unknown function '{func}()'")
+
+        expected = info["arguments"]
+        actual = len(node.args)
+        if actual != expected:
+            raise CompilerError(f"{func}() expects exactly {expected} argument(s).")
+
+        handler = info["handler"]
+        handler(self, node)
+
+    def allocate_result(self):
+        return self.allocate_temp()
+
+    def visit_Compare(self, node):
+        return CompareHandler.compare(self, node)
+
+    def visit_BoolOp(self, node):
+        return BoolHandler.bool_op(self, node)
+
+    def visit_If(self, node):
+        result = self.visit(node.test)
+        else_label = self.program.new_label()
+        end_label = self.program.new_label()
+
+        self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, else_label)
+
+        for stmt in node.body:
+            self.visit(stmt)
+
+        if len(node.orelse) > 0:
+            self.program.emit_jump(Opcode.Jump.value, end_label)
+
+        self.program.emit_label(else_label)
+
+        for stmt in node.orelse:
+            self.visit(stmt)
+
+        self.program.emit_label(end_label)
+
+    def visit_While(self, node):
+        begin_label = self.program.new_label()
+        end_label = self.program.new_label()
+
+        self.loop_stack.append({"begin": begin_label, "end": end_label})
+
+        self.program.emit_label(begin_label)
+
+        result = self.visit(node.test)
+
+        self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, end_label)
+
+        for stmt in node.body:
+            self.visit(stmt)
+
+        self.program.emit_jump(Opcode.Jump.value, begin_label)
+
+        self.loop_stack.pop()
+
+        self.program.emit_label(end_label)
+
+    def visit_Break(self, node):
+        if len(self.loop_stack) == 0:
+            raise CompilerError("'break' outside loop.")
+        context = self.loop_stack[-1]
+        self.program.emit_jump(Opcode.Jump.value, context["end"])
+
+    def visit_Continue(self, node):
+        if len(self.loop_stack) == 0:
+            raise CompilerError("'continue' outside loop.")
+        context = self.loop_stack[-1]
+        self.program.emit_jump(Opcode.Jump.value, context["begin"])
+</file>
+
+<file path="robot-compiler/compiler/emitter.py">
+from pathlib import Path
+from .generated.opcode import Opcode
+
+
+class HeaderEmitter:
+
+    def emit(self, program, output_file):
+        output_file = Path(output_file)
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write("/******************************************************************************\n")
+            f.write(" * AUTO GENERATED FILE\n")
+            f.write(" *\n")
+            f.write(" * DO NOT EDIT MANUALLY.\n")
+            f.write(" ******************************************************************************/\n\n")
+            f.write("#pragma once\n\n")
+            f.write("const Instruction generatedProgram[] =\n")
+            f.write("{\n")
+            for ins in program.instructions:
+                opcode_name = Opcode(ins.opcode).name
+                f.write(
+                    f"    Instruction(Opcode::{opcode_name}, {ins.p1}, {ins.p2}, {ins.p3}),\n"
+                )
+            f.write("};\n\n")
+            f.write(f"const uint16_t generatedProgramSize = {len(program.instructions)};\n")
+</file>
+
+<file path="robot-compiler/test/run_tests.py">
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from compiler.compiler import RobotCompiler
+from compiler.generated.opcode import Opcode
+
+EXAMPLES = ROOT / "examples"
+compiler = RobotCompiler()
+
+
+def compile_file(filename):
+    return compiler.compile(EXAMPLES / filename)
+
+
+def assert_instruction(actual, opcode_name, p1, p2, p3):
+    actual_name = Opcode(actual.opcode).name
+    assert actual_name == opcode_name, f"Expected {opcode_name}, got {actual_name}"
+    assert actual.p1 == p1
+    assert actual.p2 == p2
+    assert actual.p3 == p3
+
+
+def expect_program(program, expected):
+    assert len(program.instructions) == len(expected), (
+        f"Expected {len(expected)} instructions, got {len(program.instructions)}"
+    )
+    for i, (opcode, p1, p2, p3) in enumerate(expected):
+        assert_instruction(program.instructions[i], opcode, p1, p2, p3)
+
+
+def expect_last_opcode(filename, opcode_name):
+    program = compile_file(filename)
+    expected = Opcode[opcode_name].value
+    assert program.instructions[-1].opcode == expected, f"Expected {opcode_name}"
+
+
+def print_program(program):
+    print(f"Instruction Count: {len(program.instructions)}")
+    for i, ins in enumerate(program.instructions):
+        print(f"{i}: Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
+    print()
+
+
+# ---- Test cases ----
+program = compile_file("demo_forward.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("Forward", 0, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_forward.py : PASS")
+
+program = compile_file("demo_backward.py")
+expect_program(program, [
+    ("LoadConst", 0, 30, 0),
+    ("Backward", 0, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_backward.py : PASS")
+
+program = compile_file("demo_variable.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 50, 0),
+    ("Forward", 0, 0, 0),
+    ("TurnLeft", 1, 0, 0),
+    ("Backward", 0, 0, 0),
+    ("TurnRight", 1, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_variable.py : PASS")
+
+try:
+    compile_file("demo_unknown_function.py")
+    assert False, "CompilerError expected"
+except Exception as e:
+    assert "Unknown function" in str(e)
+print("Test demo_unknown_function.py : PASS")
+
+try:
+    compile_file("demo_wrong_argument.py")
+    assert False, "CompilerError expected"
+except Exception as e:
+    assert "expects exactly 1 argument" in str(e)
+print("Test demo_wrong_argument.py : PASS")
+
+program = compile_file("demo_function.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("Forward", 0, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_function.py : PASS")
+
+program = compile_file("demo_function_multiple.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("Forward", 0, 0, 0),
+    ("LoadConst", 1, 80, 0),
+    ("Forward", 1, 0, 0),
+])
+print("Test demo_function_multiple.py : PASS")
+
+expect_last_opcode("demo_compare_gt.py", "CompareGT")
+print("Test CompareGT : PASS")
+expect_last_opcode("demo_compare_eq.py", "CompareEQ")
+print("Test CompareEQ : PASS")
+expect_last_opcode("demo_compare_ne.py", "CompareNE")
+print("Test CompareNE : PASS")
+expect_last_opcode("demo_compare_lt.py", "CompareLT")
+print("Test CompareLT : PASS")
+expect_last_opcode("demo_compare_le.py", "CompareLE")
+print("Test CompareLE : PASS")
+expect_last_opcode("demo_compare_ge.py", "CompareGE")
+print("Test CompareGE : PASS")
+
+program = compile_file("demo_if.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 50, 0),
+    ("CompareGT", 0, 1, 2),
+    ("JumpIfFalse", 2, 6, 0),
+    ("LoadConst", 3, 80, 0),
+    ("Forward", 3, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_if.py : PASS")
+
+program = compile_file("demo_if_else.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 50, 0),
+    ("CompareGT", 0, 1, 2),
+    ("JumpIfFalse", 2, 7, 0),
+    ("LoadConst", 3, 80, 0),
+    ("Forward", 3, 0, 0),
+    ("Jump", 0, 9, 0),
+    ("LoadConst", 4, 30, 0),
+    ("Backward", 4, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_if_else.py : PASS")
+
+program = compile_file("demo_nested_if.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 40, 0),
+    ("LoadConst", 2, 50, 0),
+    ("CompareGT", 0, 2, 3),
+    ("JumpIfFalse", 3, 10, 0),
+    ("LoadConst", 4, 60, 0),
+    ("CompareLT", 1, 4, 5),
+    ("JumpIfFalse", 5, 10, 0),
+    ("LoadConst", 6, 80, 0),
+    ("Forward", 6, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("demo_nested_if.py : PASS")
+
+program = compile_file("demo_while.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 50, 0),
+    ("CompareGT", 0, 1, 2),
+    ("JumpIfFalse", 2, 7, 0),
+    ("LoadConst", 3, 80, 0),
+    ("Forward", 3, 0, 0),
+    ("Jump", 0, 1, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_while.py : PASS")
+
+program = compile_file("demo_nested_while.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 40, 0),
+    ("LoadConst", 2, 50, 0),
+    ("CompareGT", 0, 2, 3),
+    ("JumpIfFalse", 3, 12, 0),
+    ("LoadConst", 4, 60, 0),
+    ("CompareLT", 1, 4, 5),
+    ("JumpIfFalse", 5, 11, 0),
+    ("LoadConst", 6, 80, 0),
+    ("Forward", 6, 0, 0),
+    ("Jump", 0, 5, 0),
+    ("Jump", 0, 2, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_nested_while.py : PASS")
+
+program = compile_file("demo_break.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 50, 0),
+    ("CompareGT", 0, 1, 2),
+    ("JumpIfFalse", 2, 8, 0),
+    ("LoadConst", 3, 80, 0),
+    ("Forward", 3, 0, 0),
+    ("Jump", 0, 8, 0),
+    ("Jump", 0, 1, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_break.py : PASS")
+
+program = compile_file("demo_continue.py")
+# Continue không có bytecode cụ thể, chỉ là jump, nên ta chỉ kiểm tra không lỗi.
+print("Test demo_continue.py : PASS")
+
+program = compile_file("demo_bool_and.py")
+expect_program(program, [
+    ("LoadConst", 1, 5, 0),
+    ("LoadConst", 2, 2, 0),
+    ("CompareGT", 1, 2, 3),
+    ("JumpIfFalse", 3, 10, 0),
+    ("LoadConst", 4, 8, 0),
+    ("LoadConst", 5, 3, 0),
+    ("CompareGT", 4, 5, 6),
+    ("JumpIfFalse", 6, 10, 0),
+    ("LoadConst", 0, 1, 0),
+    ("Jump", 0, 11, 0),
+    ("LoadConst", 0, 0, 0),
+    ("JumpIfFalse", 0, 14, 0),
+    ("LoadConst", 7, 50, 0),
+    ("Forward", 7, 0, 0),
+])
+print("Test demo_bool_and.py : PASS")
+
+# ---- Test Arithmetic Expression (không gán biến) ----
+program = compile_file("demo_arithmetic.py")
+expect_program(program, [
+    ("LoadConst", 0, 5, 0),
+    ("LoadConst", 1, 3, 0),
+    ("Add", 0, 1, 2),
+    ("Forward", 2, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_arithmetic.py : PASS")
+</file>
+
+<file path="robot-frontend-robosim/test/run_tests.py">
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from frontend.compiler import RoboSimCompiler
+from compiler.generated.opcode import Opcode
+
+EXAMPLES = ROOT / "examples"
+compiler = RoboSimCompiler()
+
+# ---- Test 1: robosim_demo.py ----
+program = compiler.compile(EXAMPLES / "robosim_demo.py")
+print("\nInstruction Count:", len(program.instructions))
+for i, ins in enumerate(program.instructions):
+    print(i, f"Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
+print()
+assert len(program.instructions) == 5
+assert program.instructions[0].opcode == Opcode.LoadConst.value
+assert program.instructions[0].p1 == 0 and program.instructions[0].p2 == 80
+assert program.instructions[1].opcode == Opcode.Forward.value
+assert program.instructions[1].p1 == 0
+assert program.instructions[2].opcode == Opcode.LoadConst.value
+assert program.instructions[2].p1 == 1 and program.instructions[2].p2 == 1000
+assert program.instructions[3].opcode == Opcode.Wait.value
+assert program.instructions[3].p1 == 1
+assert program.instructions[4].opcode == Opcode.Stop.value
+print("Test robosim_demo.py : PASS")
+
+# ---- Test 2: robosim_wait.py ----
+program = compiler.compile(EXAMPLES / "robosim_wait.py")
+assert len(program.instructions) == 2
+assert program.instructions[0].opcode == Opcode.LoadConst.value
+assert program.instructions[1].opcode == Opcode.Wait.value
+print("Test robosim_wait.py : PASS")
+
+# ---- Test 3: robosim_move_second.py ----
+program = compiler.compile(EXAMPLES / "robosim_move_second.py")
+print("\nrobosim_move_second.py instructions:")
+for i, ins in enumerate(program.instructions):
+    print(i, f"Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
+print()
+assert len(program.instructions) == 7
+# Có thể kiểm tra thêm giá trị của Mul
+assert program.instructions[4].opcode == Opcode.Mul.value
+assert program.instructions[4].p1 == 1
+assert program.instructions[4].p2 == 2
+assert program.instructions[4].p3 == 3
+print("Test robosim_move_second.py : PASS")
+# ---- Test 4: robosim_variable.py ----
+program = compiler.compile(EXAMPLES / "robosim_variable.py")
+assert len(program.instructions) == 3
+assert program.instructions[0].opcode == Opcode.LoadConst.value
+assert program.instructions[1].opcode == Opcode.Forward.value
+assert program.instructions[2].opcode == Opcode.Stop.value
+print("Test robosim_variable.py : PASS")
+</file>
+
+<file path="robot-language/generated/opcode.json">
+{
+    "Forward": {
+        "id": 2,
+        "opcode": "Forward",
+        "function": "forward",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "Backward": {
+        "id": 3,
+        "opcode": "Backward",
+        "function": "backward",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "TurnLeft": {
+        "id": 4,
+        "opcode": "TurnLeft",
+        "function": "turn_left",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "TurnRight": {
+        "id": 5,
+        "opcode": "TurnRight",
+        "function": "turn_right",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "Wait": {
+        "id": 7,
+        "opcode": "Wait",
+        "function": "wait",
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler"
+    },
+    "Stop": {
+        "id": 6,
+        "opcode": "Stop",
+        "function": "stop",
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler"
+    },
+    "LoadConst": {
+        "id": 1,
+        "opcode": "LoadConst",
+        "function": "LoadConst",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareEQ": {
+        "id": 8,
+        "opcode": "CompareEQ",
+        "function": "CompareEQ",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareNE": {
+        "id": 9,
+        "opcode": "CompareNE",
+        "function": "CompareNE",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareLT": {
+        "id": 10,
+        "opcode": "CompareLT",
+        "function": "CompareLT",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareLE": {
+        "id": 11,
+        "opcode": "CompareLE",
+        "function": "CompareLE",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareGT": {
+        "id": 12,
+        "opcode": "CompareGT",
+        "function": "CompareGT",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareGE": {
+        "id": 13,
+        "opcode": "CompareGE",
+        "function": "CompareGE",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Jump": {
+        "id": 14,
+        "opcode": "Jump",
+        "function": "Jump",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "JumpIfFalse": {
+        "id": 15,
+        "opcode": "JumpIfFalse",
+        "function": "JumpIfFalse",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "JumpIfTrue": {
+        "id": 16,
+        "opcode": "JumpIfTrue",
+        "function": "JumpIfTrue",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Label": {
+        "id": 17,
+        "opcode": "Label",
+        "function": "Label",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Add": {
+        "id": 20,
+        "opcode": "Add",
+        "function": "Add",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Sub": {
+        "id": 21,
+        "opcode": "Sub",
+        "function": "Sub",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Mul": {
+        "id": 22,
+        "opcode": "Mul",
+        "function": "Mul",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Div": {
+        "id": 23,
+        "opcode": "Div",
+        "function": "Div",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Mod": {
+        "id": 24,
+        "opcode": "Mod",
+        "function": "Mod",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Pow": {
+        "id": 25,
+        "opcode": "Pow",
+        "function": "Pow",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Neg": {
+        "id": 26,
+        "opcode": "Neg",
+        "function": "Neg",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    }
+}
+</file>
+
+<file path="robot-language/generated/opcode.py">
+"""
+AUTO GENERATED FILE
+"""
+
+from enum import IntEnum
+
+class Opcode(IntEnum):
+    Forward = 2
+    Backward = 3
+    TurnLeft = 4
+    TurnRight = 5
+    Wait = 7
+    Stop = 6
+    LoadConst = 1
+    CompareEQ = 8
+    CompareNE = 9
+    CompareLT = 10
+    CompareLE = 11
+    CompareGT = 12
+    CompareGE = 13
+    Jump = 14
+    JumpIfFalse = 15
+    JumpIfTrue = 16
+    Label = 17
+    Add = 20
+    Sub = 21
+    Mul = 22
+    Div = 23
+    Mod = 24
+    Pow = 25
+    Neg = 26
+</file>
+
+<file path="robot-language/specification/api.yaml">
+language:
+  name: Robot Language
+  version: 1.0.0
+  description: Robot Language Specification
+
+categories:
+
+  motion:
+    description: Motion control APIs
+    module: motion_handler
+    handler: MotionHandler
+
+    functions:
+      - name: forward
+        opcode: Forward
+        opcode_id: 2
+        description: Move robot forward
+        args:
+          - name: speed
+            type: int
+
+      - name: backward
+        opcode: Backward
+        opcode_id: 3
+        description: Move robot backward
+        args:
+          - name: speed
+            type: int
+
+      - name: turn_left
+        opcode: TurnLeft
+        opcode_id: 4
+        description: Rotate robot left
+        args:
+          - name: speed
+            type: int
+
+      - name: turn_right
+        opcode: TurnRight
+        opcode_id: 5
+        description: Rotate robot right
+        args:
+          - name: speed
+            type: int
+
+  system:
+    module: system_handler
+    handler: SystemHandler
+
+    functions:
+      - name: wait
+        opcode: Wait
+        opcode_id: 7
+        description: Wait milliseconds
+        args:
+          - name: milliseconds
+            type: int
+
+      - name: stop
+        opcode: Stop
+        opcode_id: 6
+        description: Stop robot
+        args: []
+
+  internal:
+    description: Internal opcodes (do not expose to users)
+    module: internal
+    handler: None
+
+    functions:
+      - name: LoadConst
+        opcode: LoadConst
+        opcode_id: 1
+        description: Load constant to variable
+        args: []
+      - name: CompareEQ
+        opcode: CompareEQ
+        opcode_id: 8
+        description: Compare equal
+        args: []
+      - name: CompareNE
+        opcode: CompareNE
+        opcode_id: 9
+        description: Compare not equal
+        args: []
+      - name: CompareLT
+        opcode: CompareLT
+        opcode_id: 10
+        description: Compare less than
+        args: []
+      - name: CompareLE
+        opcode: CompareLE
+        opcode_id: 11
+        description: Compare less or equal
+        args: []
+      - name: CompareGT
+        opcode: CompareGT
+        opcode_id: 12
+        description: Compare greater than
+        args: []
+      - name: CompareGE
+        opcode: CompareGE
+        opcode_id: 13
+        description: Compare greater or equal
+        args: []
+      - name: Jump
+        opcode: Jump
+        opcode_id: 14
+        description: Unconditional jump
+        args: []
+      - name: JumpIfFalse
+        opcode: JumpIfFalse
+        opcode_id: 15
+        description: Jump if false
+        args: []
+      - name: JumpIfTrue
+        opcode: JumpIfTrue
+        opcode_id: 16
+        description: Jump if true
+        args: []
+      - name: Label
+        opcode: Label
+        opcode_id: 17
+        description: Label placeholder
+        args: []
+      # --- Arithmetic opcodes ---
+      - name: Add
+        opcode: Add
+        opcode_id: 20
+        description: Addition
+        args: []
+      - name: Sub
+        opcode: Sub
+        opcode_id: 21
+        description: Subtraction
+        args: []
+      - name: Mul
+        opcode: Mul
+        opcode_id: 22
+        description: Multiplication
+        args: []
+      - name: Div
+        opcode: Div
+        opcode_id: 23
+        description: Integer division
+        args: []
+      - name: Mod
+        opcode: Mod
+        opcode_id: 24
+        description: Modulo
+        args: []
+      - name: Pow
+        opcode: Pow
+        opcode_id: 25
+        description: Power (integer exponent)
+        args: []
+      - name: Neg
+        opcode: Neg
+        opcode_id: 26
+        description: Negate
+        args: []
+</file>
+
+<file path="robot-platform/main/src/Services/VM/VM.cpp">
+#include "VM.h"
+#include "../Robot/RobotAPI.h"
+#include "generated/opcode.h"
+
+VM::VM() : mProgram(nullptr) {}
+
+void VM::Reset() { mContext.Reset(); }
+
+bool VM::LoadProgram(const Program* program)
+{
+    if (program == nullptr) return false;
+    mProgram = program;
+    Reset();
+    return true;
+}
+
+bool VM::IsRunning() const
+{
+    if (mProgram == nullptr) return false;
+    return mContext.mRunning;
+}
+
+uint16_t VM::GetProgramCounter() const
+{
+    return mContext.mProgramCounter;
+}
+
+void VM::Step()
+{
+    if (!IsRunning()) return;
+    if (mContext.mProgramCounter >= mProgram->mInstructionCount)
+    {
+        mContext.mRunning = false;
+        return;
+    }
+    const Instruction& instruction = mProgram->mInstructions[mContext.mProgramCounter];
+    ExecuteInstruction(instruction);
+}
+
+void VM::ExecuteInstruction(const Instruction& instruction)
+{
+    switch (instruction.opcode)
+    {
+        case Opcode::LoadConst:
+            mContext.mVariables[instruction.p1] = instruction.p2;
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LoadVar:
+            mContext.mRegister0 = mContext.mVariables[instruction.p1];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Forward:
+            RobotAPI::Forward(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Backward:
+            RobotAPI::Backward(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::TurnLeft:
+            RobotAPI::TurnLeft(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::TurnRight:
+            RobotAPI::TurnRight(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Stop:
+            RobotAPI::Stop();
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Wait:
+            RobotAPI::Wait(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::CompareEQ:
+            mContext.mVariables[instruction.p3] =
+                (mContext.mVariables[instruction.p1] == mContext.mVariables[instruction.p2]) ? 1 : 0;
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::CompareNE:
+            mContext.mVariables[instruction.p3] =
+                (mContext.mVariables[instruction.p1] != mContext.mVariables[instruction.p2]) ? 1 : 0;
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::CompareLT:
+            mContext.mVariables[instruction.p3] =
+                (mContext.mVariables[instruction.p1] < mContext.mVariables[instruction.p2]) ? 1 : 0;
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::CompareLE:
+            mContext.mVariables[instruction.p3] =
+                (mContext.mVariables[instruction.p1] <= mContext.mVariables[instruction.p2]) ? 1 : 0;
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::CompareGT:
+            mContext.mVariables[instruction.p3] =
+                (mContext.mVariables[instruction.p1] > mContext.mVariables[instruction.p2]) ? 1 : 0;
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::CompareGE:
+            mContext.mVariables[instruction.p3] =
+                (mContext.mVariables[instruction.p1] >= mContext.mVariables[instruction.p2]) ? 1 : 0;
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Jump:
+            mContext.mProgramCounter = instruction.p1;
+            break;
+
+        case Opcode::JumpIfFalse:
+            if (mContext.mVariables[instruction.p1] == 0)
+                mContext.mProgramCounter = instruction.p2;
+            else
+                mContext.mProgramCounter++;
+            break;
+
+        case Opcode::JumpIfTrue:
+            if (mContext.mVariables[instruction.p1] != 0)
+                mContext.mProgramCounter = instruction.p2;
+            else
+                mContext.mProgramCounter++;
+            break;
+
+        // --- Arithmetic operations ---
+        case Opcode::Add:
+            mContext.mVariables[instruction.p3] =
+                mContext.mVariables[instruction.p1] + mContext.mVariables[instruction.p2];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Sub:
+            mContext.mVariables[instruction.p3] =
+                mContext.mVariables[instruction.p1] - mContext.mVariables[instruction.p2];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Mul:
+            mContext.mVariables[instruction.p3] =
+                mContext.mVariables[instruction.p1] * mContext.mVariables[instruction.p2];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Div:
+            if (mContext.mVariables[instruction.p2] == 0)
+                mContext.mVariables[instruction.p3] = 0;
+            else
+                mContext.mVariables[instruction.p3] =
+                    mContext.mVariables[instruction.p1] / mContext.mVariables[instruction.p2];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Mod:
+            if (mContext.mVariables[instruction.p2] == 0)
+                mContext.mVariables[instruction.p3] = 0;
+            else
+                mContext.mVariables[instruction.p3] =
+                    mContext.mVariables[instruction.p1] % mContext.mVariables[instruction.p2];
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Pow:
+        {
+            int16_t base = mContext.mVariables[instruction.p1];
+            int16_t exp = mContext.mVariables[instruction.p2];
+            int32_t result = 1;
+            for (int16_t i = 0; i < exp; ++i) {
+                result *= base;
+            }
+            mContext.mVariables[instruction.p3] = (int16_t)result;
+            mContext.mProgramCounter++;
+            break;
+        }
+
+        case Opcode::Neg:
+            mContext.mVariables[instruction.p3] = -mContext.mVariables[instruction.p1];
+            mContext.mProgramCounter++;
+            break;
+
+        default:
+            mContext.mRunning = false;
+            break;
+    }
+}
+</file>
+
+</files>

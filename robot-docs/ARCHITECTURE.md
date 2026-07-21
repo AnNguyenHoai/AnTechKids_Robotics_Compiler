@@ -276,7 +276,7 @@ registry.json (JSON metadata)
 sdk/
 
 Ghi chú: opcode.h được sinh từ spec và dùng cho robot-platform để đảm bảo đồng bộ opcode với compiler. Không chỉnh sửa thủ công.
-
+> **Lưu ý:** Các opcode số học (`Add`, `Sub`, `Mul`, ...) đã được thêm vào spec và sinh ra trong artifact.
 Future
 
 runtime_abi.json

@@ -271,3 +271,12 @@ Documentation cập nhật.
 Pull Request được review.
 
 Không vi phạm Design Contract.
+
+## Using Arithmetic Expressions
+
+Trong lời gọi robot API, bạn có thể sử dụng biểu thức số học:
+
+```python
+forward(80 + 20)          # → forward(100)
+turn_left(speed * 2)      # sử dụng biến
+wait(seconds * 1000)      # chuyển đổi đơn vị
