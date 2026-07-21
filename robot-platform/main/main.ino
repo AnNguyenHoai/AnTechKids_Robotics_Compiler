@@ -1,4 +1,6 @@
 #include "src/Application/RobotProgramApp.h"
+#include "src/Services/VM/ProgramLoader.h"
+
 
 VM vm;
 Program program;
@@ -15,7 +17,7 @@ void setup()
     Serial.println("==================================");
     Serial.println(" Robot VM Prototype");
     Serial.println("==================================");
-
+    ProgramLoader::LoadFromGenerated(program);
     BuildProgram(program);
 
     vm.LoadProgram(&program);

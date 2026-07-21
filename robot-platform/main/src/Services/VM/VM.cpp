@@ -46,11 +46,6 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             mContext.mProgramCounter++;
             break;
 
-        case Opcode::LoadVar:
-            mContext.mRegister0 = mContext.mVariables[instruction.p1];
-            mContext.mProgramCounter++;
-            break;
-
         case Opcode::Forward:
             RobotAPI::Forward(mContext.mVariables[instruction.p1]);
             mContext.mProgramCounter++;
