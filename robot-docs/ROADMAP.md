@@ -211,26 +211,31 @@ Test pass.
 
 Thời gian dự kiến: 3-4 ngày.
 
-Phase 3 – Runtime Platform (Planning)
+Phase 3 – Runtime Platform (Completed)
 Goal
 Hoàn thiện Robot VM với hiệu suất và tính năng nâng cao.
 
 Objectives
 Virtual Machine
-
 Dispatch System
-
 Runtime Context
-
 RobotAPI
+Debugging Support (cơ bản)
 
-Debugging Support
+Deliverables
+☑ Runtime ABI (VM_ABI.md)
+☑ Complete VM Dispatcher
+☑ Runtime Error Handling
+☑ End-to-End Pipeline
+☑ Regression Suite
 
-Deliverables (Future)
-□ Runtime ABI
-□ Debug runtime (step-by-step)
-□ Performance profiling
-□ Error handling (division by zero, out-of-range)
+...
+
+Foundation v3 (✅ Sprint 14.6)
+- Runtime Error Handling
+- Foundation Freeze
+- Tag: Foundation v1
+
 Phase 4 – Developer Experience (Planning)
 Goal
 Tăng năng suất phát triển với công cụ hỗ trợ.

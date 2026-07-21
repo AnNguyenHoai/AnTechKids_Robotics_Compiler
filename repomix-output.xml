@@ -199,40 +199,6 @@ run_all_tests.py
 <files>
 This section contains the contents of the repository's files.
 
-<file path="robot-docs/VM_ABI.md">
-# VM ABI
-
-## Robot Virtual Machine Application Binary Interface
-
-Version: Foundation v1 (Frozen)
-
----
-
-# 1. Purpose
-
-Tài liệu này định nghĩa giao diện nhị phân (ABI) giữa chương trình bytecode
-và Robot VM. Mọi instruction đều được mô tả chi tiết về opcode, các tham số
-và hành vi.
-
-ABI này là **hợp đồng cố định** sau Sprint 14.5. Các phiên bản tương lai
-chỉ được mở rộng, không thay đổi ngữ nghĩa hiện có.
-
----
-
-# 2. Instruction Format
-
-Mỗi instruction có kích thước cố định:
-
-```c
-struct Instruction
-{
-    Opcode opcode;  // 1 byte (enum class)
-    int16_t p1;     // 2 bytes
-    int16_t p2;     // 2 bytes
-    int16_t p3;     // 2 bytes
-};
-</file>
-
 <file path="robot-compiler/compiler/generated/__init__.py">
 
 </file>
@@ -1139,6 +1105,70 @@ Một quyết định kỹ thuật được xem là tốt khi:
 -   Không làm mờ trách nhiệm của repository.
 -   Không làm giảm khả năng mở rộng trong tương lai.
 -   Giúp Platform trở nên ổn định hơn sau mỗi Sprint.
+</file>
+
+<file path="robot-docs/VM_ABI.md">
+# VM ABI
+
+## Robot Virtual Machine Application Binary Interface
+
+Version: Foundation v1 (Frozen)
+
+---
+
+# 1. Purpose
+
+Tài liệu này định nghĩa giao diện nhị phân (ABI) giữa chương trình bytecode
+và Robot VM. Mọi instruction đều được mô tả chi tiết về opcode, các tham số
+và hành vi.
+
+ABI này là **hợp đồng cố định** sau Sprint 14.5. Các phiên bản tương lai
+chỉ được mở rộng, không thay đổi ngữ nghĩa hiện có.
+
+---
+
+# 2. Instruction Format
+
+Mỗi instruction có kích thước cố định:
+
+```c
+struct Instruction
+{
+    Opcode opcode;  // 1 byte (enum class)
+    int16_t p1;     // 2 bytes
+    int16_t p2;     // 2 bytes
+    int16_t p3;     // 2 bytes
+};
+
+
+# 7. Error Handling
+
+VM có thể dừng với các mã lỗi sau:
+
+| Error Code | Ý nghĩa                          |
+|------------|----------------------------------|
+| 0          | Không lỗi                        |
+| 1          | Opcode không hợp lệ              |
+| 2          | Program counter vượt quá giới hạn (program overflow) |
+| 3          | Jump target không hợp lệ (vượt quá kích thước chương trình) |
+
+Khi gặp lỗi, VM đặt `mRunning = false` và ghi mã lỗi vào `mErrorCode`.
+
+---
+
+# 8. Stability Guarantee
+
+- Opcode ID và ngữ nghĩa không thay đổi sau Sprint 14.6.
+- Có thể thêm opcode mới với ID > 26.
+- Có thể mở rộng `VMContext` nhưng không thay đổi các trường hiện có.
+- `Instruction` layout không thay đổi.
+- Error codes là hợp đồng cố định (0–3).
+
+---
+
+# 9. Version
+
+ABI Version: 1.0
 </file>
 
 <file path="robot-frontend-robosim/examples/robosim_move_second.py">
@@ -2467,80 +2497,6 @@ public:
 };
 </file>
 
-<file path="robot-platform/main/src/Services/VM/ProgramLoader.cpp">
-#include "ProgramLoader.h"
-#include "../Application/generated_program.h"
-
-bool ProgramLoader::LoadFromGenerated(Program& program)
-{
-    program.Clear();
-    for (uint16_t i = 0; i < generatedProgramSize; i++)
-    {
-        if (!program.AddInstruction(generatedProgram[i]))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool ProgramLoader::LoadFromArray(Program& program, const Instruction* instructions, uint16_t size)
-{
-    program.Clear();
-    for (uint16_t i = 0; i < size; i++)
-    {
-        if (!program.AddInstruction(instructions[i]))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool ProgramLoader::LoadBinary(Program& program, const uint8_t* data, uint16_t size)
-{
-    // TODO: parse binary format and fill program
-    // Placeholder: not implemented
-    (void)program;
-    (void)data;
-    (void)size;
-    return false;
-}
-
-bool ProgramLoader::LoadFlash(Program& program, uint16_t address)
-{
-    // TODO: read from flash memory
-    (void)program;
-    (void)address;
-    return false;
-}
-
-bool ProgramLoader::LoadUART(Program& program)
-{
-    // TODO: receive program via UART
-    (void)program;
-    return false;
-}
-</file>
-
-<file path="robot-platform/main/src/Services/VM/ProgramLoader.h">
-#pragma once
-
-#include "Program.h"
-
-class ProgramLoader
-{
-public:
-    static bool LoadFromGenerated(Program& program);
-    static bool LoadFromArray(Program& program, const Instruction* instructions, uint16_t size);
-
-    // --- Extended interfaces (placeholders) ---
-    static bool LoadBinary(Program& program, const uint8_t* data, uint16_t size);
-    static bool LoadFlash(Program& program, uint16_t address);
-    static bool LoadUART(Program& program);
-};
-</file>
-
 <file path="robot-platform/main/src/Services/VM/VM.h">
 /******************************************************************************
  * File        : VM.h
@@ -2611,88 +2567,6 @@ private:
      * Runtime Context.
      */
     VMContext mContext;
-};
-</file>
-
-<file path="robot-platform/main/src/Services/VM/VMContext.h">
-/******************************************************************************
- * File        : VMContext.h
- *
- * Description :
- *      Robot Virtual Machine Runtime Context.
- *
- *      VMContext contains the complete runtime state of Robot VM.
- *
- ******************************************************************************/
-
-#pragma once
-
-#include <stdint.h>
-#include <string.h>
-
-/*----------------------------------------------------------------------------
- * Configuration
- *---------------------------------------------------------------------------*/
-
-constexpr uint8_t MAX_VARIABLE_COUNT = 32;
-constexpr uint8_t MAX_LOOP_DEPTH = 8;
-constexpr uint8_t MAX_CALL_STACK = 8;
-
-/*----------------------------------------------------------------------------
- * Loop Frame
- *---------------------------------------------------------------------------*/
-
-struct LoopFrame
-{
-    uint8_t variableId;
-    uint16_t current;
-    uint16_t count;
-    uint16_t startPc;
-};
-
-/*----------------------------------------------------------------------------
- * VM Context
- *---------------------------------------------------------------------------*/
-
-class VMContext
-{
-public:
-    VMContext()
-    {
-        Reset();
-    }
-
-    void Reset()
-    {
-        memset(mVariables, 0, sizeof(mVariables));
-        mRegister0 = 0;
-        mFlag = false;
-        mProgramCounter = 0;
-        mRunning = true;
-        mLoopStackPointer = 0;
-        mCallStackPointer = 0;
-        mFramePointer = 0;
-        mReturnAddress = 0;
-        mErrorCode = 0;
-    }
-
-public:
-    int16_t mVariables[MAX_VARIABLE_COUNT];
-    int16_t mRegister0;
-    bool mFlag;
-    uint16_t mProgramCounter;
-    bool mRunning;
-
-    // Loop stack (for break/continue)
-    LoopFrame mLoopStack[MAX_LOOP_DEPTH];
-    uint8_t mLoopStackPointer;
-
-    // --- Call Stack (placeholder for future function calls) ---
-    uint16_t mCallStack[MAX_CALL_STACK];   // return addresses
-    uint8_t mCallStackPointer;
-    uint16_t mFramePointer;                // current frame pointer
-    uint16_t mReturnAddress;               // temporary return address
-    uint8_t mErrorCode;                    // 0 = no error, >0 = error code
 };
 </file>
 
@@ -4157,59 +4031,160 @@ struct Instruction
 };
 </file>
 
-<file path="robot-platform/main/main.ino">
-#include "src/Services/VM/ProgramLoader.h"
+<file path="robot-platform/main/src/Services/VM/ProgramLoader.cpp">
+#include "ProgramLoader.h"
+#include "../Application/generated_program.h"
 
-VM vm;
-Program program;
-
-void setup()
+bool ProgramLoader::LoadFromGenerated(Program& program)
 {
-    Serial.begin(115200);
-
-    while (!Serial)
+    program.Clear();
+    for (uint16_t i = 0; i < generatedProgramSize; i++)
     {
-    }
-
-    Serial.println();
-    Serial.println("==================================");
-    Serial.println(" Robot VM Prototype");
-    Serial.println("==================================");
-
-    // Load program from generated header
-    ProgramLoader::LoadFromGenerated(program);
-
-    vm.LoadProgram(&program);
-
-    Serial.println("Program Loaded");
-    Serial.println();
-}
-
-/******************************************************************************
- * Loop
- ******************************************************************************/
-
-void loop()
-{
-    if (vm.IsRunning())
-    {
-        Serial.print("[VM] PC = ");
-        Serial.println(vm.GetProgramCounter());
-
-        vm.Step();
-
-        delay(100);
-    }
-    else
-    {
-        Serial.println();
-        Serial.println("========== VM FINISHED ==========");
-
-        while (true)
+        if (!program.AddInstruction(generatedProgram[i]))
         {
+            return false;
         }
     }
+    return true;
 }
+
+bool ProgramLoader::LoadFromArray(Program& program, const Instruction* instructions, uint16_t size)
+{
+    program.Clear();
+    for (uint16_t i = 0; i < size; i++)
+    {
+        if (!program.AddInstruction(instructions[i]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ProgramLoader::LoadBinary(Program& program, const uint8_t* data, uint16_t size)
+{
+    // TODO: parse binary format and fill program
+    // Placeholder: not implemented
+    (void)program;
+    (void)data;
+    (void)size;
+    return false;
+}
+
+bool ProgramLoader::LoadFlash(Program& program, uint16_t address)
+{
+    // TODO: read from flash memory
+    (void)program;
+    (void)address;
+    return false;
+}
+
+bool ProgramLoader::LoadUART(Program& program)
+{
+    // TODO: receive program via UART
+    (void)program;
+    return false;
+}
+</file>
+
+<file path="robot-platform/main/src/Services/VM/ProgramLoader.h">
+#pragma once
+
+#include "Program.h"
+
+class ProgramLoader
+{
+public:
+    static bool LoadFromGenerated(Program& program);
+    static bool LoadFromArray(Program& program, const Instruction* instructions, uint16_t size);
+
+    // --- Extended interfaces (placeholders) ---
+    static bool LoadBinary(Program& program, const uint8_t* data, uint16_t size);
+    static bool LoadFlash(Program& program, uint16_t address);
+    static bool LoadUART(Program& program);
+};
+</file>
+
+<file path="robot-platform/main/src/Services/VM/VMContext.h">
+/******************************************************************************
+ * File        : VMContext.h
+ *
+ * Description :
+ *      Robot Virtual Machine Runtime Context.
+ *
+ *      VMContext contains the complete runtime state of Robot VM.
+ *
+ ******************************************************************************/
+
+#pragma once
+
+#include <stdint.h>
+#include <string.h>
+
+/*----------------------------------------------------------------------------
+ * Configuration
+ *---------------------------------------------------------------------------*/
+
+constexpr uint8_t MAX_VARIABLE_COUNT = 32;
+constexpr uint8_t MAX_LOOP_DEPTH = 8;
+constexpr uint8_t MAX_CALL_STACK = 8;
+
+/*----------------------------------------------------------------------------
+ * Loop Frame
+ *---------------------------------------------------------------------------*/
+
+struct LoopFrame
+{
+    uint8_t variableId;
+    uint16_t current;
+    uint16_t count;
+    uint16_t startPc;
+};
+
+/*----------------------------------------------------------------------------
+ * VM Context
+ *---------------------------------------------------------------------------*/
+
+class VMContext
+{
+public:
+    VMContext()
+    {
+        Reset();
+    }
+
+    void Reset()
+    {
+        memset(mVariables, 0, sizeof(mVariables));
+        mRegister0 = 0;
+        mFlag = false;
+        mProgramCounter = 0;
+        mRunning = true;
+        mLoopStackPointer = 0;
+        mCallStackPointer = 0;
+        mFramePointer = 0;
+        mReturnAddress = 0;
+        mErrorCode = 0;
+    }
+
+public:
+    int16_t mVariables[MAX_VARIABLE_COUNT];
+    int16_t mRegister0;
+    bool mFlag;
+    uint16_t mProgramCounter;
+    bool mRunning;
+
+    // Loop stack (for break/continue)
+    LoopFrame mLoopStack[MAX_LOOP_DEPTH];
+    uint8_t mLoopStackPointer;
+
+    // --- Call Stack (placeholder for future function calls) ---
+    uint16_t mCallStack[MAX_CALL_STACK];   // return addresses
+    uint8_t mCallStackPointer;
+    uint16_t mFramePointer;                // current frame pointer
+    uint16_t mReturnAddress;               // temporary return address
+    uint8_t mErrorCode;                    // 0 = no error, >0 = error code
+};
 </file>
 
 <file path="robot-compiler/compiler/handlers/bool_handler.py">
@@ -5315,303 +5290,6 @@ Không còn Repository nào đọc trực tiếp Specification ngoài
 robot-language.
 </file>
 
-<file path="robot-docs/DEVELOPMENT_GUIDE.md">
-# DEVELOPMENT_GUIDE.md
-
-# Robot Development Platform
-
-## Development Guide
-
-Version: Foundation v1 (Draft)
-
-------------------------------------------------------------------------
-
-
-# 1. Purpose
-
-Tài liệu này định nghĩa quy trình phát triển chuẩn của Robot Development
-Platform.
-
-Mọi tính năng mới đều phải tuân theo quy trình này.
-
-------------------------------------------------------------------------
-
-# 2. Development Workflow
-
-``` text
-Requirement
-    │
-    ▼
-Specification
-    │
-    ▼
-Validation
-    │
-    ▼
-Generation
-    │
-    ▼
-Artifact
-    │
-    ▼
-Compiler
-    │
-    ▼
-Runtime
-    │
-    ▼
-Regression
-
-------------------------------------------------------------------------
-
-3. Feature Development Flow
-Phân tích yêu cầu.
-
-Xác định ảnh hưởng tới Specification.
-
-Cập nhật Specification.
-
-Build Artifact.
-
-Cập nhật Consumer.
-
-Regression Test.
-
-Cập nhật Documentation.
-
-4. Build and Install Artifacts
-Sau khi thay đổi api.yaml (thêm hàm mới, sửa opcode, v.v.), cần chạy build để sinh artifact mới:
-
-bash
-cd robot-language
-python build.py
-Lệnh này sẽ:
-
-Load specification
-
-Chạy validators (Duplicate, Semantic, Reference)
-
-Sinh các artifact (opcode.py, opcode.h, function_registry.py, sdk, ...)
-
-Sau đó, chạy install để phân phối artifact đến các consumer:
-
-bash
-python install.py
-Install sẽ copy các file sinh ra vào đúng thư mục của từng consumer:
-
-robot-compiler/compiler/generated/ (các file .py)
-
-robot-platform/main/include/generated/ (opcode.h)
-
-Quy tắc: Tuyệt đối không sửa tay bất kỳ file nào trong thư mục generated/. Mọi thay đổi đều phải thông qua api.yaml và build.
-
-5. Adding a New Robot API
-text
-Requirement
-    ↓
-api.yaml
-    ↓
-Validation
-    ↓
-Generator
-    ↓
-Artifact
-    ↓
-Compiler
-    ↓
-Runtime
-    ↓
-Test
-Checklist
-
-□ Specification
-□ Validation
-□ Artifact
-□ Compiler
-□ Runtime
-□ Documentation
-□ Regression
-6. Adding a New Generator
-Tạo Generator mới.
-
-Đăng ký trong Build System.
-
-Sinh Artifact.
-
-Kiểm tra Output.
-
-Cập nhật Install.
-
-Không sửa Generator hiện có nếu không cần thiết.
-
-7. Adding a New Artifact
-Quy trình
-
-Thiết kế Artifact.
-
-Xây dựng Generator.
-
-Sinh Artifact.
-
-Install.
-
-Consumer sử dụng Artifact.
-
-Rule
-
-Một Artifact chỉ có một Producer.
-
-8. Modifying Compiler
-Được phép
-
-AST
-
-Opcode Handling
-
-Bytecode
-
-Optimization
-
-Không được
-
-Parse Specification
-
-Gọi RobotAPI
-
-Chỉnh Frontend
-
-9. Modifying Runtime
-Được phép
-
-VM
-
-Dispatch
-
-RobotAPI
-
-Không được
-
-Compile
-
-Parse AST
-
-Parse Specification
-
-10. Modifying Frontend
-Được phép
-
-Rewrite
-
-Mapping
-
-Không được
-
-Generate Bytecode
-
-Execute
-
-Parse Specification
-
-11. Build Checklist
-□ Build thành công
-□ Artifact được sinh
-□ Install hoàn tất
-□ Consumer đồng bộ
-12. Regression Checklist
-□ Build
-□ Compiler
-□ VM
-□ Existing Demo
-□ Existing Artifact
-□ Documentation
-Không merge nếu Regression chưa hoàn thành.
-
-13. Commit Guideline
-Một Commit chỉ nên:
-
-Một Feature
-
-Một Bug Fix
-
-Một Refactor
-
-Một Documentation Update
-
-Không trộn nhiều mục đích trong cùng một Commit.
-
-14. Pull Request Checklist
-□ Build thành công
-□ Regression thành công
-□ Documentation cập nhật
-□ Không phá Design Contract
-□ Không tạo Circular Dependency
-15. Code Review Checklist
-Đúng Responsibility.
-
-Đúng Layer.
-
-Không duplicate logic.
-
-Không sửa Generated File.
-
-Không thêm dependency không cần thiết.
-
-16. Documentation Checklist
-Sau mỗi Feature cần cập nhật nếu cần:
-
-PROJECT_STATUS.md
-
-ARCHITECTURE.md
-
-BUILD_SYSTEM.md
-
-DESIGN_CONTRACT.md
-
-DEVELOPMENT_GUIDE.md
-
-ENGINEERING_PHILOSOPHY.md
-
-ROADMAP.md
-
-17. Definition of Done
-Một Feature được xem là hoàn thành khi:
-
-Requirement hoàn thành.
-
-Code hoàn thành.
-
-Build thành công.
-
-Regression thành công.
-
-Documentation cập nhật.
-
-Pull Request được review.
-
-Không vi phạm Design Contract.
-
-## Using Arithmetic Expressions
-
-Trong lời gọi robot API, bạn có thể sử dụng biểu thức số học:
-
-```python
-forward(80 + 20)          # → forward(100)
-turn_left(speed * 2)      # sử dụng biến
-wait(seconds * 1000)      # chuyển đổi đơn vị
-
-
-## 18. Runtime ABI
-
-Sau khi Sprint 14.5 hoàn tất, Runtime ABI được đóng băng. Xem chi tiết tại
-`robot-docs/VM_ABI.md`.
-
-Khi thêm opcode mới, phải cập nhật:
-- `api.yaml` (spec)
-- `VM_ABI.md`
-- VM dispatcher (`VM.cpp`)
-- Compiler handler (nếu là API người dùng)
-</file>
-
 <file path="robot-docs/ROADMAP.md">
 Robot Development Platform
 Development Roadmap
@@ -5826,26 +5504,31 @@ Test pass.
 
 Thời gian dự kiến: 3-4 ngày.
 
-Phase 3 – Runtime Platform (Planning)
+Phase 3 – Runtime Platform (Completed)
 Goal
 Hoàn thiện Robot VM với hiệu suất và tính năng nâng cao.
 
 Objectives
 Virtual Machine
-
 Dispatch System
-
 Runtime Context
-
 RobotAPI
+Debugging Support (cơ bản)
 
-Debugging Support
+Deliverables
+☑ Runtime ABI (VM_ABI.md)
+☑ Complete VM Dispatcher
+☑ Runtime Error Handling
+☑ End-to-End Pipeline
+☑ Regression Suite
 
-Deliverables (Future)
-□ Runtime ABI
-□ Debug runtime (step-by-step)
-□ Performance profiling
-□ Error handling (division by zero, out-of-range)
+...
+
+Foundation v3 (✅ Sprint 14.6)
+- Runtime Error Handling
+- Foundation Freeze
+- Tag: Foundation v1
+
 Phase 4 – Developer Experience (Planning)
 Goal
 Tăng năng suất phát triển với công cụ hỗ trợ.
@@ -6472,6 +6155,373 @@ categories:
         args: []
 </file>
 
+<file path="robot-platform/main/main.ino">
+#include "src/Services/VM/ProgramLoader.h"
+
+VM vm;
+Program program;
+
+void setup()
+{
+    Serial.begin(115200);
+
+    while (!Serial)
+    {
+    }
+
+    Serial.println();
+    Serial.println("==================================");
+    Serial.println(" Robot VM Prototype");
+    Serial.println("==================================");
+
+    // Load program from generated header
+    ProgramLoader::LoadFromGenerated(program);
+
+    vm.LoadProgram(&program);
+
+    Serial.println("Program Loaded");
+    Serial.println();
+}
+
+/******************************************************************************
+ * Loop
+ ******************************************************************************/
+
+void loop()
+{
+    if (vm.IsRunning())
+    {
+        Serial.print("[VM] PC = ");
+        Serial.println(vm.GetProgramCounter());
+
+        vm.Step();
+
+        delay(100);
+    }
+    else
+    {
+        Serial.println();
+        Serial.println("========== VM FINISHED ==========");
+
+        while (true)
+        {
+        }
+    }
+}
+</file>
+
+<file path="robot-docs/DEVELOPMENT_GUIDE.md">
+# DEVELOPMENT_GUIDE.md
+
+# Robot Development Platform
+
+## Development Guide
+
+Version: Foundation v1 (Draft)
+
+------------------------------------------------------------------------
+
+
+# 1. Purpose
+
+Tài liệu này định nghĩa quy trình phát triển chuẩn của Robot Development
+Platform.
+
+Mọi tính năng mới đều phải tuân theo quy trình này.
+
+------------------------------------------------------------------------
+
+# 2. Development Workflow
+
+``` text
+Requirement
+    │
+    ▼
+Specification
+    │
+    ▼
+Validation
+    │
+    ▼
+Generation
+    │
+    ▼
+Artifact
+    │
+    ▼
+Compiler
+    │
+    ▼
+Runtime
+    │
+    ▼
+Regression
+
+------------------------------------------------------------------------
+
+3. Feature Development Flow
+Phân tích yêu cầu.
+
+Xác định ảnh hưởng tới Specification.
+
+Cập nhật Specification.
+
+Build Artifact.
+
+Cập nhật Consumer.
+
+Regression Test.
+
+Cập nhật Documentation.
+
+4. Build and Install Artifacts
+Sau khi thay đổi api.yaml (thêm hàm mới, sửa opcode, v.v.), cần chạy build để sinh artifact mới:
+
+bash
+cd robot-language
+python build.py
+Lệnh này sẽ:
+
+Load specification
+
+Chạy validators (Duplicate, Semantic, Reference)
+
+Sinh các artifact (opcode.py, opcode.h, function_registry.py, sdk, ...)
+
+Sau đó, chạy install để phân phối artifact đến các consumer:
+
+bash
+python install.py
+Install sẽ copy các file sinh ra vào đúng thư mục của từng consumer:
+
+robot-compiler/compiler/generated/ (các file .py)
+
+robot-platform/main/include/generated/ (opcode.h)
+
+Quy tắc: Tuyệt đối không sửa tay bất kỳ file nào trong thư mục generated/. Mọi thay đổi đều phải thông qua api.yaml và build.
+
+5. Adding a New Robot API
+text
+Requirement
+    ↓
+api.yaml
+    ↓
+Validation
+    ↓
+Generator
+    ↓
+Artifact
+    ↓
+Compiler
+    ↓
+Runtime
+    ↓
+Test
+Checklist
+
+□ Specification
+□ Validation
+□ Artifact
+□ Compiler
+□ Runtime
+□ Documentation
+□ Regression
+6. Adding a New Generator
+Tạo Generator mới.
+
+Đăng ký trong Build System.
+
+Sinh Artifact.
+
+Kiểm tra Output.
+
+Cập nhật Install.
+
+Không sửa Generator hiện có nếu không cần thiết.
+
+7. Adding a New Artifact
+Quy trình
+
+Thiết kế Artifact.
+
+Xây dựng Generator.
+
+Sinh Artifact.
+
+Install.
+
+Consumer sử dụng Artifact.
+
+Rule
+
+Một Artifact chỉ có một Producer.
+
+8. Modifying Compiler
+Được phép
+
+AST
+
+Opcode Handling
+
+Bytecode
+
+Optimization
+
+Không được
+
+Parse Specification
+
+Gọi RobotAPI
+
+Chỉnh Frontend
+
+9. Modifying Runtime
+Được phép
+
+VM
+
+Dispatch
+
+RobotAPI
+
+Không được
+
+Compile
+
+Parse AST
+
+Parse Specification
+
+10. Modifying Frontend
+Được phép
+
+Rewrite
+
+Mapping
+
+Không được
+
+Generate Bytecode
+
+Execute
+
+Parse Specification
+
+11. Build Checklist
+□ Build thành công
+□ Artifact được sinh
+□ Install hoàn tất
+□ Consumer đồng bộ
+12. Regression Checklist
+□ Build
+□ Compiler
+□ VM
+□ Existing Demo
+□ Existing Artifact
+□ Documentation
+Không merge nếu Regression chưa hoàn thành.
+
+13. Commit Guideline
+Một Commit chỉ nên:
+
+Một Feature
+
+Một Bug Fix
+
+Một Refactor
+
+Một Documentation Update
+
+Không trộn nhiều mục đích trong cùng một Commit.
+
+14. Pull Request Checklist
+□ Build thành công
+□ Regression thành công
+□ Documentation cập nhật
+□ Không phá Design Contract
+□ Không tạo Circular Dependency
+15. Code Review Checklist
+Đúng Responsibility.
+
+Đúng Layer.
+
+Không duplicate logic.
+
+Không sửa Generated File.
+
+Không thêm dependency không cần thiết.
+
+16. Documentation Checklist
+Sau mỗi Feature cần cập nhật nếu cần:
+
+PROJECT_STATUS.md
+
+ARCHITECTURE.md
+
+BUILD_SYSTEM.md
+
+DESIGN_CONTRACT.md
+
+DEVELOPMENT_GUIDE.md
+
+ENGINEERING_PHILOSOPHY.md
+
+ROADMAP.md
+
+17. Definition of Done
+Một Feature được xem là hoàn thành khi:
+
+Requirement hoàn thành.
+
+Code hoàn thành.
+
+Build thành công.
+
+Regression thành công.
+
+Documentation cập nhật.
+
+Pull Request được review.
+
+Không vi phạm Design Contract.
+
+## Using Arithmetic Expressions
+
+Trong lời gọi robot API, bạn có thể sử dụng biểu thức số học:
+
+```python
+forward(80 + 20)          # → forward(100)
+turn_left(speed * 2)      # sử dụng biến
+wait(seconds * 1000)      # chuyển đổi đơn vị
+
+
+## 18. Runtime ABI
+
+Sau khi Sprint 14.5 hoàn tất, Runtime ABI được đóng băng. Xem chi tiết tại
+`robot-docs/VM_ABI.md`.
+
+Khi thêm opcode mới, phải cập nhật:
+- `api.yaml` (spec)
+- `VM_ABI.md`
+- VM dispatcher (`VM.cpp`)
+- Compiler handler (nếu là API người dùng)
+
+## 18. Runtime ABI
+
+Sau khi Sprint 14.6 hoàn tất, Runtime ABI được đóng băng. Xem chi tiết tại
+`robot-docs/VM_ABI.md`.
+
+**Foundation v1 đã được đóng băng.**  
+Mọi thay đổi về ABI, opcode, hoặc giao diện VM phải được xem xét cẩn thận và chỉ được thực hiện khi có quyết định thiết kế mới.
+
+Khi thêm opcode mới, phải cập nhật:
+- `api.yaml` (spec)
+- `VM_ABI.md`
+- VM dispatcher (`VM.cpp`)
+- Compiler handler (nếu là API người dùng)
+- Regression tests
+</file>
+
 <file path="robot-platform/main/src/Services/VM/VM.cpp">
 #include "VM.h"
 #include "../Robot/RobotAPI.h"
@@ -6506,6 +6556,7 @@ void VM::Step()
     if (mContext.mProgramCounter >= mProgram->mInstructionCount)
     {
         mContext.mRunning = false;
+        mContext.mErrorCode = 2;  // program overflow
         return;
     }
     const Instruction& instruction = mProgram->mInstructions[mContext.mProgramCounter];
@@ -6588,22 +6639,63 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             break;
 
         case Opcode::Jump:
-            mContext.mProgramCounter = instruction.p1;
+        {
+            uint16_t target = instruction.p1;
+            if (target >= mProgram->mInstructionCount)
+            {
+                mContext.mRunning = false;
+                mContext.mErrorCode = 3;  // invalid jump target
+            }
+            else
+            {
+                mContext.mProgramCounter = target;
+            }
             break;
+        }
 
         case Opcode::JumpIfFalse:
+        {
             if (mContext.mVariables[instruction.p1] == 0)
-                mContext.mProgramCounter = instruction.p2;
+            {
+                uint16_t target = instruction.p2;
+                if (target >= mProgram->mInstructionCount)
+                {
+                    mContext.mRunning = false;
+                    mContext.mErrorCode = 3;  // invalid jump target
+                }
+                else
+                {
+                    mContext.mProgramCounter = target;
+                }
+            }
             else
+            {
                 mContext.mProgramCounter++;
+            }
             break;
+        }
 
         case Opcode::JumpIfTrue:
+        {
             if (mContext.mVariables[instruction.p1] != 0)
-                mContext.mProgramCounter = instruction.p2;
+            {
+                uint16_t target = instruction.p2;
+                if (target >= mProgram->mInstructionCount)
+                {
+                    mContext.mRunning = false;
+                    mContext.mErrorCode = 3;  // invalid jump target
+                }
+                else
+                {
+                    mContext.mProgramCounter = target;
+                }
+            }
             else
+            {
                 mContext.mProgramCounter++;
+            }
             break;
+        }
 
         // --- Arithmetic operations ---
         case Opcode::Add:
@@ -6662,6 +6754,7 @@ void VM::ExecuteInstruction(const Instruction& instruction)
 
         default:
             mContext.mRunning = false;
+            mContext.mErrorCode = 1;  // invalid opcode
             break;
     }
 }

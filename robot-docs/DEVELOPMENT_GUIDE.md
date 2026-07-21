@@ -292,3 +292,18 @@ Khi thêm opcode mới, phải cập nhật:
 - `VM_ABI.md`
 - VM dispatcher (`VM.cpp`)
 - Compiler handler (nếu là API người dùng)
+
+## 18. Runtime ABI
+
+Sau khi Sprint 14.6 hoàn tất, Runtime ABI được đóng băng. Xem chi tiết tại
+`robot-docs/VM_ABI.md`.
+
+**Foundation v1 đã được đóng băng.**  
+Mọi thay đổi về ABI, opcode, hoặc giao diện VM phải được xem xét cẩn thận và chỉ được thực hiện khi có quyết định thiết kế mới.
+
+Khi thêm opcode mới, phải cập nhật:
+- `api.yaml` (spec)
+- `VM_ABI.md`
+- VM dispatcher (`VM.cpp`)
+- Compiler handler (nếu là API người dùng)
+- Regression tests

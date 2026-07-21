@@ -31,6 +31,7 @@ void VM::Step()
     if (mContext.mProgramCounter >= mProgram->mInstructionCount)
     {
         mContext.mRunning = false;
+        mContext.mErrorCode = 2;  // program overflow
         return;
     }
     const Instruction& instruction = mProgram->mInstructions[mContext.mProgramCounter];
@@ -113,22 +114,63 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             break;
 
         case Opcode::Jump:
-            mContext.mProgramCounter = instruction.p1;
+        {
+            uint16_t target = instruction.p1;
+            if (target >= mProgram->mInstructionCount)
+            {
+                mContext.mRunning = false;
+                mContext.mErrorCode = 3;  // invalid jump target
+            }
+            else
+            {
+                mContext.mProgramCounter = target;
+            }
             break;
+        }
 
         case Opcode::JumpIfFalse:
+        {
             if (mContext.mVariables[instruction.p1] == 0)
-                mContext.mProgramCounter = instruction.p2;
+            {
+                uint16_t target = instruction.p2;
+                if (target >= mProgram->mInstructionCount)
+                {
+                    mContext.mRunning = false;
+                    mContext.mErrorCode = 3;  // invalid jump target
+                }
+                else
+                {
+                    mContext.mProgramCounter = target;
+                }
+            }
             else
+            {
                 mContext.mProgramCounter++;
+            }
             break;
+        }
 
         case Opcode::JumpIfTrue:
+        {
             if (mContext.mVariables[instruction.p1] != 0)
-                mContext.mProgramCounter = instruction.p2;
+            {
+                uint16_t target = instruction.p2;
+                if (target >= mProgram->mInstructionCount)
+                {
+                    mContext.mRunning = false;
+                    mContext.mErrorCode = 3;  // invalid jump target
+                }
+                else
+                {
+                    mContext.mProgramCounter = target;
+                }
+            }
             else
+            {
                 mContext.mProgramCounter++;
+            }
             break;
+        }
 
         // --- Arithmetic operations ---
         case Opcode::Add:
@@ -187,6 +229,7 @@ void VM::ExecuteInstruction(const Instruction& instruction)
 
         default:
             mContext.mRunning = false;
+            mContext.mErrorCode = 1;  // invalid opcode
             break;
     }
 }
