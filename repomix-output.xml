@@ -100,6 +100,7 @@ robot-docs/
   DEVELOPMENT_GUIDE.md
   ENGINEERING_PHILOSOPHY.md
   ROADMAP.md
+  VM_ABI.md
 robot-frontend-robosim/
   examples/
     robosim_demo.py
@@ -165,8 +166,6 @@ robot-platform/
         generated_program.h
         LineFollowerApp.cpp
         LineFollowerApp.h
-        RobotProgramApp.cpp
-        RobotProgramApp.h
       Communication/
         ProgramLoader.cpp
         UART.cpp
@@ -187,16 +186,52 @@ robot-platform/
         VM/
           Instruction.h
           Program.h
+          ProgramLoader.cpp
+          ProgramLoader.h
           VM.cpp
           VM.h
           VMContext.h
     main.ino
 04_Robotics_SW_DeepSeek.code-workspace
-PROJECT_STATUS_v2.md
+run_all_tests.py
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="robot-docs/VM_ABI.md">
+# VM ABI
+
+## Robot Virtual Machine Application Binary Interface
+
+Version: Foundation v1 (Frozen)
+
+---
+
+# 1. Purpose
+
+Tài liệu này định nghĩa giao diện nhị phân (ABI) giữa chương trình bytecode
+và Robot VM. Mọi instruction đều được mô tả chi tiết về opcode, các tham số
+và hành vi.
+
+ABI này là **hợp đồng cố định** sau Sprint 14.5. Các phiên bản tương lai
+chỉ được mở rộng, không thay đổi ngữ nghĩa hiện có.
+
+---
+
+# 2. Instruction Format
+
+Mỗi instruction có kích thước cố định:
+
+```c
+struct Instruction
+{
+    Opcode opcode;  // 1 byte (enum class)
+    int16_t p1;     // 2 bytes
+    int16_t p2;     // 2 bytes
+    int16_t p3;     // 2 bytes
+};
+</file>
 
 <file path="robot-compiler/compiler/generated/__init__.py">
 
@@ -1941,32 +1976,6 @@ public:
 #endif
 </file>
 
-<file path="robot-platform/main/src/Application/RobotProgramApp.cpp">
-#include "RobotProgramApp.h"
-#include "generated_program.h"
-
-void BuildProgram(Program& program)
-{
-    program.Clear();
-
-    for (uint16_t i = 0; i < generatedProgramSize; i++)
-    {
-        program.AddInstruction(generatedProgram[i]);
-    }
-}
-</file>
-
-<file path="robot-platform/main/src/Application/RobotProgramApp.h">
-#include "src/Services/VM/VM.h"
-
-
-
-extern VM vm;
-extern Program program;
-
-void BuildProgram(Program& program);
-</file>
-
 <file path="robot-platform/main/src/Communication/ProgramLoader.cpp">
 
 </file>
@@ -2458,6 +2467,80 @@ public:
 };
 </file>
 
+<file path="robot-platform/main/src/Services/VM/ProgramLoader.cpp">
+#include "ProgramLoader.h"
+#include "../Application/generated_program.h"
+
+bool ProgramLoader::LoadFromGenerated(Program& program)
+{
+    program.Clear();
+    for (uint16_t i = 0; i < generatedProgramSize; i++)
+    {
+        if (!program.AddInstruction(generatedProgram[i]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ProgramLoader::LoadFromArray(Program& program, const Instruction* instructions, uint16_t size)
+{
+    program.Clear();
+    for (uint16_t i = 0; i < size; i++)
+    {
+        if (!program.AddInstruction(instructions[i]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ProgramLoader::LoadBinary(Program& program, const uint8_t* data, uint16_t size)
+{
+    // TODO: parse binary format and fill program
+    // Placeholder: not implemented
+    (void)program;
+    (void)data;
+    (void)size;
+    return false;
+}
+
+bool ProgramLoader::LoadFlash(Program& program, uint16_t address)
+{
+    // TODO: read from flash memory
+    (void)program;
+    (void)address;
+    return false;
+}
+
+bool ProgramLoader::LoadUART(Program& program)
+{
+    // TODO: receive program via UART
+    (void)program;
+    return false;
+}
+</file>
+
+<file path="robot-platform/main/src/Services/VM/ProgramLoader.h">
+#pragma once
+
+#include "Program.h"
+
+class ProgramLoader
+{
+public:
+    static bool LoadFromGenerated(Program& program);
+    static bool LoadFromArray(Program& program, const Instruction* instructions, uint16_t size);
+
+    // --- Extended interfaces (placeholders) ---
+    static bool LoadBinary(Program& program, const uint8_t* data, uint16_t size);
+    static bool LoadFlash(Program& program, uint16_t address);
+    static bool LoadUART(Program& program);
+};
+</file>
+
 <file path="robot-platform/main/src/Services/VM/VM.h">
 /******************************************************************************
  * File        : VM.h
@@ -2552,36 +2635,18 @@ private:
  *---------------------------------------------------------------------------*/
 
 constexpr uint8_t MAX_VARIABLE_COUNT = 32;
-
 constexpr uint8_t MAX_LOOP_DEPTH = 8;
+constexpr uint8_t MAX_CALL_STACK = 8;
 
 /*----------------------------------------------------------------------------
  * Loop Frame
  *---------------------------------------------------------------------------*/
 
-/**
- * FOR loop runtime information.
- */
 struct LoopFrame
 {
-    /**
-     * Loop variable ID.
-     */
     uint8_t variableId;
-
-    /**
-     * Current iteration.
-     */
     uint16_t current;
-
-    /**
-     * Total loop count.
-     */
     uint16_t count;
-
-    /**
-     * Instruction index after FOR_BEGIN.
-     */
     uint16_t startPc;
 };
 
@@ -2592,121 +2657,43 @@ struct LoopFrame
 class VMContext
 {
 public:
-
     VMContext()
     {
         Reset();
     }
 
-    /**
-     * Reset VM runtime state.
-     */
     void Reset()
     {
         memset(mVariables, 0, sizeof(mVariables));
-
         mRegister0 = 0;
-
         mFlag = false;
-
         mProgramCounter = 0;
-
         mRunning = true;
-
         mLoopStackPointer = 0;
+        mCallStackPointer = 0;
+        mFramePointer = 0;
+        mReturnAddress = 0;
+        mErrorCode = 0;
     }
 
 public:
-
-    /**
-     * VM Variables.
-     */
     int16_t mVariables[MAX_VARIABLE_COUNT];
-
-    /**
-     * General purpose register.
-     */
     int16_t mRegister0;
-
-    /**
-     * Compare result.
-     */
     bool mFlag;
-
-    /**
-     * Current instruction index.
-     */
     uint16_t mProgramCounter;
-
-    /**
-     * VM running state.
-     */
     bool mRunning;
 
-    /**
-     * Loop stack.
-     */
+    // Loop stack (for break/continue)
     LoopFrame mLoopStack[MAX_LOOP_DEPTH];
-
-    /**
-     * Stack pointer.
-     */
     uint8_t mLoopStackPointer;
+
+    // --- Call Stack (placeholder for future function calls) ---
+    uint16_t mCallStack[MAX_CALL_STACK];   // return addresses
+    uint8_t mCallStackPointer;
+    uint16_t mFramePointer;                // current frame pointer
+    uint16_t mReturnAddress;               // temporary return address
+    uint8_t mErrorCode;                    // 0 = no error, >0 = error code
 };
-</file>
-
-<file path="robot-platform/main/main.ino">
-#include "src/Application/RobotProgramApp.h"
-
-VM vm;
-Program program;
-
-void setup()
-{
-    Serial.begin(115200);
-
-    while (!Serial)
-    {
-    }
-
-    Serial.println();
-    Serial.println("==================================");
-    Serial.println(" Robot VM Prototype");
-    Serial.println("==================================");
-
-    BuildProgram(program);
-
-    vm.LoadProgram(&program);
-
-    Serial.println("Program Loaded");
-    Serial.println();
-}
-
-/******************************************************************************
- * Loop
- ******************************************************************************/
-
-void loop()
-{
-    if (vm.IsRunning())
-    {
-        Serial.print("[VM] PC = ");
-        Serial.println(vm.GetProgramCounter());
-
-        vm.Step();
-
-        delay(100);
-    }
-    else
-    {
-        Serial.println();
-        Serial.println("========== VM FINISHED ==========");
-
-        while (true)
-        {
-        }
-    }
-}
 </file>
 
 <file path="04_Robotics_SW_DeepSeek.code-workspace">
@@ -2720,410 +2707,43 @@ void loop()
 }
 </file>
 
-<file path="PROJECT_STATUS_v2.md">
-# PROJECT_STATUS.md
-
-# Robot Development Platform
-
-**Version:** Foundation v0.2
-
-**Last Update:** Foundation Architecture Review
-
-------------------------------------------------------------------------
-
-# 1. Project Vision
-
-Robot Development Platform là một nền tảng hoàn chỉnh dành cho Robotics
-Education.
-
-Mục tiêu của hệ thống là cho phép học sinh lập trình Robot bằng nhiều
-Frontend khác nhau (RoboSim, Blockly, Scratch, Python...), sau đó biên
-dịch thành Robot Bytecode và thực thi trên nhiều nền tảng phần cứng khác
-nhau.
-
-Toàn bộ hệ thống được thiết kế theo hướng:
-
--   Hardware Independent
--   Frontend Independent
--   Modular
--   Extensible
-
-Robot Hardware chỉ là tầng cuối cùng của hệ thống.
-
-------------------------------------------------------------------------
-
-# 2. High Level Architecture
-
-``` text
-                  Student
-                     │
-                     ▼
-          RoboSim / Blockly / IDE
-                     │
-                     ▼
-              Robot Frontend
-                     │
-              Standard Python
-                     │
-                     ▼
-             Python Standard AST
-                     │
-                     ▼
-             Robot Compiler
-                     │
-              Bytecode Program
-                     │
-                     ▼
-          Robot Virtual Machine
-                     │
-                     ▼
-                Robot API
-                     │
-                     ▼
-              Robot Hardware
-```
-
-------------------------------------------------------------------------
-
-# 3. Repository Overview
-
-## robot-language
-
-Single Source of Truth.
-
--   Định nghĩa Robot Language Specification.
--   Không compile.
--   Không execute.
--   Không biết AST.
--   Sinh toàn bộ Artifact cho các repository khác.
-
-## robot-frontend-robosim
-
-Frontend Adapter.
-
--   Rewrite RoboSim API sang Robot Language API.
--   Không compile.
--   Không biết VM.
--   Không biết Hardware.
-
-## robot-compiler
-
-Compiler.
-
--   Compile Standard Python AST.
--   Sinh Robot Bytecode.
--   Không biết RoboSim.
--   Không execute.
-
-## robot-platform
-
-Runtime.
-
--   Execute Robot Bytecode.
--   Không parse Python.
--   Không compile.
--   Giao tiếp phần cứng thông qua RobotAPI.
-
-------------------------------------------------------------------------
-
-# 4. Repository Structure
-
-## robot-language
-
-### specification/
-
--   **api.yaml** --- Single Source of Truth.
-
-### language/
-
--   **model.py** --- RobotLanguage Service, load specification và cung
-    cấp Query API.
-
-### validation/
-
--   **base_validator.py** --- Abstract validator.
--   **duplicate_validator.py** --- Duplicate validation.
--   **semantic_validator.py** --- Semantic validation.
--   **reference_validator.py** --- Reference validation.
-
-### generators/
-
--   **base_generator.py** --- Abstract generator.
--   **registry_generator.py** --- Sinh function registry.
--   **opcode_generator.py** --- Sinh opcode.py.
--   **opcode_json_generator.py** --- Sinh opcode.json.
--   **sdk_generator.py** --- Sinh Python SDK.
-
-### build/
-
--   **build.py** --- Build entry.
--   **builder.py** --- Điều phối Build Pipeline.
--   **context.py** --- BuildContext.
--   **artifacts.py** --- Đăng ký Artifact.
--   **install.py** --- Cài đặt Artifact sang project khác.
-
-### generated/
-
--   Artifact sinh tự động. Không sửa bằng tay.
-
-### sdk/
-
--   Python SDK.
-
-------------------------------------------------------------------------
-
-## robot-compiler
-
-### compiler/
-
--   **compiler.py** --- Compiler chính.
--   **instruction.py** --- Instruction model.
--   **program.py** --- Bytecode Program.
--   **opcode.py** --- Opcode definition.
--   **emitter.py** --- Sinh generatedProgram.h.
--   **symbol_table.py** --- Symbol management.
--   **patch.py** --- Jump backpatch.
--   **label.py** --- Label management.
-
-### handlers/
-
--   **motion_handler.py** --- Motion instruction.
--   **compare_handler.py** --- Compare instruction.
--   **bool_handler.py** --- Boolean instruction.
--   **system_handler.py** --- Wait/System instruction.
-
-### generated/
-
--   Artifact từ robot-language.
-
-------------------------------------------------------------------------
-
-## robot-frontend-robosim
-
-### frontend/
-
--   **compiler.py** --- Frontend entry.
--   **transformer.py** --- AST rewrite.
--   **mapping.py** --- RoboSim ↔ Robot Language mapping.
-
-### examples/
-
--   Ví dụ.
-
-### test/
-
--   Regression test.
-
-------------------------------------------------------------------------
-
-## robot-platform
-
-### VM/
-
--   **VM.cpp** --- Main execution loop.
--   **Instruction.h** --- Instruction format.
--   **Opcode.h** --- Opcode definition.
--   **Program.h** --- Program model.
--   **VMContext.h** --- Runtime context.
-
-### Robot/
-
--   **RobotAPI.h** --- Hardware abstraction.
--   **RobotAPI.cpp** --- Hardware implementation.
-
-------------------------------------------------------------------------
-
-# 5. Current End-to-End Flow
-
-``` text
-RoboSim Program
-        │
-        ▼
-Frontend Rewrite
-        │
-        ▼
-Standard Python
-        │
-        ▼
-Python AST
-        │
-        ▼
-Robot Compiler
-        │
-        ▼
-Bytecode Program
-        │
-        ▼
-generatedProgram.h
-        │
-        ▼
-Robot VM
-        │
-        ▼
-RobotAPI
-        │
-        ▼
-Robot Hardware
-```
-
-------------------------------------------------------------------------
-
-# 6. Artifact Flow
-
-``` text
-api.yaml
-   │
-   ▼
-RobotLanguage
-   │
-   ▼
-Validator
-   │
-   ▼
-Generator
-   │
-   ▼
-Artifacts
-   │
-   ├── function_registry.py
-   ├── opcode.py
-   ├── opcode.json
-   └── sdk/
-```
-
-  Artifact               Producer         Consumer
-  ---------------------- ---------------- ----------------
-  function_registry.py   robot-language   robot-compiler
-  opcode.py              robot-language   robot-compiler
-  opcode.json            robot-language   robot-compiler
-  sdk/\*                 robot-language   robot-frontend
-
-------------------------------------------------------------------------
-
-# 7. Dependency Graph
-
-``` text
-robot-language
-        │
-        ▼
-Generated Artifact
-        │
-        ▼
-robot-compiler
-        │
-        ▼
-Program
-        │
-        ▼
-robot-platform
-        │
-        ▼
-RobotAPI
-        │
-        ▼
-Robot Hardware
-```
-
-------------------------------------------------------------------------
-
-# 8. Current Progress
-
-## robot-language
-
--   ★★★★★ Specification
--   ★★★★★ Validator
--   ★★★★★ Generator
--   ★★★★☆ Build Pipeline
--   ★★★☆☆ Artifact Management
-
-## robot-compiler
-
--   ★★★★★ AST Traversal
--   ★★★★★ Variable
--   ★★★★★ If / While
--   ★★★★☆ Motion
--   ★★★☆☆ Boolean
--   ★★☆☆☆ Compare
--   ☆☆☆☆☆ Function
--   ☆☆☆☆☆ Expression
-
-## robot-platform
-
--   ★★★★☆ VM Core
--   ★★★★☆ Instruction
--   ★★★★☆ Program
--   ★★★☆☆ Compare
--   ★★☆☆☆ Boolean
--   ☆☆☆☆☆ Call Stack
--   ☆☆☆☆☆ Memory Model
-
-## robot-frontend
-
--   ★★★★☆ RoboSim Adapter
--   ★★★★☆ AST Rewrite
--   ★★★☆☆ Mapping
--   ☆☆☆☆☆ Blockly
--   ☆☆☆☆☆ Scratch
-
-------------------------------------------------------------------------
-
-# 9. Design Principles
-
-1.  Specification chỉ tồn tại tại api.yaml.
-2.  RobotLanguage là Single Source of Truth.
-3.  Compiler chỉ Compile.
-4.  Frontend chỉ Rewrite.
-5.  VM chỉ Execute.
-6.  Hardware chỉ nằm trong RobotAPI.
-7.  Không sửa Generated File.
-8.  Một Commit = Một Feature.
-9.  Regression sau mỗi Commit.
-10. BuildContext quản lý Build Environment.
-11. Generator không quản lý Path.
-12. Các project chỉ sử dụng Artifact.
-
-------------------------------------------------------------------------
-
-# 10. AI Working Rules
-
-1.  Không suy đoán source code.
-2.  Nếu thiếu context phải yêu cầu cung cấp file.
-3.  Không refactor khi chưa xem source.
-4.  Luôn ghi rõ Modified / Added / Deleted.
-5.  Một Commit = Một Feature.
-6.  Ưu tiên thay đổi nhỏ.
-7.  Regression sau thay đổi.
-8.  Không hardcode Opcode.
-9.  Không đọc api.yaml ngoài RobotLanguage.
-10. Không bypass Artifact.
-11. Không sửa Generated File.
-12. Không duplicate Specification.
-
-------------------------------------------------------------------------
-
-# 11. Foundation Roadmap
-
--   Phase 1 --- Language Specification ✅
--   Phase 2 --- Validator Pipeline ✅
--   Phase 3 --- Generator Pipeline ✅
--   Phase 4 --- Artifact Expansion 🔄
--   Phase 5 --- Compiler Synchronization
--   Phase 6 --- VM Synchronization
--   Phase 7 --- Regression
--   Phase 8 --- Distribution
-
-------------------------------------------------------------------------
-
-# 12. AI Context
-
-PROJECT_STATUS.md là tài liệu trung tâm của Robot Development Platform.
-
-Mọi AI Assistant phải đọc tài liệu này trước khi sửa code.
-
-Nếu có mâu thuẫn giữa suy luận và tài liệu này thì ưu tiên
-PROJECT_STATUS.md.
-
-Sau mỗi Sprint cần cập nhật lại tài liệu.
+<file path="run_all_tests.py">
+#!/usr/bin/env python3
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+
+def run_script(script_path):
+    print(f"Running {script_path} ...")
+    result = subprocess.run(
+        [sys.executable, str(script_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True
+    )
+    print(result.stdout)
+    if result.returncode != 0:
+        print(result.stderr)
+        return False
+    return True
+
+def main():
+    tests = [
+        ROOT / "robot-compiler" / "test" / "run_tests.py",
+        ROOT / "robot-frontend-robosim" / "test" / "run_tests.py",
+    ]
+    all_passed = True
+    for test in tests:
+        if not run_script(test):
+            all_passed = False
+            break
+
+    sys.exit(0 if all_passed else 1)
+
+if __name__ == "__main__":
+    main()
 </file>
 
 <file path="robot-compiler/compiler/generated/function_registry.py">
@@ -4537,6 +4157,61 @@ struct Instruction
 };
 </file>
 
+<file path="robot-platform/main/main.ino">
+#include "src/Services/VM/ProgramLoader.h"
+
+VM vm;
+Program program;
+
+void setup()
+{
+    Serial.begin(115200);
+
+    while (!Serial)
+    {
+    }
+
+    Serial.println();
+    Serial.println("==================================");
+    Serial.println(" Robot VM Prototype");
+    Serial.println("==================================");
+
+    // Load program from generated header
+    ProgramLoader::LoadFromGenerated(program);
+
+    vm.LoadProgram(&program);
+
+    Serial.println("Program Loaded");
+    Serial.println();
+}
+
+/******************************************************************************
+ * Loop
+ ******************************************************************************/
+
+void loop()
+{
+    if (vm.IsRunning())
+    {
+        Serial.print("[VM] PC = ");
+        Serial.println(vm.GetProgramCounter());
+
+        vm.Step();
+
+        delay(100);
+    }
+    else
+    {
+        Serial.println();
+        Serial.println("========== VM FINISHED ==========");
+
+        while (true)
+        {
+        }
+    }
+}
+</file>
+
 <file path="robot-compiler/compiler/handlers/bool_handler.py">
 import ast
 from ..error import CompilerError
@@ -5923,6 +5598,18 @@ Trong lời gọi robot API, bạn có thể sử dụng biểu thức số họ
 forward(80 + 20)          # → forward(100)
 turn_left(speed * 2)      # sử dụng biến
 wait(seconds * 1000)      # chuyển đổi đơn vị
+
+
+## 18. Runtime ABI
+
+Sau khi Sprint 14.5 hoàn tất, Runtime ABI được đóng băng. Xem chi tiết tại
+`robot-docs/VM_ABI.md`.
+
+Khi thêm opcode mới, phải cập nhật:
+- `api.yaml` (spec)
+- `VM_ABI.md`
+- VM dispatcher (`VM.cpp`)
+- Compiler handler (nếu là API người dùng)
 </file>
 
 <file path="robot-docs/ROADMAP.md">
@@ -6831,11 +6518,6 @@ void VM::ExecuteInstruction(const Instruction& instruction)
     {
         case Opcode::LoadConst:
             mContext.mVariables[instruction.p1] = instruction.p2;
-            mContext.mProgramCounter++;
-            break;
-
-        case Opcode::LoadVar:
-            mContext.mRegister0 = mContext.mVariables[instruction.p1];
             mContext.mProgramCounter++;
             break;
 

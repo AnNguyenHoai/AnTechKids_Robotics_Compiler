@@ -26,3 +26,28 @@ bool ProgramLoader::LoadFromArray(Program& program, const Instruction* instructi
     }
     return true;
 }
+
+bool ProgramLoader::LoadBinary(Program& program, const uint8_t* data, uint16_t size)
+{
+    // TODO: parse binary format and fill program
+    // Placeholder: not implemented
+    (void)program;
+    (void)data;
+    (void)size;
+    return false;
+}
+
+bool ProgramLoader::LoadFlash(Program& program, uint16_t address)
+{
+    // TODO: read from flash memory
+    (void)program;
+    (void)address;
+    return false;
+}
+
+bool ProgramLoader::LoadUART(Program& program)
+{
+    // TODO: receive program via UART
+    (void)program;
+    return false;
+}

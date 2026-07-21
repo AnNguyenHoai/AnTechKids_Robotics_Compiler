@@ -280,3 +280,15 @@ Trong lời gọi robot API, bạn có thể sử dụng biểu thức số họ
 forward(80 + 20)          # → forward(100)
 turn_left(speed * 2)      # sử dụng biến
 wait(seconds * 1000)      # chuyển đổi đơn vị
+
+
+## 18. Runtime ABI
+
+Sau khi Sprint 14.5 hoàn tất, Runtime ABI được đóng băng. Xem chi tiết tại
+`robot-docs/VM_ABI.md`.
+
+Khi thêm opcode mới, phải cập nhật:
+- `api.yaml` (spec)
+- `VM_ABI.md`
+- VM dispatcher (`VM.cpp`)
+- Compiler handler (nếu là API người dùng)
