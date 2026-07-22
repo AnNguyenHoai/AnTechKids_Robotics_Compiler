@@ -1,38 +1,49 @@
-"""
-Binary Reader – reconstruct ISAProgram from binary bytes.
-"""
-
-from typing import Tuple
-from ..isa import ISAProgram, ISAFunction, ISAInstruction, RobotOpcode
-from .header import BinaryHeader
-from .instruction_encoder import InstructionEncoder
-from .constant_pool_encoder import ConstantPoolEncoder
-
-# Kích thước header cố định
-HEADER_SIZE = 19  # phải khớp với BinaryHeader.size()
+# compiler/binary/binary_reader.py
+import struct
+from .model import BinaryProgram, ConstantPool, FunctionTable, FunctionTableEntry, InstructionStream
+from .header import BinaryHeader, HEADER_SIZE
+from .layout import OPERAND_TYPE_STRING
 
 class BinaryReader:
-    def read(self, data: bytes) -> ISAProgram:
+    def read(self, data: bytes) -> BinaryProgram:
         offset = 0
         header = BinaryHeader.from_bytes(data[offset:offset+HEADER_SIZE])
         offset += HEADER_SIZE
 
         # Đọc constant pool
-        pool_encoder = ConstantPoolEncoder()
-        constants, offset = pool_encoder.decode(data, offset)
+        cp, offset = self._read_constant_pool(data, offset)
 
-        # Tạo registry cho tất cả opcodes
-        registry = {op.value: op for op in RobotOpcode}
+        # Đọc function table
+        ft, offset = self._read_function_table(data, offset)
 
-        # Giả sử tất cả instructions thuộc về một hàm "main"
-        func = ISAFunction("main")
-        ins_encoder = InstructionEncoder()
+        # Phần còn lại là instruction stream
+        inst_stream = InstructionStream(data[offset:])
 
-        while offset < len(data):
-            ins, offset = ins_encoder.decode(data, offset, registry)
-            func.add_instruction(ins)
+        return BinaryProgram(header, cp, ft, inst_stream)
 
-        prog = ISAProgram()
-        prog.add_function(func)
-        # Có thể lưu constants vào metadata hoặc ignore
-        return prog
+    def _read_constant_pool(self, data, offset):
+        count = struct.unpack("<I", data[offset:offset+4])[0]
+        offset += 4
+        constants = []
+        for _ in range(count):
+            tag = data[offset]
+            offset += 1
+            if tag == OPERAND_TYPE_STRING:
+                length = struct.unpack("<I", data[offset:offset+4])[0]
+                offset += 4
+                s = data[offset:offset+length].decode('utf-8')
+                offset += length
+                constants.append(s)
+            else:
+                raise ValueError(f"Unsupported constant tag: {tag}")
+        return ConstantPool(constants), offset
+
+    def _read_function_table(self, data, offset):
+        entry_count = struct.unpack("<H", data[offset:offset+2])[0]
+        offset += 2
+        entries = []
+        for _ in range(entry_count):
+            func_id, entry_offset, ins_count = struct.unpack("<H I H", data[offset:offset+8])
+            offset += 8
+            entries.append(FunctionTableEntry(func_id, entry_offset, ins_count))
+        return FunctionTable(entries), offset

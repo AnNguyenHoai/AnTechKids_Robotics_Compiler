@@ -8,10 +8,10 @@ sys.path.insert(0, str(ROOT))
 from compiler.frontend.compiler import FrontendCompiler
 from compiler.passes import PassContext, PassManager
 from compiler.isa import BackendLowering
-from compiler.binary import ProgramEncoder, BinaryHeader
+from compiler.binary import ProgramEncoder, BinarySerializer, BinaryHeader, BinaryReader
 from compiler.diagnostics import DiagnosticEngine
 
-HEADER_SIZE = 19  # phải khớp
+HEADER_SIZE = 19  # phải khớp với BinaryHeader.size()
 
 class TestGoldenBinary(unittest.TestCase):
     def _compile_and_encode(self, source_file):
@@ -24,14 +24,15 @@ class TestGoldenBinary(unittest.TestCase):
         manager.run(context)
         isa_prog = context.config["isa_program"]
         encoder = ProgramEncoder()
-        return encoder.encode(isa_prog)
+        binary_prog = encoder.encode(isa_prog)
+        serializer = BinarySerializer()
+        return serializer.serialize(binary_prog)
 
     def test_demo_forward(self):
         source_file = ROOT / "examples" / "demo_forward.py"
         binary = self._compile_and_encode(source_file)
         # Đọc header từ 19 bytes đầu
         header = BinaryHeader.from_bytes(binary[:HEADER_SIZE])
-        # Magic sau khi sửa little-endian là 0x4E494252
         self.assertEqual(header.magic, 0x4E494252)
         self.assertGreater(len(binary), 16)
 

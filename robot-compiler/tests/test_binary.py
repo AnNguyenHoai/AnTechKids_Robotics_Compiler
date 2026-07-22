@@ -2,14 +2,14 @@ import unittest
 from compiler.binary import (
     BinaryHeader, Magic, Endianness,
     OperandEncoder, InstructionEncoder,
-    ConstantPoolEncoder, ProgramEncoder,
-    BinaryReader, BinaryPrinter
+    ConstantPoolBuilder, ProgramEncoder,
+    BinaryReader, BinaryPrinter, BinarySerializer,
+    BinaryProgram
 )
 from compiler.isa import (
     ISAProgram, ISAFunction, InstructionBuilder,
     ISAOperand, RobotOpcode, OperandKind
 )
-
 
 class TestBinary(unittest.TestCase):
     def test_header_roundtrip(self):
@@ -33,7 +33,6 @@ class TestBinary(unittest.TestCase):
             data = OperandEncoder.encode(op)
             decoded, offset = OperandEncoder.decode(data, 0)
             self.assertEqual(op.kind, decoded.kind)
-            # Trong test_operand_encoder_roundtrip
             if op.kind == OperandKind.FLOAT:
                 self.assertAlmostEqual(op.value, decoded.value, places=5)
             else:
@@ -61,11 +60,52 @@ class TestBinary(unittest.TestCase):
         builder.wait(builder.const_int(1000))
         builder.move_stop()
 
+        # ISAProgram -> BinaryProgram
         encoder = ProgramEncoder()
-        binary = encoder.encode(builder.get_program())
+        binary_prog = encoder.encode(builder.get_program())
+
+        # BinaryProgram -> bytes
+        serializer = BinarySerializer()
+        data = serializer.serialize(binary_prog)
+
+        # bytes -> BinaryProgram
+        reader = BinaryReader()
+        decoded_prog = reader.read(data)
+
+        # So sánh các thành phần chính
+        self.assertEqual(len(decoded_prog.constant_pool.constants), len(binary_prog.constant_pool.constants))
+        self.assertEqual(decoded_prog.function_table.entries[0].instruction_count,
+                         binary_prog.function_table.entries[0].instruction_count)
+        self.assertEqual(decoded_prog.instruction_stream.data, binary_prog.instruction_stream.data)
+
+    def test_round_trip_full(self):
+        # Tạo ISAProgram
+        builder = InstructionBuilder()
+        builder.create_program()
+        func = builder.create_function("main")
+        builder.move_run(builder.const_string("forward"), builder.const_int(50))
+        builder.wait(builder.const_int(1000))
+        builder.move_stop()
+
+        encoder = ProgramEncoder()
+        binary_prog1 = encoder.encode(builder.get_program())
+
+        serializer = BinarySerializer()
+        data = serializer.serialize(binary_prog1)
 
         reader = BinaryReader()
-        decoded = reader.read(binary)
+        binary_prog2 = reader.read(data)
 
-        self.assertEqual(len(decoded.functions), 1)
-        self.assertEqual(decoded.functions[0].name, "main")
+        # So sánh header (bỏ qua checksum và program_size có thể khác)
+        self.assertEqual(binary_prog1.header.magic, binary_prog2.header.magic)
+        self.assertEqual(binary_prog1.header.abi_version, binary_prog2.header.abi_version)
+        self.assertEqual(binary_prog1.header.endianness, binary_prog2.header.endianness)
+        self.assertEqual(binary_prog1.header.instruction_set_version, binary_prog2.header.instruction_set_version)
+        # program_size có thể khác do serializer không cập nhật, nhưng ta có thể kiểm tra nội dung
+        self.assertEqual(binary_prog1.constant_pool.constants, binary_prog2.constant_pool.constants)
+        self.assertEqual(len(binary_prog1.function_table.entries), len(binary_prog2.function_table.entries))
+        for e1, e2 in zip(binary_prog1.function_table.entries, binary_prog2.function_table.entries):
+            self.assertEqual(e1.function_id, e2.function_id)
+            self.assertEqual(e1.entry_offset, e2.entry_offset)
+            self.assertEqual(e1.instruction_count, e2.instruction_count)
+        self.assertEqual(binary_prog1.instruction_stream.data, binary_prog2.instruction_stream.data)

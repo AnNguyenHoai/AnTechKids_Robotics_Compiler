@@ -1,20 +1,17 @@
-"""
-Binary Header – fixed-size header for Robot binary images.
-"""
-
+# compiler/binary/header.py
 import struct
 from dataclasses import dataclass
 from enum import IntEnum
 
-
 class Magic(IntEnum):
-    ROBOT_BINARY = 0x4E494252  # little-endian bytes sẽ là "RBIN"
-
+    ROBOT_BINARY = 0x4E494252
 
 class Endianness(IntEnum):
     LITTLE = 0
     BIG = 1
 
+HEADER_FORMAT = "<IBBIBII"
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
 @dataclass
 class BinaryHeader:
@@ -32,7 +29,7 @@ class BinaryHeader:
 
     def to_bytes(self) -> bytes:
         return struct.pack(
-            "<IBBIBII",
+            HEADER_FORMAT,
             self.magic,
             self.abi_version,
             self.endianness,
@@ -44,10 +41,9 @@ class BinaryHeader:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "BinaryHeader":
-        magic, abi_ver, endian, iset_ver, prog_size, flags, checksum = struct.unpack(
-            "<IBBIBII", data[:20]
-        )
-        return cls(magic, abi_ver, endian, iset_ver, prog_size, flags, checksum)
+        # data phải có ít nhất HEADER_SIZE bytes
+        values = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
+        return cls(*values)
 
     def size(self) -> int:
-        return 19  # thay vì 20
+        return HEADER_SIZE

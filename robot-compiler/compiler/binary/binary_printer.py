@@ -8,7 +8,6 @@ from typing import List, Union
 from .header import BinaryHeader
 from .operand_encoder import OperandEncoder
 from .instruction_encoder import InstructionEncoder
-from .constant_pool_encoder import ConstantPoolEncoder
 from .registry import RobotOpcodeRegistry
 
 
