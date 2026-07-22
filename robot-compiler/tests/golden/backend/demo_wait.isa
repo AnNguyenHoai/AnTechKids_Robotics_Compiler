@@ -1,0 +1,4 @@
+ISAProgram (functions: 1)
+
+Function: main (entry: entry_main)
+  #0000 WAIT 1000

@@ -1,0 +1,5 @@
+ISAProgram (functions: 1)
+
+Function: main (entry: entry_main)
+  #0000 MOVE_RUN "forward" 50
+  #0001 MOVE_STOP

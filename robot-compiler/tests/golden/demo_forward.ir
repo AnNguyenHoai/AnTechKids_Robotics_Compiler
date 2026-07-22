@@ -1,0 +1,7 @@
+IRProgram
+  functions: 1
+  globals: 0
+Function: main
+  Block entry:
+    #0000 MOVE_RUN string('forward') integer(80)
+    #0001 MOVE_STOP
