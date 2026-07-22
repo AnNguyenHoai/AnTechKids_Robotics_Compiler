@@ -7,27 +7,19 @@ class DocGenerator(BaseGenerator):
     name = "Documentation Generator"
 
     def generate(self, context):
-        language = context.language
-        docs_dir = context.root / "docs"   # robot-docs
+        query = context.query
+        docs_dir = context.root / "docs"
         generated_docs = docs_dir / "generated"
         generated_docs.mkdir(parents=True, exist_ok=True)
 
-        # 1. Opcode Reference
-        self._generate_opcode_reference(language, generated_docs)
-
-        # 2. Language Reference (từ spec và mô tả)
-        self._generate_language_reference(language, generated_docs)
-
-        # 3. SDK Reference (từ các function)
-        self._generate_sdk_reference(language, generated_docs)
-
-        # 4. RobotAPI Reference (dành cho C++)
-        self._generate_robotapi_reference(language, generated_docs)
+        self._generate_opcode_reference(query, generated_docs)
+        self._generate_language_reference(query, generated_docs)
+        self._generate_sdk_reference(query, generated_docs)
+        self._generate_robotapi_reference(query, generated_docs)
 
         print(f"[DocGenerator] Generated documentation in {generated_docs}")
 
-    def _generate_opcode_reference(self, language, output_dir):
-        """Sinh file opcode_reference.md"""
+    def _generate_opcode_reference(self, query, output_dir):
         lines = [
             "# Opcode Reference",
             "",
@@ -36,12 +28,11 @@ class DocGenerator(BaseGenerator):
             "| Opcode | ID | Category | Description |",
             "|--------|----|----------|-------------|"
         ]
-        for _, _, func in language.all_functions():
-            opcode = func["opcode"]
-            opcode_id = func["opcode_id"]
-            category = func.get("category", "unknown")
-            desc = func.get("description", "")
-            lines.append(f"| `{opcode}` | {opcode_id} | {category} | {desc} |")
+        for cat_name, _, func in query.functions():
+            opcode = query.opcode_of(func)
+            opcode_id = query.opcode_id_of(func)
+            desc = query.description_of(func)
+            lines.append(f"| `{opcode}` | {opcode_id} | {cat_name} | {desc} |")
 
         lines.append("")
         lines.append("---")
@@ -51,13 +42,12 @@ class DocGenerator(BaseGenerator):
         with open(output_dir / "opcode_reference.md", "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
-    def _generate_language_reference(self, language, output_dir):
-        """Sinh file language_reference.md (tổng quan ngôn ngữ)"""
+    def _generate_language_reference(self, query, output_dir):
         lines = [
             "# Robot Language Reference",
             "",
-            f"**Language:** {language.name}",
-            f"**Version:** {language.version}",
+            f"**Language:** {query.name}",
+            f"**Version:** {query.version}",
             "",
             "## Overview",
             "Robot Language is a simple, Python-like language for programming robots. It compiles to bytecode and runs on the Robot VM.",
@@ -75,12 +65,13 @@ class DocGenerator(BaseGenerator):
             "|----------|-----------|-------------|"
         ]
 
-        for category_name, category in language.categories.items():
-            if category_name == "internal":
+        for cat_name, cat in query.categories().items():
+            if cat_name == "internal":
                 continue
-            for func in category["functions"]:
-                args = ", ".join(arg["name"] for arg in func["args"])
-                lines.append(f"| `{func['name']}({args})` | {len(func['args'])} | {func.get('description', '')} |")
+            for func in cat.get("functions", []):
+                args = ", ".join(arg["name"] for arg in query.arguments_of(func))
+                desc = query.description_of(func)
+                lines.append(f"| `{func['name']}({args})` | {query.argument_count_of(func)} | {desc} |")
 
         lines.append("")
         lines.append("### User-Defined Functions")
@@ -106,8 +97,7 @@ class DocGenerator(BaseGenerator):
         with open(output_dir / "language_reference.md", "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
-    def _generate_sdk_reference(self, language, output_dir):
-        """Sinh file sdk_reference.md (từ spec)"""
+    def _generate_sdk_reference(self, query, output_dir):
         lines = [
             "# SDK Reference (Python)",
             "",
@@ -119,13 +109,13 @@ class DocGenerator(BaseGenerator):
             "## API Reference",
             ""
         ]
-        for category_name, category in language.categories.items():
-            if category_name == "internal":
+        for cat_name, cat in query.categories().items():
+            if cat_name == "internal":
                 continue
-            lines.append(f"### {category_name.capitalize()}")
-            for func in category["functions"]:
-                args = ", ".join(arg["name"] for arg in func["args"])
-                desc = func.get("description", "")
+            lines.append(f"### {cat_name.capitalize()}")
+            for func in cat.get("functions", []):
+                args = ", ".join(arg["name"] for arg in query.arguments_of(func))
+                desc = query.description_of(func)
                 lines.append(f"#### `{func['name']}({args})`")
                 lines.append(f"- {desc}")
                 lines.append("")
@@ -133,8 +123,7 @@ class DocGenerator(BaseGenerator):
         with open(output_dir / "sdk_reference.md", "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
-    def _generate_robotapi_reference(self, language, output_dir):
-        """Sinh file robotapi_reference.md (cho C++ RobotAPI)"""
+    def _generate_robotapi_reference(self, query, output_dir):
         lines = [
             "# RobotAPI Reference (C++)",
             "",
@@ -143,14 +132,14 @@ class DocGenerator(BaseGenerator):
             "## Functions",
             ""
         ]
-        for category_name, category in language.categories.items():
-            if category_name == "internal":
+        for cat_name, cat in query.categories().items():
+            if cat_name == "internal":
                 continue
-            lines.append(f"### {category_name.capitalize()}")
-            for func in category["functions"]:
-                args = ", ".join(f"{arg['type']} {arg['name']}" for arg in func["args"])
-                desc = func.get("description", "")
-                lines.append(f"#### `void {func['name']}({args})`")
+            lines.append(f"### {cat_name.capitalize()}")
+            for func in cat.get("functions", []):
+                arg_str = ", ".join(f"{arg['type']} {arg['name']}" for arg in query.arguments_of(func))
+                desc = query.description_of(func)
+                lines.append(f"#### `void {func['name']}({arg_str})`")
                 lines.append(f"- {desc}")
                 lines.append("")
 

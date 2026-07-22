@@ -1,0 +1,479 @@
+# ============================================================
+# ROBOSIM_API_SPEC.yaml
+# ============================================================
+#
+# Robot Development Platform
+#
+# Single Source of Truth
+#
+# Everything is generated from this specification.
+#
+# Version: 1.0
+#
+# ============================================================
+
+version: "1.0"
+
+language: robosim
+
+namespace: rcu
+
+# ============================================================
+# Primitive Types
+# ============================================================
+
+types:
+
+  int:
+    size: 4
+
+  float:
+    size: 4
+
+  bool:
+    size: 1
+
+  string:
+    encoding: utf8
+
+# ============================================================
+# Categories
+# ============================================================
+
+categories:
+
+# ============================================================
+# MOTION
+# ============================================================
+
+- name: Motion
+
+  module: motion
+
+  handler: MotionAPI
+
+  functions:
+
+  - name: SetMoveInitialize
+
+    opcode: MOVE_INITIALIZE
+
+    id: 0x0001
+
+    parameters:
+
+      - left_motor: int
+      - right_motor: int
+      - reverse: string
+
+    returns: void
+
+    blocking: false
+
+    description: |
+      Configure drive motors.
+
+  # --------------------------------------------------------
+
+  - name: SetMoveRun
+
+    opcode: MOVE_RUN
+
+    id: 0x0002
+
+    parameters:
+
+      - direction: string
+      - speed: int
+
+    returns: void
+
+    blocking: false
+
+    description: |
+      Start continuous movement.
+
+  # --------------------------------------------------------
+
+  - name: SetMoveRunSecond
+
+    opcode: MOVE_RUN_SECOND
+
+    id: 0x0003
+
+    parameters:
+
+      - direction: string
+      - speed: int
+      - second: float
+
+    returns: void
+
+    blocking: true
+
+  # --------------------------------------------------------
+
+  - name: SetMoveRunAngle
+
+    opcode: MOVE_RUN_ANGLE
+
+    id: 0x0004
+
+    parameters:
+
+      - direction: string
+      - speed: int
+      - angle: int
+
+    returns: void
+
+    blocking: true
+
+  # --------------------------------------------------------
+
+  - name: SetMoveSpeed
+
+    opcode: MOVE_SPEED
+
+    id: 0x0005
+
+    parameters:
+
+      - left_speed: int
+      - right_speed: int
+
+    returns: void
+
+  # --------------------------------------------------------
+
+  - name: SetMoveStop
+
+    opcode: MOVE_STOP
+
+    id: 0x0006
+
+    parameters: []
+
+    returns: void
+
+# ============================================================
+# WAIT
+# ============================================================
+
+- name: Utility
+
+  module: utility
+
+  handler: UtilityAPI
+
+  functions:
+
+  - name: SetWaitForTime
+
+    opcode: WAIT
+
+    id: 0x0100
+
+    parameters:
+
+      - second: float
+
+    returns: void
+
+    blocking: true
+
+# ============================================================
+# SENSOR
+# ============================================================
+
+- name: Sensor
+
+  module: sensor
+
+  handler: SensorAPI
+
+  functions:
+
+  - name: GetTraceV2I2CChxState
+
+    opcode: READ_TRACE_SENSOR
+
+    id: 0x0200
+
+    parameters:
+
+      - port: int
+      - channel: int
+
+    returns: int
+
+    blocking: false
+
+# ============================================================
+# MOTOR
+# ============================================================
+
+- name: Motor
+
+  module: motor
+
+  handler: MotorAPI
+
+  functions:
+
+  - name: SetMotor
+
+    opcode: MOTOR_SET
+
+    id: 0x0300
+
+    parameters:
+
+      - port: int
+      - speed: int
+
+    returns: void
+
+  # --------------------------------------------------------
+
+  - name: SetMotorServo
+
+    opcode: MOTOR_SERVO
+
+    id: 0x0301
+
+    parameters:
+
+      - port: int
+      - speed: int
+      - angle: int
+
+    returns: void
+
+  # --------------------------------------------------------
+
+  - name: SetMotorStraightAngle
+
+    opcode: MOTOR_STRAIGHT_ANGLE
+
+    id: 0x0302
+
+    parameters:
+
+      - left_port: int
+      - right_port: int
+      - speed: int
+      - angle: int
+
+    returns: void
+
+# ============================================================
+# SERVO
+# ============================================================
+
+- name: Servo
+
+  module: servo
+
+  handler: ServoAPI
+
+  functions:
+
+  - name: SetServo
+
+    opcode: SERVO_SET
+
+    id: 0x0400
+
+    parameters:
+
+      - port: int
+      - angle: int
+
+    returns: void
+
+  # --------------------------------------------------------
+
+  - name: SetSeeringEngine
+
+    opcode: STEERING_SET
+
+    id: 0x0401
+
+    parameters:
+
+      - port: int
+      - angle: int
+
+    returns: void
+
+  # --------------------------------------------------------
+
+  - name: SetSeeringEngineTime
+
+    opcode: STEERING_TIME
+
+    id: 0x0402
+
+    parameters:
+
+      - port: int
+      - angle: int
+      - millisecond: int
+
+    returns: void
+
+# ============================================================
+# LED
+# ============================================================
+
+- name: LED
+
+  module: led
+
+  handler: LedAPI
+
+  functions:
+
+  - name: SetLightSensorLed
+
+    opcode: SENSOR_LED
+
+    id: 0x0500
+
+    parameters:
+
+      - port: int
+      - state: int
+
+    returns: void
+
+  # --------------------------------------------------------
+
+  - name: Set3CLed
+
+    opcode: RGB_LED
+
+    id: 0x0501
+
+    parameters:
+
+      - port: int
+      - state: int
+
+    returns: void
+
+# ============================================================
+# PERIPHERAL
+# ============================================================
+
+- name: Peripheral
+
+  module: peripheral
+
+  handler: PeripheralAPI
+
+  functions:
+
+  - name: SetLizard
+
+    opcode: LIZARD
+
+    id: 0x0600
+
+    parameters:
+
+      - state: int
+
+    returns: void
+
+# ============================================================
+# LINE FOLLOWING
+# ============================================================
+
+- name: Line
+
+  module: line
+
+  handler: LineAPI
+
+  functions:
+
+  - name: line_basis
+
+    opcode: LINE_BASIS
+
+    id: 0x1000
+
+    parameters:
+
+      - speed: int
+
+    returns: void
+
+    blocking: true
+
+  # --------------------------------------------------------
+
+  - name: line_millisecond
+
+    opcode: LINE_MS
+
+    id: 0x1001
+
+    parameters:
+
+      - speed: int
+      - millisecond: int
+
+    returns: void
+
+  # --------------------------------------------------------
+
+  - name: line_intersection_stop
+
+    opcode: LINE_INTERSECTION_STOP
+
+    id: 0x1002
+
+    parameters:
+
+      - speed: int
+      - type: int
+
+    returns: void
+
+  # --------------------------------------------------------
+
+  - name: line_turn_encounterline
+
+    opcode: LINE_TURN
+
+    id: 0x1003
+
+    parameters:
+
+      - speed: int
+      - angle: int
+      - direction: int
+
+    returns: void
+
+  # --------------------------------------------------------
+
+  - name: line_for_bmp
+
+    opcode: LINE_BMP
+
+    id: 0x1004
+
+    parameters:
+
+      - speed: int
+      - degree: int
+
+    returns: void
+
+# ============================================================
+# END
+# ============================================================

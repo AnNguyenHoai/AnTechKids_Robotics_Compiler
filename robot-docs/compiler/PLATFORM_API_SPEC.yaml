@@ -1,0 +1,516 @@
+# =============================================================================
+# PLATFORM_API_SPEC.yaml
+# =============================================================================
+#
+# Robot Development Platform
+#
+# Platform Independent Robot API
+#
+# This specification defines the canonical API understood by
+# the compiler, optimizer, VM and runtime.
+#
+# Frontends (RoboSim, Scratch, Blockly, Python SDK...)
+# must translate into this Platform API.
+#
+# =============================================================================
+
+version: "1.0"
+
+namespace: robot
+
+# =============================================================================
+# Primitive Types
+# =============================================================================
+
+types:
+
+  int:
+    size: 4
+
+  float:
+    size: 4
+
+  bool:
+    size: 1
+
+  string:
+    encoding: utf8
+
+# =============================================================================
+# Enumerations
+# =============================================================================
+
+enums:
+
+  Direction:
+
+    values:
+      - forward
+      - backward
+      - left
+      - right
+
+  TurnDirection:
+
+    values:
+      - left
+      - right
+
+  LedState:
+
+    values:
+      - off
+      - on
+
+# =============================================================================
+# API Groups
+# =============================================================================
+
+groups:
+
+# =============================================================================
+# SYSTEM
+# =============================================================================
+
+- name: system
+
+  description: Robot initialization
+
+  apis:
+
+    - name: initialize
+
+      opcode: SYSTEM_INITIALIZE
+
+      parameters:
+
+        left_motor:
+          type: int
+
+        right_motor:
+          type: int
+
+        reverse_mode:
+          type: string
+
+      returns: void
+
+# =============================================================================
+# MOTION
+# =============================================================================
+
+- name: move
+
+  description: Chassis motion
+
+  apis:
+
+    - name: run
+
+      opcode: MOVE_RUN
+
+      parameters:
+
+        direction:
+          type: Direction
+
+        speed:
+          type: int
+
+      returns: void
+
+    - name: run_time
+
+      opcode: MOVE_RUN_TIME
+
+      parameters:
+
+        direction:
+          type: Direction
+
+        speed:
+          type: int
+
+        second:
+          type: float
+
+      returns: void
+
+    - name: run_distance
+
+      opcode: MOVE_RUN_DISTANCE
+
+      parameters:
+
+        direction:
+          type: Direction
+
+        speed:
+          type: int
+
+        angle:
+          type: int
+
+      returns: void
+
+    - name: set_speed
+
+      opcode: MOVE_SET_SPEED
+
+      parameters:
+
+        left:
+          type: int
+
+        right:
+          type: int
+
+      returns: void
+
+    - name: stop
+
+      opcode: MOVE_STOP
+
+      parameters: []
+
+      returns: void
+
+# =============================================================================
+# WAIT
+# =============================================================================
+
+- name: timing
+
+  apis:
+
+    - name: wait
+
+      opcode: WAIT
+
+      parameters:
+
+        second:
+          type: float
+
+      returns: void
+
+# =============================================================================
+# SENSOR
+# =============================================================================
+
+- name: sensor
+
+  apis:
+
+    - name: read_trace
+
+      opcode: SENSOR_TRACE_READ
+
+      parameters:
+
+        port:
+          type: int
+
+        channel:
+          type: int
+
+      returns: int
+
+# =============================================================================
+# MOTOR
+# =============================================================================
+
+- name: motor
+
+  apis:
+
+    - name: set
+
+      opcode: MOTOR_SET
+
+      parameters:
+
+        port:
+          type: int
+
+        speed:
+          type: int
+
+      returns: void
+
+    - name: servo
+
+      opcode: MOTOR_SERVO
+
+      parameters:
+
+        port:
+          type: int
+
+        speed:
+          type: int
+
+        angle:
+          type: int
+
+      returns: void
+
+    - name: straight_angle
+
+      opcode: MOTOR_STRAIGHT_ANGLE
+
+      parameters:
+
+        left_port:
+          type: int
+
+        right_port:
+          type: int
+
+        speed:
+          type: int
+
+        angle:
+          type: int
+
+      returns: void
+
+# =============================================================================
+# SERVO
+# =============================================================================
+
+- name: servo
+
+  apis:
+
+    - name: set
+
+      opcode: SERVO_SET
+
+      parameters:
+
+        port:
+          type: int
+
+        angle:
+          type: int
+
+      returns: void
+
+# =============================================================================
+# STEERING
+# =============================================================================
+
+- name: steering
+
+  apis:
+
+    - name: set
+
+      opcode: STEERING_SET
+
+      parameters:
+
+        port:
+          type: int
+
+        angle:
+          type: int
+
+      returns: void
+
+    - name: hold
+
+      opcode: STEERING_HOLD
+
+      parameters:
+
+        port:
+          type: int
+
+        angle:
+          type: int
+
+        millisecond:
+          type: int
+
+      returns: void
+
+# =============================================================================
+# LED
+# =============================================================================
+
+- name: led
+
+  apis:
+
+    - name: sensor_led
+
+      opcode: SENSOR_LED
+
+      parameters:
+
+        port:
+          type: int
+
+        state:
+          type: LedState
+
+      returns: void
+
+    - name: rgb
+
+      opcode: RGB_LED
+
+      parameters:
+
+        port:
+          type: int
+
+        state:
+          type: int
+
+      returns: void
+
+# =============================================================================
+# PERIPHERAL
+# =============================================================================
+
+- name: peripheral
+
+  apis:
+
+    - name: buzzer
+
+      opcode: BUZZER
+
+      parameters:
+
+        state:
+          type: int
+
+      returns: void
+
+# =============================================================================
+# LINE FOLLOWING
+# =============================================================================
+
+- name: line
+
+  description: High level line following algorithms
+
+  apis:
+
+    - name: follow
+
+      opcode: LINE_FOLLOW
+
+      parameters:
+
+        speed:
+          type: int
+
+      returns: void
+
+      blocking: true
+
+    - name: follow_time
+
+      opcode: LINE_TIME
+
+      parameters:
+
+        speed:
+          type: int
+
+        millisecond:
+          type: int
+
+      returns: void
+
+      blocking: true
+
+    - name: stop_at_intersection
+
+      opcode: LINE_STOP_INTERSECTION
+
+      parameters:
+
+        speed:
+          type: int
+
+        intersection_type:
+          type: int
+
+      returns: void
+
+      blocking: true
+
+    - name: turn_until_line
+
+      opcode: LINE_TURN
+
+      parameters:
+
+        speed:
+          type: int
+
+        angle:
+          type: int
+
+        direction:
+          type: TurnDirection
+
+      returns: void
+
+      blocking: true
+
+    - name: follow_bitmap
+
+      opcode: LINE_BITMAP
+
+      parameters:
+
+        speed:
+          type: int
+
+        degree:
+          type: int
+
+      returns: void
+
+      blocking: true
+
+# =============================================================================
+# METADATA
+# =============================================================================
+
+metadata:
+
+  compiler:
+
+    generate_dispatch: true
+
+    generate_sdk: true
+
+    generate_opcode_table: true
+
+    generate_documentation: true
+
+  runtime:
+
+    generate_handler_stub: true
+
+    generate_api_registry: true
+
+  vm:
+
+    generate_instruction_table: true
+
+  optimizer:
+
+    allow_constant_folding: true
+
+    allow_dead_code_elimination: true
+
+    allow_instruction_merge: true
