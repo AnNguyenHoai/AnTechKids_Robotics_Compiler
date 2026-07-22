@@ -1,0 +1,20 @@
+benchmarks:
+  - name: compile_demo_forward
+    source: robot-compiler/examples/demo_forward.py
+    description: Compile demo_forward.py
+
+  - name: compile_demo_variable
+    source: robot-compiler/examples/demo_variable.py
+    description: Compile demo_variable.py
+
+  - name: compile_demo_if
+    source: robot-compiler/examples/demo_if.py
+    description: Compile demo_if.py
+
+  - name: compile_demo_while
+    source: robot-compiler/examples/demo_while.py
+    description: Compile demo_while.py
+
+  - name: compile_demo_function
+    source: robot-compiler/examples/demo_function.py
+    description: Compile demo_function.py

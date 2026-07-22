@@ -1,0 +1,7 @@
+name: esp32
+version: 1.0.0
+description: ESP32 hardware support
+type: hardware
+targets:
+  - platform
+dependencies: []

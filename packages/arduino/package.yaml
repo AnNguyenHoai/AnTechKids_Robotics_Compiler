@@ -1,0 +1,7 @@
+name: arduino
+version: 1.0.0
+description: Arduino hardware support (Uno, Mega)
+type: hardware
+targets:
+  - platform
+dependencies: []

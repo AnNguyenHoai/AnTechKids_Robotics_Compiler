@@ -257,7 +257,10 @@ Build Cache
 Auto Documentation
 
 Code completion
-
+Phase 4 – Documentation Generator (✅ Completed)
+- Auto-generate opcode, language, SDK, RobotAPI references
+- Integrated with `robot docs` command
+- All docs are generated artifacts
 Phase 5 – Production Platform (Planning)
 Goal
 Đưa nền tảng vào sử dụng thực tế.
@@ -404,3 +407,4 @@ Dự án được xem là thành công khi:
 □ Runtime ổn định.
 □ Documentation luôn đồng bộ với hệ thống.
 □ Platform có thể phát triển lâu dài mà không cần tái cấu trúc kiến trúc nền.
+

@@ -40,6 +40,53 @@ The content is organized as follows:
 </file_summary>
 
 <directory_structure>
+benchmarks/
+  benchmark_runner.py
+  benchmarks.yaml
+  runner.py
+packages/
+  arduino/
+    package.yaml
+  esp32/
+    package.yaml
+  robosim/
+    package.yaml
+releases/
+  v0.1.1/
+    release-notes.md
+robot-cli/
+  robot/
+    commands/
+      benchmark.py
+      build.py
+      changelog.py
+      docs.py
+      doctor.py
+      info.py
+      install.py
+      list_packages.py
+      plugin.py
+      release.py
+      test.py
+      uninstall.py
+      version.py
+    core/
+      config.py
+      package.py
+      plugin.py
+      utils.py
+      version.py
+    __init__.py
+    cli.py
+  robot_cli.egg-info/
+    dependency_links.txt
+    entry_points.txt
+    PKG-INFO
+    requires.txt
+    SOURCES.txt
+    top_level.txt
+  README.md
+  setup.py
 robot-compiler/
   compiler/
     generated/
@@ -61,7 +108,7 @@ robot-compiler/
     main.py
     patch.py
     program.py
-    symbol_table.py
+    scope.py
   examples/
     demo_arithmetic.py
     demo_backward.py
@@ -99,6 +146,8 @@ robot-docs/
   DESIGN_CONTRACT.md
   DEVELOPMENT_GUIDE.md
   ENGINEERING_PHILOSOPHY.md
+  FUNCTION_MODEL.md
+  LANGUAGE_SPEC.md
   ROADMAP.md
   VM_ABI.md
 robot-frontend-robosim/
@@ -121,6 +170,12 @@ robot-language/
     builder.py
     context.py
     install.py
+  docs/
+    generated/
+      language_reference.md
+      opcode_reference.md
+      robotapi_reference.md
+      sdk_reference.md
   generated/
     __init__.py
     function_registry.py
@@ -131,6 +186,7 @@ robot-language/
   generators/
     __init__.py
     base_generator.py
+    doc_generator.py
     opcode_generator.py
     opcode_header_generator.py
     opcode_json_generator.py
@@ -192,12 +248,1669 @@ robot-platform/
           VM.h
           VMContext.h
     main.ino
+tests/
+  __init__.py
+  runner.py
+  test_compiler.py
+  test_frontend.py
+  test_integration.py
+  test_language.py
+  test_runtime.py
 04_Robotics_SW_DeepSeek.code-workspace
+CHANGELOG.md
 run_all_tests.py
+VERSION
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="benchmarks/benchmark_runner.py">
+#!/usr/bin/env python3
+import sys
+import json
+import time
+import argparse
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from compiler.compiler import RobotCompiler
+from compiler.emitter import HeaderEmitter
+from compiler.generated.opcode import Opcode
+
+
+def run_benchmark(source_file, verbose=False):
+    """Compile a file and gather metrics."""
+    compiler = RobotCompiler()
+    program = compiler.compile(source_file)
+
+    # Metrics
+    metrics = {
+        "source_file": str(source_file),
+        "instruction_count": len(program.instructions),
+        "variable_count": compiler.global_scope.next_index,
+        "temp_count": compiler.temp_id,
+        "function_count": len(compiler.functions),
+        "loop_count": len(compiler.loop_stack),  # not accurate, but okay
+    }
+
+    # Estimate program size (each instruction 7 bytes)
+    metrics["program_size_bytes"] = len(program.instructions) * 7
+
+    # Count opcode types
+    opcode_counts = {}
+    for ins in program.instructions:
+        op_name = Opcode(ins.opcode).name
+        opcode_counts[op_name] = opcode_counts.get(op_name, 0) + 1
+    metrics["opcode_counts"] = opcode_counts
+
+    if verbose:
+        print(f"[Benchmark] {source_file}")
+        print(f"  Instructions: {metrics['instruction_count']}")
+        print(f"  Variables: {metrics['variable_count']}")
+        print(f"  Temps: {metrics['temp_count']}")
+        print(f"  Functions: {metrics['function_count']}")
+        print(f"  Program size: {metrics['program_size_bytes']} bytes")
+        print("  Opcode counts:", json.dumps(opcode_counts, indent=2))
+
+    return metrics
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Benchmark runner")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    parser.add_argument("--save", action="store_true", help="Save benchmark results")
+    parser.add_argument("--output", default="benchmark_results.json", help="Output JSON file")
+    parser.add_argument("files", nargs="*", default=["robot-compiler/examples/demo_forward.py"], 
+                        help="Source files to benchmark")
+    args = parser.parse_args()
+
+    all_metrics = []
+    for file in args.files:
+        source_path = Path(file)
+        if not source_path.exists():
+            print(f"Error: {source_path} not found", file=sys.stderr)
+            continue
+        metrics = run_benchmark(source_path, args.verbose)
+        all_metrics.append(metrics)
+
+    if args.save:
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(all_metrics, f, indent=2, ensure_ascii=False)
+        print(f"[OK] Benchmarks saved to {args.output}")
+
+    print("[OK] Benchmark complete.")
+
+
+if __name__ == "__main__":
+    main()
+</file>
+
+<file path="benchmarks/benchmarks.yaml">
+benchmarks:
+  - name: compile_demo_forward
+    source: robot-compiler/examples/demo_forward.py
+    description: Compile demo_forward.py
+
+  - name: compile_demo_variable
+    source: robot-compiler/examples/demo_variable.py
+    description: Compile demo_variable.py
+
+  - name: compile_demo_if
+    source: robot-compiler/examples/demo_if.py
+    description: Compile demo_if.py
+
+  - name: compile_demo_while
+    source: robot-compiler/examples/demo_while.py
+    description: Compile demo_while.py
+
+  - name: compile_demo_function
+    source: robot-compiler/examples/demo_function.py
+    description: Compile demo_function.py
+</file>
+
+<file path="benchmarks/runner.py">
+#!/usr/bin/env python3
+import time
+import json
+import yaml
+import subprocess
+import sys
+from pathlib import Path
+from datetime import datetime
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def load_benchmarks():
+    config_file = Path(__file__).parent / "benchmarks.yaml"
+    with open(config_file, 'r', encoding='utf-8') as f:
+        data = yaml.safe_load(f)
+    return data['benchmarks']
+
+
+def run_benchmark(benchmark):
+    source = ROOT / benchmark['source']
+    if not source.exists():
+        return None
+
+    # Đo thời gian compile
+    start = time.perf_counter()
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "robot-compiler/main.py"), "--file", str(source)],
+        capture_output=True,
+        text=True
+    )
+    elapsed = time.perf_counter() - start
+
+    if result.returncode != 0:
+        return None
+
+    # Đếm số instruction
+    generated_header = ROOT / "robot-platform/main/src/Application/generated_program.h"
+    instruction_count = 0
+    if generated_header.exists():
+        with open(generated_header, 'r', encoding='utf-8') as f:
+            content = f.read()
+            instruction_count = content.count("Instruction(")
+
+    return {
+        "name": benchmark['name'],
+        "source": benchmark['source'],
+        "compile_time": elapsed,
+        "instruction_count": instruction_count,
+        "success": True
+    }
+
+
+def run_all():
+    benchmarks = load_benchmarks()
+    results = []
+    for bm in benchmarks:
+        print(f"Running: {bm['name']} ...", end="")
+        result = run_benchmark(bm)
+        if result:
+            print(f" OK ({result['compile_time']:.3f}s, {result['instruction_count']} instr)")
+            results.append(result)
+        else:
+            print(" FAILED")
+    return results
+
+
+def save_history(results):
+    history_dir = Path(__file__).parent / "history"
+    history_dir.mkdir(exist_ok=True)
+    timestamp = datetime.now().isoformat()
+    history_file = history_dir / f"{timestamp}.json"
+    with open(history_file, 'w', encoding='utf-8') as f:
+        json.dump({"timestamp": timestamp, "results": results}, f, indent=2)
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--save", action="store_true", help="Save results to history")
+    args = parser.parse_args()
+
+    results = run_all()
+    if args.save and results:
+        save_history(results)
+        print(f"Saved history.")
+</file>
+
+<file path="packages/arduino/package.yaml">
+name: arduino
+version: 1.0.0
+description: Arduino hardware support (Uno, Mega)
+type: hardware
+targets:
+  - platform
+dependencies: []
+</file>
+
+<file path="packages/esp32/package.yaml">
+name: esp32
+version: 1.0.0
+description: ESP32 hardware support
+type: hardware
+targets:
+  - platform
+dependencies: []
+</file>
+
+<file path="packages/robosim/package.yaml">
+name: robosim
+version: 1.0.0
+description: RoboSim simulator frontend
+type: frontend
+targets:
+  - frontend
+dependencies: []
+</file>
+
+<file path="robot-cli/robot/commands/benchmark.py">
+import click
+import sys
+from pathlib import Path
+from ..core import config, utils
+
+@click.command()
+@click.option('--save', is_flag=True, help='Save results to history')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed output')
+def benchmark(save, verbose):
+    """Run benchmarks"""
+    click.echo(" Running benchmarks...")
+    runner = config.ROOT / "benchmarks" / "runner.py"
+    if not runner.exists():
+        click.echo("[FAILED] benchmarks/runner.py not found.", err=True)
+        sys.exit(1)
+
+    args = []
+    if save:
+        args.append("--save")
+    if verbose:
+        args.append("--verbose")
+
+    result = utils.run_script(runner, args, capture=not verbose)
+    if verbose:
+        click.echo(result.stdout)
+    if result.returncode != 0:
+        click.echo(result.stderr, err=True)
+        sys.exit(result.returncode)
+    click.echo("[OK] Benchmark complete.")
+</file>
+
+<file path="robot-cli/robot/commands/build.py">
+import click
+import sys
+from pathlib import Path
+from ..core import config, utils
+
+@click.command()
+@click.option('--file', '-f', default='main.py', help='Source file to compile')
+@click.option('--output', '-o', default=None, help='Output header file')
+def build(file, output):
+    click.echo(f"🔧 Building {file} ...")
+    compiler_script = config.REPO_COMPILER / "main.py"
+    if not compiler_script.exists():
+        click.echo("❌ robot-compiler not found.", err=True)
+        sys.exit(1)
+
+    # Chuyển file thành đường dẫn tuyệt đối
+    source_path = Path(file).resolve()
+    if not source_path.exists():
+        click.echo(f"❌ Source file '{file}' not found.", err=True)
+        sys.exit(1)
+
+    args = []
+    if output:
+        args.extend(['--output', str(Path(output).resolve())])
+    # Truyền đường dẫn tuyệt đối cho compiler
+    args.extend(['--file', str(source_path)])
+
+    result = utils.run_script(compiler_script, args, capture=True)
+    click.echo(result.stdout)
+    if result.returncode != 0:
+        click.echo(result.stderr, err=True)
+        sys.exit(result.returncode)
+    click.echo("✅ Build completed.")
+</file>
+
+<file path="robot-cli/robot/commands/changelog.py">
+import click
+from pathlib import Path
+from ..core import config
+
+@click.command()
+@click.option('--view', '-v', is_flag=True, help='View full changelog')
+def changelog(view):
+    """Display the changelog."""
+    changelog_file = config.ROOT / "CHANGELOG.md"
+    if not changelog_file.exists():
+        click.echo("❌ CHANGELOG.md not found.", err=True)
+        return
+
+    if view:
+        content = changelog_file.read_text(encoding="utf-8")
+        click.echo(content)
+    else:
+        # Hiển thị tóm tắt các phiên bản
+        lines = changelog_file.read_text(encoding="utf-8").splitlines()
+        versions = []
+        for line in lines:
+            if line.startswith("## v"):
+                # Lấy version và date
+                versions.append(line.strip())
+        if versions:
+            click.echo("📋 Available releases:")
+            for v in versions:
+                click.echo(f"  {v}")
+        else:
+            click.echo("No releases found.")
+</file>
+
+<file path="robot-cli/robot/commands/docs.py">
+import click
+import sys
+from pathlib import Path
+from ..core import config, utils
+
+@click.command()
+@click.option('--output', '-o', default=None, help='Output directory for documentation (default: robot-docs/generated)')
+def docs(output):
+    """Generate documentation from specification."""
+    click.echo("📝 Generating documentation...")
+    # Chạy robot-language build (để sinh docs)
+    build_script = config.REPO_LANGUAGE / "build.py"
+    if not build_script.exists():
+        click.echo("❌ robot-language/build.py not found.", err=True)
+        sys.exit(1)
+
+    # Chạy build để kích hoạt DocGenerator
+    result = utils.run_script(build_script, capture=True)
+    if result.returncode != 0:
+        click.echo(result.stderr, err=True)
+        sys.exit(result.returncode)
+
+    # Nếu có output tùy chỉnh, copy docs đến đó (optional)
+    if output:
+        src = config.ROOT / "robot-docs" / "generated"
+        if src.exists():
+            dst = Path(output)
+            dst.mkdir(parents=True, exist_ok=True)
+            for f in src.glob("*.md"):
+                shutil.copy2(f, dst / f.name)
+            click.echo(f"✅ Documentation copied to {dst}")
+        else:
+            click.echo("⚠️ No generated docs found.", err=True)
+    else:
+        click.echo("✅ Documentation generated in robot-docs/generated/")
+</file>
+
+<file path="robot-cli/robot/commands/doctor.py">
+import click
+import sys
+import platform
+from ..core import config, utils
+
+@click.command()
+def doctor():
+    """Check system environment and repository health."""
+    click.echo("🏥 Running doctor...")
+    
+    # Python version
+    click.echo(f"🐍 Python: {sys.version}")
+    
+    # OS
+    click.echo(f"💻 OS: {platform.system()} {platform.release()}")
+    
+    # Kiểm tra các repository
+    repos = {
+        "robot-compiler": config.REPO_COMPILER,
+        "robot-language": config.REPO_LANGUAGE,
+        "robot-platform": config.REPO_PLATFORM,
+        "robot-frontend-robosim": config.REPO_FRONTEND,
+        "robot-docs": config.REPO_DOCS,
+    }
+    all_ok = True
+    for name, path in repos.items():
+        if utils.check_repo_exists(path):
+            click.echo(f"✅ {name}: OK")
+        else:
+            click.echo(f"❌ {name}: MISSING")
+            all_ok = False
+    
+    # Kiểm tra file test
+    if config.TEST_SCRIPT.exists():
+        click.echo(f"✅ run_all_tests.py: OK")
+    else:
+        click.echo(f"❌ run_all_tests.py: MISSING")
+        all_ok = False
+    
+    if all_ok:
+        click.echo("✅ System looks healthy.")
+    else:
+        click.echo("⚠️ Some components are missing. Please check your installation.")
+        sys.exit(1)
+</file>
+
+<file path="robot-cli/robot/commands/info.py">
+import click
+from ..core import config
+
+@click.command()
+def info():
+    """Display detailed information about the platform."""
+    click.echo("📋 Robot Development Platform Information")
+    click.echo(f"  Platform: Robot Development Platform")
+    click.echo(f"  CLI Version: {config.VERSION}")
+    click.echo(f"  Language Spec: {config.LANG_SPEC_VERSION}")
+    click.echo(f"  Repository Root: {config.ROOT}")
+    click.echo("")
+    click.echo("  Repositories:")
+    click.echo(f"    - Compiler: {config.REPO_COMPILER}")
+    click.echo(f"    - Language: {config.REPO_LANGUAGE}")
+    click.echo(f"    - Platform: {config.REPO_PLATFORM}")
+    click.echo(f"    - Frontend: {config.REPO_FRONTEND}")
+    click.echo(f"    - Docs: {config.REPO_DOCS}")
+</file>
+
+<file path="robot-cli/robot/commands/install.py">
+import click
+import sys
+from pathlib import Path
+from ..core import config, package
+
+@click.command()
+@click.argument('package_name')
+def install(package_name):
+    """Install a package."""
+    click.echo(f"📦 Installing package: {package_name}")
+
+    # Kiểm tra package có tồn tại không
+    available = package.get_available_packages()
+    pkg = None
+    for p in available:
+        if p.name == package_name:
+            pkg = p
+            break
+
+    if pkg is None:
+        click.echo(f"❌ Package '{package_name}' not found.", err=True)
+        click.echo("Available packages:")
+        for p in available:
+            click.echo(f"  - {p.name} ({p.version})")
+        sys.exit(1)
+
+    # Kiểm tra đã cài đặt chưa
+    if package.is_installed(package_name):
+        click.echo(f"⚠️ Package '{package_name}' is already installed. Use `robot uninstall {package_name}` first.")
+        sys.exit(1)
+
+    # Cài đặt
+    pkg.install()
+    click.echo(f"✅ Package '{package_name}' installed successfully.")
+</file>
+
+<file path="robot-cli/robot/commands/list_packages.py">
+import click
+from ..core import package
+
+@click.command()
+def list_packages():
+    """List available and installed packages."""
+    available = package.get_available_packages()
+    installed = package.get_installed_packages()
+
+    click.echo("📦 Available packages:")
+    for p in available:
+        status = "✅ installed" if p.name in installed else "⬜ not installed"
+        click.echo(f"  - {p.name} v{p.version} ({p.type}) {status}")
+
+    click.echo("")
+    click.echo("Installed packages:")
+    if installed:
+        for name in installed:
+            click.echo(f"  - {name}")
+    else:
+        click.echo("  (none)")
+</file>
+
+<file path="robot-cli/robot/commands/plugin.py">
+import click
+from ..core import plugin
+
+@click.command()
+@click.option('--type', '-t', help='Filter by plugin type')
+def plugin_list(type):
+    """List available plugins."""
+    plugins = plugin.discover_plugins(type)
+    click.echo(f"📦 Available plugins ({len(plugins)} found):")
+    for p in plugins:
+        click.echo(f"  - {p.name} ({p.type}) -> {p.entry}")
+</file>
+
+<file path="robot-cli/robot/commands/release.py">
+import click
+import sys
+import shutil
+import subprocess
+from datetime import datetime
+from pathlib import Path
+from ..core import config, version as ver
+
+@click.command()
+@click.argument('version', required=False)
+@click.option('--major', is_flag=True, help='Bump major version (x.0.0)')
+@click.option('--minor', is_flag=True, help='Bump minor version (0.x.0)')
+@click.option('--patch', is_flag=True, help='Bump patch version (0.0.x)')
+@click.option('--message', '-m', help='Release message for notes')
+def release(version, major, minor, patch, message):
+    """Create a new release."""
+    # Xác định phiên bản mới
+    current = ver.get_version()
+    if version:
+        new_version = version
+    elif major:
+        parts = current.split('.')
+        new_version = f"{int(parts[0]) + 1}.0.0"
+    elif minor:
+        parts = current.split('.')
+        new_version = f"{parts[0]}.{int(parts[1]) + 1}.0"
+    elif patch:
+        parts = current.split('.')
+        new_version = f"{parts[0]}.{parts[1]}.{int(parts[2]) + 1}"
+    else:
+        click.echo("⚠️ Please specify a version or bump option (--major, --minor, --patch).", err=True)
+        sys.exit(1)
+
+    click.echo(f"📦 Creating release {new_version} (current: {current})")
+
+    # Tạo thư mục release
+    release_dir = config.ROOT / "releases" / f"v{new_version}"
+    if release_dir.exists():
+        click.echo(f"❌ Release {new_version} already exists.", err=True)
+        sys.exit(1)
+    release_dir.mkdir(parents=True)
+
+    # Tạo release notes
+    notes_file = release_dir / "release-notes.md"
+    with open(notes_file, "w", encoding="utf-8") as f:
+        f.write(f"# Release {new_version}\n\n")
+        f.write(f"Date: {datetime.now().strftime('%Y-%m-%d')}\n\n")
+        if message:
+            f.write(f"## Summary\n\n{message}\n\n")
+        else:
+            f.write("## Summary\n\n*Provide a summary of changes.*\n\n")
+        f.write("## Changes\n\n- TBD\n\n")
+        f.write("## Known Issues\n\n- TBD\n\n")
+        f.write("## Migration Guide\n\n- None\n\n")
+
+    # Cập nhật VERSION
+    ver.set_version(new_version)
+
+    # Cập nhật CHANGELOG.md
+    changelog = config.ROOT / "CHANGELOG.md"
+    if changelog.exists():
+        content = changelog.read_text(encoding="utf-8")
+    else:
+        content = "# Changelog\n\n"
+
+    # Thêm entry mới vào đầu
+    entry = f"\n## v{new_version} ({datetime.now().strftime('%Y-%m-%d')})\n\n### Added\n- TBD\n\n### Fixed\n- TBD\n\n### Changed\n- TBD\n\n"
+    new_content = f"# Changelog\n\n{entry}" + content.lstrip("# Changelog\n\n")
+    changelog.write_text(new_content, encoding="utf-8")
+
+    click.echo(f"✅ Release {new_version} created.")
+    click.echo(f"   - Release notes: {notes_file}")
+    click.echo(f"   - CHANGELOG updated")
+    click.echo(f"   - Version updated to {new_version}")
+
+    # (Optional) git commit and tag
+    if click.confirm("Do you want to commit and tag this release with git?"):
+        try:
+            subprocess.run(["git", "add", "VERSION", "CHANGELOG.md", "releases/"], check=True)
+            subprocess.run(["git", "commit", "-m", f"Release {new_version}"], check=True)
+            subprocess.run(["git", "tag", f"v{new_version}"], check=True)
+            click.echo(f"✅ Git commit and tag v{new_version} created.")
+        except subprocess.CalledProcessError as e:
+            click.echo(f"❌ Git operation failed: {e}", err=True)
+            sys.exit(1)
+</file>
+
+<file path="robot-cli/robot/commands/test.py">
+import click
+import sys
+from pathlib import Path
+from ..core import config, utils
+
+@click.command()
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed output')
+@click.option('--json', 'json_output', help='Output JSON report file')
+def test(verbose, json_output):
+    click.echo("🧪 Running regression tests...")
+    test_runner = config.ROOT / "tests" / "runner.py"
+    if not test_runner.exists():
+        click.echo("❌ tests/runner.py not found. Please create the regression framework.", err=True)
+        sys.exit(1)
+
+    args = []
+    if verbose:
+        args.append("--verbose")
+    if json_output:
+        args.extend(["--json", json_output])
+
+    result = utils.run_script(test_runner, args, capture=not verbose)
+    if verbose:
+        click.echo(result.stdout)
+
+    if result.returncode != 0:
+        click.echo(result.stderr, err=True)
+        sys.exit(result.returncode)
+
+    click.echo("✅ All tests passed.")
+</file>
+
+<file path="robot-cli/robot/commands/uninstall.py">
+import click
+import sys
+from ..core import package
+
+@click.command()
+@click.argument('package_name')
+def uninstall(package_name):
+    """Uninstall a package."""
+    click.echo(f"🗑️ Uninstalling package: {package_name}")
+
+    if not package.is_installed(package_name):
+        click.echo(f"❌ Package '{package_name}' is not installed.", err=True)
+        sys.exit(1)
+
+    # Tìm package đã cài đặt
+    available = package.get_available_packages()
+    pkg = None
+    for p in available:
+        if p.name == package_name:
+            pkg = p
+            break
+
+    if pkg is None:
+        # Package không còn trong danh sách, nhưng đã cài đặt
+        # Xóa thủ công
+        from . import config
+        import shutil
+        installed_dir = config.ROOT / ".robot" / "installed" / package_name
+        if installed_dir.exists():
+            shutil.rmtree(installed_dir)
+        click.echo(f"✅ Package '{package_name}' uninstalled (metadata removed).")
+        return
+
+    pkg.uninstall()
+    click.echo(f"✅ Package '{package_name}' uninstalled successfully.")
+</file>
+
+<file path="robot-cli/robot/commands/version.py">
+import click
+from ..core import config
+
+@click.command()
+def version():
+    """Show version of the Robot Development Platform."""
+    click.echo(f"Robot Development Platform version {config.VERSION}")
+    click.echo(f"Language Specification version {config.LANG_SPEC_VERSION}")
+</file>
+
+<file path="robot-cli/robot/core/config.py">
+import os
+from pathlib import Path
+
+VERSION = "0.1.0"
+LANG_SPEC_VERSION = "1.0.0"
+
+# Đường dẫn gốc của workspace (giả sử robot-cli nằm cùng cấp với các repo khác)
+ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+# Các thư mục repository
+REPO_COMPILER = ROOT / "robot-compiler"
+REPO_LANGUAGE = ROOT / "robot-language"
+REPO_PLATFORM = ROOT / "robot-platform"
+REPO_FRONTEND = ROOT / "robot-frontend-robosim"
+REPO_DOCS = ROOT / "robot-docs"
+
+# File test tổng hợp
+TEST_SCRIPT = ROOT / "run_all_tests.py"
+</file>
+
+<file path="robot-cli/robot/core/package.py">
+import os
+import shutil
+import yaml
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from . import config
+
+PACKAGES_DIR = config.ROOT / "packages"
+INSTALLED_DIR = config.ROOT / ".robot" / "installed"
+
+
+class Package:
+    def __init__(self, path: Path):
+        self.path = path
+        self.metadata = self._load_metadata()
+
+    def _load_metadata(self) -> Dict:
+        meta_file = self.path / "package.yaml"
+        if not meta_file.exists():
+            raise FileNotFoundError(f"package.yaml not found in {self.path}")
+        with open(meta_file, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f)
+
+    @property
+    def name(self) -> str:
+        return self.metadata.get('name', self.path.name)
+
+    @property
+    def version(self) -> str:
+        return self.metadata.get('version', '0.0.0')
+
+    @property
+    def description(self) -> str:
+        return self.metadata.get('description', '')
+
+    @property
+    def type(self) -> str:
+        return self.metadata.get('type', 'unknown')
+
+    @property
+    def targets(self) -> List[str]:
+        return self.metadata.get('targets', [])
+
+    def install(self):
+        """Copy files to respective repositories."""
+        installed_dir = INSTALLED_DIR / self.name
+        installed_dir.mkdir(parents=True, exist_ok=True)
+
+        # Lưu metadata đã cài đặt
+        with open(installed_dir / "package.yaml", 'w', encoding='utf-8') as f:
+            yaml.dump(self.metadata, f)
+
+        # Copy platform files
+        if "platform" in self.targets:
+            src_platform = self.path / "platform"
+            if src_platform.exists():
+                dst_platform = config.REPO_PLATFORM / "main" / "src"
+                self._copy_dir(src_platform, dst_platform)
+
+        # Copy compiler files
+        if "compiler" in self.targets:
+            src_compiler = self.path / "compiler"
+            if src_compiler.exists():
+                dst_compiler = config.REPO_COMPILER / "compiler"
+                self._copy_dir(src_compiler, dst_compiler)
+
+        # Copy frontend files
+        if "frontend" in self.targets:
+            src_frontend = self.path / "frontend"
+            if src_frontend.exists():
+                dst_frontend = config.REPO_FRONTEND / "frontend"
+                self._copy_dir(src_frontend, dst_frontend)
+
+        # Copy docs
+        src_docs = self.path / "docs"
+        if src_docs.exists():
+            dst_docs = config.REPO_DOCS / "packages" / self.name
+            self._copy_dir(src_docs, dst_docs)
+
+    def _copy_dir(self, src: Path, dst: Path):
+        if not src.exists():
+            return
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+
+    def uninstall(self):
+        """Remove installed files (reverse of install)."""
+        # Xóa các file đã copy
+        if "platform" in self.targets:
+            dst_platform = config.REPO_PLATFORM / "main" / "src"
+            self._remove_package_files(self.path / "platform", dst_platform)
+
+        if "compiler" in self.targets:
+            dst_compiler = config.REPO_COMPILER / "compiler"
+            self._remove_package_files(self.path / "compiler", dst_compiler)
+
+        if "frontend" in self.targets:
+            dst_frontend = config.REPO_FRONTEND / "frontend"
+            self._remove_package_files(self.path / "frontend", dst_frontend)
+
+        # Xóa thư mục đã cài đặt
+        installed_dir = INSTALLED_DIR / self.name
+        if installed_dir.exists():
+            shutil.rmtree(installed_dir)
+
+    def _remove_package_files(self, src: Path, dst: Path):
+        if not src.exists():
+            return
+        for item in src.rglob("*"):
+            if item.is_file():
+                rel = item.relative_to(src)
+                target = dst / rel
+                if target.exists():
+                    target.unlink()
+        # Xóa các thư mục rỗng
+        for item in sorted(src.rglob("*"), reverse=True):
+            if item.is_dir():
+                rel = item.relative_to(src)
+                target = dst / rel
+                if target.exists() and not any(target.iterdir()):
+                    target.rmdir()
+
+
+def get_available_packages() -> List[Package]:
+    """List all available packages in PACKAGES_DIR."""
+    if not PACKAGES_DIR.exists():
+        return []
+    packages = []
+    for item in PACKAGES_DIR.iterdir():
+        if item.is_dir() and (item / "package.yaml").exists():
+            try:
+                packages.append(Package(item))
+            except Exception:
+                pass
+    return packages
+
+
+def get_installed_packages() -> List[str]:
+    """List names of installed packages."""
+    if not INSTALLED_DIR.exists():
+        return []
+    return [item.name for item in INSTALLED_DIR.iterdir() if item.is_dir()]
+
+
+def is_installed(package_name: str) -> bool:
+    return (INSTALLED_DIR / package_name).exists()
+</file>
+
+<file path="robot-cli/robot/core/plugin.py">
+import importlib
+import inspect
+from pathlib import Path
+from typing import List, Dict, Any
+
+from . import config
+
+
+class Plugin:
+    def __init__(self, path: Path, metadata: Dict):
+        self.path = path
+        self.metadata = metadata
+        self._module = None
+        self._instance = None
+
+    @property
+    def name(self) -> str:
+        return self.metadata.get('name', self.path.name)
+
+    @property
+    def type(self) -> str:
+        return self.metadata.get('type', 'unknown')
+
+    @property
+    def entry(self) -> str:
+        return self.metadata.get('entry', '')
+
+    def load(self):
+        """Load plugin module and instantiate entry class."""
+        if not self.entry:
+            raise ValueError(f"Plugin {self.name} missing entry point")
+        module_path, class_name = self.entry.split(':')
+        # Import module
+        self._module = importlib.import_module(module_path)
+        cls = getattr(self._module, class_name)
+        self._instance = cls()
+        return self._instance
+
+
+def discover_plugins(plugin_type: str = None) -> List[Plugin]:
+    """Discover all plugins in packages directory."""
+    plugins = []
+    packages_dir = config.ROOT / "packages"
+    if not packages_dir.exists():
+        return plugins
+    for item in packages_dir.iterdir():
+        if not item.is_dir():
+            continue
+        # Check for plugin.yaml or package.yaml with plugin section
+        meta_file = item / "plugin.yaml"
+        if not meta_file.exists():
+            meta_file = item / "package.yaml"
+        if not meta_file.exists():
+            continue
+        import yaml
+        with open(meta_file, 'r', encoding='utf-8') as f:
+            meta = yaml.safe_load(f)
+        # Check if it's a plugin (has type, entry)
+        if 'type' not in meta or 'entry' not in meta:
+            continue
+        if plugin_type and meta['type'] != plugin_type:
+            continue
+        plugins.append(Plugin(item, meta))
+    return plugins
+</file>
+
+<file path="robot-cli/robot/core/utils.py">
+import subprocess
+import sys
+from pathlib import Path
+
+def run_script(script_path, args=None, capture=True):
+    """Chạy một script Python và trả về kết quả."""
+    if args is None:
+        args = []
+    cmd = [sys.executable, str(script_path)] + args
+    result = subprocess.run(cmd, capture_output=capture, text=True)
+    return result
+
+def check_repo_exists(repo_path):
+    """Kiểm tra repository có tồn tại không."""
+    return repo_path.exists() and repo_path.is_dir()
+</file>
+
+<file path="robot-cli/robot/core/version.py">
+from pathlib import Path
+
+VERSION_FILE = Path(__file__).resolve().parent.parent.parent.parent / "VERSION"
+
+def get_version():
+    """Đọc phiên bản từ file VERSION."""
+    if VERSION_FILE.exists():
+        return VERSION_FILE.read_text().strip()
+    return "0.0.0"
+
+def set_version(version):
+    """Ghi phiên bản vào file VERSION."""
+    VERSION_FILE.write_text(version.strip() + "\n")
+</file>
+
+<file path="robot-cli/robot/__init__.py">
+__version__ = "0.1.0"
+</file>
+
+<file path="robot-cli/robot/cli.py">
+import click
+from .commands import build, test, doctor, version, info
+from .commands import benchmark
+from .commands import docs
+from .commands import release, changelog
+from .commands import install, list_packages, uninstall
+from .commands import plugin as plugin_cmd
+
+
+@click.group()
+def cli():
+    """Robot Development Platform CLI
+    
+    Unified command-line tool for the Robot Development Platform.
+    """
+    pass
+
+cli.add_command(build.build)
+cli.add_command(test.test)
+cli.add_command(doctor.doctor)
+cli.add_command(version.version)
+cli.add_command(info.info)
+cli.add_command(benchmark.benchmark)
+cli.add_command(docs.docs)
+cli.add_command(release.release)
+cli.add_command(changelog.changelog)
+cli.add_command(install.install)
+cli.add_command(list_packages.list_packages)
+cli.add_command(uninstall.uninstall)
+cli.add_command(plugin_cmd.plugin_list, name='plugin-list')
+
+
+if __name__ == "__main__":
+    cli()
+</file>
+
+<file path="robot-cli/robot_cli.egg-info/dependency_links.txt">
+
+</file>
+
+<file path="robot-cli/robot_cli.egg-info/entry_points.txt">
+[console_scripts]
+robot = robot.cli:cli
+</file>
+
+<file path="robot-cli/robot_cli.egg-info/PKG-INFO">
+Metadata-Version: 2.4
+Name: robot-cli
+Version: 0.1.0
+Summary: Robot Development Platform CLI
+Author: Robot Team
+Requires-Python: >=3.8
+Requires-Dist: click
+Dynamic: author
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+</file>
+
+<file path="robot-cli/robot_cli.egg-info/requires.txt">
+click
+</file>
+
+<file path="robot-cli/robot_cli.egg-info/SOURCES.txt">
+README.md
+setup.py
+robot/__init__.py
+robot/cli.py
+robot_cli.egg-info/PKG-INFO
+robot_cli.egg-info/SOURCES.txt
+robot_cli.egg-info/dependency_links.txt
+robot_cli.egg-info/entry_points.txt
+robot_cli.egg-info/requires.txt
+robot_cli.egg-info/top_level.txt
+</file>
+
+<file path="robot-cli/robot_cli.egg-info/top_level.txt">
+robot
+</file>
+
+<file path="robot-cli/README.md">
+# Robot CLI
+
+Unified command-line tool for the Robot Development Platform.
+
+## Installation
+
+```bash
+cd robot-cli
+pip install -e .
+
+Usage
+robot build -f examples/demo.py
+robot test
+robot doctor
+robot version
+robot info
+
+Commands
+build : Compile a Robot program
+
+test : Run regression tests
+
+doctor : Check system health
+
+version: Show version
+
+info : Show platform details
+</file>
+
+<file path="robot-cli/setup.py">
+from setuptools import setup, find_packages
+
+setup(
+    name="robot-cli",
+    version="0.1.0",
+    description="Robot Development Platform CLI",
+    author="Robot Team",
+    packages=find_packages(),
+    include_package_data=True,
+    install_requires=[
+        "click",
+        "pyyaml",
+    ],
+    entry_points={
+        "console_scripts": [
+            "robot = robot.cli:cli",
+        ],
+    },
+    python_requires=">=3.8",
+)
+</file>
+
+<file path="robot-compiler/compiler/scope.py">
+class Scope:
+    def __init__(self, parent=None):
+        self.parent = parent
+        self.variables = {}
+        self.next_index = 0
+
+    def allocate(self, name):
+        if name not in self.variables:
+            self.variables[name] = self.next_index
+            self.next_index += 1
+        return self.variables[name]
+
+    def resolve(self, name):
+        if name in self.variables:
+            return self.variables[name]
+        if self.parent:
+            return self.parent.resolve(name)
+        raise KeyError(f"Variable '{name}' not found")
+</file>
+
+<file path="robot-docs/FUNCTION_MODEL.md">
+# Function Model
+
+## Declaration
+- Tên hàm phải là snake_case.
+- Tham số được đặt tên.
+- Hàm có thể có hoặc không có giá trị trả về.
+
+## Invocation
+- Gọi hàm bằng tên, truyền đúng số lượng đối số.
+- Đối số được đánh giá trước khi gọi.
+
+## Call Stack
+- VM sử dụng call stack để lưu địa chỉ trả về.
+- Độ sâu tối đa: 8.
+
+## Return Value
+- Giá trị trả về được lưu tại biến index 0.
+</file>
+
+<file path="robot-docs/LANGUAGE_SPEC.md">
+# Robot Language Specification
+
+## Overview
+Robot Language là ngôn ngữ lập trình dành cho robot, được thiết kế để biên dịch thành bytecode và chạy trên Robot VM.
+
+## Syntax
+
+### Variables
+Gán biến: `speed = 80`
+
+### Functions
+Định nghĩa:
+def add(a, b):
+return a + b
+
+text
+Gọi: `add(3, 4)`
+
+### Scope
+- Biến toàn cục: định nghĩa ở ngoài hàm.
+- Biến cục bộ: định nghĩa bên trong hàm.
+- Shadowing: biến cục bộ che khuất biến toàn cục cùng tên.
+
+### Return
+`return expr` để trả về giá trị.
+</file>
+
+<file path="robot-language/docs/generated/language_reference.md">
+# Robot Language Reference
+
+**Language:** Robot Language
+**Version:** 1.0.0
+
+## Overview
+Robot Language is a simple, Python-like language for programming robots. It compiles to bytecode and runs on the Robot VM.
+
+## Syntax
+
+### Variables
+```python
+speed = 80
+```
+
+### Functions (built-in)
+Robot Language provides several built-in functions:
+| Function | Arguments | Description |
+|----------|-----------|-------------|
+| `forward(speed)` | 1 | Move robot forward |
+| `backward(speed)` | 1 | Move robot backward |
+| `turn_left(speed)` | 1 | Rotate robot left |
+| `turn_right(speed)` | 1 | Rotate robot right |
+| `wait(milliseconds)` | 1 | Wait milliseconds |
+| `stop()` | 0 | Stop robot |
+
+### User-Defined Functions
+```python
+def my_function(param1, param2):
+    # function body
+    return value
+```
+
+### Control Flow
+- `if condition:` ... `else:` ...
+- `while condition:` ...
+- `break` and `continue`
+
+### Scope Rules
+- Variables defined outside functions are global.
+- Variables defined inside functions are local.
+- Local variables shadow globals.
+
+---
+*For a complete specification, see `api.yaml`*.
+</file>
+
+<file path="robot-language/docs/generated/opcode_reference.md">
+# Opcode Reference
+
+This is a complete list of all opcodes used by the Robot VM.
+
+| Opcode | ID | Category | Description |
+|--------|----|----------|-------------|
+| `Forward` | 2 | unknown | Move robot forward |
+| `Backward` | 3 | unknown | Move robot backward |
+| `TurnLeft` | 4 | unknown | Rotate robot left |
+| `TurnRight` | 5 | unknown | Rotate robot right |
+| `Wait` | 7 | unknown | Wait milliseconds |
+| `Stop` | 6 | unknown | Stop robot |
+| `LoadConst` | 1 | unknown | Load constant to variable |
+| `CompareEQ` | 8 | unknown | Compare equal |
+| `CompareNE` | 9 | unknown | Compare not equal |
+| `CompareLT` | 10 | unknown | Compare less than |
+| `CompareLE` | 11 | unknown | Compare less or equal |
+| `CompareGT` | 12 | unknown | Compare greater than |
+| `CompareGE` | 13 | unknown | Compare greater or equal |
+| `Jump` | 14 | unknown | Unconditional jump |
+| `JumpIfFalse` | 15 | unknown | Jump if false |
+| `JumpIfTrue` | 16 | unknown | Jump if true |
+| `Label` | 17 | unknown | Label placeholder |
+| `Add` | 20 | unknown | Addition |
+| `Sub` | 21 | unknown | Subtraction |
+| `Mul` | 22 | unknown | Multiplication |
+| `Div` | 23 | unknown | Integer division |
+| `Mod` | 24 | unknown | Modulo |
+| `Pow` | 25 | unknown | Power (integer exponent) |
+| `Neg` | 26 | unknown | Negate |
+| `Call` | 27 | unknown | Call user function |
+| `Return` | 28 | unknown | Return from function |
+| `Store` | 29 | unknown | Store value from source to destination variable |
+
+---
+**Note:** Internal opcodes (ID >= 8) are used by the compiler and VM internally, not exposed to users.
+</file>
+
+<file path="robot-language/docs/generated/robotapi_reference.md">
+# RobotAPI Reference (C++)
+
+The RobotAPI is the hardware abstraction layer. All robot hardware access goes through this API.
+
+## Functions
+
+### Motion
+#### `void forward(int speed)`
+- Move robot forward
+
+#### `void backward(int speed)`
+- Move robot backward
+
+#### `void turn_left(int speed)`
+- Rotate robot left
+
+#### `void turn_right(int speed)`
+- Rotate robot right
+
+### System
+#### `void wait(int milliseconds)`
+- Wait milliseconds
+
+#### `void stop()`
+- Stop robot
+
+
+## Implementation
+The RobotAPI is implemented in `robot-platform/main/src/Services/Robot/RobotAPI.cpp`.
+It maps VM calls to hardware drivers (Motors, Sensors, etc.).
+</file>
+
+<file path="robot-language/docs/generated/sdk_reference.md">
+# SDK Reference (Python)
+
+This document describes the Python SDK generated from the specification.
+
+## Installation
+The SDK is automatically installed as part of the `robot-language` build.
+
+## API Reference
+
+### Motion
+#### `forward(speed)`
+- Move robot forward
+
+#### `backward(speed)`
+- Move robot backward
+
+#### `turn_left(speed)`
+- Rotate robot left
+
+#### `turn_right(speed)`
+- Rotate robot right
+
+### System
+#### `wait(milliseconds)`
+- Wait milliseconds
+
+#### `stop()`
+- Stop robot
+</file>
+
+<file path="robot-language/generators/doc_generator.py">
+import json
+from pathlib import Path
+from .base_generator import BaseGenerator
+
+
+class DocGenerator(BaseGenerator):
+    name = "Documentation Generator"
+
+    def generate(self, context):
+        language = context.language
+        docs_dir = context.root / "docs"   # robot-docs
+        generated_docs = docs_dir / "generated"
+        generated_docs.mkdir(parents=True, exist_ok=True)
+
+        # 1. Opcode Reference
+        self._generate_opcode_reference(language, generated_docs)
+
+        # 2. Language Reference (từ spec và mô tả)
+        self._generate_language_reference(language, generated_docs)
+
+        # 3. SDK Reference (từ các function)
+        self._generate_sdk_reference(language, generated_docs)
+
+        # 4. RobotAPI Reference (dành cho C++)
+        self._generate_robotapi_reference(language, generated_docs)
+
+        print(f"[DocGenerator] Generated documentation in {generated_docs}")
+
+    def _generate_opcode_reference(self, language, output_dir):
+        """Sinh file opcode_reference.md"""
+        lines = [
+            "# Opcode Reference",
+            "",
+            "This is a complete list of all opcodes used by the Robot VM.",
+            "",
+            "| Opcode | ID | Category | Description |",
+            "|--------|----|----------|-------------|"
+        ]
+        for _, _, func in language.all_functions():
+            opcode = func["opcode"]
+            opcode_id = func["opcode_id"]
+            category = func.get("category", "unknown")
+            desc = func.get("description", "")
+            lines.append(f"| `{opcode}` | {opcode_id} | {category} | {desc} |")
+
+        lines.append("")
+        lines.append("---")
+        lines.append("**Note:** Internal opcodes (ID >= 8) are used by the compiler and VM internally, not exposed to users.")
+        lines.append("")
+
+        with open(output_dir / "opcode_reference.md", "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+    def _generate_language_reference(self, language, output_dir):
+        """Sinh file language_reference.md (tổng quan ngôn ngữ)"""
+        lines = [
+            "# Robot Language Reference",
+            "",
+            f"**Language:** {language.name}",
+            f"**Version:** {language.version}",
+            "",
+            "## Overview",
+            "Robot Language is a simple, Python-like language for programming robots. It compiles to bytecode and runs on the Robot VM.",
+            "",
+            "## Syntax",
+            "",
+            "### Variables",
+            "```python",
+            "speed = 80",
+            "```",
+            "",
+            "### Functions (built-in)",
+            "Robot Language provides several built-in functions:",
+            "| Function | Arguments | Description |",
+            "|----------|-----------|-------------|"
+        ]
+
+        for category_name, category in language.categories.items():
+            if category_name == "internal":
+                continue
+            for func in category["functions"]:
+                args = ", ".join(arg["name"] for arg in func["args"])
+                lines.append(f"| `{func['name']}({args})` | {len(func['args'])} | {func.get('description', '')} |")
+
+        lines.append("")
+        lines.append("### User-Defined Functions")
+        lines.append("```python")
+        lines.append("def my_function(param1, param2):")
+        lines.append("    # function body")
+        lines.append("    return value")
+        lines.append("```")
+        lines.append("")
+        lines.append("### Control Flow")
+        lines.append("- `if condition:` ... `else:` ...")
+        lines.append("- `while condition:` ...")
+        lines.append("- `break` and `continue`")
+        lines.append("")
+        lines.append("### Scope Rules")
+        lines.append("- Variables defined outside functions are global.")
+        lines.append("- Variables defined inside functions are local.")
+        lines.append("- Local variables shadow globals.")
+        lines.append("")
+        lines.append("---")
+        lines.append("*For a complete specification, see `api.yaml`*.")
+
+        with open(output_dir / "language_reference.md", "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+    def _generate_sdk_reference(self, language, output_dir):
+        """Sinh file sdk_reference.md (từ spec)"""
+        lines = [
+            "# SDK Reference (Python)",
+            "",
+            "This document describes the Python SDK generated from the specification.",
+            "",
+            "## Installation",
+            "The SDK is automatically installed as part of the `robot-language` build.",
+            "",
+            "## API Reference",
+            ""
+        ]
+        for category_name, category in language.categories.items():
+            if category_name == "internal":
+                continue
+            lines.append(f"### {category_name.capitalize()}")
+            for func in category["functions"]:
+                args = ", ".join(arg["name"] for arg in func["args"])
+                desc = func.get("description", "")
+                lines.append(f"#### `{func['name']}({args})`")
+                lines.append(f"- {desc}")
+                lines.append("")
+
+        with open(output_dir / "sdk_reference.md", "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+    def _generate_robotapi_reference(self, language, output_dir):
+        """Sinh file robotapi_reference.md (cho C++ RobotAPI)"""
+        lines = [
+            "# RobotAPI Reference (C++)",
+            "",
+            "The RobotAPI is the hardware abstraction layer. All robot hardware access goes through this API.",
+            "",
+            "## Functions",
+            ""
+        ]
+        for category_name, category in language.categories.items():
+            if category_name == "internal":
+                continue
+            lines.append(f"### {category_name.capitalize()}")
+            for func in category["functions"]:
+                args = ", ".join(f"{arg['type']} {arg['name']}" for arg in func["args"])
+                desc = func.get("description", "")
+                lines.append(f"#### `void {func['name']}({args})`")
+                lines.append(f"- {desc}")
+                lines.append("")
+
+        lines.append("")
+        lines.append("## Implementation")
+        lines.append("The RobotAPI is implemented in `robot-platform/main/src/Services/Robot/RobotAPI.cpp`.")
+        lines.append("It maps VM calls to hardware drivers (Motors, Sensors, etc.).")
+        lines.append("")
+
+        with open(output_dir / "robotapi_reference.md", "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+</file>
+
+<file path="tests/__init__.py">
+
+</file>
+
+<file path="tests/runner.py">
+#!/usr/bin/env python3
+import unittest
+import sys
+import json
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+
+def run_tests(verbosity=1, output_json=None):
+    loader = unittest.TestLoader()
+    start_dir = Path(__file__).parent
+    suite = loader.discover(start_dir, pattern="test_*.py")
+
+    runner = unittest.TextTestRunner(verbosity=verbosity)
+    result = runner.run(suite)
+
+    # Build report
+    report = {
+        "timestamp": time.time(),
+        "testsRun": result.testsRun,
+        "errors": len(result.errors),
+        "failures": len(result.failures),
+        "skipped": len(result.skipped),
+        "expectedFailures": len(result.expectedFailures),
+        "unexpectedSuccesses": len(result.unexpectedSuccesses),
+        "details": []
+    }
+    for test, traceback in result.errors:
+        report["details"].append({"test": str(test), "status": "ERROR", "traceback": traceback})
+    for test, traceback in result.failures:
+        report["details"].append({"test": str(test), "status": "FAIL", "traceback": traceback})
+
+    if output_json:
+        with open(output_json, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+
+    return result.wasSuccessful()
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--verbose", "-v", action="count", default=0)
+    parser.add_argument("--json", help="Output JSON report file")
+    args = parser.parse_args()
+    verbosity = min(args.verbose + 1, 2)
+    success = run_tests(verbosity, args.json)
+    sys.exit(0 if success else 1)
+</file>
+
+<file path="tests/test_compiler.py">
+import unittest
+import subprocess
+import sys
+from pathlib import Path
+
+class TestCompiler(unittest.TestCase):
+    def test_compiler_suite(self):
+        script = Path(__file__).parent.parent / "robot-compiler" / "test" / "run_tests.py"
+        result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, 
+                         msg=f"Compiler test failed:\n{result.stdout}\n{result.stderr}")
+</file>
+
+<file path="tests/test_frontend.py">
+import unittest
+import subprocess
+import sys
+from pathlib import Path
+
+class TestFrontend(unittest.TestCase):
+    def test_frontend_suite(self):
+        script = Path(__file__).parent.parent / "robot-frontend-robosim" / "test" / "run_tests.py"
+        result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0,
+                         msg=f"Frontend test failed:\n{result.stdout}\n{result.stderr}")
+</file>
+
+<file path="tests/test_integration.py">
+import unittest
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+class TestIntegration(unittest.TestCase):
+    def test_compile_and_generate_header(self):
+        # Tạo file nguồn tạm
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write("forward(80)\nstop()\n")
+            source = f.name
+
+        # Tạo file header tạm
+        with tempfile.NamedTemporaryFile(suffix='.h', delete=False) as out:
+            output = out.name
+
+        try:
+            compiler_script = Path(__file__).parent.parent / "robot-compiler" / "main.py"
+            result = subprocess.run(
+                [sys.executable, str(compiler_script), "--file", source, "--output", output],
+                capture_output=True,
+                text=True
+            )
+            self.assertEqual(result.returncode, 0,
+                             msg=f"Compilation failed:\n{result.stdout}\n{result.stderr}")
+
+            # Kiểm tra header có nội dung đúng
+            with open(output, 'r', encoding='utf-8') as f:
+                content = f.read()
+                self.assertIn("Instruction(Opcode::LoadConst", content)
+                self.assertIn("Instruction(Opcode::Forward", content)
+                self.assertIn("Instruction(Opcode::Stop", content)
+
+        finally:
+            Path(source).unlink(missing_ok=True)
+            Path(output).unlink(missing_ok=True)
+</file>
+
+<file path="tests/test_language.py">
+import unittest
+import subprocess
+import sys
+from pathlib import Path
+
+class TestLanguage(unittest.TestCase):
+    def test_build(self):
+        script = Path(__file__).parent.parent / "robot-language" / "build.py"
+        result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0,
+                         msg=f"Language build failed:\n{result.stdout}\n{result.stderr}")
+</file>
+
+<file path="tests/test_runtime.py">
+# tests/test_runtime.py
+import unittest
+
+class TestRuntime(unittest.TestCase):
+    def test_vm_placeholder(self):
+        # TODO: Thực hiện test runtime khi có môi trường mô phỏng
+        self.assertTrue(True, "Runtime test not yet implemented")
+</file>
+
+<file path="releases/v0.1.1/release-notes.md">
+# Release 0.1.1
+
+Date: 2026-07-21
+
+## Summary
+
+Fix compiler bug
+
+## Changes
+
+- TBD
+
+## Known Issues
+
+- TBD
+
+## Migration Guide
+
+- None
+</file>
 
 <file path="robot-compiler/compiler/generated/__init__.py">
 
@@ -272,29 +1985,6 @@ class Patch:
 
         self.instruction_index = instruction_index
         self.label = label
-</file>
-
-<file path="robot-compiler/compiler/symbol_table.py">
-class SymbolTable:
-
-    def __init__(self):
-
-        self.variables = {}
-
-        self.next_index = 0
-
-    def allocate(self, name):
-
-        if name not in self.variables:
-
-            self.variables[name] = self.next_index
-            self.next_index += 1
-
-        return self.variables[name]
-
-    def resolve(self, name):
-
-        return self.variables[name]
 </file>
 
 <file path="robot-compiler/examples/demo_arithmetic.py">
@@ -1107,70 +2797,6 @@ Một quyết định kỹ thuật được xem là tốt khi:
 -   Giúp Platform trở nên ổn định hơn sau mỗi Sprint.
 </file>
 
-<file path="robot-docs/VM_ABI.md">
-# VM ABI
-
-## Robot Virtual Machine Application Binary Interface
-
-Version: Foundation v1 (Frozen)
-
----
-
-# 1. Purpose
-
-Tài liệu này định nghĩa giao diện nhị phân (ABI) giữa chương trình bytecode
-và Robot VM. Mọi instruction đều được mô tả chi tiết về opcode, các tham số
-và hành vi.
-
-ABI này là **hợp đồng cố định** sau Sprint 14.5. Các phiên bản tương lai
-chỉ được mở rộng, không thay đổi ngữ nghĩa hiện có.
-
----
-
-# 2. Instruction Format
-
-Mỗi instruction có kích thước cố định:
-
-```c
-struct Instruction
-{
-    Opcode opcode;  // 1 byte (enum class)
-    int16_t p1;     // 2 bytes
-    int16_t p2;     // 2 bytes
-    int16_t p3;     // 2 bytes
-};
-
-
-# 7. Error Handling
-
-VM có thể dừng với các mã lỗi sau:
-
-| Error Code | Ý nghĩa                          |
-|------------|----------------------------------|
-| 0          | Không lỗi                        |
-| 1          | Opcode không hợp lệ              |
-| 2          | Program counter vượt quá giới hạn (program overflow) |
-| 3          | Jump target không hợp lệ (vượt quá kích thước chương trình) |
-
-Khi gặp lỗi, VM đặt `mRunning = false` và ghi mã lỗi vào `mErrorCode`.
-
----
-
-# 8. Stability Guarantee
-
-- Opcode ID và ngữ nghĩa không thay đổi sau Sprint 14.6.
-- Có thể thêm opcode mới với ID > 26.
-- Có thể mở rộng `VMContext` nhưng không thay đổi các trường hiện có.
-- `Instruction` layout không thay đổi.
-- Error codes là hợp đồng cố định (0–3).
-
----
-
-# 9. Version
-
-ABI Version: 1.0
-</file>
-
 <file path="robot-frontend-robosim/examples/robosim_move_second.py">
 import rcu
 
@@ -1933,8 +3559,8 @@ class ReferenceValidator(BaseValidator):
 
 const Instruction generatedProgram[] =
 {
-    Instruction(Opcode::LoadConst, 0, 1000, 0),
-    Instruction(Opcode::Wait, 0, 0, 0),
+    Instruction(Opcode::LoadConst, 0, 80, 0),
+    Instruction(Opcode::Forward, 0, 0, 0),
     Instruction(Opcode::Stop, 0, 0, 0),
 };
 
@@ -2581,6 +4207,22 @@ private:
 }
 </file>
 
+<file path="CHANGELOG.md">
+# Changelog
+
+
+## v0.1.1 (2026-07-21)
+
+### Added
+- TBD
+
+### Fixed
+- TBD
+
+### Changed
+- TBD
+</file>
+
 <file path="run_all_tests.py">
 #!/usr/bin/env python3
 import subprocess
@@ -2618,6 +4260,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+</file>
+
+<file path="VERSION">
+0.1.1
 </file>
 
 <file path="robot-compiler/compiler/generated/function_registry.py">
@@ -2706,6 +4352,9 @@ class Opcode(IntEnum):
     Mod = 24
     Pow = 25
     Neg = 26
+    Call = 27
+    Return = 28
+    Store = 29
 </file>
 
 <file path="robot-compiler/compiler/program.py">
@@ -2761,25 +4410,52 @@ class Program:
 </file>
 
 <file path="robot-compiler/main.py">
+#!/usr/bin/env python3
 from pathlib import Path
+import argparse
+import sys
+
 from compiler.compiler import RobotCompiler
 from compiler.emitter import HeaderEmitter
 
-ROOT = Path(__file__).resolve().parent
-demo_file = ROOT / "examples" / "demo.py"
-output_file = (
-    ROOT.parent
-    / "robot-platform"
-    / "main"
-    / "src"
-    / "Application"
-    / "generated_program.h"
-)
 
-compiler = RobotCompiler()
-program = compiler.compile(demo_file)
-HeaderEmitter().emit(program, output_file)
-print("Generate successfully!")
+def main():
+    parser = argparse.ArgumentParser(description="Robot Compiler")
+    parser.add_argument("--file", default="examples/demo.py", help="Source file (absolute or relative to robot-compiler)")
+    parser.add_argument("--output", default=None, help="Output header file path")
+    args = parser.parse_args()
+
+    ROOT = Path(__file__).resolve().parent
+    source_path = Path(args.file)
+
+    if not source_path.is_absolute():
+        source_path = ROOT / args.file
+
+    if not source_path.exists():
+        print(f"Error: Source file '{source_path}' not found.", file=sys.stderr)
+        return 1
+
+    if args.output:
+        output_file = Path(args.output)
+    else:
+        output_file = (
+            ROOT.parent
+            / "robot-platform"
+            / "main"
+            / "src"
+            / "Application"
+            / "generated_program.h"
+        )
+
+    compiler = RobotCompiler()
+    program = compiler.compile(source_path)
+    HeaderEmitter().emit(program, output_file)
+    print(f"[OK] Compiled successfully! Output written to {output_file}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 </file>
 
 <file path="robot-docs/BUILD_SYSTEM.md">
@@ -3135,6 +4811,70 @@ Build System được xem là hoàn chỉnh khi:
     robot-language.
 </file>
 
+<file path="robot-docs/VM_ABI.md">
+# VM ABI
+
+## Robot Virtual Machine Application Binary Interface
+
+Version: Foundation v1 (Frozen)
+
+---
+
+# 1. Purpose
+
+Tài liệu này định nghĩa giao diện nhị phân (ABI) giữa chương trình bytecode
+và Robot VM. Mọi instruction đều được mô tả chi tiết về opcode, các tham số
+và hành vi.
+
+ABI này là **hợp đồng cố định** sau Sprint 14.5. Các phiên bản tương lai
+chỉ được mở rộng, không thay đổi ngữ nghĩa hiện có.
+
+---
+
+# 2. Instruction Format
+
+Mỗi instruction có kích thước cố định:
+
+```c
+struct Instruction
+{
+    Opcode opcode;  // 1 byte (enum class)
+    int16_t p1;     // 2 bytes
+    int16_t p2;     // 2 bytes
+    int16_t p3;     // 2 bytes
+};
+
+
+# 7. Error Handling
+
+VM có thể dừng với các mã lỗi sau:
+
+| Error Code | Ý nghĩa                          |
+|------------|----------------------------------|
+| 0          | Không lỗi                        |
+| 1          | Opcode không hợp lệ              |
+| 2          | Program counter vượt quá giới hạn (program overflow) |
+| 3          | Jump target không hợp lệ (vượt quá kích thước chương trình) |
+
+Khi gặp lỗi, VM đặt `mRunning = false` và ghi mã lỗi vào `mErrorCode`.
+
+---
+
+# 8. Stability Guarantee
+
+- Opcode ID và ngữ nghĩa không thay đổi sau Sprint 14.6.
+- Có thể thêm opcode mới với ID > 26.
+- Có thể mở rộng `VMContext` nhưng không thay đổi các trường hiện có.
+- `Instruction` layout không thay đổi.
+- Error codes là hợp đồng cố định (0–3).
+
+---
+
+# 9. Version
+
+ABI Version: 1.0
+</file>
+
 <file path="robot-frontend-robosim/examples/robosim_demo.py">
 rcu.SetMoveRun("forward", 80)
 rcu.SetWaitForTime(1000)
@@ -3266,6 +5006,10 @@ DEST_COMPILER.mkdir(parents=True, exist_ok=True)
 DEST_PLATFORM = ROOT.parent / "robot-platform" / "main" / "include" / "generated"
 DEST_PLATFORM.mkdir(parents=True, exist_ok=True)
 
+# Đích cho tài liệu (docs)
+DEST_DOCS = ROOT.parent / "robot-docs" / "generated"
+DEST_DOCS.mkdir(parents=True, exist_ok=True)
+
 # Copy các file .py sang compiler
 for file in SOURCE.glob("*.py"):
     print("Copy to compiler:", file.name)
@@ -3281,6 +5025,13 @@ opcode_json = SOURCE / "opcode.json"
 if opcode_json.exists():
     print("Copy to platform:", opcode_json.name)
     shutil.copy2(opcode_json, DEST_PLATFORM / opcode_json.name)
+
+# Copy tài liệu đã sinh từ docs/generated (trong robot-language) sang robot-docs/generated
+DOCS_SOURCE = ROOT / "docs" / "generated"
+if DOCS_SOURCE.exists():
+    for file in DOCS_SOURCE.glob("*.md"):
+        print("Copy to docs:", file.name)
+        shutil.copy2(file, DEST_DOCS / file.name)
 
 print("Artifacts installed.")
 </file>
@@ -3321,6 +5072,9 @@ enum class Opcode : uint8_t
     Mod = 24,
     Pow = 25,
     Neg = 26,
+    Call = 27,
+    Return = 28,
+    Store = 29,
 };
 </file>
 
@@ -3541,6 +5295,33 @@ enum class Opcode : uint8_t
         "handler": "None",
         "arguments": 0,
         "description": "Negate"
+    },
+    "Call": {
+        "opcode": "Call",
+        "opcode_id": 27,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Call user function"
+    },
+    "Return": {
+        "opcode": "Return",
+        "opcode_id": 28,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Return from function"
+    },
+    "Store": {
+        "opcode": "Store",
+        "opcode_id": 29,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Store value from source to destination variable"
     }
 }
 </file>
@@ -3724,6 +5505,7 @@ class SemanticValidator(BaseValidator):
 from build import Builder
 from generators.registry_json_generator import RegistryJsonGenerator
 from generators.opcode_header_generator import OpcodeHeaderGenerator
+from generators.doc_generator import DocGenerator 
 
 from generators import (
     SDKGenerator,
@@ -3774,6 +5556,8 @@ builder.register(
 
 builder.register(OpcodeHeaderGenerator())
 
+builder.register(DocGenerator())
+
 builder.build()
 </file>
 
@@ -3813,6 +5597,9 @@ enum class Opcode : uint8_t
     Mod = 24,
     Pow = 25,
     Neg = 26,
+    Call = 27,
+    Return = 28,
+    Store = 29,
 };
 </file>
 
@@ -4006,6 +5793,30 @@ enum class Opcode : uint8_t
         "id": 26,
         "opcode": "Neg",
         "function": "Neg",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Call": {
+        "id": 27,
+        "opcode": "Call",
+        "function": "Call",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Return": {
+        "id": 28,
+        "opcode": "Return",
+        "function": "Return",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Store": {
+        "id": 29,
+        "opcode": "Store",
+        "function": "Store",
         "category": "internal",
         "module": "internal",
         "handler": "None"
@@ -4304,7 +6115,7 @@ import ast
 
 from .handlers.compare_handler import CompareHandler
 from .program import Program
-from .symbol_table import SymbolTable
+from .scope import Scope
 from .error import CompilerError
 from .generated.function_registry import FUNCTION_REGISTRY
 from .handlers.bool_handler import BoolHandler
@@ -4315,17 +6126,21 @@ class RobotCompiler(ast.NodeVisitor):
 
     def __init__(self):
         self.program = Program()
-        self.symbols = SymbolTable()
+        self.global_scope = Scope()
+        self.current_scope = self.global_scope
         self.temp_id = 0
         self.functions = {}
         self.loop_stack = []
+        self.in_function = False
 
     def compile_ast(self, tree):
         self.program = Program()
-        self.symbols = SymbolTable()
+        self.global_scope = Scope()
+        self.current_scope = self.global_scope
         self.temp_id = 0
         self.functions = {}
         self.loop_stack = []
+        self.in_function = False
         self.visit(tree)
         self.program.resolve_labels()
         return self.program
@@ -4338,7 +6153,7 @@ class RobotCompiler(ast.NodeVisitor):
     def allocate_temp(self):
         name = f"__temp{self.temp_id}"
         self.temp_id += 1
-        return self.symbols.allocate(name)
+        return self.current_scope.allocate(name)
 
     # ----------------------------------------------------------
     # Expression compilation
@@ -4350,7 +6165,7 @@ class RobotCompiler(ast.NodeVisitor):
             self.program.emit(Opcode.LoadConst.value, index, expr.value)
             return index
         elif isinstance(expr, ast.Name):
-            return self.symbols.resolve(expr.id)
+            return self.current_scope.resolve(expr.id)
         elif isinstance(expr, ast.BinOp):
             left = self.compile_expression(expr.left)
             right = self.compile_expression(expr.right)
@@ -4381,7 +6196,7 @@ class RobotCompiler(ast.NodeVisitor):
 
     def resolve_argument(self, arg):
         if isinstance(arg, ast.Name):
-            return self.symbols.resolve(arg.id)
+            return self.current_scope.resolve(arg.id)
         elif isinstance(arg, ast.Constant):
             index = self.allocate_temp()
             self.program.emit(Opcode.LoadConst.value, index, arg.value)
@@ -4408,7 +6223,7 @@ class RobotCompiler(ast.NodeVisitor):
         if not isinstance(node.value, ast.Constant):
             raise CompilerError("Only constant assignment is supported in this version.")
         value = node.value.value
-        index = self.symbols.allocate(name)
+        index = self.current_scope.allocate(name)
         self.program.emit(Opcode.LoadConst.value, index, value)
 
     def visit_FunctionDef(self, node):
@@ -5290,6 +7105,559 @@ Không còn Repository nào đọc trực tiếp Specification ngoài
 robot-language.
 </file>
 
+<file path="robot-frontend-robosim/test/run_tests.py">
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from frontend.compiler import RoboSimCompiler
+from compiler.generated.opcode import Opcode
+
+EXAMPLES = ROOT / "examples"
+compiler = RoboSimCompiler()
+
+# ---- Test 1: robosim_demo.py ----
+program = compiler.compile(EXAMPLES / "robosim_demo.py")
+print("\nInstruction Count:", len(program.instructions))
+for i, ins in enumerate(program.instructions):
+    print(i, f"Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
+print()
+assert len(program.instructions) == 5
+assert program.instructions[0].opcode == Opcode.LoadConst.value
+assert program.instructions[0].p1 == 0 and program.instructions[0].p2 == 80
+assert program.instructions[1].opcode == Opcode.Forward.value
+assert program.instructions[1].p1 == 0
+assert program.instructions[2].opcode == Opcode.LoadConst.value
+assert program.instructions[2].p1 == 1 and program.instructions[2].p2 == 1000
+assert program.instructions[3].opcode == Opcode.Wait.value
+assert program.instructions[3].p1 == 1
+assert program.instructions[4].opcode == Opcode.Stop.value
+print("Test robosim_demo.py : PASS")
+
+# ---- Test 2: robosim_wait.py ----
+program = compiler.compile(EXAMPLES / "robosim_wait.py")
+assert len(program.instructions) == 2
+assert program.instructions[0].opcode == Opcode.LoadConst.value
+assert program.instructions[1].opcode == Opcode.Wait.value
+print("Test robosim_wait.py : PASS")
+
+# ---- Test 3: robosim_move_second.py ----
+program = compiler.compile(EXAMPLES / "robosim_move_second.py")
+print("\nrobosim_move_second.py instructions:")
+for i, ins in enumerate(program.instructions):
+    print(i, f"Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
+print()
+assert len(program.instructions) == 7
+# Có thể kiểm tra thêm giá trị của Mul
+assert program.instructions[4].opcode == Opcode.Mul.value
+assert program.instructions[4].p1 == 1
+assert program.instructions[4].p2 == 2
+assert program.instructions[4].p3 == 3
+print("Test robosim_move_second.py : PASS")
+# ---- Test 4: robosim_variable.py ----
+program = compiler.compile(EXAMPLES / "robosim_variable.py")
+assert len(program.instructions) == 3
+assert program.instructions[0].opcode == Opcode.LoadConst.value
+assert program.instructions[1].opcode == Opcode.Forward.value
+assert program.instructions[2].opcode == Opcode.Stop.value
+print("Test robosim_variable.py : PASS")
+</file>
+
+<file path="robot-language/generated/opcode.json">
+{
+    "Forward": {
+        "id": 2,
+        "opcode": "Forward",
+        "function": "forward",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "Backward": {
+        "id": 3,
+        "opcode": "Backward",
+        "function": "backward",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "TurnLeft": {
+        "id": 4,
+        "opcode": "TurnLeft",
+        "function": "turn_left",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "TurnRight": {
+        "id": 5,
+        "opcode": "TurnRight",
+        "function": "turn_right",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "Wait": {
+        "id": 7,
+        "opcode": "Wait",
+        "function": "wait",
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler"
+    },
+    "Stop": {
+        "id": 6,
+        "opcode": "Stop",
+        "function": "stop",
+        "category": "system",
+        "module": "system_handler",
+        "handler": "SystemHandler"
+    },
+    "LoadConst": {
+        "id": 1,
+        "opcode": "LoadConst",
+        "function": "LoadConst",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareEQ": {
+        "id": 8,
+        "opcode": "CompareEQ",
+        "function": "CompareEQ",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareNE": {
+        "id": 9,
+        "opcode": "CompareNE",
+        "function": "CompareNE",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareLT": {
+        "id": 10,
+        "opcode": "CompareLT",
+        "function": "CompareLT",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareLE": {
+        "id": 11,
+        "opcode": "CompareLE",
+        "function": "CompareLE",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareGT": {
+        "id": 12,
+        "opcode": "CompareGT",
+        "function": "CompareGT",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "CompareGE": {
+        "id": 13,
+        "opcode": "CompareGE",
+        "function": "CompareGE",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Jump": {
+        "id": 14,
+        "opcode": "Jump",
+        "function": "Jump",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "JumpIfFalse": {
+        "id": 15,
+        "opcode": "JumpIfFalse",
+        "function": "JumpIfFalse",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "JumpIfTrue": {
+        "id": 16,
+        "opcode": "JumpIfTrue",
+        "function": "JumpIfTrue",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Label": {
+        "id": 17,
+        "opcode": "Label",
+        "function": "Label",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Add": {
+        "id": 20,
+        "opcode": "Add",
+        "function": "Add",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Sub": {
+        "id": 21,
+        "opcode": "Sub",
+        "function": "Sub",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Mul": {
+        "id": 22,
+        "opcode": "Mul",
+        "function": "Mul",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Div": {
+        "id": 23,
+        "opcode": "Div",
+        "function": "Div",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Mod": {
+        "id": 24,
+        "opcode": "Mod",
+        "function": "Mod",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Pow": {
+        "id": 25,
+        "opcode": "Pow",
+        "function": "Pow",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Neg": {
+        "id": 26,
+        "opcode": "Neg",
+        "function": "Neg",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Call": {
+        "id": 27,
+        "opcode": "Call",
+        "function": "Call",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Return": {
+        "id": 28,
+        "opcode": "Return",
+        "function": "Return",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Store": {
+        "id": 29,
+        "opcode": "Store",
+        "function": "Store",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    }
+}
+</file>
+
+<file path="robot-language/generated/opcode.py">
+"""
+AUTO GENERATED FILE
+"""
+
+from enum import IntEnum
+
+class Opcode(IntEnum):
+    Forward = 2
+    Backward = 3
+    TurnLeft = 4
+    TurnRight = 5
+    Wait = 7
+    Stop = 6
+    LoadConst = 1
+    CompareEQ = 8
+    CompareNE = 9
+    CompareLT = 10
+    CompareLE = 11
+    CompareGT = 12
+    CompareGE = 13
+    Jump = 14
+    JumpIfFalse = 15
+    JumpIfTrue = 16
+    Label = 17
+    Add = 20
+    Sub = 21
+    Mul = 22
+    Div = 23
+    Mod = 24
+    Pow = 25
+    Neg = 26
+    Call = 27
+    Return = 28
+    Store = 29
+</file>
+
+<file path="robot-language/specification/api.yaml">
+language:
+  name: Robot Language
+  version: 1.0.0
+  description: Robot Language Specification
+
+categories:
+
+  motion:
+    description: Motion control APIs
+    module: motion_handler
+    handler: MotionHandler
+
+    functions:
+      - name: forward
+        opcode: Forward
+        opcode_id: 2
+        description: Move robot forward
+        args:
+          - name: speed
+            type: int
+
+      - name: backward
+        opcode: Backward
+        opcode_id: 3
+        description: Move robot backward
+        args:
+          - name: speed
+            type: int
+
+      - name: turn_left
+        opcode: TurnLeft
+        opcode_id: 4
+        description: Rotate robot left
+        args:
+          - name: speed
+            type: int
+
+      - name: turn_right
+        opcode: TurnRight
+        opcode_id: 5
+        description: Rotate robot right
+        args:
+          - name: speed
+            type: int
+
+  system:
+    module: system_handler
+    handler: SystemHandler
+
+    functions:
+      - name: wait
+        opcode: Wait
+        opcode_id: 7
+        description: Wait milliseconds
+        args:
+          - name: milliseconds
+            type: int
+
+      - name: stop
+        opcode: Stop
+        opcode_id: 6
+        description: Stop robot
+        args: []
+
+  internal:
+    description: Internal opcodes (do not expose to users)
+    module: internal
+    handler: None
+
+    functions:
+      - name: LoadConst
+        opcode: LoadConst
+        opcode_id: 1
+        description: Load constant to variable
+        args: []
+      - name: CompareEQ
+        opcode: CompareEQ
+        opcode_id: 8
+        description: Compare equal
+        args: []
+      - name: CompareNE
+        opcode: CompareNE
+        opcode_id: 9
+        description: Compare not equal
+        args: []
+      - name: CompareLT
+        opcode: CompareLT
+        opcode_id: 10
+        description: Compare less than
+        args: []
+      - name: CompareLE
+        opcode: CompareLE
+        opcode_id: 11
+        description: Compare less or equal
+        args: []
+      - name: CompareGT
+        opcode: CompareGT
+        opcode_id: 12
+        description: Compare greater than
+        args: []
+      - name: CompareGE
+        opcode: CompareGE
+        opcode_id: 13
+        description: Compare greater or equal
+        args: []
+      - name: Jump
+        opcode: Jump
+        opcode_id: 14
+        description: Unconditional jump
+        args: []
+      - name: JumpIfFalse
+        opcode: JumpIfFalse
+        opcode_id: 15
+        description: Jump if false
+        args: []
+      - name: JumpIfTrue
+        opcode: JumpIfTrue
+        opcode_id: 16
+        description: Jump if true
+        args: []
+      - name: Label
+        opcode: Label
+        opcode_id: 17
+        description: Label placeholder
+        args: []
+      # --- Arithmetic opcodes ---
+      - name: Add
+        opcode: Add
+        opcode_id: 20
+        description: Addition
+        args: []
+      - name: Sub
+        opcode: Sub
+        opcode_id: 21
+        description: Subtraction
+        args: []
+      - name: Mul
+        opcode: Mul
+        opcode_id: 22
+        description: Multiplication
+        args: []
+      - name: Div
+        opcode: Div
+        opcode_id: 23
+        description: Integer division
+        args: []
+      - name: Mod
+        opcode: Mod
+        opcode_id: 24
+        description: Modulo
+        args: []
+      - name: Pow
+        opcode: Pow
+        opcode_id: 25
+        description: Power (integer exponent)
+        args: []
+      - name: Neg
+        opcode: Neg
+        opcode_id: 26
+        description: Negate
+        args: []
+      - name: Call
+        opcode: Call
+        opcode_id: 27
+        description: Call user function
+        args: []
+      - name: Return
+        opcode: Return
+        opcode_id: 28
+        description: Return from function
+        args: []
+      - name: Store
+        opcode: Store
+        opcode_id: 29
+        description: Store value from source to destination variable
+        args: []
+</file>
+
+<file path="robot-platform/main/main.ino">
+#include "src/Services/VM/ProgramLoader.h"
+
+VM vm;
+Program program;
+
+void setup()
+{
+    Serial.begin(115200);
+
+    while (!Serial)
+    {
+    }
+
+    Serial.println();
+    Serial.println("==================================");
+    Serial.println(" Robot VM Prototype");
+    Serial.println("==================================");
+
+    // Load program from generated header
+    ProgramLoader::LoadFromGenerated(program);
+
+    vm.LoadProgram(&program);
+
+    Serial.println("Program Loaded");
+    Serial.println();
+}
+
+/******************************************************************************
+ * Loop
+ ******************************************************************************/
+
+void loop()
+{
+    if (vm.IsRunning())
+    {
+        Serial.print("[VM] PC = ");
+        Serial.println(vm.GetProgramCounter());
+
+        vm.Step();
+
+        delay(100);
+    }
+    else
+    {
+        Serial.println();
+        Serial.println("========== VM FINISHED ==========");
+
+        while (true)
+        {
+        }
+    }
+}
+</file>
+
 <file path="robot-docs/ROADMAP.md">
 Robot Development Platform
 Development Roadmap
@@ -5550,7 +7918,10 @@ Build Cache
 Auto Documentation
 
 Code completion
-
+Phase 4 – Documentation Generator (✅ Completed)
+- Auto-generate opcode, language, SDK, RobotAPI references
+- Integrated with `robot docs` command
+- All docs are generated artifacts
 Phase 5 – Production Platform (Planning)
 Goal
 Đưa nền tảng vào sử dụng thực tế.
@@ -5697,517 +8068,6 @@ Dự án được xem là thành công khi:
 □ Runtime ổn định.
 □ Documentation luôn đồng bộ với hệ thống.
 □ Platform có thể phát triển lâu dài mà không cần tái cấu trúc kiến trúc nền.
-</file>
-
-<file path="robot-frontend-robosim/test/run_tests.py">
-from pathlib import Path
-import sys
-
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from frontend.compiler import RoboSimCompiler
-from compiler.generated.opcode import Opcode
-
-EXAMPLES = ROOT / "examples"
-compiler = RoboSimCompiler()
-
-# ---- Test 1: robosim_demo.py ----
-program = compiler.compile(EXAMPLES / "robosim_demo.py")
-print("\nInstruction Count:", len(program.instructions))
-for i, ins in enumerate(program.instructions):
-    print(i, f"Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
-print()
-assert len(program.instructions) == 5
-assert program.instructions[0].opcode == Opcode.LoadConst.value
-assert program.instructions[0].p1 == 0 and program.instructions[0].p2 == 80
-assert program.instructions[1].opcode == Opcode.Forward.value
-assert program.instructions[1].p1 == 0
-assert program.instructions[2].opcode == Opcode.LoadConst.value
-assert program.instructions[2].p1 == 1 and program.instructions[2].p2 == 1000
-assert program.instructions[3].opcode == Opcode.Wait.value
-assert program.instructions[3].p1 == 1
-assert program.instructions[4].opcode == Opcode.Stop.value
-print("Test robosim_demo.py : PASS")
-
-# ---- Test 2: robosim_wait.py ----
-program = compiler.compile(EXAMPLES / "robosim_wait.py")
-assert len(program.instructions) == 2
-assert program.instructions[0].opcode == Opcode.LoadConst.value
-assert program.instructions[1].opcode == Opcode.Wait.value
-print("Test robosim_wait.py : PASS")
-
-# ---- Test 3: robosim_move_second.py ----
-program = compiler.compile(EXAMPLES / "robosim_move_second.py")
-print("\nrobosim_move_second.py instructions:")
-for i, ins in enumerate(program.instructions):
-    print(i, f"Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
-print()
-assert len(program.instructions) == 7
-# Có thể kiểm tra thêm giá trị của Mul
-assert program.instructions[4].opcode == Opcode.Mul.value
-assert program.instructions[4].p1 == 1
-assert program.instructions[4].p2 == 2
-assert program.instructions[4].p3 == 3
-print("Test robosim_move_second.py : PASS")
-# ---- Test 4: robosim_variable.py ----
-program = compiler.compile(EXAMPLES / "robosim_variable.py")
-assert len(program.instructions) == 3
-assert program.instructions[0].opcode == Opcode.LoadConst.value
-assert program.instructions[1].opcode == Opcode.Forward.value
-assert program.instructions[2].opcode == Opcode.Stop.value
-print("Test robosim_variable.py : PASS")
-</file>
-
-<file path="robot-language/generated/opcode.json">
-{
-    "Forward": {
-        "id": 2,
-        "opcode": "Forward",
-        "function": "forward",
-        "category": "motion",
-        "module": "motion_handler",
-        "handler": "MotionHandler"
-    },
-    "Backward": {
-        "id": 3,
-        "opcode": "Backward",
-        "function": "backward",
-        "category": "motion",
-        "module": "motion_handler",
-        "handler": "MotionHandler"
-    },
-    "TurnLeft": {
-        "id": 4,
-        "opcode": "TurnLeft",
-        "function": "turn_left",
-        "category": "motion",
-        "module": "motion_handler",
-        "handler": "MotionHandler"
-    },
-    "TurnRight": {
-        "id": 5,
-        "opcode": "TurnRight",
-        "function": "turn_right",
-        "category": "motion",
-        "module": "motion_handler",
-        "handler": "MotionHandler"
-    },
-    "Wait": {
-        "id": 7,
-        "opcode": "Wait",
-        "function": "wait",
-        "category": "system",
-        "module": "system_handler",
-        "handler": "SystemHandler"
-    },
-    "Stop": {
-        "id": 6,
-        "opcode": "Stop",
-        "function": "stop",
-        "category": "system",
-        "module": "system_handler",
-        "handler": "SystemHandler"
-    },
-    "LoadConst": {
-        "id": 1,
-        "opcode": "LoadConst",
-        "function": "LoadConst",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "CompareEQ": {
-        "id": 8,
-        "opcode": "CompareEQ",
-        "function": "CompareEQ",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "CompareNE": {
-        "id": 9,
-        "opcode": "CompareNE",
-        "function": "CompareNE",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "CompareLT": {
-        "id": 10,
-        "opcode": "CompareLT",
-        "function": "CompareLT",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "CompareLE": {
-        "id": 11,
-        "opcode": "CompareLE",
-        "function": "CompareLE",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "CompareGT": {
-        "id": 12,
-        "opcode": "CompareGT",
-        "function": "CompareGT",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "CompareGE": {
-        "id": 13,
-        "opcode": "CompareGE",
-        "function": "CompareGE",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "Jump": {
-        "id": 14,
-        "opcode": "Jump",
-        "function": "Jump",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "JumpIfFalse": {
-        "id": 15,
-        "opcode": "JumpIfFalse",
-        "function": "JumpIfFalse",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "JumpIfTrue": {
-        "id": 16,
-        "opcode": "JumpIfTrue",
-        "function": "JumpIfTrue",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "Label": {
-        "id": 17,
-        "opcode": "Label",
-        "function": "Label",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "Add": {
-        "id": 20,
-        "opcode": "Add",
-        "function": "Add",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "Sub": {
-        "id": 21,
-        "opcode": "Sub",
-        "function": "Sub",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "Mul": {
-        "id": 22,
-        "opcode": "Mul",
-        "function": "Mul",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "Div": {
-        "id": 23,
-        "opcode": "Div",
-        "function": "Div",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "Mod": {
-        "id": 24,
-        "opcode": "Mod",
-        "function": "Mod",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "Pow": {
-        "id": 25,
-        "opcode": "Pow",
-        "function": "Pow",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    },
-    "Neg": {
-        "id": 26,
-        "opcode": "Neg",
-        "function": "Neg",
-        "category": "internal",
-        "module": "internal",
-        "handler": "None"
-    }
-}
-</file>
-
-<file path="robot-language/generated/opcode.py">
-"""
-AUTO GENERATED FILE
-"""
-
-from enum import IntEnum
-
-class Opcode(IntEnum):
-    Forward = 2
-    Backward = 3
-    TurnLeft = 4
-    TurnRight = 5
-    Wait = 7
-    Stop = 6
-    LoadConst = 1
-    CompareEQ = 8
-    CompareNE = 9
-    CompareLT = 10
-    CompareLE = 11
-    CompareGT = 12
-    CompareGE = 13
-    Jump = 14
-    JumpIfFalse = 15
-    JumpIfTrue = 16
-    Label = 17
-    Add = 20
-    Sub = 21
-    Mul = 22
-    Div = 23
-    Mod = 24
-    Pow = 25
-    Neg = 26
-</file>
-
-<file path="robot-language/specification/api.yaml">
-language:
-  name: Robot Language
-  version: 1.0.0
-  description: Robot Language Specification
-
-categories:
-
-  motion:
-    description: Motion control APIs
-    module: motion_handler
-    handler: MotionHandler
-
-    functions:
-      - name: forward
-        opcode: Forward
-        opcode_id: 2
-        description: Move robot forward
-        args:
-          - name: speed
-            type: int
-
-      - name: backward
-        opcode: Backward
-        opcode_id: 3
-        description: Move robot backward
-        args:
-          - name: speed
-            type: int
-
-      - name: turn_left
-        opcode: TurnLeft
-        opcode_id: 4
-        description: Rotate robot left
-        args:
-          - name: speed
-            type: int
-
-      - name: turn_right
-        opcode: TurnRight
-        opcode_id: 5
-        description: Rotate robot right
-        args:
-          - name: speed
-            type: int
-
-  system:
-    module: system_handler
-    handler: SystemHandler
-
-    functions:
-      - name: wait
-        opcode: Wait
-        opcode_id: 7
-        description: Wait milliseconds
-        args:
-          - name: milliseconds
-            type: int
-
-      - name: stop
-        opcode: Stop
-        opcode_id: 6
-        description: Stop robot
-        args: []
-
-  internal:
-    description: Internal opcodes (do not expose to users)
-    module: internal
-    handler: None
-
-    functions:
-      - name: LoadConst
-        opcode: LoadConst
-        opcode_id: 1
-        description: Load constant to variable
-        args: []
-      - name: CompareEQ
-        opcode: CompareEQ
-        opcode_id: 8
-        description: Compare equal
-        args: []
-      - name: CompareNE
-        opcode: CompareNE
-        opcode_id: 9
-        description: Compare not equal
-        args: []
-      - name: CompareLT
-        opcode: CompareLT
-        opcode_id: 10
-        description: Compare less than
-        args: []
-      - name: CompareLE
-        opcode: CompareLE
-        opcode_id: 11
-        description: Compare less or equal
-        args: []
-      - name: CompareGT
-        opcode: CompareGT
-        opcode_id: 12
-        description: Compare greater than
-        args: []
-      - name: CompareGE
-        opcode: CompareGE
-        opcode_id: 13
-        description: Compare greater or equal
-        args: []
-      - name: Jump
-        opcode: Jump
-        opcode_id: 14
-        description: Unconditional jump
-        args: []
-      - name: JumpIfFalse
-        opcode: JumpIfFalse
-        opcode_id: 15
-        description: Jump if false
-        args: []
-      - name: JumpIfTrue
-        opcode: JumpIfTrue
-        opcode_id: 16
-        description: Jump if true
-        args: []
-      - name: Label
-        opcode: Label
-        opcode_id: 17
-        description: Label placeholder
-        args: []
-      # --- Arithmetic opcodes ---
-      - name: Add
-        opcode: Add
-        opcode_id: 20
-        description: Addition
-        args: []
-      - name: Sub
-        opcode: Sub
-        opcode_id: 21
-        description: Subtraction
-        args: []
-      - name: Mul
-        opcode: Mul
-        opcode_id: 22
-        description: Multiplication
-        args: []
-      - name: Div
-        opcode: Div
-        opcode_id: 23
-        description: Integer division
-        args: []
-      - name: Mod
-        opcode: Mod
-        opcode_id: 24
-        description: Modulo
-        args: []
-      - name: Pow
-        opcode: Pow
-        opcode_id: 25
-        description: Power (integer exponent)
-        args: []
-      - name: Neg
-        opcode: Neg
-        opcode_id: 26
-        description: Negate
-        args: []
-</file>
-
-<file path="robot-platform/main/main.ino">
-#include "src/Services/VM/ProgramLoader.h"
-
-VM vm;
-Program program;
-
-void setup()
-{
-    Serial.begin(115200);
-
-    while (!Serial)
-    {
-    }
-
-    Serial.println();
-    Serial.println("==================================");
-    Serial.println(" Robot VM Prototype");
-    Serial.println("==================================");
-
-    // Load program from generated header
-    ProgramLoader::LoadFromGenerated(program);
-
-    vm.LoadProgram(&program);
-
-    Serial.println("Program Loaded");
-    Serial.println();
-}
-
-/******************************************************************************
- * Loop
- ******************************************************************************/
-
-void loop()
-{
-    if (vm.IsRunning())
-    {
-        Serial.print("[VM] PC = ");
-        Serial.println(vm.GetProgramCounter());
-
-        vm.Step();
-
-        delay(100);
-    }
-    else
-    {
-        Serial.println();
-        Serial.println("========== VM FINISHED ==========");
-
-        while (true)
-        {
-        }
-    }
-}
 </file>
 
 <file path="robot-docs/DEVELOPMENT_GUIDE.md">
@@ -6520,6 +8380,13 @@ Khi thêm opcode mới, phải cập nhật:
 - VM dispatcher (`VM.cpp`)
 - Compiler handler (nếu là API người dùng)
 - Regression tests
+
+## 19. Documentation Generation
+
+Tài liệu được sinh tự động từ `api.yaml` bằng lệnh:
+
+```bash
+robot docs
 </file>
 
 <file path="robot-platform/main/src/Services/VM/VM.cpp">
@@ -6751,7 +8618,38 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             mContext.mVariables[instruction.p3] = -mContext.mVariables[instruction.p1];
             mContext.mProgramCounter++;
             break;
+            
+        case Opcode::Store:
+            mContext.mVariables[instruction.p2] = mContext.mVariables[instruction.p1];
+            mContext.mProgramCounter++;
+            break;
 
+        case Opcode::Call:
+            // Lưu địa chỉ trả về (PC hiện tại + 1)
+            mContext.mReturnAddress = mContext.mProgramCounter + 1;
+            // Lưu frame pointer hiện tại
+            mContext.mFramePointer = mContext.mCallStackPointer;
+            // Đẩy return address vào call stack
+            if (mContext.mCallStackPointer < MAX_CALL_STACK) {
+                mContext.mCallStack[mContext.mCallStackPointer++] = mContext.mReturnAddress;
+            } else {
+                mContext.mRunning = false;
+                mContext.mErrorCode = 4; // stack overflow
+            }
+            // Nhảy đến địa chỉ hàm (p1)
+            mContext.mProgramCounter = instruction.p1;
+            break;
+
+        case Opcode::Return:
+            // Lấy return address từ stack
+            if (mContext.mCallStackPointer > 0) {
+                mContext.mCallStackPointer--;
+                mContext.mProgramCounter = mContext.mCallStack[mContext.mCallStackPointer];
+            } else {
+                mContext.mRunning = false;
+                mContext.mErrorCode = 5; // return without call
+            }
+            break;
         default:
             mContext.mRunning = false;
             mContext.mErrorCode = 1;  // invalid opcode

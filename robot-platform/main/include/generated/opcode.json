@@ -190,5 +190,29 @@
         "category": "internal",
         "module": "internal",
         "handler": "None"
+    },
+    "Call": {
+        "id": 27,
+        "opcode": "Call",
+        "function": "Call",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Return": {
+        "id": 28,
+        "opcode": "Return",
+        "function": "Return",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
+    },
+    "Store": {
+        "id": 29,
+        "opcode": "Store",
+        "function": "Store",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
     }
 }

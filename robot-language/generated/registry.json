@@ -214,5 +214,32 @@
         "handler": "None",
         "arguments": 0,
         "description": "Negate"
+    },
+    "Call": {
+        "opcode": "Call",
+        "opcode_id": 27,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Call user function"
+    },
+    "Return": {
+        "opcode": "Return",
+        "opcode_id": 28,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Return from function"
+    },
+    "Store": {
+        "opcode": "Store",
+        "opcode_id": 29,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
+        "arguments": 0,
+        "description": "Store value from source to destination variable"
     }
 }

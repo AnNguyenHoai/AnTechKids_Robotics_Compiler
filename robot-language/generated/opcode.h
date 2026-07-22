@@ -34,4 +34,7 @@ enum class Opcode : uint8_t
     Mod = 24,
     Pow = 25,
     Neg = 26,
+    Call = 27,
+    Return = 28,
+    Store = 29,
 };

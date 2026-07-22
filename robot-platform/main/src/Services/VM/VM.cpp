@@ -226,7 +226,38 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             mContext.mVariables[instruction.p3] = -mContext.mVariables[instruction.p1];
             mContext.mProgramCounter++;
             break;
+            
+        case Opcode::Store:
+            mContext.mVariables[instruction.p2] = mContext.mVariables[instruction.p1];
+            mContext.mProgramCounter++;
+            break;
 
+        case Opcode::Call:
+            // Lưu địa chỉ trả về (PC hiện tại + 1)
+            mContext.mReturnAddress = mContext.mProgramCounter + 1;
+            // Lưu frame pointer hiện tại
+            mContext.mFramePointer = mContext.mCallStackPointer;
+            // Đẩy return address vào call stack
+            if (mContext.mCallStackPointer < MAX_CALL_STACK) {
+                mContext.mCallStack[mContext.mCallStackPointer++] = mContext.mReturnAddress;
+            } else {
+                mContext.mRunning = false;
+                mContext.mErrorCode = 4; // stack overflow
+            }
+            // Nhảy đến địa chỉ hàm (p1)
+            mContext.mProgramCounter = instruction.p1;
+            break;
+
+        case Opcode::Return:
+            // Lấy return address từ stack
+            if (mContext.mCallStackPointer > 0) {
+                mContext.mCallStackPointer--;
+                mContext.mProgramCounter = mContext.mCallStack[mContext.mCallStackPointer];
+            } else {
+                mContext.mRunning = false;
+                mContext.mErrorCode = 5; // return without call
+            }
+            break;
         default:
             mContext.mRunning = false;
             mContext.mErrorCode = 1;  // invalid opcode

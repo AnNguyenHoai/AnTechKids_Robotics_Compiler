@@ -159,3 +159,18 @@ categories:
         opcode_id: 26
         description: Negate
         args: []
+      - name: Call
+        opcode: Call
+        opcode_id: 27
+        description: Call user function
+        args: []
+      - name: Return
+        opcode: Return
+        opcode_id: 28
+        description: Return from function
+        args: []
+      - name: Store
+        opcode: Store
+        opcode_id: 29
+        description: Store value from source to destination variable
+        args: []        

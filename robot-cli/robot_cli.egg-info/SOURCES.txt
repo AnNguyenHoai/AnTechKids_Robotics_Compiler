@@ -1,0 +1,10 @@
+README.md
+setup.py
+robot/__init__.py
+robot/cli.py
+robot_cli.egg-info/PKG-INFO
+robot_cli.egg-info/SOURCES.txt
+robot_cli.egg-info/dependency_links.txt
+robot_cli.egg-info/entry_points.txt
+robot_cli.egg-info/requires.txt
+robot_cli.egg-info/top_level.txt

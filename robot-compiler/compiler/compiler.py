@@ -2,7 +2,7 @@ import ast
 
 from .handlers.compare_handler import CompareHandler
 from .program import Program
-from .symbol_table import SymbolTable
+from .scope import Scope
 from .error import CompilerError
 from .generated.function_registry import FUNCTION_REGISTRY
 from .handlers.bool_handler import BoolHandler
@@ -13,17 +13,21 @@ class RobotCompiler(ast.NodeVisitor):
 
     def __init__(self):
         self.program = Program()
-        self.symbols = SymbolTable()
+        self.global_scope = Scope()
+        self.current_scope = self.global_scope
         self.temp_id = 0
         self.functions = {}
         self.loop_stack = []
+        self.in_function = False
 
     def compile_ast(self, tree):
         self.program = Program()
-        self.symbols = SymbolTable()
+        self.global_scope = Scope()
+        self.current_scope = self.global_scope
         self.temp_id = 0
         self.functions = {}
         self.loop_stack = []
+        self.in_function = False
         self.visit(tree)
         self.program.resolve_labels()
         return self.program
@@ -36,7 +40,7 @@ class RobotCompiler(ast.NodeVisitor):
     def allocate_temp(self):
         name = f"__temp{self.temp_id}"
         self.temp_id += 1
-        return self.symbols.allocate(name)
+        return self.current_scope.allocate(name)
 
     # ----------------------------------------------------------
     # Expression compilation
@@ -48,7 +52,7 @@ class RobotCompiler(ast.NodeVisitor):
             self.program.emit(Opcode.LoadConst.value, index, expr.value)
             return index
         elif isinstance(expr, ast.Name):
-            return self.symbols.resolve(expr.id)
+            return self.current_scope.resolve(expr.id)
         elif isinstance(expr, ast.BinOp):
             left = self.compile_expression(expr.left)
             right = self.compile_expression(expr.right)
@@ -79,7 +83,7 @@ class RobotCompiler(ast.NodeVisitor):
 
     def resolve_argument(self, arg):
         if isinstance(arg, ast.Name):
-            return self.symbols.resolve(arg.id)
+            return self.current_scope.resolve(arg.id)
         elif isinstance(arg, ast.Constant):
             index = self.allocate_temp()
             self.program.emit(Opcode.LoadConst.value, index, arg.value)
@@ -106,7 +110,7 @@ class RobotCompiler(ast.NodeVisitor):
         if not isinstance(node.value, ast.Constant):
             raise CompilerError("Only constant assignment is supported in this version.")
         value = node.value.value
-        index = self.symbols.allocate(name)
+        index = self.current_scope.allocate(name)
         self.program.emit(Opcode.LoadConst.value, index, value)
 
     def visit_FunctionDef(self, node):

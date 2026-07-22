@@ -1,0 +1,7 @@
+name: robosim
+version: 1.0.0
+description: RoboSim simulator frontend
+type: frontend
+targets:
+  - frontend
+dependencies: []

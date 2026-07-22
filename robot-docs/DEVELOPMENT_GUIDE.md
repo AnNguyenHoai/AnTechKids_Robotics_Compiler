@@ -307,3 +307,10 @@ Khi thêm opcode mới, phải cập nhật:
 - VM dispatcher (`VM.cpp`)
 - Compiler handler (nếu là API người dùng)
 - Regression tests
+
+## 19. Documentation Generation
+
+Tài liệu được sinh tự động từ `api.yaml` bằng lệnh:
+
+```bash
+robot docs
