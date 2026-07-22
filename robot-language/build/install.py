@@ -16,12 +16,11 @@ DEST_PLATFORM.mkdir(parents=True, exist_ok=True)
 DEST_DOCS = ROOT.parent / "robot-docs" / "generated"
 DEST_DOCS.mkdir(parents=True, exist_ok=True)
 
-# Copy các file .py sang compiler
+# ----- Copy artifact cho compiler và platform -----
 for file in SOURCE.glob("*.py"):
     print("Copy to compiler:", file.name)
     shutil.copy2(file, DEST_COMPILER / file.name)
 
-# Copy opcode.h và opcode.json sang platform
 opcode_h = SOURCE / "opcode.h"
 if opcode_h.exists():
     print("Copy to platform:", opcode_h.name)
@@ -38,5 +37,19 @@ if DOCS_SOURCE.exists():
     for file in DOCS_SOURCE.glob("*.md"):
         print("Copy to docs:", file.name)
         shutil.copy2(file, DEST_DOCS / file.name)
+
+# ----- Copy SDK (Standard Robot API) sang frontend -----
+SDK_SOURCE = ROOT / "robot"
+DEST_FRONTEND_SDK = ROOT.parent / "robot-frontend-robosim" / "robot"
+
+if SDK_SOURCE.exists():
+    # Xóa thư mục đích cũ nếu có
+    if DEST_FRONTEND_SDK.exists():
+        shutil.rmtree(DEST_FRONTEND_SDK)
+    # Copy toàn bộ thư mục robot/
+    shutil.copytree(SDK_SOURCE, DEST_FRONTEND_SDK)
+    print(f"Copied SDK to {DEST_FRONTEND_SDK}")
+else:
+    print("Warning: SDK source directory not found. Skipping SDK installation.")
 
 print("Artifacts installed.")
