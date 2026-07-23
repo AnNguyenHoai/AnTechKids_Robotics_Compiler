@@ -1,14 +1,9 @@
-# robot-compiler/runtime/iterator.py
+# runtime/iterator.py
 from typing import Optional, List
 from .program import RuntimeProgram
 from .instruction import RuntimeInstruction
 
-
 class InstructionIterator:
-    """
-    Iterator over instructions of a specific function or the entire program.
-    Provides the single interface for instruction access by the VM.
-    """
     def __init__(self, program: RuntimeProgram, function_id: Optional[int] = None):
         self._program = program
         self._function_id = function_id
@@ -53,3 +48,7 @@ class InstructionIterator:
 
     def reset(self) -> None:
         self._current_index = 0
+
+    @property
+    def size(self) -> int:
+        return len(self._instructions)

@@ -241,14 +241,43 @@ robot-compiler/
   generated/
     __init__.py
   runtime/
+    handlers/
+      __init__.py
+      arithmetic_handler.py
+      call_handler.py
+      comparison_handler.py
+      jump_handler.py
+      move_handler.py
+      wait_handler.py
+    mock/
+      __init__.py
+      robot_api.py
+    value/
+      __init__.py
+      base.py
+      boolean.py
+      float.py
+      integer.py
+      reference.py
+      string.py
     __init__.py
+    context.py
+    dispatcher.py
+    engine.py
     exceptions.py
+    EXECUTION_ENGINE.md
+    frame.py
     function.py
     instruction.py
     iterator.py
     loader.py
+    memory.py
     program.py
     README.md
+    stack.py
+    variable.py
+    VM_ARCHITECTURE.md
+    vm.py
   tests/
     golden/
       backend/
@@ -262,6 +291,7 @@ robot-compiler/
     test_ast_to_ir.py
     test_backend.py
     test_binary.py
+    test_engine.py
     test_golden_backend.py
     test_golden_binary.py
     test_golden.py
@@ -421,6 +451,7 @@ tests/
   test_integration.py
   test_language.py
   test_runtime.py
+  test_vm.py
 04_Robotics_SW_DeepSeek.code-workspace
 CHANGELOG.md
 run_all_tests.py
@@ -431,499 +462,1318 @@ Files
 ================================================================
 
 ================
-File: robot-compiler/compiler/binary/constant_pool.py
+File: robot-compiler/runtime/handlers/__init__.py
 ================
-# compiler/binary/constant_pool.py
-from typing import List, Any
-from .model import ConstantPool
-from ..isa import ISAProgram, OperandKind
-
-class ConstantPoolBuilder:
-    @staticmethod
-    def build(program: ISAProgram) -> ConstantPool:
-        constants = []
-        seen = set()
-        for func in program.functions:
-            for ins in func.instructions:
-                for op in ins.operands:
-                    if op.kind == OperandKind.STRING:
-                        s = op.as_string()
-                        if s not in seen:
-                            seen.add(s)
-                            constants.append(s)
-        # Có thể mở rộng với các loại hằng khác (int, float, bool) sau này
-        return ConstantPool(constants)
+# runtime/handlers/__init__.py
+from . import move_handler
+from . import wait_handler
+from . import jump_handler
+from . import call_handler
+from . import comparison_handler
+from . import arithmetic_handler
 
 ================
-File: robot-compiler/compiler/binary/descriptor.py
+File: robot-compiler/runtime/handlers/arithmetic_handler.py
 ================
-# compiler/binary/descriptor.py
-from typing import List, Optional
+# runtime/handlers/arithmetic_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..mock.robot_api import MockRobotAPI
 
-class OpcodeDescriptor:
-    def __init__(
-        self,
-        number: int,
-        mnemonic: str,
-        operand_count: int,
-        operand_types: List[str],
-        encoding_size: int,
-        description: str = ""
-    ):
-        self.number = number
-        self.mnemonic = mnemonic
-        self.operand_count = operand_count
-        self.operand_types = operand_types
-        self.encoding_size = encoding_size
-        self.description = description
+ARITH_OP = {
+    "Add": "add",
+    "Sub": "sub",
+    "Mul": "mul",
+    "Div": "div",
+    "Mod": "mod",
+    "Pow": "pow",
+    "Neg": "neg",
+}
 
-    def __repr__(self):
-        return f"OpcodeDescriptor({self.mnemonic}, #{self.number})"
+def handle_arithmetic(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    op = ins.opcode
+    if op.name == "Neg":
+        src_idx = ins.operands[0]
+        result_idx = ins.operands[1]
+        val = engine.get_variable_by_index(src_idx)
+        result = engine.neg(val)
+        engine.set_variable_by_index(result_idx, result)
+    else:
+        left_idx = ins.operands[0]
+        right_idx = ins.operands[1]
+        result_idx = ins.operands[2]
+        left = engine.get_variable_by_index(left_idx)
+        right = engine.get_variable_by_index(right_idx)
+        op_name = op.name
+        if op_name == "Add":
+            result = engine.add(left, right)
+        elif op_name == "Sub":
+            result = engine.sub(left, right)
+        elif op_name == "Mul":
+            result = engine.mul(left, right)
+        elif op_name == "Div":
+            result = engine.div(left, right)
+        elif op_name == "Mod":
+            result = engine.mod(left, right)
+        elif op_name == "Pow":
+            result = engine.pow(left, right)
+        else:
+            raise ValueError(f"Unknown arithmetic op: {op_name}")
+        engine.set_variable_by_index(result_idx, result)
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
 
-================
-File: robot-compiler/compiler/binary/model.py
-================
-# compiler/binary/model.py
-from dataclasses import dataclass
-from typing import List, Any, Optional, Dict
-from .header import BinaryHeader
+def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    var_idx = ins.operands[0]
+    const_val = ins.operands[1]  # hằng số có thể là int, float, string, bool
+    # Tạo RuntimeValue tương ứng
+    if isinstance(const_val, int):
+        from ..value import IntegerValue
+        val = IntegerValue(const_val)
+    elif isinstance(const_val, float):
+        from ..value import FloatValue
+        val = FloatValue(const_val)
+    elif isinstance(const_val, str):
+        from ..value import StringValue
+        val = StringValue(const_val)
+    elif isinstance(const_val, bool):
+        from ..value import BooleanValue
+        val = BooleanValue(const_val)
+    else:
+        raise TypeError(f"Unsupported constant type: {type(const_val)}")
+    engine.set_variable_by_index(var_idx, val)
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
 
-@dataclass(frozen=True)
-class ConstantPool:
-    constants: List[Any]  # hỗ trợ int, float, str, bool
-
-@dataclass(frozen=True)
-class FunctionTableEntry:
-    function_id: int
-    entry_offset: int      # byte offset trong instruction stream
-    instruction_count: int
-
-@dataclass(frozen=True)
-class FunctionTable:
-    entries: List[FunctionTableEntry]
-
-@dataclass(frozen=True)
-class InstructionStream:
-    data: bytes
-
-@dataclass(frozen=True)
-class Metadata:
-    data: Dict[str, Any]
-
-@dataclass(frozen=True)
-class BinaryProgram:
-    header: BinaryHeader
-    constant_pool: ConstantPool
-    function_table: FunctionTable
-    instruction_stream: InstructionStream
-    metadata: Optional[Metadata] = None
-
-================
-File: robot-compiler/compiler/binary/serializer.py
-================
-# compiler/binary/serializer.py
-import struct
-from .model import BinaryProgram, ConstantPool, FunctionTable, InstructionStream
-from .header import BinaryHeader
-from .layout import OPERAND_TYPE_STRING
-
-class BinarySerializer:
-    @staticmethod
-    def serialize(program: BinaryProgram) -> bytes:
-        # Header
-        header_bytes = program.header.to_bytes()
-        result = header_bytes
-
-        # Constant pool
-        cp_bytes = BinarySerializer._serialize_constant_pool(program.constant_pool)
-        result += cp_bytes
-
-        # Function table
-        ft_bytes = BinarySerializer._serialize_function_table(program.function_table)
-        result += ft_bytes
-
-        # Instruction stream
-        result += program.instruction_stream.data
-
-        return result
-
-    @staticmethod
-    def _serialize_constant_pool(cp: ConstantPool) -> bytes:
-        constants = cp.constants
-        result = struct.pack("<I", len(constants))
-        for c in constants:
-            if isinstance(c, str):
-                encoded = c.encode('utf-8')
-                result += struct.pack("<B", OPERAND_TYPE_STRING)
-                result += struct.pack("<I", len(encoded))
-                result += encoded
-            else:
-                # Chưa hỗ trợ các loại khác
-                raise ValueError(f"Unsupported constant type: {type(c)}")
-        return result
-
-    @staticmethod
-    def _serialize_function_table(ft: FunctionTable) -> bytes:
-        entries = ft.entries
-        result = struct.pack("<H", len(entries))
-        for e in entries:
-            result += struct.pack("<H I H", e.function_id, e.entry_offset, e.instruction_count)
-        return result
+def handle_store(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    src_idx = ins.operands[0]
+    dest_idx = ins.operands[1]
+    val = engine.get_variable_by_index(src_idx)
+    engine.set_variable_by_index(dest_idx, val)
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
 
 ================
-File: robot-compiler/runtime/__init__.py
+File: robot-compiler/runtime/handlers/call_handler.py
 ================
-# robot-compiler/runtime/__init__.py
-from .program import RuntimeProgram
-from .function import RuntimeFunction
-from .instruction import RuntimeInstruction
-from .loader import ProgramLoader
-from .iterator import InstructionIterator
-from .exceptions import (
-    InvalidBinaryException,
-    UnsupportedVersionException,
-    InvalidInstructionException,
-    InvalidConstantReferenceException,
-    InvalidFunctionReferenceException,
-)
+# runtime/handlers/call_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..mock.robot_api import MockRobotAPI
+
+def handle_call(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    func_id = ins.operands[0]
+    engine.call(func_id)
+
+def handle_return(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    engine.return_()
+
+================
+File: robot-compiler/runtime/handlers/comparison_handler.py
+================
+# runtime/handlers/comparison_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..mock.robot_api import MockRobotAPI
+
+COMPARE_OP = {
+    "CompareEQ": "==",
+    "CompareNE": "!=",
+    "CompareLT": "<",
+    "CompareLE": "<=",
+    "CompareGT": ">",
+    "CompareGE": ">=",
+}
+
+def handle_compare(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    left_idx = ins.operands[0]
+    right_idx = ins.operands[1]
+    result_idx = ins.operands[2]
+    left = engine.get_variable_by_index(left_idx)
+    right = engine.get_variable_by_index(right_idx)
+    op = COMPARE_OP[ins.opcode.name]
+    result = engine.compare(left, right, op)
+    engine.set_variable_by_index(result_idx, result)
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+================
+File: robot-compiler/runtime/handlers/jump_handler.py
+================
+# runtime/handlers/jump_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..mock.robot_api import MockRobotAPI
+
+def handle_jump(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    target = ins.operands[0]
+    engine.jump(target)
+
+def handle_jump_if_false(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    cond_idx = ins.operands[0]
+    target = ins.operands[1]
+    cond_val = engine.get_variable_by_index(cond_idx)
+    if not cond_val.as_bool():
+        engine.jump(target)
+    else:
+        engine.context.program_counter += 1
+        engine.iterator.seek(engine.context.program_counter)
+
+def handle_jump_if_true(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    cond_idx = ins.operands[0]
+    target = ins.operands[1]
+    cond_val = engine.get_variable_by_index(cond_idx)
+    if cond_val.as_bool():
+        engine.jump(target)
+    else:
+        engine.context.program_counter += 1
+        engine.iterator.seek(engine.context.program_counter)
+
+================
+File: robot-compiler/runtime/handlers/move_handler.py
+================
+# runtime/handlers/move_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..mock.robot_api import MockRobotAPI
+from compiler.generated.opcode import Opcode
+
+def handle_forward(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    speed_idx = ins.operands[0]
+    speed_val = engine.get_variable_by_index(speed_idx)
+    api.forward(speed_val.as_int())
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+def handle_backward(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    speed_idx = ins.operands[0]
+    speed_val = engine.get_variable_by_index(speed_idx)
+    api.backward(speed_val.as_int())
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+def handle_turn_left(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    speed_idx = ins.operands[0]
+    speed_val = engine.get_variable_by_index(speed_idx)
+    api.left(speed_val.as_int())
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+def handle_turn_right(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    speed_idx = ins.operands[0]
+    speed_val = engine.get_variable_by_index(speed_idx)
+    api.right(speed_val.as_int())
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+def handle_stop(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    api.stop()
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+================
+File: robot-compiler/runtime/handlers/wait_handler.py
+================
+# runtime/handlers/wait_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..mock.robot_api import MockRobotAPI
+
+def handle_wait(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    duration_idx = ins.operands[0]
+    duration_val = engine.get_variable_by_index(duration_idx)
+    api.wait(duration_val.as_int())
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+================
+File: robot-compiler/runtime/mock/__init__.py
+================
+# runtime/mock/__init__.py
+from .robot_api import MockRobotAPI
+
+================
+File: robot-compiler/runtime/mock/robot_api.py
+================
+# runtime/mock/robot_api.py
+class MockRobotAPI:
+    def __init__(self):
+        self.output = []
+        self.last_action = None
+
+    def forward(self, speed):
+        self.last_action = ("forward", speed)
+        self.output.append(("forward", speed))
+        print(f"[MockRobot] Forward {speed}")
+
+    def backward(self, speed):
+        self.last_action = ("backward", speed)
+        self.output.append(("backward", speed))
+        print(f"[MockRobot] Backward {speed}")
+
+    def left(self, speed):
+        self.last_action = ("left", speed)
+        self.output.append(("left", speed))
+        print(f"[MockRobot] Left {speed}")
+
+    def right(self, speed):
+        self.last_action = ("right", speed)
+        self.output.append(("right", speed))
+        print(f"[MockRobot] Right {speed}")
+
+    def stop(self):
+        self.last_action = ("stop",)
+        self.output.append(("stop",))
+        print(f"[MockRobot] Stop")
+
+    def wait(self, ms):
+        self.last_action = ("wait", ms)
+        self.output.append(("wait", ms))
+        print(f"[MockRobot] Wait {ms} ms")
+
+================
+File: robot-compiler/runtime/value/__init__.py
+================
+# runtime/value/__init__.py
+from .base import RuntimeValue
+from .integer import IntegerValue
+from .float import FloatValue
+from .boolean import BooleanValue
+from .string import StringValue
+from .reference import ReferenceValue
 
 __all__ = [
-    "RuntimeProgram",
-    "RuntimeFunction",
-    "RuntimeInstruction",
-    "ProgramLoader",
-    "InstructionIterator",
-    "InvalidBinaryException",
-    "UnsupportedVersionException",
-    "InvalidInstructionException",
-    "InvalidConstantReferenceException",
-    "InvalidFunctionReferenceException",
+    "RuntimeValue",
+    "IntegerValue",
+    "FloatValue",
+    "BooleanValue",
+    "StringValue",
+    "ReferenceValue",
 ]
 
 ================
-File: robot-compiler/runtime/exceptions.py
+File: robot-compiler/runtime/value/base.py
 ================
-# robot-compiler/runtime/exceptions.py
-class RuntimeError(Exception):
-    """Base class for runtime errors."""
-    pass
+# runtime/value/base.py
+from abc import ABC, abstractmethod
 
+class RuntimeValue(ABC):
+    @abstractmethod
+    def __repr__(self) -> str:
+        pass
 
-class InvalidBinaryException(RuntimeError):
-    """Raised when binary magic or structure is invalid."""
-    pass
+    @abstractmethod
+    def __eq__(self, other) -> bool:
+        pass
 
+    @abstractmethod
+    def as_int(self) -> int:
+        pass
 
-class UnsupportedVersionException(RuntimeError):
-    """Raised when ABI version is not supported."""
-    pass
+    @abstractmethod
+    def as_float(self) -> float:
+        pass
 
+    @abstractmethod
+    def as_bool(self) -> bool:
+        pass
 
-class InvalidInstructionException(RuntimeError):
-    """Raised when an instruction is malformed or unsupported."""
-    pass
+    @abstractmethod
+    def as_string(self) -> str:
+        pass
 
+    def is_integer(self) -> bool:
+        return isinstance(self, IntegerValue)
+    def is_float(self) -> bool:
+        return isinstance(self, FloatValue)
+    def is_boolean(self) -> bool:
+        return isinstance(self, BooleanValue)
+    def is_string(self) -> bool:
+        return isinstance(self, StringValue)
+    def is_reference(self) -> bool:
+        return isinstance(self, ReferenceValue)# runtime/value/base.py
+from abc import ABC, abstractmethod
 
-class InvalidConstantReferenceException(RuntimeError):
-    """Raised when a constant pool reference is out of bounds."""
-    pass
+class RuntimeValue(ABC):
+    @abstractmethod
+    def __repr__(self) -> str:
+        pass
 
+    @abstractmethod
+    def __eq__(self, other) -> bool:
+        pass
 
-class InvalidFunctionReferenceException(RuntimeError):
-    """Raised when a function table reference is invalid."""
-    pass
+    @abstractmethod
+    def as_int(self) -> int:
+        pass
+
+    @abstractmethod
+    def as_float(self) -> float:
+        pass
+
+    @abstractmethod
+    def as_bool(self) -> bool:
+        pass
+
+    @abstractmethod
+    def as_string(self) -> str:
+        pass
+
+    def is_integer(self) -> bool:
+        return isinstance(self, IntegerValue)
+    def is_float(self) -> bool:
+        return isinstance(self, FloatValue)
+    def is_boolean(self) -> bool:
+        return isinstance(self, BooleanValue)
+    def is_string(self) -> bool:
+        return isinstance(self, StringValue)
+    def is_reference(self) -> bool:
+        return isinstance(self, ReferenceValue)
 
 ================
-File: robot-compiler/runtime/function.py
+File: robot-compiler/runtime/value/boolean.py
 ================
-# robot-compiler/runtime/function.py
-from dataclasses import dataclass
-from typing import List
-from .instruction import RuntimeInstruction
+# runtime/value/boolean.py
+from .base import RuntimeValue
 
+class BooleanValue(RuntimeValue):
+    def __init__(self, value: bool):
+        self.value = value
 
-@dataclass(frozen=True)
-class RuntimeFunction:
-    """
-    Immutable runtime function.
-    Contains metadata and the list of instructions belonging to this function.
-    """
-    function_id: int
-    entry_index: int                  # index of first instruction in global instruction list
-    instruction_count: int
-    instructions: List[RuntimeInstruction]
-    local_variable_count: int = 0
-    stack_size: int = 0
+    def __repr__(self) -> str:
+        return f"Boolean({self.value})"
 
-================
-File: robot-compiler/runtime/instruction.py
-================
-# robot-compiler/runtime/instruction.py
-from dataclasses import dataclass
-from typing import List, Any
-from ..compiler.isa import RobotOpcode
+    def __eq__(self, other) -> bool:
+        if isinstance(other, BooleanValue):
+            return self.value == other.value
+        return False
 
+    def as_int(self) -> int:
+        return 1 if self.value else 0
 
-@dataclass(frozen=True)
-class RuntimeInstruction:
-    """
-    Immutable decoded instruction ready for execution.
-    All operands are resolved to concrete values (int, float, str, bool, index, etc.).
-    """
-    opcode: RobotOpcode
-    operands: List[Any]          # decoded operand values
-    index: int                   # global instruction index in the program
+    def as_float(self) -> float:
+        return 1.0 if self.value else 0.0
+
+    def as_bool(self) -> bool:
+        return self.value
+
+    def as_string(self) -> str:
+        return "true" if self.value else "false"
 
 ================
-File: robot-compiler/runtime/iterator.py
+File: robot-compiler/runtime/value/float.py
 ================
-# robot-compiler/runtime/iterator.py
-from typing import Optional, List
-from .program import RuntimeProgram
-from .instruction import RuntimeInstruction
+# runtime/value/float.py
+from .base import RuntimeValue
 
+class FloatValue(RuntimeValue):
+    def __init__(self, value: float):
+        self.value = value
 
-class InstructionIterator:
-    """
-    Iterator over instructions of a specific function or the entire program.
-    Provides the single interface for instruction access by the VM.
-    """
-    def __init__(self, program: RuntimeProgram, function_id: Optional[int] = None):
-        self._program = program
-        self._function_id = function_id
-        self._instructions: List[RuntimeInstruction] = []
-        self._current_index: int = 0
+    def __repr__(self) -> str:
+        return f"Float({self.value})"
 
-        if function_id is not None:
-            func = program.get_function(function_id)
-            if func is None:
-                raise ValueError(f"Function {function_id} not found")
-            self._instructions = func.instructions
+    def __eq__(self, other) -> bool:
+        if isinstance(other, FloatValue):
+            return self.value == other.value
+        return False
+
+    def as_int(self) -> int:
+        return int(self.value)
+
+    def as_float(self) -> float:
+        return self.value
+
+    def as_bool(self) -> bool:
+        return self.value != 0.0
+
+    def as_string(self) -> str:
+        return str(self.value)
+
+================
+File: robot-compiler/runtime/value/integer.py
+================
+# runtime/value/integer.py
+from .base import RuntimeValue
+
+class IntegerValue(RuntimeValue):
+    def __init__(self, value: int):
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f"Integer({self.value})"
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, IntegerValue):
+            return self.value == other.value
+        return False
+
+    def as_int(self) -> int:
+        return self.value
+
+    def as_float(self) -> float:
+        return float(self.value)
+
+    def as_bool(self) -> bool:
+        return self.value != 0
+
+    def as_string(self) -> str:
+        return str(self.value)
+
+================
+File: robot-compiler/runtime/value/reference.py
+================
+# runtime/value/reference.py
+from .base import RuntimeValue
+
+class ReferenceValue(RuntimeValue):
+    def __init__(self, index: int):
+        self.index = index
+
+    def __repr__(self) -> str:
+        return f"Reference({self.index})"
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, ReferenceValue):
+            return self.index == other.index
+        return False
+
+    def as_int(self) -> int:
+        return self.index
+
+    def as_float(self) -> float:
+        return float(self.index)
+
+    def as_bool(self) -> bool:
+        return True
+
+    def as_string(self) -> str:
+        return f"ref:{self.index}"
+
+================
+File: robot-compiler/runtime/value/string.py
+================
+# runtime/value/string.py
+from .base import RuntimeValue
+
+class StringValue(RuntimeValue):
+    def __init__(self, value: str):
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f'String("{self.value}")'
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, StringValue):
+            return self.value == other.value
+        return False
+
+    def as_int(self) -> int:
+        raise TypeError("Cannot convert string to int")
+
+    def as_float(self) -> float:
+        raise TypeError("Cannot convert string to float")
+
+    def as_bool(self) -> bool:
+        return len(self.value) > 0
+
+    def as_string(self) -> str:
+        return self.value
+
+================
+File: robot-compiler/runtime/context.py
+================
+# runtime/context.py
+from dataclasses import dataclass, field
+from typing import List, Optional
+from enum import Enum
+from .value import RuntimeValue
+from .variable import VariableTable
+from .stack import DataStack
+from .frame import StackFrame
+
+class ExecutionState(Enum):
+    CREATED = "created"
+    LOADED = "loaded"
+    RUNNING = "running"
+    PAUSED = "paused"
+    STOPPED = "stopped"
+    FINISHED = "finished"
+
+@dataclass
+class ExecutionContext:
+    program_counter: int = 0
+    call_stack: List[StackFrame] = field(default_factory=list)
+    data_stack: DataStack = field(default_factory=DataStack)
+    current_function_id: Optional[int] = None
+    state: ExecutionState = ExecutionState.CREATED
+    flags: int = 0
+    registers: dict = field(default_factory=dict)
+    global_vars: VariableTable = field(default_factory=VariableTable)
+    local_vars: VariableTable = field(default_factory=VariableTable)
+
+    def __post_init__(self):
+        if self.call_stack is None:
+            self.call_stack = []
+        if self.registers is None:
+            self.registers = {}
+        if self.global_vars is None:
+            self.global_vars = VariableTable()
+        if self.local_vars is None:
+            self.local_vars = VariableTable()
+
+    def push_frame(self, frame: StackFrame):
+        self.call_stack.append(frame)
+        self.local_vars = frame.local_vars
+        self.current_function_id = frame.function_id
+
+    def pop_frame(self) -> StackFrame:
+        if not self.call_stack:
+            raise RuntimeError("No frame to pop")
+        frame = self.call_stack.pop()
+        if self.call_stack:
+            self.local_vars = self.call_stack[-1].local_vars
+            self.current_function_id = self.call_stack[-1].function_id
         else:
-            self._instructions = program.instructions
+            self.local_vars = VariableTable()
+            self.current_function_id = None
+        return frame
 
-    def current(self) -> Optional[RuntimeInstruction]:
-        if 0 <= self._current_index < len(self._instructions):
-            return self._instructions[self._current_index]
-        return None
-
-    def next(self) -> Optional[RuntimeInstruction]:
-        ins = self.current()
-        if ins is not None:
-            self._current_index += 1
-        return ins
-
-    def jump(self, index: int) -> None:
-        if index < 0 or index >= len(self._instructions):
-            raise ValueError(f"Invalid jump target: {index}")
-        self._current_index = index
-
-    def seek(self, index: int) -> None:
-        self._current_index = index
-
-    def has_next(self) -> bool:
-        return self._current_index < len(self._instructions)
-
-    def peek(self, offset: int = 0) -> Optional[RuntimeInstruction]:
-        idx = self._current_index + offset
-        if 0 <= idx < len(self._instructions):
-            return self._instructions[idx]
-        return None
-
-    def reset(self) -> None:
-        self._current_index = 0
+    def top_frame(self) -> Optional[StackFrame]:
+        return self.call_stack[-1] if self.call_stack else None
 
 ================
-File: robot-compiler/runtime/loader.py
+File: robot-compiler/runtime/dispatcher.py
 ================
-# robot-compiler/runtime/loader.py
-from typing import List
-from ..compiler.binary import BinaryProgram
-from ..compiler.isa import RobotOpcode, OperandKind
-from ..compiler.binary.instruction_encoder import InstructionEncoder
-from .program import RuntimeProgram
-from .function import RuntimeFunction
+# runtime/dispatcher.py
+from typing import Dict, Callable
+from compiler.generated.opcode import Opcode
 from .instruction import RuntimeInstruction
-from .exceptions import (
-    InvalidBinaryException,
-    UnsupportedVersionException,
-    InvalidInstructionException,
+from .engine import ExecutionEngine
+from .mock.robot_api import MockRobotAPI
+from .handlers import (
+    move_handler, wait_handler, jump_handler, call_handler,
+    comparison_handler, arithmetic_handler
 )
 
+class Dispatcher:
+    def __init__(self):
+        self.handlers: Dict[Opcode, Callable] = {
+            Opcode.Forward: move_handler.handle_forward,
+            Opcode.Backward: move_handler.handle_backward,
+            Opcode.TurnLeft: move_handler.handle_turn_left,
+            Opcode.TurnRight: move_handler.handle_turn_right,
+            Opcode.Wait: wait_handler.handle_wait,
+            Opcode.Stop: move_handler.handle_stop,
+            Opcode.Jump: jump_handler.handle_jump,
+            Opcode.JumpIfFalse: jump_handler.handle_jump_if_false,
+            Opcode.JumpIfTrue: jump_handler.handle_jump_if_true,
+            Opcode.Call: call_handler.handle_call,
+            Opcode.Return: call_handler.handle_return,
+            Opcode.CompareEQ: comparison_handler.handle_compare,
+            Opcode.CompareNE: comparison_handler.handle_compare,
+            Opcode.CompareLT: comparison_handler.handle_compare,
+            Opcode.CompareLE: comparison_handler.handle_compare,
+            Opcode.CompareGT: comparison_handler.handle_compare,
+            Opcode.CompareGE: comparison_handler.handle_compare,
+            Opcode.Add: arithmetic_handler.handle_arithmetic,
+            Opcode.Sub: arithmetic_handler.handle_arithmetic,
+            Opcode.Mul: arithmetic_handler.handle_arithmetic,
+            Opcode.Div: arithmetic_handler.handle_arithmetic,
+            Opcode.Mod: arithmetic_handler.handle_arithmetic,
+            Opcode.Pow: arithmetic_handler.handle_arithmetic,
+            Opcode.Neg: arithmetic_handler.handle_arithmetic,
+            Opcode.LoadConst: arithmetic_handler.handle_load_const,
+            Opcode.Store: arithmetic_handler.handle_store,
+        }
 
-class ProgramLoader:
-    """
-    Loads a BinaryProgram (from compiler) into a RuntimeProgram,
-    performing validation, decoding, and resolution.
-    """
-    @staticmethod
-    def load(binary: BinaryProgram) -> RuntimeProgram:
-        # 1. Validate header
-        header = binary.header
-        if header.magic != 0x4E494252:
-            raise InvalidBinaryException(
-                f"Invalid magic number: {header.magic:#010x} (expected 0x4E494252)"
-            )
-        if header.abi_version != 1:
-            raise UnsupportedVersionException(
-                f"Unsupported ABI version: {header.abi_version} (only version 1 is supported)"
-            )
+    def dispatch(self, instruction: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+        handler = self.handlers.get(instruction.opcode)
+        if handler is None:
+            raise ValueError(f"No handler for opcode {instruction.opcode}")
+        handler(instruction, engine, api)
 
-        # 2. Build constant pool list
-        constants = list(binary.constant_pool.constants)
+================
+File: robot-compiler/runtime/engine.py
+================
+# runtime/engine.py
+from typing import Optional
+from .context import ExecutionContext, ExecutionState
+from .value import RuntimeValue, IntegerValue, FloatValue, BooleanValue, StringValue, ReferenceValue
+from .variable import VariableTable
+from .stack import DataStack
+from .frame import StackFrame
+from .program import RuntimeProgram
+from .iterator import InstructionIterator
+from .exceptions import InvalidInstructionException
 
-        # 3. Decode instruction stream
-        stream_data = binary.instruction_stream.data
-        offset = 0
-        all_instructions: List[RuntimeInstruction] = []
-        function_list: List[RuntimeFunction] = []
+class ExecutionEngine:
+    def __init__(self):
+        self.context = ExecutionContext()
+        self.program: Optional[RuntimeProgram] = None
+        self.iterator: Optional[InstructionIterator] = None
 
-        # Registry for opcode enum by numeric value
-        opcode_registry = {op.value: op for op in RobotOpcode}
+    def load(self, program: RuntimeProgram):
+        self.program = program
+        self.context = ExecutionContext()
+        self.iterator = InstructionIterator(program, function_id=0)
+        self.context.program_counter = 0
+        self.context.state = ExecutionState.LOADED
+        # Khởi tạo global vars
+        self.context.global_vars = VariableTable()
 
-        # Iterate through function table entries
-        for ft_entry in binary.function_table.entries:
-            func_id = ft_entry.function_id
-            start_offset = ft_entry.entry_offset
-            count = ft_entry.instruction_count
+    # --- Stack operations ---
+    def push(self, value: RuntimeValue):
+        self.context.data_stack.push(value)
 
-            # Decode instructions for this function
-            func_instructions: List[RuntimeInstruction] = []
-            temp_offset = start_offset
-            for idx in range(count):
-                # Decode one ISAInstruction from raw bytes
-                ins, temp_offset = InstructionEncoder.decode(
-                    stream_data, temp_offset, opcode_registry
-                )
-                # Convert to RuntimeInstruction
-                operands = []
-                for op in ins.operands:
-                    if op.kind == OperandKind.INTEGER:
-                        operands.append(op.as_integer())
-                    elif op.kind == OperandKind.FLOAT:
-                        operands.append(op.as_float())
-                    elif op.kind == OperandKind.BOOLEAN:
-                        operands.append(op.as_boolean())
-                    elif op.kind == OperandKind.STRING:
-                        operands.append(op.as_string())
-                    elif op.kind in (
-                        OperandKind.ENUM,
-                        OperandKind.REGISTER,
-                        OperandKind.LABEL,
-                        OperandKind.CONSTANT_POOL,
-                    ):
-                        operands.append(op.as_index())
-                    else:
-                        raise InvalidInstructionException(
-                            f"Unsupported operand kind: {op.kind}"
-                        )
+    def pop(self) -> RuntimeValue:
+        return self.context.data_stack.pop()
 
-                runtime_ins = RuntimeInstruction(
-                    opcode=ins.opcode,
-                    operands=operands,
-                    index=len(all_instructions)
-                )
-                all_instructions.append(runtime_ins)
-                func_instructions.append(runtime_ins)
+    def peek(self) -> Optional[RuntimeValue]:
+        return self.context.data_stack.peek()
 
-            # Create RuntimeFunction
-            func = RuntimeFunction(
-                function_id=func_id,
-                entry_index=len(all_instructions) - count,
-                instruction_count=count,
-                instructions=func_instructions,
-            )
-            function_list.append(func)
+    # --- Variable operations ---
+    def get_variable(self, name: str) -> Optional[RuntimeValue]:
+        if self.context.local_vars and self.context.local_vars.has(name):
+            return self.context.local_vars.get(name)
+        return self.context.global_vars.get(name)
 
-        # 4. Build and return RuntimeProgram
-        entry_id = 0 if function_list else -1
-        return RuntimeProgram(
-            constants=constants,
-            functions=function_list,
-            instructions=all_instructions,
-            entry_function_id=entry_id,
-            abi_version=header.abi_version,
+    def get_variable_by_index(self, index: int) -> RuntimeValue:
+        name = f"v{index}"
+        val = self.get_variable(name)
+        if val is None:
+            raise KeyError(f"Variable '{name}' not found")
+        return val
+
+    def set_variable(self, name: str, value: RuntimeValue):
+        if self.context.local_vars and self.context.local_vars.has(name):
+            self.context.local_vars.set(name, value)
+        elif self.context.global_vars.has(name):
+            self.context.global_vars.set(name, value)
+        else:
+            # Tự động tạo global nếu chưa có
+            self.context.global_vars.define(name, value)
+
+    def set_variable_by_index(self, index: int, value: RuntimeValue):
+        name = f"v{index}"
+        self.set_variable(name, value)
+
+    def define_global(self, name: str, value: RuntimeValue = None):
+        self.context.global_vars.define(name, value)
+
+    def define_local(self, name: str, value: RuntimeValue = None):
+        if self.context.local_vars:
+            self.context.local_vars.define(name, value)
+        else:
+            raise RuntimeError("No local scope")
+
+    # --- Control flow ---
+    def jump(self, target: int):
+        if target < 0 or target >= self.iterator.size:
+            raise ValueError(f"Invalid jump target: {target}")
+        self.context.program_counter = target
+        self.iterator.seek(target)
+
+    def call(self, function_id: int):
+        func = self.program.get_function(function_id)
+        if func is None:
+            raise ValueError(f"Function {function_id} not found")
+        # Tạo frame mới với local vars
+        frame = StackFrame(
+            function_id=function_id,
+            return_address=self.context.program_counter + 1,
+            local_vars=VariableTable()
         )
+        self.context.push_frame(frame)
+        self.context.program_counter = func.entry_index
+        self.iterator.seek(func.entry_index)
+
+    def return_(self):
+        if not self.context.call_stack:
+            raise RuntimeError("Return without call")
+        frame = self.context.pop_frame()
+        self.context.program_counter = frame.return_address
+        self.iterator.seek(frame.return_address)
+
+    # --- Comparison ---
+    def compare(self, left: RuntimeValue, right: RuntimeValue, op: str) -> BooleanValue:
+        if isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
+            l = left.as_float()
+            r = right.as_float()
+        elif isinstance(left, BooleanValue) and isinstance(right, BooleanValue):
+            l = left.as_bool()
+            r = right.as_bool()
+        elif isinstance(left, StringValue) and isinstance(right, StringValue):
+            l = left.as_string()
+            r = right.as_string()
+        else:
+            raise TypeError(f"Cannot compare {type(left)} and {type(right)}")
+        
+        if op == "==":
+            return BooleanValue(l == r)
+        elif op == "!=":
+            return BooleanValue(l != r)
+        elif op == ">":
+            return BooleanValue(l > r)
+        elif op == ">=":
+            return BooleanValue(l >= r)
+        elif op == "<":
+            return BooleanValue(l < r)
+        elif op == "<=":
+            return BooleanValue(l <= r)
+        else:
+            raise ValueError(f"Unknown comparison operator: {op}")
+
+    # --- Arithmetic ---
+    def add(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            return IntegerValue(left.as_int() + right.as_int())
+        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
+            return FloatValue(left.as_float() + right.as_float())
+        elif isinstance(left, StringValue) and isinstance(right, StringValue):
+            return StringValue(left.as_string() + right.as_string())
+        else:
+            raise TypeError("Unsupported addition")
+
+    def sub(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            return IntegerValue(left.as_int() - right.as_int())
+        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
+            return FloatValue(left.as_float() - right.as_float())
+        else:
+            raise TypeError("Unsupported subtraction")
+
+    def mul(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            return IntegerValue(left.as_int() * right.as_int())
+        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
+            return FloatValue(left.as_float() * right.as_float())
+        else:
+            raise TypeError("Unsupported multiplication")
+
+    def div(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            if right.as_int() == 0:
+                raise ZeroDivisionError("Division by zero")
+            return IntegerValue(left.as_int() // right.as_int())
+        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
+            if right.as_float() == 0.0:
+                raise ZeroDivisionError("Division by zero")
+            return FloatValue(left.as_float() / right.as_float())
+        else:
+            raise TypeError("Unsupported division")
+
+    def mod(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            if right.as_int() == 0:
+                raise ZeroDivisionError("Modulo by zero")
+            return IntegerValue(left.as_int() % right.as_int())
+        else:
+            raise TypeError("Modulo only supported for integers")
+
+    def pow(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            return IntegerValue(left.as_int() ** right.as_int())
+        else:
+            raise TypeError("Power only supported for integers")
+
+    def neg(self, value: RuntimeValue) -> RuntimeValue:
+        if isinstance(value, IntegerValue):
+            return IntegerValue(-value.as_int())
+        elif isinstance(value, FloatValue):
+            return FloatValue(-value.as_float())
+        else:
+            raise TypeError("Negation only supported for numbers")
 
 ================
-File: robot-compiler/runtime/program.py
+File: robot-compiler/runtime/EXECUTION_ENGINE.md
 ================
-# robot-compiler/runtime/program.py
-from dataclasses import dataclass
-from typing import List, Optional, Any
-from .function import RuntimeFunction
+# Execution Engine
 
+## Overview
 
-@dataclass(frozen=True)
-class RuntimeProgram:
-    """
-    Immutable runtime program, fully prepared for execution.
-    Contains constants, functions, and a flat list of all instructions.
-    """
-    constants: List[Any]
-    functions: List[RuntimeFunction]
-    instructions: List[Any]          # list of RuntimeInstruction
-    entry_function_id: int = 0
-    abi_version: int = 1
+The Execution Engine is the core of the Virtual Machine. It manages the runtime state, including:
 
-    def get_function(self, function_id: int) -> Optional[RuntimeFunction]:
-        for f in self.functions:
-            if f.function_id == function_id:
-                return f
-        return None
+- Program counter
+- Call stack and stack frames
+- Data stack
+- Variable tables (global and local)
+- Control flow (jumps, calls, returns)
+- Arithmetic and comparison operations
 
-    def get_constant(self, index: int) -> Any:
-        if index < 0 or index >= len(self.constants):
-            raise IndexError(f"Constant index {index} out of range")
-        return self.constants[index]
-
-    def instruction_count(self) -> int:
-        return len(self.instructions)
-
-================
-File: robot-compiler/runtime/README.md
-================
-# Robot Runtime
-
-This package provides the runtime representation of a compiled robot program, independent from the compiler internals.
+The engine is independent of the dispatcher and opcode handlers.
 
 ## Components
 
-### RuntimeProgram
-Immutable container for a complete program ready for execution. Contains:
-- Constant pool
-- Function table
-- Flat list of instructions
-- Entry function ID
+### ExecutionContext
 
-### RuntimeFunction
-Represents a function in the program, with its instruction range and metadata.
+Holds all runtime state:
+- `program_counter`: current instruction index
+- `call_stack`: list of `StackFrame` objects
+- `data_stack`: stack for temporary values
+- `global_vars`: `VariableTable` for global variables
+- `local_vars`: current function's local variables
+- `state`: execution state (CREATED, LOADED, RUNNING, ...)
 
-### RuntimeInstruction
-Decoded instruction with opcode and operand values (all types resolved). The VM will execute these directly.
+### StackFrame
 
-### ProgramLoader
-Converts a `BinaryProgram` (from compiler) into a `RuntimeProgram`. Performs validation, decoding, and resolution. Throws specific exceptions for invalid binaries.
+Represents a function activation:
+- `function_id`: ID of the function
+- `return_address`: instruction index to return to
+- `local_vars`: `VariableTable` for local variables
+
+### VariableTable
+
+A hierarchical table for variables:
+- `get(name)`: retrieve value
+- `set(name, value)`: update value
+- `define(name, value)`: create new variable
+- Supports parent chain for scoping
+
+### RuntimeValue
+
+Type-safe value hierarchy:
+- `IntegerValue`, `FloatValue`, `BooleanValue`, `StringValue`, `ReferenceValue`
+
+### ExecutionEngine
+
+Provides high-level operations:
+- Stack: `push()`, `pop()`, `peek()`
+- Variables: `get_variable()`, `set_variable()`, `get_variable_by_index()`, `set_variable_by_index()`
+- Control: `jump()`, `call()`, `return_()`
+- Arithmetic: `add()`, `sub()`, `mul()`, `div()`, `mod()`, `pow()`, `neg()`
+- Comparison: `compare()`
+
+## Execution Lifecycle
+
+1. `VirtualMachine.load()` loads a `RuntimeProgram` into the engine.
+2. `VirtualMachine.run()` repeatedly calls `step()`.
+3. `step()` fetches the current instruction via `InstructionIterator`.
+4. `Dispatcher` finds the appropriate handler and invokes it with the engine.
+5. The handler uses engine methods to manipulate state and control flow.
+6. The engine updates `program_counter` and iterator.
+
+## Memory Management
+
+- Variables are stored in `VariableTable` (owned by frames or global).
+- Temporary values are stored on the `DataStack`.
+- No garbage collection is needed; frames are popped on return.
+
+================
+File: robot-compiler/runtime/frame.py
+================
+# runtime/frame.py
+from typing import Optional
+from .variable import VariableTable
+
+class StackFrame:
+    def __init__(self, function_id: int, return_address: int, local_vars: VariableTable):
+        self.function_id = function_id
+        self.return_address = return_address
+        self.local_vars = local_vars
+        self.previous_frame: Optional['StackFrame'] = None
+
+================
+File: robot-compiler/runtime/memory.py
+================
+# runtime/memory.py
+from typing import List
+from .value import RuntimeValue
+
+class MemoryManager:
+    def __init__(self):
+        self.allocations: List[RuntimeValue] = []
+
+    def allocate(self, value: RuntimeValue) -> int:
+        self.allocations.append(value)
+        return len(self.allocations) - 1
+
+    def get(self, index: int) -> RuntimeValue:
+        if index < 0 or index >= len(self.allocations):
+            raise IndexError("Memory index out of bounds")
+        return self.allocations[index]
+
+    def set(self, index: int, value: RuntimeValue):
+        if index < 0 or index >= len(self.allocations):
+            raise IndexError("Memory index out of bounds")
+        self.allocations[index] = value
+
+    def clear(self):
+        self.allocations.clear()
+
+================
+File: robot-compiler/runtime/stack.py
+================
+# runtime/stack.py
+from typing import List, Optional
+from .value import RuntimeValue
+
+class DataStack:
+    def __init__(self, max_size: int = 1024):
+        self.items: List[RuntimeValue] = []
+        self.max_size = max_size
+
+    def push(self, value: RuntimeValue):
+        if len(self.items) >= self.max_size:
+            raise OverflowError("Data stack overflow")
+        self.items.append(value)
+
+    def pop(self) -> RuntimeValue:
+        if not self.items:
+            raise IndexError("Data stack underflow")
+        return self.items.pop()
+
+    def peek(self) -> Optional[RuntimeValue]:
+        if self.items:
+            return self.items[-1]
+        return None
+
+    def clear(self):
+        self.items.clear()
+
+    def size(self) -> int:
+        return len(self.items)
+
+    def is_empty(self) -> bool:
+        return len(self.items) == 0
+
+================
+File: robot-compiler/runtime/variable.py
+================
+# runtime/variable.py
+from typing import Dict, Optional
+from .value import RuntimeValue
+
+class VariableTable:
+    def __init__(self, parent: Optional['VariableTable'] = None):
+        self.parent = parent
+        self.variables: Dict[str, RuntimeValue] = {}
+
+    def get(self, name: str) -> Optional[RuntimeValue]:
+        if name in self.variables:
+            return self.variables[name]
+        if self.parent:
+            return self.parent.get(name)
+        return None
+
+    def set(self, name: str, value: RuntimeValue):
+        if name in self.variables:
+            self.variables[name] = value
+        elif self.parent:
+            self.parent.set(name, value)
+        else:
+            raise KeyError(f"Variable '{name}' not defined")
+
+    def define(self, name: str, value: RuntimeValue = None):
+        if name in self.variables:
+            raise RuntimeError(f"Variable '{name}' already defined")
+        self.variables[name] = value
+
+    def has(self, name: str) -> bool:
+        if name in self.variables:
+            return True
+        if self.parent:
+            return self.parent.has(name)
+        return False
+
+================
+File: robot-compiler/runtime/VM_ARCHITECTURE.md
+================
+# Virtual Machine Architecture
+
+## Overview
+
+The Virtual Machine (VM) executes a `RuntimeProgram` produced by the `ProgramLoader`. It is a simple, deterministic, single-threaded interpreter that communicates with hardware through a `MockRobotAPI` (or later, a real RobotAPI).
+
+## Execution Lifecycle
+
+1. **Load**: `VM.load(RuntimeProgram)` – initializes context and sets up instruction iterator.
+2. **Run**: `VM.run()` – executes instructions until the program finishes or is stopped.
+3. **Step**: `VM.step()` – executes a single instruction.
+4. **Stop**: `VM.stop()` – halts execution.
+5. **Reset**: `VM.reset()` – resets the VM to initial loaded state.
+
+## Components
+
+### ExecutionContext
+
+Holds the CPU state:
+- `program_counter` – current instruction index.
+- `call_stack` – return addresses for CALL/RETURN.
+- `data_stack` – general-purpose stack.
+- `current_function_id` – currently executing function.
+- `state` – one of CREATED, LOADED, RUNNING, PAUSED, STOPPED, FINISHED.
+- `flags` – condition flags (future).
+- `registers` – optional general-purpose registers.
 
 ### InstructionIterator
-Provides iteration over instructions of a function or the entire program. Supports `current()`, `next()`, `jump()`, `seek()`, `has_next()`, `peek()`. This is the single interface for instruction access by the VM.
 
-## Object Lifecycle
+Provides sequential access to instructions. Supports:
+- `current()` – get current instruction.
+- `next()` – advance and return next instruction.
+- `seek(index)` – move to specific instruction.
+- `jump(index)` – alias for `seek`.
+- `has_next()` – check if more instructions exist.
+- `peek(offset)` – look ahead.
+- `reset()` – reset to beginning.
 
-1. Compiler produces `BinaryProgram`.
-2. `ProgramLoader.load(binary_prog)` -> `RuntimeProgram`.
-3. `InstructionIterator` created from `RuntimeProgram` to traverse instructions.
-4. VM uses iterator to fetch and execute instructions.
+### Dispatcher
 
-## Ownership
+Maps `RobotOpcode` to a handler function and invokes it.
 
-- `RuntimeProgram` is immutable and can be shared.
-- `InstructionIterator` holds a reference to the program and maintains a cursor; it is not thread-safe.
+### Opcode Handlers
+
+Each opcode family has its own handler module:
+- `move_handler`: MOVE_RUN, MOVE_RUN_TIME, MOVE_STOP
+- `wait_handler`: WAIT
+- `jump_handler`: JUMP, JUMP_IF
+- `call_handler`: CALL, RETURN
+
+Handlers update `context.program_counter` appropriately and call `MockRobotAPI` methods.
+
+### MockRobotAPI
+
+Stub implementation of robot hardware control. Records actions and prints to console.
+
+## State Machine
+CREATED -> LOADED -> RUNNING -> (PAUSED) -> STOPPED -> FINISHED
+
+text
+
+Invalid transitions raise exceptions.
 
 ## Future Extensions
 
-- Debugger and profiler can hook into `InstructionIterator`.
-- Additional metadata can be added to `RuntimeProgram` without breaking compatibility.
+- Real RobotAPI integration.
+- Multithreading / scheduler.
+- Debugger and profiler.
+- Interrupt handling.
+- Optimizations (JIT?).
+
+## Debugging
+
+The VM supports single-step execution via `step()`, which can be used by a debugger without modifying the VM core.
+
+================
+File: robot-compiler/runtime/vm.py
+================
+# runtime/vm.py
+from typing import Optional
+from .program import RuntimeProgram
+from .engine import ExecutionEngine
+from .dispatcher import Dispatcher
+from .mock.robot_api import MockRobotAPI
+from .context import ExecutionState
+class VirtualMachine:
+    def __init__(self):
+        self.engine = ExecutionEngine()
+        self.dispatcher = Dispatcher()
+        self.api = MockRobotAPI()
+        self.state = ExecutionState.CREATED
+
+    def load(self, program: RuntimeProgram):
+        self.engine.load(program)
+        self.state = ExecutionState.LOADED
+
+    def step(self):
+        if self.state == ExecutionState.FINISHED:
+            raise RuntimeError("VM already finished")
+        if self.state not in (ExecutionState.LOADED, ExecutionState.RUNNING, ExecutionState.PAUSED):
+            raise RuntimeError(f"VM in invalid state: {self.state}")
+
+        if not self.engine.iterator.has_next():
+            self.state = ExecutionState.FINISHED
+            self.engine.context.state = ExecutionState.FINISHED
+            return
+
+        ins = self.engine.iterator.current()
+        if ins is None:
+            self.state = ExecutionState.FINISHED
+            self.engine.context.state = ExecutionState.FINISHED
+            return
+
+        self.dispatcher.dispatch(ins, self.engine, self.api)
+
+        # Cập nhật iterator theo program_counter
+        self.engine.iterator.seek(self.engine.context.program_counter)
+
+    def run(self):
+        self.state = ExecutionState.RUNNING
+        self.engine.context.state = ExecutionState.RUNNING
+        while self.state == ExecutionState.RUNNING:
+            self.step()
+            if self.state == ExecutionState.FINISHED:
+                break
+
+    def stop(self):
+        self.state = ExecutionState.STOPPED
+        self.engine.context.state = ExecutionState.STOPPED
+
+    def reset(self):
+        self.engine = ExecutionEngine()
+        self.state = ExecutionState.CREATED
+
+    def get_state(self):
+        return self.state
+
+================
+File: robot-compiler/tests/test_engine.py
+================
+import sys
+from pathlib import Path
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import unittest
+from compiler.binary import ProgramEncoder
+from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, ISAOperand
+from compiler.generated.opcode import Opcode  # sử dụng Opcode
+from runtime import ProgramLoader, VirtualMachine
+
+def make_arithmetic_program():
+    prog = ISAProgram()
+    func = ISAFunction("main")
+    # LoadConst: t0=5, t1=3
+    func.add_instruction(ISAInstruction(Opcode.LoadConst, [ISAOperand.integer(0), ISAOperand.integer(5)]))
+    func.add_instruction(ISAInstruction(Opcode.LoadConst, [ISAOperand.integer(1), ISAOperand.integer(3)]))
+    # Add: t2 = t0 + t1
+    func.add_instruction(ISAInstruction(Opcode.Add, [ISAOperand.integer(0), ISAOperand.integer(1), ISAOperand.integer(2)]))
+    # Forward: forward(t2)
+    func.add_instruction(ISAInstruction(Opcode.Forward, [ISAOperand.integer(2)]))
+    # Stop
+    func.add_instruction(ISAInstruction(Opcode.Stop, []))
+    prog.add_function(func)
+    return prog
+
+class TestEngine(unittest.TestCase):
+    def test_arithmetic(self):
+        isa_prog = make_arithmetic_program()
+        encoder = ProgramEncoder()
+        binary = encoder.encode(isa_prog)
+        loader = ProgramLoader()
+        runtime = loader.load(binary)
+        vm = VirtualMachine()
+        vm.load(runtime)
+        vm.run()
+        self.assertEqual(vm.api.output[0], ("forward", 8))
+        self.assertEqual(vm.api.output[1], ("stop",))
+
+if __name__ == "__main__":
+    unittest.main()
+
+================
+File: tests/test_vm.py
+================
+import unittest
+from compiler.binary import ProgramEncoder
+from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, RobotOpcode, ISAOperand
+from runtime import ProgramLoader, VirtualMachine
+
+def make_move_stop_program():
+    prog = ISAProgram()
+    func = ISAFunction("main")
+    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("forward"), ISAOperand.integer(50)]))
+    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_STOP, []))
+    prog.add_function(func)
+    return prog
+
+def make_jump_program():
+    prog = ISAProgram()
+    func = ISAFunction("main")
+    # 0: move_run forward 50
+    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("forward"), ISAOperand.integer(50)]))
+    # 1: jump to index 3 (stop)
+    func.add_instruction(ISAInstruction(RobotOpcode.JUMP, [ISAOperand.integer(3)]))
+    # 2: move_run backward 30 (should be skipped)
+    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("backward"), ISAOperand.integer(30)]))
+    # 3: stop
+    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_STOP, []))
+    prog.add_function(func)
+    return prog
+
+def make_call_return_program():
+    prog = ISAProgram()
+    func1 = ISAFunction("main")
+    # main: call function 1, then stop
+    func1.add_instruction(ISAInstruction(RobotOpcode.CALL, [ISAOperand.integer(1)]))
+    func1.add_instruction(ISAInstruction(RobotOpcode.MOVE_STOP, []))
+    prog.add_function(func1)
+
+    func2 = ISAFunction("sub")
+    # sub: move_run forward 30, return
+    func2.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("forward"), ISAOperand.integer(30)]))
+    func2.add_instruction(ISAInstruction(RobotOpcode.RETURN, []))
+    prog.add_function(func2)
+    return prog
+
+class TestVM(unittest.TestCase):
+    def test_move_stop(self):
+        isa_prog = make_move_stop_program()
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(isa_prog)
+        loader = ProgramLoader()
+        runtime_prog = loader.load(binary_prog)
+        vm = VirtualMachine()
+        vm.load(runtime_prog)
+        vm.run()
+
+        self.assertEqual(vm.state.value, "finished")
+        self.assertEqual(len(vm.api.output), 2)
+        self.assertEqual(vm.api.output[0], ("forward", 50))
+        self.assertEqual(vm.api.output[1], ("stop",))
+
+    def test_jump(self):
+        isa_prog = make_jump_program()
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(isa_prog)
+        loader = ProgramLoader()
+        runtime_prog = loader.load(binary_prog)
+        vm = VirtualMachine()
+        vm.load(runtime_prog)
+        vm.run()
+
+        self.assertEqual(vm.state.value, "finished")
+        # Only forward and stop should be executed, not backward
+        self.assertEqual(len(vm.api.output), 2)
+        self.assertEqual(vm.api.output[0], ("forward", 50))
+        self.assertEqual(vm.api.output[1], ("stop",))
+
+    def test_call_return(self):
+        isa_prog = make_call_return_program()
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(isa_prog)
+        loader = ProgramLoader()
+        runtime_prog = loader.load(binary_prog)
+        vm = VirtualMachine()
+        vm.load(runtime_prog)
+        vm.run()
+
+        self.assertEqual(vm.state.value, "finished")
+        # main: call sub, then stop. sub: forward 30.
+        self.assertEqual(len(vm.api.output), 2)
+        self.assertEqual(vm.api.output[0], ("forward", 30))
+        self.assertEqual(vm.api.output[1], ("stop",))
+
+    def test_step_execution(self):
+        isa_prog = make_move_stop_program()
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(isa_prog)
+        loader = ProgramLoader()
+        runtime_prog = loader.load(binary_prog)
+        vm = VirtualMachine()
+        vm.load(runtime_prog)
+
+        self.assertEqual(vm.get_state().value, "loaded")
+        vm.step()
+        self.assertEqual(vm.api.output[0], ("forward", 50))
+        vm.step()
+        self.assertEqual(vm.api.output[1], ("stop",))
+        vm.step()
+        self.assertEqual(vm.state.value, "finished")
+
+if __name__ == "__main__":
+    unittest.main()
 
 ================
 File: benchmarks/benchmark_runner.py
@@ -2703,262 +3553,126 @@ File: robot-compiler/compiler/backend/README.md
 - Generate header file (`generated_program.h`)
 
 ================
-File: robot-compiler/compiler/binary/__init__.py
+File: robot-compiler/compiler/binary/constant_pool.py
 ================
-# compiler/binary/__init__.py
-from .header import BinaryHeader, Magic, Endianness
-from .operand_encoder import OperandEncoder
-from .instruction_encoder import InstructionEncoder
-from .constant_pool import ConstantPoolBuilder
-from .program_encoder import ProgramEncoder
-from .binary_reader import BinaryReader
-from .binary_printer import BinaryPrinter
-from .serializer import BinarySerializer
-from .model import (
-    BinaryProgram,
-    ConstantPool,
-    FunctionTable,
-    FunctionTableEntry,
-    InstructionStream,
-    Metadata,
-)
-from .descriptor import OpcodeDescriptor
+# compiler/binary/constant_pool.py
+from typing import List, Any
+from .model import ConstantPool
+from ..isa import ISAProgram, OperandKind
 
-__all__ = [
-    "BinaryHeader",
-    "Magic",
-    "Endianness",
-    "OperandEncoder",
-    "InstructionEncoder",
-    "ConstantPoolBuilder",
-    "ProgramEncoder",
-    "BinaryReader",
-    "BinaryPrinter",
-    "BinarySerializer",
-    "BinaryProgram",
-    "ConstantPool",
-    "FunctionTable",
-    "FunctionTableEntry",
-    "InstructionStream",
-    "Metadata",
-    "OpcodeDescriptor",
-]
-
-================
-File: robot-compiler/compiler/binary/binary_printer.py
-================
-"""
-Pretty printer for binary images.
-"""
-
-import binascii
-from typing import List, Union
-
-from .header import BinaryHeader
-from .operand_encoder import OperandEncoder
-from .instruction_encoder import InstructionEncoder
-from .registry import RobotOpcodeRegistry
-
-
-class BinaryPrinter:
-    """Print a binary image in human-readable format (hex dump + disassembly)."""
-
+class ConstantPoolBuilder:
     @staticmethod
-    def print(binary: bytes, width: int = 16) -> str:
-        """
-        Return a hex dump of the binary.
-        Example:
-        0000: 52 42 49 4E 01 01 01 ...
-        """
-        lines = []
-        for i in range(0, len(binary), width):
-            chunk = binary[i:i+width]
-            hex_part = ' '.join(f'{b:02X}' for b in chunk)
-            ascii_part = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
-            lines.append(f"{i:04X}: {hex_part:<{width*3}} {ascii_part}")
-        return '\n'.join(lines)
-
-    @staticmethod
-    def print_with_header(binary: bytes) -> str:
-        """Print header info and hex dump."""
-        try:
-            header = BinaryHeader.from_bytes(binary)
-            output = f"Magic: {header.magic:#010x}\n"
-            output += f"ABI Version: {header.abi_version}\n"
-            output += f"Endianness: {header.endianness.name}\n"
-            output += f"Instruction Set Version: {header.instruction_set_version}\n"
-            output += f"Program Size: {header.program_size}\n"
-            output += f"Flags: {header.flags}\n"
-            output += f"Checksum: {header.checksum}\n"
-            output += "\nHex Dump:\n"
-            output += BinaryPrinter.print(binary)
-            return output
-        except Exception:
-            return BinaryPrinter.print(binary)
-
-================
-File: robot-compiler/compiler/binary/binary_reader.py
-================
-# compiler/binary/binary_reader.py
-import struct
-from .model import BinaryProgram, ConstantPool, FunctionTable, FunctionTableEntry, InstructionStream
-from .header import BinaryHeader, HEADER_SIZE
-from .layout import OPERAND_TYPE_STRING
-
-class BinaryReader:
-    def read(self, data: bytes) -> BinaryProgram:
-        offset = 0
-        header = BinaryHeader.from_bytes(data[offset:offset+HEADER_SIZE])
-        offset += HEADER_SIZE
-
-        # Đọc constant pool
-        cp, offset = self._read_constant_pool(data, offset)
-
-        # Đọc function table
-        ft, offset = self._read_function_table(data, offset)
-
-        # Phần còn lại là instruction stream
-        inst_stream = InstructionStream(data[offset:])
-
-        return BinaryProgram(header, cp, ft, inst_stream)
-
-    def _read_constant_pool(self, data, offset):
-        count = struct.unpack("<I", data[offset:offset+4])[0]
-        offset += 4
+    def build(program: ISAProgram) -> ConstantPool:
         constants = []
-        for _ in range(count):
-            tag = data[offset]
-            offset += 1
-            if tag == OPERAND_TYPE_STRING:
-                length = struct.unpack("<I", data[offset:offset+4])[0]
-                offset += 4
-                s = data[offset:offset+length].decode('utf-8')
-                offset += length
-                constants.append(s)
-            else:
-                raise ValueError(f"Unsupported constant tag: {tag}")
-        return ConstantPool(constants), offset
-
-    def _read_function_table(self, data, offset):
-        entry_count = struct.unpack("<H", data[offset:offset+2])[0]
-        offset += 2
-        entries = []
-        for _ in range(entry_count):
-            func_id, entry_offset, ins_count = struct.unpack("<H I H", data[offset:offset+8])
-            offset += 8
-            entries.append(FunctionTableEntry(func_id, entry_offset, ins_count))
-        return FunctionTable(entries), offset
+        seen = set()
+        for func in program.functions:
+            for ins in func.instructions:
+                for op in ins.operands:
+                    if op.kind == OperandKind.STRING:
+                        s = op.as_string()
+                        if s not in seen:
+                            seen.add(s)
+                            constants.append(s)
+        # Có thể mở rộng với các loại hằng khác (int, float, bool) sau này
+        return ConstantPool(constants)
 
 ================
-File: robot-compiler/compiler/binary/header.py
+File: robot-compiler/compiler/binary/descriptor.py
 ================
-# compiler/binary/header.py
-import struct
-from dataclasses import dataclass
-from enum import IntEnum
+# compiler/binary/descriptor.py
+from typing import List, Optional
 
-class Magic(IntEnum):
-    ROBOT_BINARY = 0x4E494252
+class OpcodeDescriptor:
+    def __init__(
+        self,
+        number: int,
+        mnemonic: str,
+        operand_count: int,
+        operand_types: List[str],
+        encoding_size: int,
+        description: str = ""
+    ):
+        self.number = number
+        self.mnemonic = mnemonic
+        self.operand_count = operand_count
+        self.operand_types = operand_types
+        self.encoding_size = encoding_size
+        self.description = description
 
-class Endianness(IntEnum):
-    LITTLE = 0
-    BIG = 1
-
-HEADER_FORMAT = "<IBBIBII"
-HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
-
-@dataclass
-class BinaryHeader:
-    magic: int = Magic.ROBOT_BINARY
-    abi_version: int = 1
-    endianness: int = Endianness.LITTLE
-    instruction_set_version: int = 1
-    program_size: int = 0
-    flags: int = 0
-    checksum: int = 0
-
-    @classmethod
-    def default(cls) -> "BinaryHeader":
-        return cls()
-
-    def to_bytes(self) -> bytes:
-        return struct.pack(
-            HEADER_FORMAT,
-            self.magic,
-            self.abi_version,
-            self.endianness,
-            self.instruction_set_version,
-            self.program_size,
-            self.flags,
-            self.checksum,
-        )
-
-    @classmethod
-    def from_bytes(cls, data: bytes) -> "BinaryHeader":
-        # data phải có ít nhất HEADER_SIZE bytes
-        values = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
-        return cls(*values)
-
-    def size(self) -> int:
-        return HEADER_SIZE
+    def __repr__(self):
+        return f"OpcodeDescriptor({self.mnemonic}, #{self.number})"
 
 ================
 File: robot-compiler/compiler/binary/instruction_encoder.py
 ================
+# compiler/binary/instruction_encoder.py
 import struct
 from typing import Tuple, Dict
-from ..isa import ISAInstruction, RobotOpcode, ISAOperand
+from ..isa import ISAInstruction, ISAOperand
 from .operand_encoder import OperandEncoder
-
+from ..generated.opcode import Opcode  # dùng trực tiếp Opcode
 
 class InstructionEncoder:
     @staticmethod
     def encode(instruction: ISAInstruction) -> bytes:
-        result = struct.pack("<B", instruction.opcode.value)
+        result = struct.pack("<B", instruction.opcode.value)  # opcode là IntEnum
         result += struct.pack("<B", instruction.operand_count)
-
         for op in instruction.operands:
             result += OperandEncoder.encode(op)
-
         return result
 
     @staticmethod
-    def decode(data: bytes, offset: int, registry: Dict[int, RobotOpcode]) -> Tuple[ISAInstruction, int]:
+    def decode(data: bytes, offset: int, registry: Dict[int, Opcode]) -> Tuple[ISAInstruction, int]:
         opcode_val = data[offset]
         offset += 1
-        opcode = registry.get(opcode_val, None)
+        opcode = registry.get(opcode_val)
         if opcode is None:
             raise ValueError(f"Unknown opcode value: {opcode_val}")
-
         operand_count = data[offset]
         offset += 1
-
         operands = []
         for _ in range(operand_count):
             op, offset = OperandEncoder.decode(data, offset)
             operands.append(op)
-
         return ISAInstruction(opcode, operands), offset
 
 ================
-File: robot-compiler/compiler/binary/layout.py
+File: robot-compiler/compiler/binary/model.py
 ================
-# compiler/binary/layout.py
-# Binary layout constants
+# compiler/binary/model.py
+from dataclasses import dataclass
+from typing import List, Any, Optional, Dict
+from .header import BinaryHeader
 
-MAGIC = 0x4E494252
-ABI_VERSION = 1
-INSTRUCTION_SET_VERSION = 1
+@dataclass(frozen=True)
+class ConstantPool:
+    constants: List[Any]  # hỗ trợ int, float, str, bool
 
-# Operand type tags (dùng trong constant pool và operand encoding)
-OPERAND_TYPE_INTEGER = 0x01
-OPERAND_TYPE_FLOAT = 0x02
-OPERAND_TYPE_BOOLEAN = 0x03
-OPERAND_TYPE_STRING = 0x04
-OPERAND_TYPE_ENUM = 0x05
-OPERAND_TYPE_REGISTER = 0x06
-OPERAND_TYPE_LABEL = 0x07
-OPERAND_TYPE_CONSTANT_POOL = 0x08
+@dataclass(frozen=True)
+class FunctionTableEntry:
+    function_id: int
+    entry_offset: int      # byte offset trong instruction stream
+    instruction_count: int
+
+@dataclass(frozen=True)
+class FunctionTable:
+    entries: List[FunctionTableEntry]
+
+@dataclass(frozen=True)
+class InstructionStream:
+    data: bytes
+
+@dataclass(frozen=True)
+class Metadata:
+    data: Dict[str, Any]
+
+@dataclass(frozen=True)
+class BinaryProgram:
+    header: BinaryHeader
+    constant_pool: ConstantPool
+    function_table: FunctionTable
+    instruction_stream: InstructionStream
+    metadata: Optional[Metadata] = None
 
 ================
 File: robot-compiler/compiler/binary/operand_encoder.py
@@ -3064,53 +3778,6 @@ class OperandEncoder:
             raise ValueError(f"Unknown operand kind during decode: {kind}")
 
 ================
-File: robot-compiler/compiler/binary/program_encoder.py
-================
-# compiler/binary/program_encoder.py
-from ..isa import ISAProgram
-from .instruction_encoder import InstructionEncoder
-from .constant_pool import ConstantPoolBuilder
-from .header import BinaryHeader
-from .model import BinaryProgram, ConstantPool, FunctionTable, FunctionTableEntry, InstructionStream
-
-class ProgramEncoder:
-    def encode(self, program: ISAProgram) -> BinaryProgram:
-        # 1. Xây dựng constant pool
-        cp = ConstantPoolBuilder.build(program)
-
-        # 2. Mã hóa instruction stream
-        ins_encoder = InstructionEncoder()
-        entries = []
-        stream = b""
-        current_offset = 0
-
-        for idx, func in enumerate(program.functions):
-            # Lưu entry cho hàm này
-            entries.append(FunctionTableEntry(
-                function_id=idx,
-                entry_offset=current_offset,
-                instruction_count=len(func.instructions)
-            ))
-            # Mã hóa từng instruction và nối vào stream
-            for ins in func.instructions:
-                stream += ins_encoder.encode(ins)
-            current_offset = len(stream)
-
-        ft = FunctionTable(entries)
-        inst_stream = InstructionStream(stream)
-
-        # 3. Header (program_size sẽ được serializer tính lại)
-        header = BinaryHeader.default()
-
-        return BinaryProgram(
-            header=header,
-            constant_pool=cp,
-            function_table=ft,
-            instruction_stream=inst_stream,
-            metadata=None
-        )
-
-================
 File: robot-compiler/compiler/binary/registry.py
 ================
 """
@@ -3144,6 +3811,58 @@ class RobotOpcodeRegistry:
     @staticmethod
     def get_description(opcode: RobotOpcode) -> str:
         return f"{opcode.name} instruction"
+
+================
+File: robot-compiler/compiler/binary/serializer.py
+================
+# compiler/binary/serializer.py
+import struct
+from .model import BinaryProgram, ConstantPool, FunctionTable, InstructionStream
+from .header import BinaryHeader
+from .layout import OPERAND_TYPE_STRING
+
+class BinarySerializer:
+    @staticmethod
+    def serialize(program: BinaryProgram) -> bytes:
+        # Header
+        header_bytes = program.header.to_bytes()
+        result = header_bytes
+
+        # Constant pool
+        cp_bytes = BinarySerializer._serialize_constant_pool(program.constant_pool)
+        result += cp_bytes
+
+        # Function table
+        ft_bytes = BinarySerializer._serialize_function_table(program.function_table)
+        result += ft_bytes
+
+        # Instruction stream
+        result += program.instruction_stream.data
+
+        return result
+
+    @staticmethod
+    def _serialize_constant_pool(cp: ConstantPool) -> bytes:
+        constants = cp.constants
+        result = struct.pack("<I", len(constants))
+        for c in constants:
+            if isinstance(c, str):
+                encoded = c.encode('utf-8')
+                result += struct.pack("<B", OPERAND_TYPE_STRING)
+                result += struct.pack("<I", len(encoded))
+                result += encoded
+            else:
+                # Chưa hỗ trợ các loại khác
+                raise ValueError(f"Unsupported constant type: {type(c)}")
+        return result
+
+    @staticmethod
+    def _serialize_function_table(ft: FunctionTable) -> bytes:
+        entries = ft.entries
+        result = struct.pack("<H", len(entries))
+        for e in entries:
+            result += struct.pack("<H I H", e.function_id, e.entry_offset, e.instruction_count)
+        return result
 
 ================
 File: robot-compiler/compiler/canonicalization/__init__.py
@@ -4442,20 +5161,13 @@ class ISAFunction:
 ================
 File: robot-compiler/compiler/isa/instruction.py
 ================
+# compiler/isa/instruction.py
 from typing import List, Optional, Any
-from .opcode import RobotOpcode
+from .opcode import RobotOpcode  # sẽ là Opcode
 from .operand import ISAOperand
 
-
 class ISAInstruction:
-    """Immutable Robot ISA instruction."""
-
-    def __init__(
-        self,
-        opcode: RobotOpcode,
-        operands: Optional[List[ISAOperand]] = None,
-        metadata: Optional[Any] = None
-    ):
+    def __init__(self, opcode: RobotOpcode, operands: Optional[List[ISAOperand]] = None, metadata: Optional[Any] = None):
         self._opcode = opcode
         self._operands = tuple(operands) if operands else ()
         self._metadata = metadata
@@ -4469,21 +5181,14 @@ class ISAInstruction:
         return self._operands
 
     @property
-    def metadata(self) -> Optional[Any]:
-        return self._metadata
-
-    @property
     def operand_count(self) -> int:
         return len(self._operands)
-
-    def __repr__(self) -> str:
-        return f"ISAInstruction(opcode={self._opcode.name}, operands={self.operand_count})"
 
 ================
 File: robot-compiler/compiler/isa/opcode.py
 ================
+# compiler/isa/opcode.py
 from enum import Enum, auto
-
 
 class RobotOpcode(Enum):
     # Movement
@@ -5360,6 +6065,350 @@ File: robot-compiler/generated/__init__.py
 
 
 ================
+File: robot-compiler/runtime/__init__.py
+================
+# runtime/__init__.py
+from .program import RuntimeProgram
+from .function import RuntimeFunction
+from .instruction import RuntimeInstruction
+from .loader import ProgramLoader
+from .iterator import InstructionIterator
+from .exceptions import *
+from .context import ExecutionContext, ExecutionState
+from .dispatcher import Dispatcher
+from .vm import VirtualMachine
+from .mock.robot_api import MockRobotAPI
+from .engine import ExecutionEngine
+from .variable import VariableTable
+from .stack import DataStack
+from .frame import StackFrame
+from .value import *
+from .memory import MemoryManager
+
+__all__ = [
+    "RuntimeProgram",
+    "RuntimeFunction",
+    "RuntimeInstruction",
+    "ProgramLoader",
+    "InstructionIterator",
+    "ExecutionContext",
+    "ExecutionState",
+    "Dispatcher",
+    "VirtualMachine",
+    "MockRobotAPI",
+    "ExecutionEngine",
+    "VariableTable",
+    "DataStack",
+    "StackFrame",
+    "RuntimeValue",
+    "IntegerValue",
+    "FloatValue",
+    "BooleanValue",
+    "StringValue",
+    "ReferenceValue",
+    "MemoryManager",
+    "InvalidBinaryException",
+    "UnsupportedVersionException",
+    "InvalidInstructionException",
+    "InvalidConstantReferenceException",
+    "InvalidFunctionReferenceException",
+]
+
+================
+File: robot-compiler/runtime/exceptions.py
+================
+# robot-compiler/runtime/exceptions.py
+class RuntimeError(Exception):
+    """Base class for runtime errors."""
+    pass
+
+
+class InvalidBinaryException(RuntimeError):
+    """Raised when binary magic or structure is invalid."""
+    pass
+
+
+class UnsupportedVersionException(RuntimeError):
+    """Raised when ABI version is not supported."""
+    pass
+
+
+class InvalidInstructionException(RuntimeError):
+    """Raised when an instruction is malformed or unsupported."""
+    pass
+
+
+class InvalidConstantReferenceException(RuntimeError):
+    """Raised when a constant pool reference is out of bounds."""
+    pass
+
+
+class InvalidFunctionReferenceException(RuntimeError):
+    """Raised when a function table reference is invalid."""
+    pass
+
+================
+File: robot-compiler/runtime/function.py
+================
+# robot-compiler/runtime/function.py
+from dataclasses import dataclass
+from typing import List
+from .instruction import RuntimeInstruction
+
+
+@dataclass(frozen=True)
+class RuntimeFunction:
+    """
+    Immutable runtime function.
+    Contains metadata and the list of instructions belonging to this function.
+    """
+    function_id: int
+    entry_index: int                  # index of first instruction in global instruction list
+    instruction_count: int
+    instructions: List[RuntimeInstruction]
+    local_variable_count: int = 0
+    stack_size: int = 0
+
+================
+File: robot-compiler/runtime/instruction.py
+================
+# runtime/instruction.py
+from dataclasses import dataclass
+from typing import List, Any
+from compiler.generated.opcode import Opcode
+
+@dataclass(frozen=True)
+class RuntimeInstruction:
+    opcode: Opcode
+    operands: List[Any]
+    index: int
+
+================
+File: robot-compiler/runtime/iterator.py
+================
+# runtime/iterator.py
+from typing import Optional, List
+from .program import RuntimeProgram
+from .instruction import RuntimeInstruction
+
+class InstructionIterator:
+    def __init__(self, program: RuntimeProgram, function_id: Optional[int] = None):
+        self._program = program
+        self._function_id = function_id
+        self._instructions: List[RuntimeInstruction] = []
+        self._current_index: int = 0
+
+        if function_id is not None:
+            func = program.get_function(function_id)
+            if func is None:
+                raise ValueError(f"Function {function_id} not found")
+            self._instructions = func.instructions
+        else:
+            self._instructions = program.instructions
+
+    def current(self) -> Optional[RuntimeInstruction]:
+        if 0 <= self._current_index < len(self._instructions):
+            return self._instructions[self._current_index]
+        return None
+
+    def next(self) -> Optional[RuntimeInstruction]:
+        ins = self.current()
+        if ins is not None:
+            self._current_index += 1
+        return ins
+
+    def jump(self, index: int) -> None:
+        if index < 0 or index >= len(self._instructions):
+            raise ValueError(f"Invalid jump target: {index}")
+        self._current_index = index
+
+    def seek(self, index: int) -> None:
+        self._current_index = index
+
+    def has_next(self) -> bool:
+        return self._current_index < len(self._instructions)
+
+    def peek(self, offset: int = 0) -> Optional[RuntimeInstruction]:
+        idx = self._current_index + offset
+        if 0 <= idx < len(self._instructions):
+            return self._instructions[idx]
+        return None
+
+    def reset(self) -> None:
+        self._current_index = 0
+
+    @property
+    def size(self) -> int:
+        return len(self._instructions)
+
+================
+File: robot-compiler/runtime/loader.py
+================
+# runtime/loader.py
+from typing import List
+from compiler.binary import BinaryProgram
+from compiler.isa import OperandKind
+from compiler.generated.opcode import Opcode
+from compiler.binary.instruction_encoder import InstructionEncoder
+from .program import RuntimeProgram
+from .function import RuntimeFunction
+from .instruction import RuntimeInstruction
+from .exceptions import (
+    InvalidBinaryException,
+    UnsupportedVersionException,
+    InvalidInstructionException,
+)
+
+class ProgramLoader:
+    @staticmethod
+    def load(binary: BinaryProgram) -> RuntimeProgram:
+        # Validate header
+        header = binary.header
+        if header.magic != 0x4E494252:
+            raise InvalidBinaryException(...)
+        if header.abi_version != 1:
+            raise UnsupportedVersionException(...)
+
+        constants = list(binary.constant_pool.constants)
+        stream_data = binary.instruction_stream.data
+        offset = 0
+        all_instructions: List[RuntimeInstruction] = []
+        function_list: List[RuntimeFunction] = []
+
+        opcode_registry = {op.value: op for op in Opcode}
+
+        for ft_entry in binary.function_table.entries:
+            func_id = ft_entry.function_id
+            start_offset = ft_entry.entry_offset
+            count = ft_entry.instruction_count
+
+            func_instructions: List[RuntimeInstruction] = []
+            temp_offset = start_offset
+            for _ in range(count):
+                ins, temp_offset = InstructionEncoder.decode(
+                    stream_data, temp_offset, opcode_registry
+                )
+                operands = []
+                for op in ins.operands:
+                    if op.kind == OperandKind.INTEGER:
+                        operands.append(op.as_integer())
+                    elif op.kind == OperandKind.FLOAT:
+                        operands.append(op.as_float())
+                    elif op.kind == OperandKind.BOOLEAN:
+                        operands.append(op.as_boolean())
+                    elif op.kind == OperandKind.STRING:
+                        operands.append(op.as_string())
+                    elif op.kind in (OperandKind.ENUM, OperandKind.REGISTER, OperandKind.LABEL, OperandKind.CONSTANT_POOL):
+                        operands.append(op.as_index())
+                    else:
+                        raise InvalidInstructionException(f"Unsupported operand kind: {op.kind}")
+
+                runtime_ins = RuntimeInstruction(
+                    opcode=ins.opcode,  # ins.opcode là Opcode
+                    operands=operands,
+                    index=len(all_instructions)
+                )
+                all_instructions.append(runtime_ins)
+                func_instructions.append(runtime_ins)
+
+            func = RuntimeFunction(
+                function_id=func_id,
+                entry_index=len(all_instructions) - count,
+                instruction_count=count,
+                instructions=func_instructions,
+            )
+            function_list.append(func)
+
+        entry_id = 0 if function_list else -1
+        return RuntimeProgram(
+            constants=constants,
+            functions=function_list,
+            instructions=all_instructions,
+            entry_function_id=entry_id,
+            abi_version=header.abi_version,
+        )
+
+================
+File: robot-compiler/runtime/program.py
+================
+# robot-compiler/runtime/program.py
+from dataclasses import dataclass
+from typing import List, Optional, Any
+from .function import RuntimeFunction
+
+
+@dataclass(frozen=True)
+class RuntimeProgram:
+    """
+    Immutable runtime program, fully prepared for execution.
+    Contains constants, functions, and a flat list of all instructions.
+    """
+    constants: List[Any]
+    functions: List[RuntimeFunction]
+    instructions: List[Any]          # list of RuntimeInstruction
+    entry_function_id: int = 0
+    abi_version: int = 1
+
+    def get_function(self, function_id: int) -> Optional[RuntimeFunction]:
+        for f in self.functions:
+            if f.function_id == function_id:
+                return f
+        return None
+
+    def get_constant(self, index: int) -> Any:
+        if index < 0 or index >= len(self.constants):
+            raise IndexError(f"Constant index {index} out of range")
+        return self.constants[index]
+
+    def instruction_count(self) -> int:
+        return len(self.instructions)
+
+================
+File: robot-compiler/runtime/README.md
+================
+# Robot Runtime
+
+This package provides the runtime representation of a compiled robot program, independent from the compiler internals.
+
+## Components
+
+### RuntimeProgram
+Immutable container for a complete program ready for execution. Contains:
+- Constant pool
+- Function table
+- Flat list of instructions
+- Entry function ID
+
+### RuntimeFunction
+Represents a function in the program, with its instruction range and metadata.
+
+### RuntimeInstruction
+Decoded instruction with opcode and operand values (all types resolved). The VM will execute these directly.
+
+### ProgramLoader
+Converts a `BinaryProgram` (from compiler) into a `RuntimeProgram`. Performs validation, decoding, and resolution. Throws specific exceptions for invalid binaries.
+
+### InstructionIterator
+Provides iteration over instructions of a function or the entire program. Supports `current()`, `next()`, `jump()`, `seek()`, `has_next()`, `peek()`. This is the single interface for instruction access by the VM.
+
+## Object Lifecycle
+
+1. Compiler produces `BinaryProgram`.
+2. `ProgramLoader.load(binary_prog)` -> `RuntimeProgram`.
+3. `InstructionIterator` created from `RuntimeProgram` to traverse instructions.
+4. VM uses iterator to fetch and execute instructions.
+
+## Ownership
+
+- `RuntimeProgram` is immutable and can be shared.
+- `InstructionIterator` holds a reference to the program and maintains a cursor; it is not thread-safe.
+
+## Future Extensions
+
+- Debugger and profiler can hook into `InstructionIterator`.
+- Additional metadata can be added to `RuntimeProgram` without breaking compatibility.
+
+================
 File: robot-compiler/tests/golden/backend/demo_forward.isa
 ================
 ISAProgram (functions: 1)
@@ -5870,121 +6919,6 @@ if __name__ == "__main__":
     unittest.main()
 
 ================
-File: robot-compiler/tests/test_binary.py
-================
-import unittest
-from compiler.binary import (
-    BinaryHeader, Magic, Endianness,
-    OperandEncoder, InstructionEncoder,
-    ConstantPoolBuilder, ProgramEncoder,
-    BinaryReader, BinaryPrinter, BinarySerializer,
-    BinaryProgram
-)
-from compiler.isa import (
-    ISAProgram, ISAFunction, InstructionBuilder,
-    ISAOperand, RobotOpcode, OperandKind
-)
-
-class TestBinary(unittest.TestCase):
-    def test_header_roundtrip(self):
-        header = BinaryHeader.default()
-        data = header.to_bytes()
-        header2 = BinaryHeader.from_bytes(data)
-        self.assertEqual(header.magic, header2.magic)
-        self.assertEqual(header.abi_version, header2.abi_version)
-        self.assertEqual(header.program_size, header2.program_size)
-
-    def test_operand_encoder_roundtrip(self):
-        ops = [
-            ISAOperand.integer(42),
-            ISAOperand.float(3.14),
-            ISAOperand.string("forward"),
-            ISAOperand.register(5),
-            ISAOperand.label(10),
-            ISAOperand.constant_pool(3),
-        ]
-        for op in ops:
-            data = OperandEncoder.encode(op)
-            decoded, offset = OperandEncoder.decode(data, 0)
-            self.assertEqual(op.kind, decoded.kind)
-            if op.kind == OperandKind.FLOAT:
-                self.assertAlmostEqual(op.value, decoded.value, places=5)
-            else:
-                self.assertEqual(op.value, decoded.value)
-
-    def test_instruction_encoder_roundtrip(self):
-        builder = InstructionBuilder()
-        builder.create_program()
-        builder.create_function("main")
-        ins = builder.move_run(
-            builder.const_string("forward"),
-            builder.const_int(50)
-        )
-        data = InstructionEncoder.encode(ins)
-        registry = {RobotOpcode.MOVE_RUN.value: RobotOpcode.MOVE_RUN}
-        decoded, offset = InstructionEncoder.decode(data, 0, registry)
-        self.assertEqual(ins.opcode, decoded.opcode)
-        self.assertEqual(len(ins.operands), len(decoded.operands))
-
-    def test_program_encoder_roundtrip(self):
-        builder = InstructionBuilder()
-        builder.create_program()
-        func = builder.create_function("main")
-        builder.move_run(builder.const_string("forward"), builder.const_int(50))
-        builder.wait(builder.const_int(1000))
-        builder.move_stop()
-
-        # ISAProgram -> BinaryProgram
-        encoder = ProgramEncoder()
-        binary_prog = encoder.encode(builder.get_program())
-
-        # BinaryProgram -> bytes
-        serializer = BinarySerializer()
-        data = serializer.serialize(binary_prog)
-
-        # bytes -> BinaryProgram
-        reader = BinaryReader()
-        decoded_prog = reader.read(data)
-
-        # So sánh các thành phần chính
-        self.assertEqual(len(decoded_prog.constant_pool.constants), len(binary_prog.constant_pool.constants))
-        self.assertEqual(decoded_prog.function_table.entries[0].instruction_count,
-                         binary_prog.function_table.entries[0].instruction_count)
-        self.assertEqual(decoded_prog.instruction_stream.data, binary_prog.instruction_stream.data)
-
-    def test_round_trip_full(self):
-        # Tạo ISAProgram
-        builder = InstructionBuilder()
-        builder.create_program()
-        func = builder.create_function("main")
-        builder.move_run(builder.const_string("forward"), builder.const_int(50))
-        builder.wait(builder.const_int(1000))
-        builder.move_stop()
-
-        encoder = ProgramEncoder()
-        binary_prog1 = encoder.encode(builder.get_program())
-
-        serializer = BinarySerializer()
-        data = serializer.serialize(binary_prog1)
-
-        reader = BinaryReader()
-        binary_prog2 = reader.read(data)
-
-        # So sánh header (bỏ qua checksum và program_size có thể khác)
-        self.assertEqual(binary_prog1.header.magic, binary_prog2.header.magic)
-        self.assertEqual(binary_prog1.header.abi_version, binary_prog2.header.abi_version)
-        self.assertEqual(binary_prog1.header.endianness, binary_prog2.header.endianness)
-        self.assertEqual(binary_prog1.header.instruction_set_version, binary_prog2.header.instruction_set_version)
-        # program_size có thể khác do serializer không cập nhật, nhưng ta có thể kiểm tra nội dung
-        self.assertEqual(binary_prog1.constant_pool.constants, binary_prog2.constant_pool.constants)
-        self.assertEqual(len(binary_prog1.function_table.entries), len(binary_prog2.function_table.entries))
-        for e1, e2 in zip(binary_prog1.function_table.entries, binary_prog2.function_table.entries):
-            self.assertEqual(e1.function_id, e2.function_id)
-            self.assertEqual(e1.entry_offset, e2.entry_offset)
-            self.assertEqual(e1.instruction_count, e2.instruction_count)
-        self.assertEqual(binary_prog1.instruction_stream.data, binary_prog2.instruction_stream.data)
-
-================
 File: robot-compiler/tests/test_golden_backend.py
 ================
 import unittest
@@ -6062,67 +6996,6 @@ class TestGoldenBackend(unittest.TestCase):
             expected = self._normalize(f.read())
 
         self.assertEqual(printed, expected)
-
-================
-File: robot-compiler/tests/test_golden_binary.py
-================
-import unittest
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-
-from compiler.frontend.compiler import FrontendCompiler
-from compiler.passes import PassContext, PassManager
-from compiler.isa import BackendLowering
-from compiler.binary import ProgramEncoder, BinarySerializer, BinaryHeader, BinaryReader
-from compiler.diagnostics import DiagnosticEngine
-
-HEADER_SIZE = 19  # phải khớp với BinaryHeader.size()
-
-class TestGoldenBinary(unittest.TestCase):
-    def _compile_and_encode(self, source_file):
-        compiler = FrontendCompiler()
-        ir_prog = compiler.compile(source_file)
-        diag = DiagnosticEngine()
-        context = PassContext(ir_prog, diag)
-        manager = PassManager()
-        manager.register(BackendLowering())
-        manager.run(context)
-        isa_prog = context.config["isa_program"]
-        encoder = ProgramEncoder()
-        binary_prog = encoder.encode(isa_prog)
-        serializer = BinarySerializer()
-        return serializer.serialize(binary_prog)
-
-    def test_demo_forward(self):
-        source_file = ROOT / "examples" / "demo_forward.py"
-        binary = self._compile_and_encode(source_file)
-        # Đọc header từ 19 bytes đầu
-        header = BinaryHeader.from_bytes(binary[:HEADER_SIZE])
-        self.assertEqual(header.magic, 0x4E494252)
-        self.assertGreater(len(binary), 16)
-
-    def test_demo_wait(self):
-        source_file = ROOT / "examples" / "demo_wait.py"
-        golden_file = ROOT / "tests" / "golden" / "binary" / "demo_wait.bin"
-        if not golden_file.exists():
-            self.skipTest(f"Golden file not found: {golden_file}")
-        binary = self._compile_and_encode(source_file)
-        with open(golden_file, 'rb') as f:
-            expected = f.read()
-        self.assertEqual(binary, expected)
-
-    def test_demo_move_stop(self):
-        source_file = ROOT / "examples" / "demo_move_stop.py"
-        golden_file = ROOT / "tests" / "golden" / "binary" / "demo_move_stop.bin"
-        if not golden_file.exists():
-            self.skipTest(f"Golden file not found: {golden_file}")
-        binary = self._compile_and_encode(source_file)
-        with open(golden_file, 'rb') as f:
-            expected = f.read()
-        self.assertEqual(binary, expected)
 
 ================
 File: robot-compiler/tests/test_golden.py
@@ -15830,95 +16703,6 @@ class TestLanguage(unittest.TestCase):
                          msg=f"Language build failed:\n{result.stdout}\n{result.stderr}")
 
 ================
-File: tests/test_runtime.py
-================
-# tests/test_runtime.py
-import unittest
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parent.parent
-# Thêm robot-compiler vào sys.path
-sys.path.insert(0, str(ROOT / "robot-compiler"))
-
-from compiler.binary import ProgramEncoder, BinaryHeader, ConstantPool, FunctionTable, InstructionStream, BinaryProgram
-from compiler.isa import InstructionBuilder, RobotOpcode
-from runtime import ProgramLoader, RuntimeProgram
-from runtime.exceptions import InvalidBinaryException, UnsupportedVersionException
-from runtime.iterator import InstructionIterator
-
-
-class TestRuntime(unittest.TestCase):
-    def test_load_program(self):
-        builder = InstructionBuilder()
-        builder.create_program()
-        func = builder.create_function("main")
-        builder.move_run(builder.const_string("forward"), builder.const_int(50))
-        builder.wait(builder.const_int(1000))
-        builder.move_stop()
-
-        encoder = ProgramEncoder()
-        binary_prog = encoder.encode(builder.get_program())
-        runtime_prog = ProgramLoader.load(binary_prog)
-
-        self.assertIsInstance(runtime_prog, RuntimeProgram)
-        self.assertEqual(len(runtime_prog.instructions), 3)
-        self.assertEqual(len(runtime_prog.functions), 1)
-        self.assertEqual(len(runtime_prog.constants), 1)
-
-        func0 = runtime_prog.functions[0]
-        self.assertEqual(func0.instruction_count, 3)
-        self.assertEqual(func0.function_id, 0)
-
-        ins0 = runtime_prog.instructions[0]
-        self.assertEqual(ins0.opcode, RobotOpcode.MOVE_RUN)
-        self.assertEqual(ins0.operands[0], "forward")
-        self.assertEqual(ins0.operands[1], 50)
-
-        it = InstructionIterator(runtime_prog, function_id=0)
-        self.assertTrue(it.has_next())
-        ins = it.next()
-        self.assertEqual(ins.opcode, RobotOpcode.MOVE_RUN)
-        ins = it.next()
-        self.assertEqual(ins.opcode, RobotOpcode.WAIT)
-        ins = it.next()
-        self.assertEqual(ins.opcode, RobotOpcode.MOVE_STOP)
-        self.assertFalse(it.has_next())
-
-    def test_invalid_magic(self):
-        header = BinaryHeader(magic=0x12345678, abi_version=1)
-        cp = ConstantPool([])
-        ft = FunctionTable([])
-        inst = InstructionStream(b"")
-        binary_prog = BinaryProgram(header, cp, ft, inst)
-        with self.assertRaises(InvalidBinaryException):
-            ProgramLoader.load(binary_prog)
-
-    def test_unsupported_version(self):
-        header = BinaryHeader(magic=0x4E494252, abi_version=99)
-        cp = ConstantPool([])
-        ft = FunctionTable([])
-        inst = InstructionStream(b"")
-        binary_prog = BinaryProgram(header, cp, ft, inst)
-        with self.assertRaises(UnsupportedVersionException):
-            ProgramLoader.load(binary_prog)
-
-    def test_constant_pool_access(self):
-        builder = InstructionBuilder()
-        builder.create_program()
-        builder.create_function("main")
-        builder.move_run(builder.const_string("backward"), builder.const_int(30))
-        encoder = ProgramEncoder()
-        binary_prog = encoder.encode(builder.get_program())
-        runtime_prog = ProgramLoader.load(binary_prog)
-        self.assertEqual(len(runtime_prog.constants), 1)
-        self.assertEqual(runtime_prog.constants[0], "backward")
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-================
 File: 04_Robotics_SW_DeepSeek.code-workspace
 ================
 {
@@ -15991,6 +16775,273 @@ if __name__ == "__main__":
 File: VERSION
 ================
 0.1.1
+
+================
+File: robot-compiler/compiler/binary/__init__.py
+================
+# compiler/binary/__init__.py
+from .header import BinaryHeader, Magic, Endianness
+from .operand_encoder import OperandEncoder
+from .instruction_encoder import InstructionEncoder
+from .constant_pool import ConstantPoolBuilder
+from .program_encoder import ProgramEncoder
+from .binary_reader import BinaryReader
+from .binary_printer import BinaryPrinter
+from .serializer import BinarySerializer
+from .model import (
+    BinaryProgram,
+    ConstantPool,
+    FunctionTable,
+    FunctionTableEntry,
+    InstructionStream,
+    Metadata,
+)
+from .descriptor import OpcodeDescriptor
+
+__all__ = [
+    "BinaryHeader",
+    "Magic",
+    "Endianness",
+    "OperandEncoder",
+    "InstructionEncoder",
+    "ConstantPoolBuilder",
+    "ProgramEncoder",
+    "BinaryReader",
+    "BinaryPrinter",
+    "BinarySerializer",
+    "BinaryProgram",
+    "ConstantPool",
+    "FunctionTable",
+    "FunctionTableEntry",
+    "InstructionStream",
+    "Metadata",
+    "OpcodeDescriptor",
+]
+
+================
+File: robot-compiler/compiler/binary/binary_printer.py
+================
+"""
+Pretty printer for binary images.
+"""
+
+import binascii
+from typing import List, Union
+
+from .header import BinaryHeader
+from .operand_encoder import OperandEncoder
+from .instruction_encoder import InstructionEncoder
+from .registry import RobotOpcodeRegistry
+
+
+class BinaryPrinter:
+    """Print a binary image in human-readable format (hex dump + disassembly)."""
+
+    @staticmethod
+    def print(binary: bytes, width: int = 16) -> str:
+        """
+        Return a hex dump of the binary.
+        Example:
+        0000: 52 42 49 4E 01 01 01 ...
+        """
+        lines = []
+        for i in range(0, len(binary), width):
+            chunk = binary[i:i+width]
+            hex_part = ' '.join(f'{b:02X}' for b in chunk)
+            ascii_part = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
+            lines.append(f"{i:04X}: {hex_part:<{width*3}} {ascii_part}")
+        return '\n'.join(lines)
+
+    @staticmethod
+    def print_with_header(binary: bytes) -> str:
+        """Print header info and hex dump."""
+        try:
+            header = BinaryHeader.from_bytes(binary)
+            output = f"Magic: {header.magic:#010x}\n"
+            output += f"ABI Version: {header.abi_version}\n"
+            output += f"Endianness: {header.endianness.name}\n"
+            output += f"Instruction Set Version: {header.instruction_set_version}\n"
+            output += f"Program Size: {header.program_size}\n"
+            output += f"Flags: {header.flags}\n"
+            output += f"Checksum: {header.checksum}\n"
+            output += "\nHex Dump:\n"
+            output += BinaryPrinter.print(binary)
+            return output
+        except Exception:
+            return BinaryPrinter.print(binary)
+
+================
+File: robot-compiler/compiler/binary/binary_reader.py
+================
+# compiler/binary/binary_reader.py
+import struct
+from .model import BinaryProgram, ConstantPool, FunctionTable, FunctionTableEntry, InstructionStream
+from .header import BinaryHeader, HEADER_SIZE
+from .layout import OPERAND_TYPE_STRING
+
+class BinaryReader:
+    def read(self, data: bytes) -> BinaryProgram:
+        offset = 0
+        header = BinaryHeader.from_bytes(data[offset:offset+HEADER_SIZE])
+        offset += HEADER_SIZE
+
+        # Đọc constant pool
+        cp, offset = self._read_constant_pool(data, offset)
+
+        # Đọc function table
+        ft, offset = self._read_function_table(data, offset)
+
+        # Phần còn lại là instruction stream
+        inst_stream = InstructionStream(data[offset:])
+
+        return BinaryProgram(header, cp, ft, inst_stream)
+
+    def _read_constant_pool(self, data, offset):
+        count = struct.unpack("<I", data[offset:offset+4])[0]
+        offset += 4
+        constants = []
+        for _ in range(count):
+            tag = data[offset]
+            offset += 1
+            if tag == OPERAND_TYPE_STRING:
+                length = struct.unpack("<I", data[offset:offset+4])[0]
+                offset += 4
+                s = data[offset:offset+length].decode('utf-8')
+                offset += length
+                constants.append(s)
+            else:
+                raise ValueError(f"Unsupported constant tag: {tag}")
+        return ConstantPool(constants), offset
+
+    def _read_function_table(self, data, offset):
+        entry_count = struct.unpack("<H", data[offset:offset+2])[0]
+        offset += 2
+        entries = []
+        for _ in range(entry_count):
+            func_id, entry_offset, ins_count = struct.unpack("<H I H", data[offset:offset+8])
+            offset += 8
+            entries.append(FunctionTableEntry(func_id, entry_offset, ins_count))
+        return FunctionTable(entries), offset
+
+================
+File: robot-compiler/compiler/binary/header.py
+================
+# compiler/binary/header.py
+import struct
+from dataclasses import dataclass
+from enum import IntEnum
+
+class Magic(IntEnum):
+    ROBOT_BINARY = 0x4E494252
+
+class Endianness(IntEnum):
+    LITTLE = 0
+    BIG = 1
+
+HEADER_FORMAT = "<IBBIBII"
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+
+@dataclass
+class BinaryHeader:
+    magic: int = Magic.ROBOT_BINARY
+    abi_version: int = 1
+    endianness: int = Endianness.LITTLE
+    instruction_set_version: int = 1
+    program_size: int = 0
+    flags: int = 0
+    checksum: int = 0
+
+    @classmethod
+    def default(cls) -> "BinaryHeader":
+        return cls()
+
+    def to_bytes(self) -> bytes:
+        return struct.pack(
+            HEADER_FORMAT,
+            self.magic,
+            self.abi_version,
+            self.endianness,
+            self.instruction_set_version,
+            self.program_size,
+            self.flags,
+            self.checksum,
+        )
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "BinaryHeader":
+        # data phải có ít nhất HEADER_SIZE bytes
+        values = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
+        return cls(*values)
+
+    def size(self) -> int:
+        return HEADER_SIZE
+
+================
+File: robot-compiler/compiler/binary/layout.py
+================
+# compiler/binary/layout.py
+# Binary layout constants
+
+MAGIC = 0x4E494252
+ABI_VERSION = 1
+INSTRUCTION_SET_VERSION = 1
+
+# Operand type tags (dùng trong constant pool và operand encoding)
+OPERAND_TYPE_INTEGER = 0x01
+OPERAND_TYPE_FLOAT = 0x02
+OPERAND_TYPE_BOOLEAN = 0x03
+OPERAND_TYPE_STRING = 0x04
+OPERAND_TYPE_ENUM = 0x05
+OPERAND_TYPE_REGISTER = 0x06
+OPERAND_TYPE_LABEL = 0x07
+OPERAND_TYPE_CONSTANT_POOL = 0x08
+
+================
+File: robot-compiler/compiler/binary/program_encoder.py
+================
+# compiler/binary/program_encoder.py
+from ..isa import ISAProgram
+from .instruction_encoder import InstructionEncoder
+from .constant_pool import ConstantPoolBuilder
+from .header import BinaryHeader
+from .model import BinaryProgram, ConstantPool, FunctionTable, FunctionTableEntry, InstructionStream
+
+class ProgramEncoder:
+    def encode(self, program: ISAProgram) -> BinaryProgram:
+        # 1. Xây dựng constant pool
+        cp = ConstantPoolBuilder.build(program)
+
+        # 2. Mã hóa instruction stream
+        ins_encoder = InstructionEncoder()
+        entries = []
+        stream = b""
+        current_offset = 0
+
+        for idx, func in enumerate(program.functions):
+            # Lưu entry cho hàm này
+            entries.append(FunctionTableEntry(
+                function_id=idx,
+                entry_offset=current_offset,
+                instruction_count=len(func.instructions)
+            ))
+            # Mã hóa từng instruction và nối vào stream
+            for ins in func.instructions:
+                stream += ins_encoder.encode(ins)
+            current_offset = len(stream)
+
+        ft = FunctionTable(entries)
+        inst_stream = InstructionStream(stream)
+
+        # 3. Header (program_size sẽ được serializer tính lại)
+        header = BinaryHeader.default()
+
+        return BinaryProgram(
+            header=header,
+            constant_pool=cp,
+            function_table=ft,
+            instruction_stream=inst_stream,
+            metadata=None
+        )
 
 ================
 File: robot-compiler/compiler/generated/function_registry.py
@@ -16099,6 +17150,182 @@ class Program:
         instruction_index = len(self.instructions)
         self.emit(opcode, result)
         self.add_patch(instruction_index, label)
+
+================
+File: robot-compiler/tests/test_binary.py
+================
+import unittest
+from compiler.binary import (
+    BinaryHeader, Magic, Endianness,
+    OperandEncoder, InstructionEncoder,
+    ConstantPoolBuilder, ProgramEncoder,
+    BinaryReader, BinaryPrinter, BinarySerializer,
+    BinaryProgram
+)
+from compiler.isa import (
+    ISAProgram, ISAFunction, InstructionBuilder,
+    ISAOperand, RobotOpcode, OperandKind
+)
+
+class TestBinary(unittest.TestCase):
+    def test_header_roundtrip(self):
+        header = BinaryHeader.default()
+        data = header.to_bytes()
+        header2 = BinaryHeader.from_bytes(data)
+        self.assertEqual(header.magic, header2.magic)
+        self.assertEqual(header.abi_version, header2.abi_version)
+        self.assertEqual(header.program_size, header2.program_size)
+
+    def test_operand_encoder_roundtrip(self):
+        ops = [
+            ISAOperand.integer(42),
+            ISAOperand.float(3.14),
+            ISAOperand.string("forward"),
+            ISAOperand.register(5),
+            ISAOperand.label(10),
+            ISAOperand.constant_pool(3),
+        ]
+        for op in ops:
+            data = OperandEncoder.encode(op)
+            decoded, offset = OperandEncoder.decode(data, 0)
+            self.assertEqual(op.kind, decoded.kind)
+            if op.kind == OperandKind.FLOAT:
+                self.assertAlmostEqual(op.value, decoded.value, places=5)
+            else:
+                self.assertEqual(op.value, decoded.value)
+
+    def test_instruction_encoder_roundtrip(self):
+        builder = InstructionBuilder()
+        builder.create_program()
+        builder.create_function("main")
+        ins = builder.move_run(
+            builder.const_string("forward"),
+            builder.const_int(50)
+        )
+        data = InstructionEncoder.encode(ins)
+        registry = {RobotOpcode.MOVE_RUN.value: RobotOpcode.MOVE_RUN}
+        decoded, offset = InstructionEncoder.decode(data, 0, registry)
+        self.assertEqual(ins.opcode, decoded.opcode)
+        self.assertEqual(len(ins.operands), len(decoded.operands))
+
+    def test_program_encoder_roundtrip(self):
+        builder = InstructionBuilder()
+        builder.create_program()
+        func = builder.create_function("main")
+        builder.move_run(builder.const_string("forward"), builder.const_int(50))
+        builder.wait(builder.const_int(1000))
+        builder.move_stop()
+
+        # ISAProgram -> BinaryProgram
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(builder.get_program())
+
+        # BinaryProgram -> bytes
+        serializer = BinarySerializer()
+        data = serializer.serialize(binary_prog)
+
+        # bytes -> BinaryProgram
+        reader = BinaryReader()
+        decoded_prog = reader.read(data)
+
+        # So sánh các thành phần chính
+        self.assertEqual(len(decoded_prog.constant_pool.constants), len(binary_prog.constant_pool.constants))
+        self.assertEqual(decoded_prog.function_table.entries[0].instruction_count,
+                         binary_prog.function_table.entries[0].instruction_count)
+        self.assertEqual(decoded_prog.instruction_stream.data, binary_prog.instruction_stream.data)
+
+    def test_round_trip_full(self):
+        # Tạo ISAProgram
+        builder = InstructionBuilder()
+        builder.create_program()
+        func = builder.create_function("main")
+        builder.move_run(builder.const_string("forward"), builder.const_int(50))
+        builder.wait(builder.const_int(1000))
+        builder.move_stop()
+
+        encoder = ProgramEncoder()
+        binary_prog1 = encoder.encode(builder.get_program())
+
+        serializer = BinarySerializer()
+        data = serializer.serialize(binary_prog1)
+
+        reader = BinaryReader()
+        binary_prog2 = reader.read(data)
+
+        # So sánh header (bỏ qua checksum và program_size có thể khác)
+        self.assertEqual(binary_prog1.header.magic, binary_prog2.header.magic)
+        self.assertEqual(binary_prog1.header.abi_version, binary_prog2.header.abi_version)
+        self.assertEqual(binary_prog1.header.endianness, binary_prog2.header.endianness)
+        self.assertEqual(binary_prog1.header.instruction_set_version, binary_prog2.header.instruction_set_version)
+        # program_size có thể khác do serializer không cập nhật, nhưng ta có thể kiểm tra nội dung
+        self.assertEqual(binary_prog1.constant_pool.constants, binary_prog2.constant_pool.constants)
+        self.assertEqual(len(binary_prog1.function_table.entries), len(binary_prog2.function_table.entries))
+        for e1, e2 in zip(binary_prog1.function_table.entries, binary_prog2.function_table.entries):
+            self.assertEqual(e1.function_id, e2.function_id)
+            self.assertEqual(e1.entry_offset, e2.entry_offset)
+            self.assertEqual(e1.instruction_count, e2.instruction_count)
+        self.assertEqual(binary_prog1.instruction_stream.data, binary_prog2.instruction_stream.data)
+
+================
+File: robot-compiler/tests/test_golden_binary.py
+================
+import unittest
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from compiler.frontend.compiler import FrontendCompiler
+from compiler.passes import PassContext, PassManager
+from compiler.isa import BackendLowering
+from compiler.binary import ProgramEncoder, BinarySerializer, BinaryHeader, BinaryReader
+from compiler.diagnostics import DiagnosticEngine
+
+HEADER_SIZE = 19  # phải khớp với BinaryHeader.size()
+
+class TestGoldenBinary(unittest.TestCase):
+    def _compile_and_encode(self, source_file):
+        compiler = FrontendCompiler()
+        ir_prog = compiler.compile(source_file)
+        diag = DiagnosticEngine()
+        context = PassContext(ir_prog, diag)
+        manager = PassManager()
+        manager.register(BackendLowering())
+        manager.run(context)
+        isa_prog = context.config["isa_program"]
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(isa_prog)
+        serializer = BinarySerializer()
+        return serializer.serialize(binary_prog)
+
+    def test_demo_forward(self):
+        source_file = ROOT / "examples" / "demo_forward.py"
+        binary = self._compile_and_encode(source_file)
+        # Đọc header từ 19 bytes đầu
+        header = BinaryHeader.from_bytes(binary[:HEADER_SIZE])
+        self.assertEqual(header.magic, 0x4E494252)
+        self.assertGreater(len(binary), 16)
+
+    def test_demo_wait(self):
+        source_file = ROOT / "examples" / "demo_wait.py"
+        golden_file = ROOT / "tests" / "golden" / "binary" / "demo_wait.bin"
+        if not golden_file.exists():
+            self.skipTest(f"Golden file not found: {golden_file}")
+        binary = self._compile_and_encode(source_file)
+        with open(golden_file, 'rb') as f:
+            expected = f.read()
+        self.assertEqual(binary, expected)
+
+    def test_demo_move_stop(self):
+        source_file = ROOT / "examples" / "demo_move_stop.py"
+        golden_file = ROOT / "tests" / "golden" / "binary" / "demo_move_stop.bin"
+        if not golden_file.exists():
+            self.skipTest(f"Golden file not found: {golden_file}")
+        binary = self._compile_and_encode(source_file)
+        with open(golden_file, 'rb') as f:
+            expected = f.read()
+        self.assertEqual(binary, expected)
 
 ================
 File: robot-docs/VM_ABI.md
@@ -16953,6 +18180,95 @@ public:
     uint16_t mReturnAddress;               // temporary return address
     uint8_t mErrorCode;                    // 0 = no error, >0 = error code
 };
+
+================
+File: tests/test_runtime.py
+================
+# tests/test_runtime.py
+import unittest
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+# Thêm robot-compiler vào sys.path
+sys.path.insert(0, str(ROOT / "robot-compiler"))
+
+from compiler.binary import ProgramEncoder, BinaryHeader, ConstantPool, FunctionTable, InstructionStream, BinaryProgram
+from compiler.isa import InstructionBuilder, RobotOpcode
+from runtime import ProgramLoader, RuntimeProgram
+from runtime.exceptions import InvalidBinaryException, UnsupportedVersionException
+from runtime.iterator import InstructionIterator
+
+
+class TestRuntime(unittest.TestCase):
+    def test_load_program(self):
+        builder = InstructionBuilder()
+        builder.create_program()
+        func = builder.create_function("main")
+        builder.move_run(builder.const_string("forward"), builder.const_int(50))
+        builder.wait(builder.const_int(1000))
+        builder.move_stop()
+
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(builder.get_program())
+        runtime_prog = ProgramLoader.load(binary_prog)
+
+        self.assertIsInstance(runtime_prog, RuntimeProgram)
+        self.assertEqual(len(runtime_prog.instructions), 3)
+        self.assertEqual(len(runtime_prog.functions), 1)
+        self.assertEqual(len(runtime_prog.constants), 1)
+
+        func0 = runtime_prog.functions[0]
+        self.assertEqual(func0.instruction_count, 3)
+        self.assertEqual(func0.function_id, 0)
+
+        ins0 = runtime_prog.instructions[0]
+        self.assertEqual(ins0.opcode, RobotOpcode.MOVE_RUN)
+        self.assertEqual(ins0.operands[0], "forward")
+        self.assertEqual(ins0.operands[1], 50)
+
+        it = InstructionIterator(runtime_prog, function_id=0)
+        self.assertTrue(it.has_next())
+        ins = it.next()
+        self.assertEqual(ins.opcode, RobotOpcode.MOVE_RUN)
+        ins = it.next()
+        self.assertEqual(ins.opcode, RobotOpcode.WAIT)
+        ins = it.next()
+        self.assertEqual(ins.opcode, RobotOpcode.MOVE_STOP)
+        self.assertFalse(it.has_next())
+
+    def test_invalid_magic(self):
+        header = BinaryHeader(magic=0x12345678, abi_version=1)
+        cp = ConstantPool([])
+        ft = FunctionTable([])
+        inst = InstructionStream(b"")
+        binary_prog = BinaryProgram(header, cp, ft, inst)
+        with self.assertRaises(InvalidBinaryException):
+            ProgramLoader.load(binary_prog)
+
+    def test_unsupported_version(self):
+        header = BinaryHeader(magic=0x4E494252, abi_version=99)
+        cp = ConstantPool([])
+        ft = FunctionTable([])
+        inst = InstructionStream(b"")
+        binary_prog = BinaryProgram(header, cp, ft, inst)
+        with self.assertRaises(UnsupportedVersionException):
+            ProgramLoader.load(binary_prog)
+
+    def test_constant_pool_access(self):
+        builder = InstructionBuilder()
+        builder.create_program()
+        builder.create_function("main")
+        builder.move_run(builder.const_string("backward"), builder.const_int(30))
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(builder.get_program())
+        runtime_prog = ProgramLoader.load(binary_prog)
+        self.assertEqual(len(runtime_prog.constants), 1)
+        self.assertEqual(runtime_prog.constants[0], "backward")
+
+
+if __name__ == "__main__":
+    unittest.main()
 
 ================
 File: robot-compiler/compiler/generated/opcode.py

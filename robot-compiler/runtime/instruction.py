@@ -1,15 +1,10 @@
-# robot-compiler/runtime/instruction.py
+# runtime/instruction.py
 from dataclasses import dataclass
 from typing import List, Any
-from ..compiler.isa import RobotOpcode
-
+from compiler.generated.opcode import Opcode
 
 @dataclass(frozen=True)
 class RuntimeInstruction:
-    """
-    Immutable decoded instruction ready for execution.
-    All operands are resolved to concrete values (int, float, str, bool, index, etc.).
-    """
-    opcode: RobotOpcode
-    operands: List[Any]          # decoded operand values
-    index: int                   # global instruction index in the program
+    opcode: Opcode
+    operands: List[Any]
+    index: int

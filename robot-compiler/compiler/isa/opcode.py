@@ -1,5 +1,5 @@
+# compiler/isa/opcode.py
 from enum import Enum, auto
-
 
 class RobotOpcode(Enum):
     # Movement
