@@ -3,7 +3,7 @@ from typing import Dict, Callable
 from compiler.generated.opcode import Opcode
 from .instruction import RuntimeInstruction
 from .engine import ExecutionEngine
-from .mock.robot_api import MockRobotAPI
+from .robot import IRobot
 from .handlers import (
     move_handler, wait_handler, jump_handler, call_handler,
     comparison_handler, arithmetic_handler
@@ -40,8 +40,8 @@ class Dispatcher:
             Opcode.Store: arithmetic_handler.handle_store,
         }
 
-    def dispatch(self, instruction: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    def dispatch(self, instruction: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot):
         handler = self.handlers.get(instruction.opcode)
         if handler is None:
             raise ValueError(f"No handler for opcode {instruction.opcode}")
-        handler(instruction, engine, api)
+        handler(instruction, engine, robot)

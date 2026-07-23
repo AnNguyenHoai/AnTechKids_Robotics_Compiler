@@ -3,7 +3,7 @@ import struct
 from typing import Tuple, Dict
 from ..isa import ISAInstruction, ISAOperand
 from .operand_encoder import OperandEncoder
-from ..generated.opcode import Opcode  # dùng trực tiếp Opcode
+from compiler.generated.opcode import Opcode
 
 class InstructionEncoder:
     @staticmethod

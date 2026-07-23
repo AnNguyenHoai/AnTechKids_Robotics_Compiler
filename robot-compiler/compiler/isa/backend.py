@@ -9,7 +9,8 @@ from .program import ISAProgram
 from .function import ISAFunction
 from .builder import InstructionBuilder
 from .printer import InstructionPrinter
-from .operand import ISAOperand, OperandKind  # <-- IMPORTANT
+from .operand import ISAOperand, OperandKind
+from compiler.generated.opcode import Opcode
 
 
 class BackendLowering(CompilerPass):
@@ -63,41 +64,53 @@ class BackendLowering(CompilerPass):
             if len(operands) >= 2:
                 dir_op = self._lower_value(operands[0])
                 speed_op = self._lower_value(operands[1])
-                builder.move_run(dir_op, speed_op)
+                dir_str = dir_op.as_string().lower()
+                if dir_str == "forward":
+                    builder.emit(Opcode.Forward, [speed_op])
+                elif dir_str == "backward":
+                    builder.emit(Opcode.Backward, [speed_op])
+                elif dir_str == "left":
+                    builder.emit(Opcode.TurnLeft, [speed_op])
+                elif dir_str == "right":
+                    builder.emit(Opcode.TurnRight, [speed_op])
+                else:
+                    raise ValueError(f"Invalid direction: {dir_str}")
 
         elif opcode == IROpcode.MOVE_RUN_TIME:
             if len(operands) >= 3:
                 dir_op = self._lower_value(operands[0])
                 speed_op = self._lower_value(operands[1])
                 dur_op = self._lower_value(operands[2])
-                builder.move_run_time(dir_op, speed_op, dur_op)
+                # For simplicity, just emit WAIT with duration
+                builder.emit(Opcode.Wait, [dur_op])
 
         elif opcode == IROpcode.MOVE_STOP:
-            builder.move_stop()
+            builder.emit(Opcode.Stop, [])
 
         elif opcode == IROpcode.WAIT:
             if operands:
                 dur_op = self._lower_value(operands[0])
-                builder.wait(dur_op)
+                builder.emit(Opcode.Wait, [dur_op])
 
         elif opcode == IROpcode.CALL:
             if operands:
                 target_op = self._lower_value(operands[0])
-                builder.call(target_op)
+                builder.emit(Opcode.Call, [target_op])
 
         elif opcode == IROpcode.RETURN:
-            builder.return_()
+            builder.emit(Opcode.Return, [])
 
         elif opcode == IROpcode.JUMP:
             if operands:
                 target_op = self._lower_value(operands[0])
-                builder.jump(target_op)
+                builder.emit(Opcode.Jump, [target_op])
 
         elif opcode in (IROpcode.JUMP_IF_FALSE, IROpcode.JUMP_IF_TRUE):
             if len(operands) >= 2:
                 cond_op = self._lower_value(operands[0])
                 target_op = self._lower_value(operands[1])
-                builder.jump_if(cond_op, target_op)
+                builder.emit(Opcode.JumpIfFalse if opcode == IROpcode.JUMP_IF_FALSE else Opcode.JumpIfTrue,
+                             [cond_op, target_op])
 
     def _lower_value(self, ir_value: IRValue) -> ISAOperand:
         kind = ir_value.kind

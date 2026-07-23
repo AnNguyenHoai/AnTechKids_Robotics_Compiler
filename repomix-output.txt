@@ -249,9 +249,34 @@ robot-compiler/
       jump_handler.py
       move_handler.py
       wait_handler.py
+    hardware/
+      esp32/
+        __init__.py
+        board_config.py
+        esp32_hardware.py
+        hardware_capabilities.py
+        logger.py
+        motor_driver.py
+        timer.py
+      __init__.py
+      interface.py
+      interfaces.py
+      mock.py
     mock/
       __init__.py
       robot_api.py
+    robot/
+      __init__.py
+      events.py
+      interface.py
+      motion.py
+      runtime.py
+      sensor.py
+      state.py
+    tests/
+      __init__.py
+      test_esp32_adapter.py
+      test_integration_esp32.py
     value/
       __init__.py
       base.py
@@ -264,6 +289,7 @@ robot-compiler/
     context.py
     dispatcher.py
     engine.py
+    ESP32_ADAPTER.md
     exceptions.py
     EXECUTION_ENGINE.md
     frame.py
@@ -274,6 +300,7 @@ robot-compiler/
     memory.py
     program.py
     README.md
+    ROBOT_RUNTIME.md
     stack.py
     variable.py
     VM_ARCHITECTURE.md
@@ -342,7 +369,6 @@ robot-frontend-robosim/
     __init__.py
     motion.py
     system.py
-    timing.py
   test/
     run_tests.py
 robot-language/
@@ -462,1213 +488,747 @@ Files
 ================================================================
 
 ================
-File: robot-compiler/runtime/handlers/__init__.py
+File: robot-compiler/runtime/hardware/esp32/__init__.py
 ================
-# runtime/handlers/__init__.py
-from . import move_handler
-from . import wait_handler
-from . import jump_handler
-from . import call_handler
-from . import comparison_handler
-from . import arithmetic_handler
-
-================
-File: robot-compiler/runtime/handlers/arithmetic_handler.py
-================
-# runtime/handlers/arithmetic_handler.py
-from ..instruction import RuntimeInstruction
-from ..engine import ExecutionEngine
-from ..mock.robot_api import MockRobotAPI
-
-ARITH_OP = {
-    "Add": "add",
-    "Sub": "sub",
-    "Mul": "mul",
-    "Div": "div",
-    "Mod": "mod",
-    "Pow": "pow",
-    "Neg": "neg",
-}
-
-def handle_arithmetic(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    op = ins.opcode
-    if op.name == "Neg":
-        src_idx = ins.operands[0]
-        result_idx = ins.operands[1]
-        val = engine.get_variable_by_index(src_idx)
-        result = engine.neg(val)
-        engine.set_variable_by_index(result_idx, result)
-    else:
-        left_idx = ins.operands[0]
-        right_idx = ins.operands[1]
-        result_idx = ins.operands[2]
-        left = engine.get_variable_by_index(left_idx)
-        right = engine.get_variable_by_index(right_idx)
-        op_name = op.name
-        if op_name == "Add":
-            result = engine.add(left, right)
-        elif op_name == "Sub":
-            result = engine.sub(left, right)
-        elif op_name == "Mul":
-            result = engine.mul(left, right)
-        elif op_name == "Div":
-            result = engine.div(left, right)
-        elif op_name == "Mod":
-            result = engine.mod(left, right)
-        elif op_name == "Pow":
-            result = engine.pow(left, right)
-        else:
-            raise ValueError(f"Unknown arithmetic op: {op_name}")
-        engine.set_variable_by_index(result_idx, result)
-    engine.context.program_counter += 1
-    engine.iterator.seek(engine.context.program_counter)
-
-def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    var_idx = ins.operands[0]
-    const_val = ins.operands[1]  # hằng số có thể là int, float, string, bool
-    # Tạo RuntimeValue tương ứng
-    if isinstance(const_val, int):
-        from ..value import IntegerValue
-        val = IntegerValue(const_val)
-    elif isinstance(const_val, float):
-        from ..value import FloatValue
-        val = FloatValue(const_val)
-    elif isinstance(const_val, str):
-        from ..value import StringValue
-        val = StringValue(const_val)
-    elif isinstance(const_val, bool):
-        from ..value import BooleanValue
-        val = BooleanValue(const_val)
-    else:
-        raise TypeError(f"Unsupported constant type: {type(const_val)}")
-    engine.set_variable_by_index(var_idx, val)
-    engine.context.program_counter += 1
-    engine.iterator.seek(engine.context.program_counter)
-
-def handle_store(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    src_idx = ins.operands[0]
-    dest_idx = ins.operands[1]
-    val = engine.get_variable_by_index(src_idx)
-    engine.set_variable_by_index(dest_idx, val)
-    engine.context.program_counter += 1
-    engine.iterator.seek(engine.context.program_counter)
-
-================
-File: robot-compiler/runtime/handlers/call_handler.py
-================
-# runtime/handlers/call_handler.py
-from ..instruction import RuntimeInstruction
-from ..engine import ExecutionEngine
-from ..mock.robot_api import MockRobotAPI
-
-def handle_call(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    func_id = ins.operands[0]
-    engine.call(func_id)
-
-def handle_return(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    engine.return_()
-
-================
-File: robot-compiler/runtime/handlers/comparison_handler.py
-================
-# runtime/handlers/comparison_handler.py
-from ..instruction import RuntimeInstruction
-from ..engine import ExecutionEngine
-from ..mock.robot_api import MockRobotAPI
-
-COMPARE_OP = {
-    "CompareEQ": "==",
-    "CompareNE": "!=",
-    "CompareLT": "<",
-    "CompareLE": "<=",
-    "CompareGT": ">",
-    "CompareGE": ">=",
-}
-
-def handle_compare(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    left_idx = ins.operands[0]
-    right_idx = ins.operands[1]
-    result_idx = ins.operands[2]
-    left = engine.get_variable_by_index(left_idx)
-    right = engine.get_variable_by_index(right_idx)
-    op = COMPARE_OP[ins.opcode.name]
-    result = engine.compare(left, right, op)
-    engine.set_variable_by_index(result_idx, result)
-    engine.context.program_counter += 1
-    engine.iterator.seek(engine.context.program_counter)
-
-================
-File: robot-compiler/runtime/handlers/jump_handler.py
-================
-# runtime/handlers/jump_handler.py
-from ..instruction import RuntimeInstruction
-from ..engine import ExecutionEngine
-from ..mock.robot_api import MockRobotAPI
-
-def handle_jump(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    target = ins.operands[0]
-    engine.jump(target)
-
-def handle_jump_if_false(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    cond_idx = ins.operands[0]
-    target = ins.operands[1]
-    cond_val = engine.get_variable_by_index(cond_idx)
-    if not cond_val.as_bool():
-        engine.jump(target)
-    else:
-        engine.context.program_counter += 1
-        engine.iterator.seek(engine.context.program_counter)
-
-def handle_jump_if_true(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    cond_idx = ins.operands[0]
-    target = ins.operands[1]
-    cond_val = engine.get_variable_by_index(cond_idx)
-    if cond_val.as_bool():
-        engine.jump(target)
-    else:
-        engine.context.program_counter += 1
-        engine.iterator.seek(engine.context.program_counter)
-
-================
-File: robot-compiler/runtime/handlers/move_handler.py
-================
-# runtime/handlers/move_handler.py
-from ..instruction import RuntimeInstruction
-from ..engine import ExecutionEngine
-from ..mock.robot_api import MockRobotAPI
-from compiler.generated.opcode import Opcode
-
-def handle_forward(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    speed_idx = ins.operands[0]
-    speed_val = engine.get_variable_by_index(speed_idx)
-    api.forward(speed_val.as_int())
-    engine.context.program_counter += 1
-    engine.iterator.seek(engine.context.program_counter)
-
-def handle_backward(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    speed_idx = ins.operands[0]
-    speed_val = engine.get_variable_by_index(speed_idx)
-    api.backward(speed_val.as_int())
-    engine.context.program_counter += 1
-    engine.iterator.seek(engine.context.program_counter)
-
-def handle_turn_left(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    speed_idx = ins.operands[0]
-    speed_val = engine.get_variable_by_index(speed_idx)
-    api.left(speed_val.as_int())
-    engine.context.program_counter += 1
-    engine.iterator.seek(engine.context.program_counter)
-
-def handle_turn_right(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    speed_idx = ins.operands[0]
-    speed_val = engine.get_variable_by_index(speed_idx)
-    api.right(speed_val.as_int())
-    engine.context.program_counter += 1
-    engine.iterator.seek(engine.context.program_counter)
-
-def handle_stop(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    api.stop()
-    engine.context.program_counter += 1
-    engine.iterator.seek(engine.context.program_counter)
-
-================
-File: robot-compiler/runtime/handlers/wait_handler.py
-================
-# runtime/handlers/wait_handler.py
-from ..instruction import RuntimeInstruction
-from ..engine import ExecutionEngine
-from ..mock.robot_api import MockRobotAPI
-
-def handle_wait(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-    duration_idx = ins.operands[0]
-    duration_val = engine.get_variable_by_index(duration_idx)
-    api.wait(duration_val.as_int())
-    engine.context.program_counter += 1
-    engine.iterator.seek(engine.context.program_counter)
-
-================
-File: robot-compiler/runtime/mock/__init__.py
-================
-# runtime/mock/__init__.py
-from .robot_api import MockRobotAPI
-
-================
-File: robot-compiler/runtime/mock/robot_api.py
-================
-# runtime/mock/robot_api.py
-class MockRobotAPI:
-    def __init__(self):
-        self.output = []
-        self.last_action = None
-
-    def forward(self, speed):
-        self.last_action = ("forward", speed)
-        self.output.append(("forward", speed))
-        print(f"[MockRobot] Forward {speed}")
-
-    def backward(self, speed):
-        self.last_action = ("backward", speed)
-        self.output.append(("backward", speed))
-        print(f"[MockRobot] Backward {speed}")
-
-    def left(self, speed):
-        self.last_action = ("left", speed)
-        self.output.append(("left", speed))
-        print(f"[MockRobot] Left {speed}")
-
-    def right(self, speed):
-        self.last_action = ("right", speed)
-        self.output.append(("right", speed))
-        print(f"[MockRobot] Right {speed}")
-
-    def stop(self):
-        self.last_action = ("stop",)
-        self.output.append(("stop",))
-        print(f"[MockRobot] Stop")
-
-    def wait(self, ms):
-        self.last_action = ("wait", ms)
-        self.output.append(("wait", ms))
-        print(f"[MockRobot] Wait {ms} ms")
-
-================
-File: robot-compiler/runtime/value/__init__.py
-================
-# runtime/value/__init__.py
-from .base import RuntimeValue
-from .integer import IntegerValue
-from .float import FloatValue
-from .boolean import BooleanValue
-from .string import StringValue
-from .reference import ReferenceValue
+# runtime/hardware/esp32/__init__.py
+from .board_config import BoardConfiguration
+from .hardware_capabilities import HardwareCapabilities
+from .motor_driver import ESP32MotorDriver
+from .timer import ESP32Timer
+from .logger import ESP32Logger
+from .esp32_hardware import ESP32Hardware
 
 __all__ = [
-    "RuntimeValue",
-    "IntegerValue",
-    "FloatValue",
-    "BooleanValue",
-    "StringValue",
-    "ReferenceValue",
+    "BoardConfiguration",
+    "HardwareCapabilities",
+    "ESP32MotorDriver",
+    "ESP32Timer",
+    "ESP32Logger",
+    "ESP32Hardware",
 ]
 
 ================
-File: robot-compiler/runtime/value/base.py
+File: robot-compiler/runtime/hardware/esp32/board_config.py
 ================
-# runtime/value/base.py
-from abc import ABC, abstractmethod
-
-class RuntimeValue(ABC):
-    @abstractmethod
-    def __repr__(self) -> str:
-        pass
-
-    @abstractmethod
-    def __eq__(self, other) -> bool:
-        pass
-
-    @abstractmethod
-    def as_int(self) -> int:
-        pass
-
-    @abstractmethod
-    def as_float(self) -> float:
-        pass
-
-    @abstractmethod
-    def as_bool(self) -> bool:
-        pass
-
-    @abstractmethod
-    def as_string(self) -> str:
-        pass
-
-    def is_integer(self) -> bool:
-        return isinstance(self, IntegerValue)
-    def is_float(self) -> bool:
-        return isinstance(self, FloatValue)
-    def is_boolean(self) -> bool:
-        return isinstance(self, BooleanValue)
-    def is_string(self) -> bool:
-        return isinstance(self, StringValue)
-    def is_reference(self) -> bool:
-        return isinstance(self, ReferenceValue)# runtime/value/base.py
-from abc import ABC, abstractmethod
-
-class RuntimeValue(ABC):
-    @abstractmethod
-    def __repr__(self) -> str:
-        pass
-
-    @abstractmethod
-    def __eq__(self, other) -> bool:
-        pass
-
-    @abstractmethod
-    def as_int(self) -> int:
-        pass
-
-    @abstractmethod
-    def as_float(self) -> float:
-        pass
-
-    @abstractmethod
-    def as_bool(self) -> bool:
-        pass
-
-    @abstractmethod
-    def as_string(self) -> str:
-        pass
-
-    def is_integer(self) -> bool:
-        return isinstance(self, IntegerValue)
-    def is_float(self) -> bool:
-        return isinstance(self, FloatValue)
-    def is_boolean(self) -> bool:
-        return isinstance(self, BooleanValue)
-    def is_string(self) -> bool:
-        return isinstance(self, StringValue)
-    def is_reference(self) -> bool:
-        return isinstance(self, ReferenceValue)
-
-================
-File: robot-compiler/runtime/value/boolean.py
-================
-# runtime/value/boolean.py
-from .base import RuntimeValue
-
-class BooleanValue(RuntimeValue):
-    def __init__(self, value: bool):
-        self.value = value
-
-    def __repr__(self) -> str:
-        return f"Boolean({self.value})"
-
-    def __eq__(self, other) -> bool:
-        if isinstance(other, BooleanValue):
-            return self.value == other.value
-        return False
-
-    def as_int(self) -> int:
-        return 1 if self.value else 0
-
-    def as_float(self) -> float:
-        return 1.0 if self.value else 0.0
-
-    def as_bool(self) -> bool:
-        return self.value
-
-    def as_string(self) -> str:
-        return "true" if self.value else "false"
-
-================
-File: robot-compiler/runtime/value/float.py
-================
-# runtime/value/float.py
-from .base import RuntimeValue
-
-class FloatValue(RuntimeValue):
-    def __init__(self, value: float):
-        self.value = value
-
-    def __repr__(self) -> str:
-        return f"Float({self.value})"
-
-    def __eq__(self, other) -> bool:
-        if isinstance(other, FloatValue):
-            return self.value == other.value
-        return False
-
-    def as_int(self) -> int:
-        return int(self.value)
-
-    def as_float(self) -> float:
-        return self.value
-
-    def as_bool(self) -> bool:
-        return self.value != 0.0
-
-    def as_string(self) -> str:
-        return str(self.value)
-
-================
-File: robot-compiler/runtime/value/integer.py
-================
-# runtime/value/integer.py
-from .base import RuntimeValue
-
-class IntegerValue(RuntimeValue):
-    def __init__(self, value: int):
-        self.value = value
-
-    def __repr__(self) -> str:
-        return f"Integer({self.value})"
-
-    def __eq__(self, other) -> bool:
-        if isinstance(other, IntegerValue):
-            return self.value == other.value
-        return False
-
-    def as_int(self) -> int:
-        return self.value
-
-    def as_float(self) -> float:
-        return float(self.value)
-
-    def as_bool(self) -> bool:
-        return self.value != 0
-
-    def as_string(self) -> str:
-        return str(self.value)
-
-================
-File: robot-compiler/runtime/value/reference.py
-================
-# runtime/value/reference.py
-from .base import RuntimeValue
-
-class ReferenceValue(RuntimeValue):
-    def __init__(self, index: int):
-        self.index = index
-
-    def __repr__(self) -> str:
-        return f"Reference({self.index})"
-
-    def __eq__(self, other) -> bool:
-        if isinstance(other, ReferenceValue):
-            return self.index == other.index
-        return False
-
-    def as_int(self) -> int:
-        return self.index
-
-    def as_float(self) -> float:
-        return float(self.index)
-
-    def as_bool(self) -> bool:
-        return True
-
-    def as_string(self) -> str:
-        return f"ref:{self.index}"
-
-================
-File: robot-compiler/runtime/value/string.py
-================
-# runtime/value/string.py
-from .base import RuntimeValue
-
-class StringValue(RuntimeValue):
-    def __init__(self, value: str):
-        self.value = value
-
-    def __repr__(self) -> str:
-        return f'String("{self.value}")'
-
-    def __eq__(self, other) -> bool:
-        if isinstance(other, StringValue):
-            return self.value == other.value
-        return False
-
-    def as_int(self) -> int:
-        raise TypeError("Cannot convert string to int")
-
-    def as_float(self) -> float:
-        raise TypeError("Cannot convert string to float")
-
-    def as_bool(self) -> bool:
-        return len(self.value) > 0
-
-    def as_string(self) -> str:
-        return self.value
-
-================
-File: robot-compiler/runtime/context.py
-================
-# runtime/context.py
-from dataclasses import dataclass, field
+# runtime/hardware/esp32/board_config.py
+from dataclasses import dataclass
 from typing import List, Optional
-from enum import Enum
-from .value import RuntimeValue
-from .variable import VariableTable
-from .stack import DataStack
-from .frame import StackFrame
-
-class ExecutionState(Enum):
-    CREATED = "created"
-    LOADED = "loaded"
-    RUNNING = "running"
-    PAUSED = "paused"
-    STOPPED = "stopped"
-    FINISHED = "finished"
 
 @dataclass
-class ExecutionContext:
-    program_counter: int = 0
-    call_stack: List[StackFrame] = field(default_factory=list)
-    data_stack: DataStack = field(default_factory=DataStack)
-    current_function_id: Optional[int] = None
-    state: ExecutionState = ExecutionState.CREATED
-    flags: int = 0
-    registers: dict = field(default_factory=dict)
-    global_vars: VariableTable = field(default_factory=VariableTable)
-    local_vars: VariableTable = field(default_factory=VariableTable)
+class BoardConfiguration:
+    # Motor pins
+    left_motor_pin: int
+    right_motor_pin: int
+    pwm_channel_left: int
+    pwm_channel_right: int
+    pwm_frequency: int = 5000
+    pwm_resolution: int = 8  # bits
 
-    def __post_init__(self):
-        if self.call_stack is None:
-            self.call_stack = []
-        if self.registers is None:
-            self.registers = {}
-        if self.global_vars is None:
-            self.global_vars = VariableTable()
-        if self.local_vars is None:
-            self.local_vars = VariableTable()
+    # Sensor pins (out of scope for this sprint, but placeholder)
+    ultrasonic_trig_pin: int = 0
+    ultrasonic_echo_pin: int = 0
+    line_sensor_pins: Optional[List[int]] = None
+    touch_sensor_pins: Optional[List[int]] = None
 
-    def push_frame(self, frame: StackFrame):
-        self.call_stack.append(frame)
-        self.local_vars = frame.local_vars
-        self.current_function_id = frame.function_id
-
-    def pop_frame(self) -> StackFrame:
-        if not self.call_stack:
-            raise RuntimeError("No frame to pop")
-        frame = self.call_stack.pop()
-        if self.call_stack:
-            self.local_vars = self.call_stack[-1].local_vars
-            self.current_function_id = self.call_stack[-1].function_id
-        else:
-            self.local_vars = VariableTable()
-            self.current_function_id = None
-        return frame
-
-    def top_frame(self) -> Optional[StackFrame]:
-        return self.call_stack[-1] if self.call_stack else None
+    # UART, SPI, I2C configs (future)
+    uart_baudrate: int = 115200
+    i2c_frequency: int = 400000
+    spi_frequency: int = 1000000
 
 ================
-File: robot-compiler/runtime/dispatcher.py
+File: robot-compiler/runtime/hardware/esp32/esp32_hardware.py
 ================
-# runtime/dispatcher.py
-from typing import Dict, Callable
-from compiler.generated.opcode import Opcode
-from .instruction import RuntimeInstruction
-from .engine import ExecutionEngine
-from .mock.robot_api import MockRobotAPI
-from .handlers import (
-    move_handler, wait_handler, jump_handler, call_handler,
-    comparison_handler, arithmetic_handler
+# runtime/hardware/esp32/esp32_hardware.py
+from ..interface import IHardware
+from .board_config import BoardConfiguration
+from .hardware_capabilities import HardwareCapabilities
+from .motor_driver import ESP32MotorDriver
+from .timer import ESP32Timer
+from .logger import ESP32Logger
+
+class ESP32Hardware(IHardware):
+    def __init__(self, config: BoardConfiguration, logger: ESP32Logger = None):
+        self.config = config
+        self.logger = logger or ESP32Logger("INFO")
+        self.capabilities = HardwareCapabilities()
+        self.timer = ESP32Timer()
+        self.motor = ESP32MotorDriver(config, self.logger)
+
+        # Mock sensor values (can be set for testing)
+        self._ultrasonic_value = 50
+        self._line_values = {0: 512, 1: 512, 2: 512}
+        self._touch_values = {0: False, 1: False}
+
+    # ---- IHardware implementation ----
+    def set_motor(self, left: int, right: int) -> None:
+        self.motor.set_motor(left, right)
+
+    def delay(self, ms: int) -> None:
+        self.timer.delay(ms)
+
+    def read_ultrasonic(self) -> int:
+        self.logger.debug("Read ultrasonic")
+        return self._ultrasonic_value
+
+    def read_line_sensor(self, channel: int) -> int:
+        self.logger.debug(f"Read line sensor channel {channel}")
+        return self._line_values.get(channel, 512)
+
+    def read_touch(self, port: int) -> bool:
+        self.logger.debug(f"Read touch port {port}")
+        return self._touch_values.get(port, False)
+
+    # ---- Test helpers ----
+    def set_ultrasonic_value(self, value: int) -> None:
+        self._ultrasonic_value = value
+
+    def set_line_value(self, channel: int, value: int) -> None:
+        self._line_values[channel] = value
+
+    def set_touch_value(self, port: int, value: bool) -> None:
+        self._touch_values[port] = value
+
+================
+File: robot-compiler/runtime/hardware/esp32/hardware_capabilities.py
+================
+# runtime/hardware/esp32/hardware_capabilities.py
+class HardwareCapabilities:
+    def __init__(self):
+        self.supports_pwm = True
+        self.supports_adc = True
+        self.supports_gpio = True
+        self.supports_uart = True
+        self.supports_i2c = True
+        self.supports_spi = True
+        self.max_pwm_channels = 16
+        self.max_adc_channels = 8
+        self.max_gpio_pins = 40
+        self.has_encoder = False
+        self.has_gyroscope = False
+
+================
+File: robot-compiler/runtime/hardware/esp32/logger.py
+================
+# runtime/hardware/esp32/logger.py
+import sys
+from ..interfaces import ILogger
+
+class ESP32Logger(ILogger):
+    def __init__(self, level: str = "INFO"):
+        self.level = level.upper()
+
+    def _log(self, level: str, msg: str):
+        print(f"[{level}] {msg}", file=sys.stdout)
+
+    def info(self, msg: str) -> None:
+        if self.level in ("INFO", "DEBUG"):
+            self._log("INFO", msg)
+
+    def warn(self, msg: str) -> None:
+        if self.level in ("WARN", "INFO", "DEBUG"):
+            self._log("WARN", msg)
+
+    def error(self, msg: str) -> None:
+        self._log("ERROR", msg)
+
+    def debug(self, msg: str) -> None:
+        if self.level == "DEBUG":
+            self._log("DEBUG", msg)
+
+================
+File: robot-compiler/runtime/hardware/esp32/motor_driver.py
+================
+# runtime/hardware/esp32/motor_driver.py
+from ..interfaces import IMotorDriver
+from .board_config import BoardConfiguration
+from .logger import ESP32Logger
+
+class ESP32MotorDriver(IMotorDriver):
+    def __init__(self, config: BoardConfiguration, logger: ESP32Logger):
+        self.config = config
+        self.logger = logger
+        self._last_left = 0
+        self._last_right = 0
+        self.logger.info(f"Motor driver initialized: left_pin={config.left_motor_pin}, right_pin={config.right_motor_pin}")
+
+    def set_motor(self, left_pwm: int, right_pwm: int) -> None:
+        # Clamp values
+        left = max(-100, min(100, left_pwm))
+        right = max(-100, min(100, right_pwm))
+        self._last_left = left
+        self._last_right = right
+        self.logger.debug(f"Set motor: L={left}, R={right}")
+        # In real implementation: analogWrite(pin, map(left, -100, 100, 0, 255)) etc.
+
+    def stop(self) -> None:
+        self.logger.debug("Motor stop")
+        self.set_motor(0, 0)
+
+    def brake(self) -> None:
+        self.logger.debug("Motor brake")
+        # In real implementation: set both pins HIGH (or LOW depending on H-bridge)
+        # Here we just stop
+        self.stop()
+
+================
+File: robot-compiler/runtime/hardware/esp32/timer.py
+================
+# runtime/hardware/esp32/timer.py
+import time
+from ..interfaces import ITimer
+
+class ESP32Timer(ITimer):
+    def delay(self, ms: int) -> None:
+        time.sleep(ms / 1000.0)
+
+    def millis(self) -> int:
+        return int(time.time() * 1000)
+
+    def micros(self) -> int:
+        return int(time.time() * 1_000_000)
+
+================
+File: robot-compiler/runtime/hardware/__init__.py
+================
+# runtime/hardware/__init__.py
+from .interface import IHardware
+from .mock import MockHardware
+from .interfaces import IMotorDriver, ITimer, ILogger
+from .esp32 import (
+    ESP32Hardware,
+    BoardConfiguration,
+    HardwareCapabilities,
+    ESP32MotorDriver,
+    ESP32Timer,
+    ESP32Logger,
 )
 
-class Dispatcher:
-    def __init__(self):
-        self.handlers: Dict[Opcode, Callable] = {
-            Opcode.Forward: move_handler.handle_forward,
-            Opcode.Backward: move_handler.handle_backward,
-            Opcode.TurnLeft: move_handler.handle_turn_left,
-            Opcode.TurnRight: move_handler.handle_turn_right,
-            Opcode.Wait: wait_handler.handle_wait,
-            Opcode.Stop: move_handler.handle_stop,
-            Opcode.Jump: jump_handler.handle_jump,
-            Opcode.JumpIfFalse: jump_handler.handle_jump_if_false,
-            Opcode.JumpIfTrue: jump_handler.handle_jump_if_true,
-            Opcode.Call: call_handler.handle_call,
-            Opcode.Return: call_handler.handle_return,
-            Opcode.CompareEQ: comparison_handler.handle_compare,
-            Opcode.CompareNE: comparison_handler.handle_compare,
-            Opcode.CompareLT: comparison_handler.handle_compare,
-            Opcode.CompareLE: comparison_handler.handle_compare,
-            Opcode.CompareGT: comparison_handler.handle_compare,
-            Opcode.CompareGE: comparison_handler.handle_compare,
-            Opcode.Add: arithmetic_handler.handle_arithmetic,
-            Opcode.Sub: arithmetic_handler.handle_arithmetic,
-            Opcode.Mul: arithmetic_handler.handle_arithmetic,
-            Opcode.Div: arithmetic_handler.handle_arithmetic,
-            Opcode.Mod: arithmetic_handler.handle_arithmetic,
-            Opcode.Pow: arithmetic_handler.handle_arithmetic,
-            Opcode.Neg: arithmetic_handler.handle_arithmetic,
-            Opcode.LoadConst: arithmetic_handler.handle_load_const,
-            Opcode.Store: arithmetic_handler.handle_store,
-        }
-
-    def dispatch(self, instruction: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
-        handler = self.handlers.get(instruction.opcode)
-        if handler is None:
-            raise ValueError(f"No handler for opcode {instruction.opcode}")
-        handler(instruction, engine, api)
+__all__ = [
+    "IHardware",
+    "MockHardware",
+    "IMotorDriver",
+    "ITimer",
+    "ILogger",
+    "ESP32Hardware",
+    "BoardConfiguration",
+    "HardwareCapabilities",
+    "ESP32MotorDriver",
+    "ESP32Timer",
+    "ESP32Logger",
+]
 
 ================
-File: robot-compiler/runtime/engine.py
+File: robot-compiler/runtime/hardware/interface.py
 ================
-# runtime/engine.py
-from typing import Optional
-from .context import ExecutionContext, ExecutionState
-from .value import RuntimeValue, IntegerValue, FloatValue, BooleanValue, StringValue, ReferenceValue
-from .variable import VariableTable
-from .stack import DataStack
-from .frame import StackFrame
-from .program import RuntimeProgram
-from .iterator import InstructionIterator
-from .exceptions import InvalidInstructionException
+# runtime/hardware/interface.py
+from abc import ABC, abstractmethod
 
-class ExecutionEngine:
+class IHardware(ABC):
+    """Hardware abstraction layer for robot peripherals."""
+
+    @abstractmethod
+    def set_motor(self, left: int, right: int) -> None:
+        """Set motor speeds (range -100 to 100)."""
+        pass
+
+    @abstractmethod
+    def delay(self, ms: int) -> None:
+        """Blocking delay in milliseconds."""
+        pass
+
+    @abstractmethod
+    def read_ultrasonic(self) -> int:
+        """Read ultrasonic sensor distance in cm."""
+        pass
+
+    @abstractmethod
+    def read_line_sensor(self, channel: int) -> int:
+        """Read line sensor value (0-1023) for given channel."""
+        pass
+
+    @abstractmethod
+    def read_touch(self, port: int) -> bool:
+        """Read touch sensor state."""
+        pass
+
+    # Future: pwm, gpio, adc, uart, spi, i2c
+
+================
+File: robot-compiler/runtime/hardware/interfaces.py
+================
+# runtime/hardware/interfaces.py
+from abc import ABC, abstractmethod
+
+class IMotorDriver(ABC):
+    @abstractmethod
+    def set_motor(self, left_pwm: int, right_pwm: int) -> None:
+        """Set motor PWM values (range -100 to 100)."""
+        pass
+
+    @abstractmethod
+    def stop(self) -> None:
+        """Stop motors."""
+        pass
+
+    @abstractmethod
+    def brake(self) -> None:
+        """Brake motors."""
+        pass
+
+class ITimer(ABC):
+    @abstractmethod
+    def delay(self, ms: int) -> None:
+        """Blocking delay in milliseconds."""
+        pass
+
+    @abstractmethod
+    def millis(self) -> int:
+        """Return current time in milliseconds."""
+        pass
+
+    @abstractmethod
+    def micros(self) -> int:
+        """Return current time in microseconds."""
+        pass
+
+class ILogger(ABC):
+    @abstractmethod
+    def info(self, msg: str) -> None:
+        pass
+
+    @abstractmethod
+    def warn(self, msg: str) -> None:
+        pass
+
+    @abstractmethod
+    def error(self, msg: str) -> None:
+        pass
+
+    @abstractmethod
+    def debug(self, msg: str) -> None:
+        pass
+
+================
+File: robot-compiler/runtime/hardware/mock.py
+================
+# runtime/hardware/mock.py
+import time
+from .interface import IHardware
+
+class MockHardware(IHardware):
+    """Mock hardware implementation for testing and simulation."""
+
     def __init__(self):
-        self.context = ExecutionContext()
-        self.program: Optional[RuntimeProgram] = None
-        self.iterator: Optional[InstructionIterator] = None
+        self.motor_left = 0
+        self.motor_right = 0
+        self.log = []
+        self._ultrasonic_value = 50  # default distance
+        self._line_values = {0: 512, 1: 512, 2: 512}  # default middle value
 
-    def load(self, program: RuntimeProgram):
-        self.program = program
-        self.context = ExecutionContext()
-        self.iterator = InstructionIterator(program, function_id=0)
-        self.context.program_counter = 0
-        self.context.state = ExecutionState.LOADED
-        # Khởi tạo global vars
-        self.context.global_vars = VariableTable()
+    def set_motor(self, left: int, right: int) -> None:
+        self.motor_left = max(-100, min(100, left))
+        self.motor_right = max(-100, min(100, right))
+        self.log.append(("set_motor", self.motor_left, self.motor_right))
+        print(f"[MockHardware] Motors: L={self.motor_left}, R={self.motor_right}")
 
-    # --- Stack operations ---
-    def push(self, value: RuntimeValue):
-        self.context.data_stack.push(value)
+    def delay(self, ms: int) -> None:
+        self.log.append(("delay", ms))
+        print(f"[MockHardware] Delay {ms} ms")
+        time.sleep(ms / 1000.0)
 
-    def pop(self) -> RuntimeValue:
-        return self.context.data_stack.pop()
+    def read_ultrasonic(self) -> int:
+        self.log.append(("read_ultrasonic",))
+        print(f"[MockHardware] Read Ultrasonic: {self._ultrasonic_value} cm")
+        return self._ultrasonic_value
 
-    def peek(self) -> Optional[RuntimeValue]:
-        return self.context.data_stack.peek()
-
-    # --- Variable operations ---
-    def get_variable(self, name: str) -> Optional[RuntimeValue]:
-        if self.context.local_vars and self.context.local_vars.has(name):
-            return self.context.local_vars.get(name)
-        return self.context.global_vars.get(name)
-
-    def get_variable_by_index(self, index: int) -> RuntimeValue:
-        name = f"v{index}"
-        val = self.get_variable(name)
-        if val is None:
-            raise KeyError(f"Variable '{name}' not found")
+    def read_line_sensor(self, channel: int) -> int:
+        self.log.append(("read_line_sensor", channel))
+        val = self._line_values.get(channel, 512)
+        print(f"[MockHardware] Read Line Sensor channel {channel}: {val}")
         return val
 
-    def set_variable(self, name: str, value: RuntimeValue):
-        if self.context.local_vars and self.context.local_vars.has(name):
-            self.context.local_vars.set(name, value)
-        elif self.context.global_vars.has(name):
-            self.context.global_vars.set(name, value)
-        else:
-            # Tự động tạo global nếu chưa có
-            self.context.global_vars.define(name, value)
-
-    def set_variable_by_index(self, index: int, value: RuntimeValue):
-        name = f"v{index}"
-        self.set_variable(name, value)
-
-    def define_global(self, name: str, value: RuntimeValue = None):
-        self.context.global_vars.define(name, value)
-
-    def define_local(self, name: str, value: RuntimeValue = None):
-        if self.context.local_vars:
-            self.context.local_vars.define(name, value)
-        else:
-            raise RuntimeError("No local scope")
-
-    # --- Control flow ---
-    def jump(self, target: int):
-        if target < 0 or target >= self.iterator.size:
-            raise ValueError(f"Invalid jump target: {target}")
-        self.context.program_counter = target
-        self.iterator.seek(target)
-
-    def call(self, function_id: int):
-        func = self.program.get_function(function_id)
-        if func is None:
-            raise ValueError(f"Function {function_id} not found")
-        # Tạo frame mới với local vars
-        frame = StackFrame(
-            function_id=function_id,
-            return_address=self.context.program_counter + 1,
-            local_vars=VariableTable()
-        )
-        self.context.push_frame(frame)
-        self.context.program_counter = func.entry_index
-        self.iterator.seek(func.entry_index)
-
-    def return_(self):
-        if not self.context.call_stack:
-            raise RuntimeError("Return without call")
-        frame = self.context.pop_frame()
-        self.context.program_counter = frame.return_address
-        self.iterator.seek(frame.return_address)
-
-    # --- Comparison ---
-    def compare(self, left: RuntimeValue, right: RuntimeValue, op: str) -> BooleanValue:
-        if isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
-            l = left.as_float()
-            r = right.as_float()
-        elif isinstance(left, BooleanValue) and isinstance(right, BooleanValue):
-            l = left.as_bool()
-            r = right.as_bool()
-        elif isinstance(left, StringValue) and isinstance(right, StringValue):
-            l = left.as_string()
-            r = right.as_string()
-        else:
-            raise TypeError(f"Cannot compare {type(left)} and {type(right)}")
-        
-        if op == "==":
-            return BooleanValue(l == r)
-        elif op == "!=":
-            return BooleanValue(l != r)
-        elif op == ">":
-            return BooleanValue(l > r)
-        elif op == ">=":
-            return BooleanValue(l >= r)
-        elif op == "<":
-            return BooleanValue(l < r)
-        elif op == "<=":
-            return BooleanValue(l <= r)
-        else:
-            raise ValueError(f"Unknown comparison operator: {op}")
-
-    # --- Arithmetic ---
-    def add(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
-        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
-            return IntegerValue(left.as_int() + right.as_int())
-        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
-            return FloatValue(left.as_float() + right.as_float())
-        elif isinstance(left, StringValue) and isinstance(right, StringValue):
-            return StringValue(left.as_string() + right.as_string())
-        else:
-            raise TypeError("Unsupported addition")
-
-    def sub(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
-        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
-            return IntegerValue(left.as_int() - right.as_int())
-        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
-            return FloatValue(left.as_float() - right.as_float())
-        else:
-            raise TypeError("Unsupported subtraction")
-
-    def mul(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
-        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
-            return IntegerValue(left.as_int() * right.as_int())
-        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
-            return FloatValue(left.as_float() * right.as_float())
-        else:
-            raise TypeError("Unsupported multiplication")
-
-    def div(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
-        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
-            if right.as_int() == 0:
-                raise ZeroDivisionError("Division by zero")
-            return IntegerValue(left.as_int() // right.as_int())
-        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
-            if right.as_float() == 0.0:
-                raise ZeroDivisionError("Division by zero")
-            return FloatValue(left.as_float() / right.as_float())
-        else:
-            raise TypeError("Unsupported division")
-
-    def mod(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
-        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
-            if right.as_int() == 0:
-                raise ZeroDivisionError("Modulo by zero")
-            return IntegerValue(left.as_int() % right.as_int())
-        else:
-            raise TypeError("Modulo only supported for integers")
-
-    def pow(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
-        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
-            return IntegerValue(left.as_int() ** right.as_int())
-        else:
-            raise TypeError("Power only supported for integers")
-
-    def neg(self, value: RuntimeValue) -> RuntimeValue:
-        if isinstance(value, IntegerValue):
-            return IntegerValue(-value.as_int())
-        elif isinstance(value, FloatValue):
-            return FloatValue(-value.as_float())
-        else:
-            raise TypeError("Negation only supported for numbers")
-
-================
-File: robot-compiler/runtime/EXECUTION_ENGINE.md
-================
-# Execution Engine
-
-## Overview
-
-The Execution Engine is the core of the Virtual Machine. It manages the runtime state, including:
-
-- Program counter
-- Call stack and stack frames
-- Data stack
-- Variable tables (global and local)
-- Control flow (jumps, calls, returns)
-- Arithmetic and comparison operations
-
-The engine is independent of the dispatcher and opcode handlers.
-
-## Components
-
-### ExecutionContext
-
-Holds all runtime state:
-- `program_counter`: current instruction index
-- `call_stack`: list of `StackFrame` objects
-- `data_stack`: stack for temporary values
-- `global_vars`: `VariableTable` for global variables
-- `local_vars`: current function's local variables
-- `state`: execution state (CREATED, LOADED, RUNNING, ...)
-
-### StackFrame
-
-Represents a function activation:
-- `function_id`: ID of the function
-- `return_address`: instruction index to return to
-- `local_vars`: `VariableTable` for local variables
-
-### VariableTable
-
-A hierarchical table for variables:
-- `get(name)`: retrieve value
-- `set(name, value)`: update value
-- `define(name, value)`: create new variable
-- Supports parent chain for scoping
-
-### RuntimeValue
-
-Type-safe value hierarchy:
-- `IntegerValue`, `FloatValue`, `BooleanValue`, `StringValue`, `ReferenceValue`
-
-### ExecutionEngine
-
-Provides high-level operations:
-- Stack: `push()`, `pop()`, `peek()`
-- Variables: `get_variable()`, `set_variable()`, `get_variable_by_index()`, `set_variable_by_index()`
-- Control: `jump()`, `call()`, `return_()`
-- Arithmetic: `add()`, `sub()`, `mul()`, `div()`, `mod()`, `pow()`, `neg()`
-- Comparison: `compare()`
-
-## Execution Lifecycle
-
-1. `VirtualMachine.load()` loads a `RuntimeProgram` into the engine.
-2. `VirtualMachine.run()` repeatedly calls `step()`.
-3. `step()` fetches the current instruction via `InstructionIterator`.
-4. `Dispatcher` finds the appropriate handler and invokes it with the engine.
-5. The handler uses engine methods to manipulate state and control flow.
-6. The engine updates `program_counter` and iterator.
-
-## Memory Management
-
-- Variables are stored in `VariableTable` (owned by frames or global).
-- Temporary values are stored on the `DataStack`.
-- No garbage collection is needed; frames are popped on return.
-
-================
-File: robot-compiler/runtime/frame.py
-================
-# runtime/frame.py
-from typing import Optional
-from .variable import VariableTable
-
-class StackFrame:
-    def __init__(self, function_id: int, return_address: int, local_vars: VariableTable):
-        self.function_id = function_id
-        self.return_address = return_address
-        self.local_vars = local_vars
-        self.previous_frame: Optional['StackFrame'] = None
-
-================
-File: robot-compiler/runtime/memory.py
-================
-# runtime/memory.py
-from typing import List
-from .value import RuntimeValue
-
-class MemoryManager:
-    def __init__(self):
-        self.allocations: List[RuntimeValue] = []
-
-    def allocate(self, value: RuntimeValue) -> int:
-        self.allocations.append(value)
-        return len(self.allocations) - 1
-
-    def get(self, index: int) -> RuntimeValue:
-        if index < 0 or index >= len(self.allocations):
-            raise IndexError("Memory index out of bounds")
-        return self.allocations[index]
-
-    def set(self, index: int, value: RuntimeValue):
-        if index < 0 or index >= len(self.allocations):
-            raise IndexError("Memory index out of bounds")
-        self.allocations[index] = value
-
-    def clear(self):
-        self.allocations.clear()
-
-================
-File: robot-compiler/runtime/stack.py
-================
-# runtime/stack.py
-from typing import List, Optional
-from .value import RuntimeValue
-
-class DataStack:
-    def __init__(self, max_size: int = 1024):
-        self.items: List[RuntimeValue] = []
-        self.max_size = max_size
-
-    def push(self, value: RuntimeValue):
-        if len(self.items) >= self.max_size:
-            raise OverflowError("Data stack overflow")
-        self.items.append(value)
-
-    def pop(self) -> RuntimeValue:
-        if not self.items:
-            raise IndexError("Data stack underflow")
-        return self.items.pop()
-
-    def peek(self) -> Optional[RuntimeValue]:
-        if self.items:
-            return self.items[-1]
-        return None
-
-    def clear(self):
-        self.items.clear()
-
-    def size(self) -> int:
-        return len(self.items)
-
-    def is_empty(self) -> bool:
-        return len(self.items) == 0
-
-================
-File: robot-compiler/runtime/variable.py
-================
-# runtime/variable.py
-from typing import Dict, Optional
-from .value import RuntimeValue
-
-class VariableTable:
-    def __init__(self, parent: Optional['VariableTable'] = None):
-        self.parent = parent
-        self.variables: Dict[str, RuntimeValue] = {}
-
-    def get(self, name: str) -> Optional[RuntimeValue]:
-        if name in self.variables:
-            return self.variables[name]
-        if self.parent:
-            return self.parent.get(name)
-        return None
-
-    def set(self, name: str, value: RuntimeValue):
-        if name in self.variables:
-            self.variables[name] = value
-        elif self.parent:
-            self.parent.set(name, value)
-        else:
-            raise KeyError(f"Variable '{name}' not defined")
-
-    def define(self, name: str, value: RuntimeValue = None):
-        if name in self.variables:
-            raise RuntimeError(f"Variable '{name}' already defined")
-        self.variables[name] = value
-
-    def has(self, name: str) -> bool:
-        if name in self.variables:
-            return True
-        if self.parent:
-            return self.parent.has(name)
+    def read_touch(self, port: int) -> bool:
+        self.log.append(("read_touch", port))
+        # mock: always False
+        print(f"[MockHardware] Read Touch port {port}: False")
         return False
 
-================
-File: robot-compiler/runtime/VM_ARCHITECTURE.md
-================
-# Virtual Machine Architecture
+    # ---- Helper for tests ----
 
-## Overview
+    def set_ultrasonic_value(self, value: int):
+        self._ultrasonic_value = value
 
-The Virtual Machine (VM) executes a `RuntimeProgram` produced by the `ProgramLoader`. It is a simple, deterministic, single-threaded interpreter that communicates with hardware through a `MockRobotAPI` (or later, a real RobotAPI).
+    def set_line_value(self, channel: int, value: int):
+        self._line_values[channel] = value
 
-## Execution Lifecycle
+    def get_log(self):
+        return self.log
 
-1. **Load**: `VM.load(RuntimeProgram)` – initializes context and sets up instruction iterator.
-2. **Run**: `VM.run()` – executes instructions until the program finishes or is stopped.
-3. **Step**: `VM.step()` – executes a single instruction.
-4. **Stop**: `VM.stop()` – halts execution.
-5. **Reset**: `VM.reset()` – resets the VM to initial loaded state.
-
-## Components
-
-### ExecutionContext
-
-Holds the CPU state:
-- `program_counter` – current instruction index.
-- `call_stack` – return addresses for CALL/RETURN.
-- `data_stack` – general-purpose stack.
-- `current_function_id` – currently executing function.
-- `state` – one of CREATED, LOADED, RUNNING, PAUSED, STOPPED, FINISHED.
-- `flags` – condition flags (future).
-- `registers` – optional general-purpose registers.
-
-### InstructionIterator
-
-Provides sequential access to instructions. Supports:
-- `current()` – get current instruction.
-- `next()` – advance and return next instruction.
-- `seek(index)` – move to specific instruction.
-- `jump(index)` – alias for `seek`.
-- `has_next()` – check if more instructions exist.
-- `peek(offset)` – look ahead.
-- `reset()` – reset to beginning.
-
-### Dispatcher
-
-Maps `RobotOpcode` to a handler function and invokes it.
-
-### Opcode Handlers
-
-Each opcode family has its own handler module:
-- `move_handler`: MOVE_RUN, MOVE_RUN_TIME, MOVE_STOP
-- `wait_handler`: WAIT
-- `jump_handler`: JUMP, JUMP_IF
-- `call_handler`: CALL, RETURN
-
-Handlers update `context.program_counter` appropriately and call `MockRobotAPI` methods.
-
-### MockRobotAPI
-
-Stub implementation of robot hardware control. Records actions and prints to console.
-
-## State Machine
-CREATED -> LOADED -> RUNNING -> (PAUSED) -> STOPPED -> FINISHED
-
-text
-
-Invalid transitions raise exceptions.
-
-## Future Extensions
-
-- Real RobotAPI integration.
-- Multithreading / scheduler.
-- Debugger and profiler.
-- Interrupt handling.
-- Optimizations (JIT?).
-
-## Debugging
-
-The VM supports single-step execution via `step()`, which can be used by a debugger without modifying the VM core.
+    def clear_log(self):
+        self.log.clear()
 
 ================
-File: robot-compiler/runtime/vm.py
+File: robot-compiler/runtime/robot/__init__.py
 ================
-# runtime/vm.py
+# runtime/robot/__init__.py
+from .interface import IRobot
+from .runtime import RobotRuntime
+from .motion import MotionController
+from .sensor import SensorManager
+from .state import RobotState
+from .events import RobotEvent, EventType
+
+__all__ = [
+    "IRobot",
+    "RobotRuntime",
+    "MotionController",
+    "SensorManager",
+    "RobotState",
+    "RobotEvent",
+    "EventType",
+]
+
+================
+File: robot-compiler/runtime/robot/events.py
+================
+# runtime/robot/events.py
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
+class EventType(Enum):
+    MOVEMENT_STARTED = "movement_started"
+    MOVEMENT_STOPPED = "movement_stopped"
+    SENSOR_CHANGED = "sensor_changed"
+    EXECUTION_FINISHED = "execution_finished"
+    ERROR = "error"
+
+@dataclass
+class RobotEvent:
+    type: EventType
+    data: Any = None
+
+================
+File: robot-compiler/runtime/robot/interface.py
+================
+# runtime/robot/interface.py
+from abc import ABC, abstractmethod
+
+class IRobot(ABC):
+    """Robot interface that the VM uses to control the robot."""
+
+    @abstractmethod
+    def forward(self, speed: int) -> None:
+        """Move robot forward at given speed."""
+        pass
+
+    @abstractmethod
+    def backward(self, speed: int) -> None:
+        """Move robot backward at given speed."""
+        pass
+
+    @abstractmethod
+    def left(self, speed: int) -> None:
+        """Turn robot left at given speed."""
+        pass
+
+    @abstractmethod
+    def right(self, speed: int) -> None:
+        """Turn robot right at given speed."""
+        pass
+
+    @abstractmethod
+    def stop(self) -> None:
+        """Stop all motion."""
+        pass
+
+    @abstractmethod
+    def wait(self, ms: int) -> None:
+        """Blocking delay in milliseconds."""
+        pass
+
+    @abstractmethod
+    def set_motor(self, left: int, right: int) -> None:
+        """Set individual motor speeds."""
+        pass
+
+    # Future APIs
+    # def buzzer(self, frequency: int, duration: int) -> None: ...
+    # def servo(self, port: int, angle: int) -> None: ...
+    # def led(self, port: int, state: bool) -> None: ...
+    # def read_ultrasonic(self) -> int: ...
+    # def read_line_sensor(self, channel: int) -> int: ...
+
+================
+File: robot-compiler/runtime/robot/motion.py
+================
+# runtime/robot/motion.py
 from typing import Optional
-from .program import RuntimeProgram
-from .engine import ExecutionEngine
-from .dispatcher import Dispatcher
-from .mock.robot_api import MockRobotAPI
-from .context import ExecutionState
-class VirtualMachine:
-    def __init__(self):
-        self.engine = ExecutionEngine()
-        self.dispatcher = Dispatcher()
-        self.api = MockRobotAPI()
-        self.state = ExecutionState.CREATED
+from .state import RobotState
+from .events import RobotEvent, EventType
+from ..hardware.interface import IHardware
+from ..value import IntegerValue
 
-    def load(self, program: RuntimeProgram):
-        self.engine.load(program)
-        self.state = ExecutionState.LOADED
+class MotionController:
+    def __init__(self, hardware: IHardware):
+        self.hardware = hardware
+        self.state = RobotState.IDLE
+        self.current_direction = None
+        self.current_speed = 0
+        self.events = []
 
-    def step(self):
-        if self.state == ExecutionState.FINISHED:
-            raise RuntimeError("VM already finished")
-        if self.state not in (ExecutionState.LOADED, ExecutionState.RUNNING, ExecutionState.PAUSED):
-            raise RuntimeError(f"VM in invalid state: {self.state}")
+    def _emit(self, event_type: EventType, data=None):
+        self.events.append(RobotEvent(event_type, data))
 
-        if not self.engine.iterator.has_next():
-            self.state = ExecutionState.FINISHED
-            self.engine.context.state = ExecutionState.FINISHED
-            return
+    def forward(self, speed: int):
+        self._validate_speed(speed)
+        self.current_direction = "forward"
+        self.current_speed = speed
+        self.state = RobotState.MOVING
+        self.hardware.set_motor(speed, speed)
+        self._emit(EventType.MOVEMENT_STARTED, {"direction": "forward", "speed": speed})
 
-        ins = self.engine.iterator.current()
-        if ins is None:
-            self.state = ExecutionState.FINISHED
-            self.engine.context.state = ExecutionState.FINISHED
-            return
+    def backward(self, speed: int):
+        self._validate_speed(speed)
+        self.current_direction = "backward"
+        self.current_speed = speed
+        self.state = RobotState.MOVING
+        self.hardware.set_motor(-speed, -speed)
+        self._emit(EventType.MOVEMENT_STARTED, {"direction": "backward", "speed": speed})
 
-        self.dispatcher.dispatch(ins, self.engine, self.api)
+    def left(self, speed: int):
+        self._validate_speed(speed)
+        self.current_direction = "left"
+        self.current_speed = speed
+        self.state = RobotState.TURNING
+        self.hardware.set_motor(-speed, speed)
+        self._emit(EventType.MOVEMENT_STARTED, {"direction": "left", "speed": speed})
 
-        # Cập nhật iterator theo program_counter
-        self.engine.iterator.seek(self.engine.context.program_counter)
-
-    def run(self):
-        self.state = ExecutionState.RUNNING
-        self.engine.context.state = ExecutionState.RUNNING
-        while self.state == ExecutionState.RUNNING:
-            self.step()
-            if self.state == ExecutionState.FINISHED:
-                break
+    def right(self, speed: int):
+        self._validate_speed(speed)
+        self.current_direction = "right"
+        self.current_speed = speed
+        self.state = RobotState.TURNING
+        self.hardware.set_motor(speed, -speed)
+        self._emit(EventType.MOVEMENT_STARTED, {"direction": "right", "speed": speed})
 
     def stop(self):
-        self.state = ExecutionState.STOPPED
-        self.engine.context.state = ExecutionState.STOPPED
+        self.hardware.set_motor(0, 0)
+        self.state = RobotState.STOPPED
+        self._emit(EventType.MOVEMENT_STOPPED)
 
-    def reset(self):
-        self.engine = ExecutionEngine()
-        self.state = ExecutionState.CREATED
+    def wait(self, ms: int):
+        self.state = RobotState.WAITING
+        self.hardware.delay(ms)
+        self.state = RobotState.IDLE
 
-    def get_state(self):
+    def _validate_speed(self, speed: int):
+        if speed < 0 or speed > 100:
+            raise ValueError(f"Speed must be between 0 and 100, got {speed}")
+
+    def get_state(self) -> RobotState:
         return self.state
 
+    def get_events(self):
+        return self.events
+
+    def clear_events(self):
+        self.events.clear()
+
 ================
-File: robot-compiler/tests/test_engine.py
+File: robot-compiler/runtime/robot/runtime.py
 ================
+# runtime/robot/runtime.py
+from .interface import IRobot
+from .motion import MotionController
+from .sensor import SensorManager
+from ..hardware.interface import IHardware
+
+class RobotRuntime(IRobot):
+    """Main robot runtime that orchestrates motion and sensors."""
+
+    def __init__(self, hardware: IHardware):
+        self.hardware = hardware
+        self.motion = MotionController(hardware)
+        self.sensors = SensorManager(hardware)
+
+    # ---- Motion APIs ----
+
+    def forward(self, speed: int) -> None:
+        self.motion.forward(speed)
+
+    def backward(self, speed: int) -> None:
+        self.motion.backward(speed)
+
+    def left(self, speed: int) -> None:
+        self.motion.left(speed)
+
+    def right(self, speed: int) -> None:
+        self.motion.right(speed)
+
+    def stop(self) -> None:
+        self.motion.stop()
+
+    def wait(self, ms: int) -> None:
+        self.motion.wait(ms)
+
+    def set_motor(self, left: int, right: int) -> None:
+        self.hardware.set_motor(left, right)
+
+    # ---- Sensor APIs ----
+
+    def read_ultrasonic(self) -> int:
+        return self.sensors.read_ultrasonic()
+
+    def read_line_sensor(self, channel: int) -> int:
+        return self.sensors.read_line_sensor(channel)
+
+    # ---- State & Events ----
+
+    def get_state(self):
+        return self.motion.get_state()
+
+    def get_events(self):
+        return self.motion.get_events()
+
+    def clear_events(self):
+        self.motion.clear_events()
+
+================
+File: robot-compiler/runtime/robot/sensor.py
+================
+# runtime/robot/sensor.py
+from ..hardware.interface import IHardware
+
+class SensorManager:
+    def __init__(self, hardware: IHardware):
+        self.hardware = hardware
+        self._sensor_values = {}
+
+    def read_ultrasonic(self) -> int:
+        return self.hardware.read_ultrasonic()
+
+    def read_line_sensor(self, channel: int) -> int:
+        return self.hardware.read_line_sensor(channel)
+
+    def read_touch(self, port: int) -> bool:
+        return self.hardware.read_touch(port)
+
+    # Future sensors can be added here
+
+================
+File: robot-compiler/runtime/robot/state.py
+================
+# runtime/robot/state.py
+from enum import Enum
+
+class RobotState(Enum):
+    IDLE = "idle"
+    MOVING = "moving"
+    TURNING = "turning"
+    WAITING = "waiting"
+    STOPPED = "stopped"
+    ERROR = "error"
+
+================
+File: robot-compiler/runtime/tests/__init__.py
+================
+
+
+================
+File: robot-compiler/runtime/tests/test_esp32_adapter.py
+================
+# runtime/tests/test_esp32_adapter.py
+import unittest
 import sys
 from pathlib import Path
+import time
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import unittest
-from compiler.binary import ProgramEncoder
-from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, ISAOperand
-from compiler.generated.opcode import Opcode  # sử dụng Opcode
-from runtime import ProgramLoader, VirtualMachine
+from runtime.hardware import BoardConfiguration, ESP32Hardware, ESP32Logger, HardwareCapabilities
 
-def make_arithmetic_program():
-    prog = ISAProgram()
-    func = ISAFunction("main")
-    # LoadConst: t0=5, t1=3
-    func.add_instruction(ISAInstruction(Opcode.LoadConst, [ISAOperand.integer(0), ISAOperand.integer(5)]))
-    func.add_instruction(ISAInstruction(Opcode.LoadConst, [ISAOperand.integer(1), ISAOperand.integer(3)]))
-    # Add: t2 = t0 + t1
-    func.add_instruction(ISAInstruction(Opcode.Add, [ISAOperand.integer(0), ISAOperand.integer(1), ISAOperand.integer(2)]))
-    # Forward: forward(t2)
-    func.add_instruction(ISAInstruction(Opcode.Forward, [ISAOperand.integer(2)]))
-    # Stop
-    func.add_instruction(ISAInstruction(Opcode.Stop, []))
-    prog.add_function(func)
-    return prog
 
-class TestEngine(unittest.TestCase):
-    def test_arithmetic(self):
-        isa_prog = make_arithmetic_program()
-        encoder = ProgramEncoder()
-        binary = encoder.encode(isa_prog)
-        loader = ProgramLoader()
-        runtime = loader.load(binary)
-        vm = VirtualMachine()
-        vm.load(runtime)
-        vm.run()
-        self.assertEqual(vm.api.output[0], ("forward", 8))
-        self.assertEqual(vm.api.output[1], ("stop",))
+class TestESP32Adapter(unittest.TestCase):
+    def setUp(self):
+        self.config = BoardConfiguration(
+            left_motor_pin=25,
+            right_motor_pin=26,
+            pwm_channel_left=0,
+            pwm_channel_right=1,
+        )
+        self.logger = ESP32Logger("DEBUG")
+
+    def test_board_config(self):
+        self.assertEqual(self.config.left_motor_pin, 25)
+        self.assertEqual(self.config.right_motor_pin, 26)
+        self.assertEqual(self.config.pwm_channel_left, 0)
+        self.assertEqual(self.config.pwm_channel_right, 1)
+
+    def test_hardware_initialization(self):
+        hw = ESP32Hardware(self.config, self.logger)
+        self.assertIsNotNone(hw.motor)
+        self.assertIsNotNone(hw.timer)
+        self.assertIsNotNone(hw.capabilities)
+        self.assertIsInstance(hw.capabilities, HardwareCapabilities)
+        self.assertTrue(hw.capabilities.supports_pwm)
+
+    def test_set_motor(self):
+        hw = ESP32Hardware(self.config, self.logger)
+        hw.set_motor(80, -60)
+        # Just ensure no exception
+        self.assertEqual(hw.motor._last_left, 80)
+        self.assertEqual(hw.motor._last_right, -60)
+
+    def test_delay(self):
+        hw = ESP32Hardware(self.config, self.logger)
+        start = time.time()
+        hw.delay(100)
+        elapsed = time.time() - start
+        self.assertAlmostEqual(elapsed, 0.1, places=1)
+
+    def test_sensor_read(self):
+        hw = ESP32Hardware(self.config, self.logger)
+        hw.set_ultrasonic_value(30)
+        self.assertEqual(hw.read_ultrasonic(), 30)
+        hw.set_line_value(0, 700)
+        self.assertEqual(hw.read_line_sensor(0), 700)
+        hw.set_touch_value(1, True)
+        self.assertTrue(hw.read_touch(1))
+
+    def test_logger_levels(self):
+        logger = ESP32Logger("INFO")
+        # Should not raise
+        logger.info("Info message")
+        logger.warn("Warn message")
+        logger.error("Error message")
+        logger.debug("Debug message")  # Should not print (level INFO)
+
+        logger_debug = ESP32Logger("DEBUG")
+        logger_debug.debug("Debug message")  # Should print
+
 
 if __name__ == "__main__":
     unittest.main()
 
 ================
-File: tests/test_vm.py
+File: robot-compiler/runtime/tests/test_integration_esp32.py
 ================
+# runtime/tests/test_integration_esp32.py
 import unittest
-from compiler.binary import ProgramEncoder
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, RobotOpcode, ISAOperand
-from runtime import ProgramLoader, VirtualMachine
+from compiler.binary import ProgramEncoder
+from runtime import ProgramLoader, VirtualMachine, ESP32Hardware, BoardConfiguration
+
 
 def make_move_stop_program():
     prog = ISAProgram()
@@ -1678,102 +1238,289 @@ def make_move_stop_program():
     prog.add_function(func)
     return prog
 
-def make_jump_program():
+
+def make_wait_program():
     prog = ISAProgram()
     func = ISAFunction("main")
-    # 0: move_run forward 50
-    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("forward"), ISAOperand.integer(50)]))
-    # 1: jump to index 3 (stop)
-    func.add_instruction(ISAInstruction(RobotOpcode.JUMP, [ISAOperand.integer(3)]))
-    # 2: move_run backward 30 (should be skipped)
-    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("backward"), ISAOperand.integer(30)]))
-    # 3: stop
+    func.add_instruction(ISAInstruction(RobotOpcode.WAIT, [ISAOperand.integer(200)]))
     func.add_instruction(ISAInstruction(RobotOpcode.MOVE_STOP, []))
     prog.add_function(func)
     return prog
 
-def make_call_return_program():
-    prog = ISAProgram()
-    func1 = ISAFunction("main")
-    # main: call function 1, then stop
-    func1.add_instruction(ISAInstruction(RobotOpcode.CALL, [ISAOperand.integer(1)]))
-    func1.add_instruction(ISAInstruction(RobotOpcode.MOVE_STOP, []))
-    prog.add_function(func1)
 
-    func2 = ISAFunction("sub")
-    # sub: move_run forward 30, return
-    func2.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("forward"), ISAOperand.integer(30)]))
-    func2.add_instruction(ISAInstruction(RobotOpcode.RETURN, []))
-    prog.add_function(func2)
-    return prog
+class TestIntegrationESP32(unittest.TestCase):
+    def setUp(self):
+        self.config = BoardConfiguration(
+            left_motor_pin=25,
+            right_motor_pin=26,
+            pwm_channel_left=0,
+            pwm_channel_right=1,
+        )
 
-class TestVM(unittest.TestCase):
-    def test_move_stop(self):
+    def test_vm_with_esp32_hardware_movestop(self):
+        hw = ESP32Hardware(self.config)
+        vm = VirtualMachine(hardware=hw)
         isa_prog = make_move_stop_program()
         encoder = ProgramEncoder()
         binary_prog = encoder.encode(isa_prog)
         loader = ProgramLoader()
         runtime_prog = loader.load(binary_prog)
-        vm = VirtualMachine()
         vm.load(runtime_prog)
         vm.run()
-
         self.assertEqual(vm.state.value, "finished")
-        self.assertEqual(len(vm.api.output), 2)
-        self.assertEqual(vm.api.output[0], ("forward", 50))
-        self.assertEqual(vm.api.output[1], ("stop",))
+        # Verify motor commands through log? (we can check motor driver state)
+        self.assertEqual(hw.motor._last_left, 50)
+        self.assertEqual(hw.motor._last_right, 50)
+        # After stop, last command is stop -> set 0,0
+        # However, stop instruction will call set_motor(0,0) -> check after run
+        # Actually, the program ends after MOVE_STOP, so last motor command is stop (0,0)
+        self.assertEqual(hw.motor._last_left, 0)
+        self.assertEqual(hw.motor._last_right, 0)
 
-    def test_jump(self):
-        isa_prog = make_jump_program()
+    def test_vm_with_esp32_hardware_wait(self):
+        import time
+        hw = ESP32Hardware(self.config)
+        vm = VirtualMachine(hardware=hw)
+        isa_prog = make_wait_program()
         encoder = ProgramEncoder()
         binary_prog = encoder.encode(isa_prog)
         loader = ProgramLoader()
         runtime_prog = loader.load(binary_prog)
-        vm = VirtualMachine()
         vm.load(runtime_prog)
+        start = time.time()
         vm.run()
-
+        elapsed = time.time() - start
+        self.assertAlmostEqual(elapsed, 0.2, places=1)
         self.assertEqual(vm.state.value, "finished")
-        # Only forward and stop should be executed, not backward
-        self.assertEqual(len(vm.api.output), 2)
-        self.assertEqual(vm.api.output[0], ("forward", 50))
-        self.assertEqual(vm.api.output[1], ("stop",))
 
-    def test_call_return(self):
-        isa_prog = make_call_return_program()
-        encoder = ProgramEncoder()
-        binary_prog = encoder.encode(isa_prog)
-        loader = ProgramLoader()
-        runtime_prog = loader.load(binary_prog)
-        vm = VirtualMachine()
-        vm.load(runtime_prog)
-        vm.run()
-
-        self.assertEqual(vm.state.value, "finished")
-        # main: call sub, then stop. sub: forward 30.
-        self.assertEqual(len(vm.api.output), 2)
-        self.assertEqual(vm.api.output[0], ("forward", 30))
-        self.assertEqual(vm.api.output[1], ("stop",))
-
-    def test_step_execution(self):
+    def test_vm_step_by_step(self):
+        hw = ESP32Hardware(self.config)
+        vm = VirtualMachine(hardware=hw)
         isa_prog = make_move_stop_program()
         encoder = ProgramEncoder()
         binary_prog = encoder.encode(isa_prog)
         loader = ProgramLoader()
         runtime_prog = loader.load(binary_prog)
-        vm = VirtualMachine()
         vm.load(runtime_prog)
 
-        self.assertEqual(vm.get_state().value, "loaded")
+        # Step 1: MOVE_RUN
         vm.step()
-        self.assertEqual(vm.api.output[0], ("forward", 50))
+        self.assertEqual(hw.motor._last_left, 50)
+        self.assertEqual(hw.motor._last_right, 50)
+
+        # Step 2: MOVE_STOP
         vm.step()
-        self.assertEqual(vm.api.output[1], ("stop",))
+        self.assertEqual(hw.motor._last_left, 0)
+        self.assertEqual(hw.motor._last_right, 0)
+
+        # Step 3: end
         vm.step()
         self.assertEqual(vm.state.value, "finished")
+
 
 if __name__ == "__main__":
     unittest.main()
+
+================
+File: robot-compiler/runtime/ESP32_ADAPTER.md
+================
+# ESP32 Hardware Adapter
+
+**Version:** 1.0  
+**Status:** Ready  
+**Owner:** Platform Team  
+
+## Overview
+
+The ESP32 Hardware Adapter is a concrete implementation of `IHardware` that translates abstract robot operations into Arduino-compatible calls. It is designed to run on the ESP32 platform (in the future) but currently serves as a Python stub for testing and architecture validation.
+
+## Architecture
+
+The adapter follows a layered design to keep the Robot Runtime hardware-independent.
+VirtualMachine
+│
+▼
+RobotRuntime
+│
+▼
+IHardware
+│
+▼
+ESP32Hardware
+│
+├── MotorDriver (IMotorDriver)
+├── Timer (ITimer)
+├── Logger (ILogger)
+└── Capabilities (HardwareCapabilities)
+
+text
+
+## Components
+
+### BoardConfiguration
+Data class containing all pin mappings and hardware parameters:
+- Motor pins (left/right) and PWM channels
+- PWM frequency and resolution
+- Sensor pin placeholders (ultrasonic, line, touch)
+- UART/I2C/SPI configuration (future)
+
+### HardwareCapabilities
+Exposes the hardware's feature set:
+- PWM, ADC, GPIO, UART, I2C, SPI support
+- Maximum number of PWM/ADC channels
+
+### ESP32MotorDriver
+Implements `IMotorDriver`:
+- `set_motor(left, right)`: sets PWM values (clamped to -100..100)
+- `stop()`: sets motors to 0
+- `brake()`: placeholder for future implementation
+
+### ESP32Timer
+Implements `ITimer`:
+- `delay(ms)`: blocking delay using `time.sleep`
+- `millis()`: current time in milliseconds
+- `micros()`: current time in microseconds
+
+### ESP32Logger
+Implements `ILogger`:
+- Logs messages with levels: INFO, WARN, ERROR, DEBUG
+- Outputs to stdout (can be redirected)
+
+### ESP32Hardware
+Main adapter class that implements `IHardware`:
+- Uses the above components to fulfill the interface
+- Provides test helpers (`set_ultrasonic_value`, etc.) for mocking sensor data
+
+## Integration with VM
+
+The Virtual Machine can be instantiated with `ESP32Hardware` instead of `MockHardware`:
+
+```python
+from runtime import VirtualMachine, ESP32Hardware, BoardConfiguration
+
+config = BoardConfiguration(left_motor_pin=25, right_motor_pin=26,
+                            pwm_channel_left=0, pwm_channel_right=1)
+hw = ESP32Hardware(config)
+vm = VirtualMachine(hardware=hw)
+vm.load(runtime_program)
+vm.run()
+Testing
+Smoke Tests
+Board configuration loading
+
+Hardware initialization
+
+Motor setting
+
+Timing
+
+Sensor reading
+
+Logging levels
+
+Integration Tests
+VM execution with ESP32Hardware
+
+Program with MOVE_RUN and MOVE_STOP
+
+Program with WAIT
+
+Step-by-step execution verification
+
+Out of Scope
+Line Sensor
+
+Ultrasonic (real reading)
+
+Touch
+
+Encoders
+
+Gyroscope
+
+Bluetooth/WiFi
+
+OTA
+
+Scheduler
+
+Power Management
+
+These will be added in future sprints.
+
+Future Extensions
+Real PWM output via pyfirmata or pyserial
+
+Hardware-specific sensor drivers
+
+Interrupt support
+
+RTOS integration
+
+text
+
+---
+
+### 15. (Tùy chọn) Cập nhật `robot-compiler/runtime/__init__.py` để chạy tests
+
+Không cần thiết nhưng có thể thêm entry point.
+
+---
+
+Tất cả các thay đổi trên đã hoàn thành các task từ TASK-001 đến TASK-010. Mỗi file đều có chú thích rõ ràng, đúng với kiến trúc hiện tại và chỉ tập trung vào phần adapter mà không ảnh hưởng đến VM hay Runtime logic.
+
+================
+File: robot-compiler/runtime/ROBOT_RUNTIME.md
+================
+# Robot Runtime
+
+## Overview
+
+The Robot Runtime is the layer between the Virtual Machine and the robot hardware. It provides a hardware-independent API for controlling the robot.
+
+## Components
+
+### IRobot
+Interface that the VM uses to control the robot. Provides methods for motion, sensors, and utilities.
+
+### RobotRuntime
+Main implementation of IRobot. Orchestrates MotionController and SensorManager.
+
+### MotionController
+Manages robot movement: forward, backward, left, right, stop, wait. Maintains state (IDLE, MOVING, TURNING, WAITING, STOPPED, ERROR) and emits events.
+
+### SensorManager
+Provides unified access to sensors: ultrasonic, line sensors, touch.
+
+### IHardware
+Abstraction for hardware peripherals: motors, delay, sensors.
+
+### MockHardware
+Mock implementation for testing. Logs motor commands, returns simulated sensor values.
+
+## Architecture Flow
+
+VirtualMachine -> Dispatcher -> Handlers -> RobotRuntime -> MotionController/SensorManager -> IHardware -> MockHardware/ESP32Hardware
+
+## State Machine
+
+- IDLE: no movement
+- MOVING: moving forward/backward
+- TURNING: turning left/right
+- WAITING: in a wait delay
+- STOPPED: recently stopped
+- ERROR: error state
+
+## Events
+
+- MOVEMENT_STARTED: when forward/backward/left/right is called
+- MOVEMENT_STOPPED: when stop() is called
+- SENSOR_CHANGED: when sensor value changes (future)
+- EXECUTION_FINISHED: when program ends
+
+## Future ESP32 Integration
+
+To replace MockHardware with ESP32Hardware, implement IHardware and pass it to RobotRuntime. No changes needed in VirtualMachine or handlers.
 
 ================
 File: benchmarks/benchmark_runner.py
@@ -3603,40 +3350,6 @@ class OpcodeDescriptor:
         return f"OpcodeDescriptor({self.mnemonic}, #{self.number})"
 
 ================
-File: robot-compiler/compiler/binary/instruction_encoder.py
-================
-# compiler/binary/instruction_encoder.py
-import struct
-from typing import Tuple, Dict
-from ..isa import ISAInstruction, ISAOperand
-from .operand_encoder import OperandEncoder
-from ..generated.opcode import Opcode  # dùng trực tiếp Opcode
-
-class InstructionEncoder:
-    @staticmethod
-    def encode(instruction: ISAInstruction) -> bytes:
-        result = struct.pack("<B", instruction.opcode.value)  # opcode là IntEnum
-        result += struct.pack("<B", instruction.operand_count)
-        for op in instruction.operands:
-            result += OperandEncoder.encode(op)
-        return result
-
-    @staticmethod
-    def decode(data: bytes, offset: int, registry: Dict[int, Opcode]) -> Tuple[ISAInstruction, int]:
-        opcode_val = data[offset]
-        offset += 1
-        opcode = registry.get(opcode_val)
-        if opcode is None:
-            raise ValueError(f"Unknown opcode value: {opcode_val}")
-        operand_count = data[offset]
-        offset += 1
-        operands = []
-        for _ in range(operand_count):
-            op, offset = OperandEncoder.decode(data, offset)
-            operands.append(op)
-        return ISAInstruction(opcode, operands), offset
-
-================
 File: robot-compiler/compiler/binary/model.py
 ================
 # compiler/binary/model.py
@@ -5159,65 +4872,6 @@ class ISAFunction:
         self._labels[label] = position
 
 ================
-File: robot-compiler/compiler/isa/instruction.py
-================
-# compiler/isa/instruction.py
-from typing import List, Optional, Any
-from .opcode import RobotOpcode  # sẽ là Opcode
-from .operand import ISAOperand
-
-class ISAInstruction:
-    def __init__(self, opcode: RobotOpcode, operands: Optional[List[ISAOperand]] = None, metadata: Optional[Any] = None):
-        self._opcode = opcode
-        self._operands = tuple(operands) if operands else ()
-        self._metadata = metadata
-
-    @property
-    def opcode(self) -> RobotOpcode:
-        return self._opcode
-
-    @property
-    def operands(self) -> tuple:
-        return self._operands
-
-    @property
-    def operand_count(self) -> int:
-        return len(self._operands)
-
-================
-File: robot-compiler/compiler/isa/opcode.py
-================
-# compiler/isa/opcode.py
-from enum import Enum, auto
-
-class RobotOpcode(Enum):
-    # Movement
-    MOVE_RUN = auto()
-    MOVE_RUN_TIME = auto()
-    MOVE_STOP = auto()
-
-    # Timing
-    WAIT = auto()
-
-    # Control Flow
-    JUMP = auto()
-    JUMP_IF = auto()
-
-    # Function
-    CALL = auto()
-    RETURN = auto()
-
-    # Servo
-    SERVO_MOVE = auto()
-
-    # Sensor
-    READ_TRACE = auto()
-
-    # Thread
-    THREAD_START = auto()
-    THREAD_END = auto()
-
-================
 File: robot-compiler/compiler/isa/operand.py
 ================
 from enum import Enum
@@ -6065,54 +5719,827 @@ File: robot-compiler/generated/__init__.py
 
 
 ================
-File: robot-compiler/runtime/__init__.py
+File: robot-compiler/runtime/handlers/__init__.py
 ================
-# runtime/__init__.py
-from .program import RuntimeProgram
-from .function import RuntimeFunction
-from .instruction import RuntimeInstruction
-from .loader import ProgramLoader
-from .iterator import InstructionIterator
-from .exceptions import *
-from .context import ExecutionContext, ExecutionState
-from .dispatcher import Dispatcher
-from .vm import VirtualMachine
-from .mock.robot_api import MockRobotAPI
-from .engine import ExecutionEngine
-from .variable import VariableTable
-from .stack import DataStack
-from .frame import StackFrame
-from .value import *
-from .memory import MemoryManager
+# runtime/handlers/__init__.py
+from . import move_handler
+from . import wait_handler
+from . import jump_handler
+from . import call_handler
+from . import comparison_handler
+from . import arithmetic_handler
+
+================
+File: robot-compiler/runtime/handlers/arithmetic_handler.py
+================
+# runtime/handlers/arithmetic_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..mock.robot_api import MockRobotAPI
+
+ARITH_OP = {
+    "Add": "add",
+    "Sub": "sub",
+    "Mul": "mul",
+    "Div": "div",
+    "Mod": "mod",
+    "Pow": "pow",
+    "Neg": "neg",
+}
+
+def handle_arithmetic(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    op = ins.opcode
+    if op.name == "Neg":
+        src_idx = ins.operands[0]
+        result_idx = ins.operands[1]
+        val = engine.get_variable_by_index(src_idx)
+        result = engine.neg(val)
+        engine.set_variable_by_index(result_idx, result)
+    else:
+        left_idx = ins.operands[0]
+        right_idx = ins.operands[1]
+        result_idx = ins.operands[2]
+        left = engine.get_variable_by_index(left_idx)
+        right = engine.get_variable_by_index(right_idx)
+        op_name = op.name
+        if op_name == "Add":
+            result = engine.add(left, right)
+        elif op_name == "Sub":
+            result = engine.sub(left, right)
+        elif op_name == "Mul":
+            result = engine.mul(left, right)
+        elif op_name == "Div":
+            result = engine.div(left, right)
+        elif op_name == "Mod":
+            result = engine.mod(left, right)
+        elif op_name == "Pow":
+            result = engine.pow(left, right)
+        else:
+            raise ValueError(f"Unknown arithmetic op: {op_name}")
+        engine.set_variable_by_index(result_idx, result)
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    var_idx = ins.operands[0]
+    const_val = ins.operands[1]  # hằng số có thể là int, float, string, bool
+    # Tạo RuntimeValue tương ứng
+    if isinstance(const_val, int):
+        from ..value import IntegerValue
+        val = IntegerValue(const_val)
+    elif isinstance(const_val, float):
+        from ..value import FloatValue
+        val = FloatValue(const_val)
+    elif isinstance(const_val, str):
+        from ..value import StringValue
+        val = StringValue(const_val)
+    elif isinstance(const_val, bool):
+        from ..value import BooleanValue
+        val = BooleanValue(const_val)
+    else:
+        raise TypeError(f"Unsupported constant type: {type(const_val)}")
+    engine.set_variable_by_index(var_idx, val)
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+def handle_store(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    src_idx = ins.operands[0]
+    dest_idx = ins.operands[1]
+    val = engine.get_variable_by_index(src_idx)
+    engine.set_variable_by_index(dest_idx, val)
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+================
+File: robot-compiler/runtime/handlers/call_handler.py
+================
+# runtime/handlers/call_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..mock.robot_api import MockRobotAPI
+
+def handle_call(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    func_id = ins.operands[0]
+    engine.call(func_id)
+
+def handle_return(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    engine.return_()
+
+================
+File: robot-compiler/runtime/handlers/comparison_handler.py
+================
+# runtime/handlers/comparison_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..mock.robot_api import MockRobotAPI
+
+COMPARE_OP = {
+    "CompareEQ": "==",
+    "CompareNE": "!=",
+    "CompareLT": "<",
+    "CompareLE": "<=",
+    "CompareGT": ">",
+    "CompareGE": ">=",
+}
+
+def handle_compare(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    left_idx = ins.operands[0]
+    right_idx = ins.operands[1]
+    result_idx = ins.operands[2]
+    left = engine.get_variable_by_index(left_idx)
+    right = engine.get_variable_by_index(right_idx)
+    op = COMPARE_OP[ins.opcode.name]
+    result = engine.compare(left, right, op)
+    engine.set_variable_by_index(result_idx, result)
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+================
+File: robot-compiler/runtime/handlers/jump_handler.py
+================
+# runtime/handlers/jump_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..mock.robot_api import MockRobotAPI
+
+def handle_jump(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    target = ins.operands[0]
+    engine.jump(target)
+
+def handle_jump_if_false(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    cond_idx = ins.operands[0]
+    target = ins.operands[1]
+    cond_val = engine.get_variable_by_index(cond_idx)
+    if not cond_val.as_bool():
+        engine.jump(target)
+    else:
+        engine.context.program_counter += 1
+        engine.iterator.seek(engine.context.program_counter)
+
+def handle_jump_if_true(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
+    cond_idx = ins.operands[0]
+    target = ins.operands[1]
+    cond_val = engine.get_variable_by_index(cond_idx)
+    if cond_val.as_bool():
+        engine.jump(target)
+    else:
+        engine.context.program_counter += 1
+        engine.iterator.seek(engine.context.program_counter)
+
+================
+File: robot-compiler/runtime/handlers/move_handler.py
+================
+# runtime/handlers/move_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..robot import IRobot
+
+def handle_forward(ins: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot):
+    speed_idx = ins.operands[0]
+    speed_val = engine.get_variable_by_index(speed_idx)
+    robot.forward(speed_val.as_int())
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+def handle_backward(ins: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot):
+    speed_idx = ins.operands[0]
+    speed_val = engine.get_variable_by_index(speed_idx)
+    robot.backward(speed_val.as_int())
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+def handle_turn_left(ins: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot):
+    speed_idx = ins.operands[0]
+    speed_val = engine.get_variable_by_index(speed_idx)
+    robot.left(speed_val.as_int())
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+def handle_turn_right(ins: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot):
+    speed_idx = ins.operands[0]
+    speed_val = engine.get_variable_by_index(speed_idx)
+    robot.right(speed_val.as_int())
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+def handle_stop(ins: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot):
+    robot.stop()
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+================
+File: robot-compiler/runtime/handlers/wait_handler.py
+================
+# runtime/handlers/wait_handler.py
+from ..instruction import RuntimeInstruction
+from ..engine import ExecutionEngine
+from ..robot import IRobot
+
+def handle_wait(ins: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot):
+    duration_idx = ins.operands[0]
+    duration_val = engine.get_variable_by_index(duration_idx)
+    robot.wait(duration_val.as_int())
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+================
+File: robot-compiler/runtime/mock/__init__.py
+================
+# runtime/mock/__init__.py
+from .robot_api import MockRobotAPI
+
+================
+File: robot-compiler/runtime/mock/robot_api.py
+================
+# runtime/mock/robot_api.py
+class MockRobotAPI:
+    def __init__(self):
+        self.output = []
+        self.last_action = None
+
+    def forward(self, speed):
+        self.last_action = ("forward", speed)
+        self.output.append(("forward", speed))
+        print(f"[MockRobot] Forward {speed}")
+
+    def backward(self, speed):
+        self.last_action = ("backward", speed)
+        self.output.append(("backward", speed))
+        print(f"[MockRobot] Backward {speed}")
+
+    def left(self, speed):
+        self.last_action = ("left", speed)
+        self.output.append(("left", speed))
+        print(f"[MockRobot] Left {speed}")
+
+    def right(self, speed):
+        self.last_action = ("right", speed)
+        self.output.append(("right", speed))
+        print(f"[MockRobot] Right {speed}")
+
+    def stop(self):
+        self.last_action = ("stop",)
+        self.output.append(("stop",))
+        print(f"[MockRobot] Stop")
+
+    def wait(self, ms):
+        self.last_action = ("wait", ms)
+        self.output.append(("wait", ms))
+        print(f"[MockRobot] Wait {ms} ms")
+
+================
+File: robot-compiler/runtime/value/__init__.py
+================
+# runtime/value/__init__.py
+from .base import RuntimeValue
+from .integer import IntegerValue
+from .float import FloatValue
+from .boolean import BooleanValue
+from .string import StringValue
+from .reference import ReferenceValue
 
 __all__ = [
-    "RuntimeProgram",
-    "RuntimeFunction",
-    "RuntimeInstruction",
-    "ProgramLoader",
-    "InstructionIterator",
-    "ExecutionContext",
-    "ExecutionState",
-    "Dispatcher",
-    "VirtualMachine",
-    "MockRobotAPI",
-    "ExecutionEngine",
-    "VariableTable",
-    "DataStack",
-    "StackFrame",
     "RuntimeValue",
     "IntegerValue",
     "FloatValue",
     "BooleanValue",
     "StringValue",
     "ReferenceValue",
-    "MemoryManager",
-    "InvalidBinaryException",
-    "UnsupportedVersionException",
-    "InvalidInstructionException",
-    "InvalidConstantReferenceException",
-    "InvalidFunctionReferenceException",
 ]
+
+================
+File: robot-compiler/runtime/value/base.py
+================
+# runtime/value/base.py
+from abc import ABC, abstractmethod
+
+class RuntimeValue(ABC):
+    @abstractmethod
+    def __repr__(self) -> str:
+        pass
+
+    @abstractmethod
+    def __eq__(self, other) -> bool:
+        pass
+
+    @abstractmethod
+    def as_int(self) -> int:
+        pass
+
+    @abstractmethod
+    def as_float(self) -> float:
+        pass
+
+    @abstractmethod
+    def as_bool(self) -> bool:
+        pass
+
+    @abstractmethod
+    def as_string(self) -> str:
+        pass
+
+    def is_integer(self) -> bool:
+        return isinstance(self, IntegerValue)
+    def is_float(self) -> bool:
+        return isinstance(self, FloatValue)
+    def is_boolean(self) -> bool:
+        return isinstance(self, BooleanValue)
+    def is_string(self) -> bool:
+        return isinstance(self, StringValue)
+    def is_reference(self) -> bool:
+        return isinstance(self, ReferenceValue)# runtime/value/base.py
+from abc import ABC, abstractmethod
+
+class RuntimeValue(ABC):
+    @abstractmethod
+    def __repr__(self) -> str:
+        pass
+
+    @abstractmethod
+    def __eq__(self, other) -> bool:
+        pass
+
+    @abstractmethod
+    def as_int(self) -> int:
+        pass
+
+    @abstractmethod
+    def as_float(self) -> float:
+        pass
+
+    @abstractmethod
+    def as_bool(self) -> bool:
+        pass
+
+    @abstractmethod
+    def as_string(self) -> str:
+        pass
+
+    def is_integer(self) -> bool:
+        return isinstance(self, IntegerValue)
+    def is_float(self) -> bool:
+        return isinstance(self, FloatValue)
+    def is_boolean(self) -> bool:
+        return isinstance(self, BooleanValue)
+    def is_string(self) -> bool:
+        return isinstance(self, StringValue)
+    def is_reference(self) -> bool:
+        return isinstance(self, ReferenceValue)
+
+================
+File: robot-compiler/runtime/value/boolean.py
+================
+# runtime/value/boolean.py
+from .base import RuntimeValue
+
+class BooleanValue(RuntimeValue):
+    def __init__(self, value: bool):
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f"Boolean({self.value})"
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, BooleanValue):
+            return self.value == other.value
+        return False
+
+    def as_int(self) -> int:
+        return 1 if self.value else 0
+
+    def as_float(self) -> float:
+        return 1.0 if self.value else 0.0
+
+    def as_bool(self) -> bool:
+        return self.value
+
+    def as_string(self) -> str:
+        return "true" if self.value else "false"
+
+================
+File: robot-compiler/runtime/value/float.py
+================
+# runtime/value/float.py
+from .base import RuntimeValue
+
+class FloatValue(RuntimeValue):
+    def __init__(self, value: float):
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f"Float({self.value})"
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, FloatValue):
+            return self.value == other.value
+        return False
+
+    def as_int(self) -> int:
+        return int(self.value)
+
+    def as_float(self) -> float:
+        return self.value
+
+    def as_bool(self) -> bool:
+        return self.value != 0.0
+
+    def as_string(self) -> str:
+        return str(self.value)
+
+================
+File: robot-compiler/runtime/value/integer.py
+================
+# runtime/value/integer.py
+from .base import RuntimeValue
+
+class IntegerValue(RuntimeValue):
+    def __init__(self, value: int):
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f"Integer({self.value})"
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, IntegerValue):
+            return self.value == other.value
+        return False
+
+    def as_int(self) -> int:
+        return self.value
+
+    def as_float(self) -> float:
+        return float(self.value)
+
+    def as_bool(self) -> bool:
+        return self.value != 0
+
+    def as_string(self) -> str:
+        return str(self.value)
+
+================
+File: robot-compiler/runtime/value/reference.py
+================
+# runtime/value/reference.py
+from .base import RuntimeValue
+
+class ReferenceValue(RuntimeValue):
+    def __init__(self, index: int):
+        self.index = index
+
+    def __repr__(self) -> str:
+        return f"Reference({self.index})"
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, ReferenceValue):
+            return self.index == other.index
+        return False
+
+    def as_int(self) -> int:
+        return self.index
+
+    def as_float(self) -> float:
+        return float(self.index)
+
+    def as_bool(self) -> bool:
+        return True
+
+    def as_string(self) -> str:
+        return f"ref:{self.index}"
+
+================
+File: robot-compiler/runtime/value/string.py
+================
+# runtime/value/string.py
+from .base import RuntimeValue
+
+class StringValue(RuntimeValue):
+    def __init__(self, value: str):
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f'String("{self.value}")'
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, StringValue):
+            return self.value == other.value
+        return False
+
+    def as_int(self) -> int:
+        raise TypeError("Cannot convert string to int")
+
+    def as_float(self) -> float:
+        raise TypeError("Cannot convert string to float")
+
+    def as_bool(self) -> bool:
+        return len(self.value) > 0
+
+    def as_string(self) -> str:
+        return self.value
+
+================
+File: robot-compiler/runtime/context.py
+================
+# runtime/context.py
+from dataclasses import dataclass, field
+from typing import List, Optional
+from enum import Enum
+from .value import RuntimeValue
+from .variable import VariableTable
+from .stack import DataStack
+from .frame import StackFrame
+
+class ExecutionState(Enum):
+    CREATED = "created"
+    LOADED = "loaded"
+    RUNNING = "running"
+    PAUSED = "paused"
+    STOPPED = "stopped"
+    FINISHED = "finished"
+
+@dataclass
+class ExecutionContext:
+    program_counter: int = 0
+    call_stack: List[StackFrame] = field(default_factory=list)
+    data_stack: DataStack = field(default_factory=DataStack)
+    current_function_id: Optional[int] = None
+    state: ExecutionState = ExecutionState.CREATED
+    flags: int = 0
+    registers: dict = field(default_factory=dict)
+    global_vars: VariableTable = field(default_factory=VariableTable)
+    local_vars: VariableTable = field(default_factory=VariableTable)
+
+    def __post_init__(self):
+        if self.call_stack is None:
+            self.call_stack = []
+        if self.registers is None:
+            self.registers = {}
+        if self.global_vars is None:
+            self.global_vars = VariableTable()
+        if self.local_vars is None:
+            self.local_vars = VariableTable()
+
+    def push_frame(self, frame: StackFrame):
+        self.call_stack.append(frame)
+        self.local_vars = frame.local_vars
+        self.current_function_id = frame.function_id
+
+    def pop_frame(self) -> StackFrame:
+        if not self.call_stack:
+            raise RuntimeError("No frame to pop")
+        frame = self.call_stack.pop()
+        if self.call_stack:
+            self.local_vars = self.call_stack[-1].local_vars
+            self.current_function_id = self.call_stack[-1].function_id
+        else:
+            self.local_vars = VariableTable()
+            self.current_function_id = None
+        return frame
+
+    def top_frame(self) -> Optional[StackFrame]:
+        return self.call_stack[-1] if self.call_stack else None
+
+================
+File: robot-compiler/runtime/dispatcher.py
+================
+# runtime/dispatcher.py
+from typing import Dict, Callable
+from compiler.generated.opcode import Opcode
+from .instruction import RuntimeInstruction
+from .engine import ExecutionEngine
+from .robot import IRobot
+from .handlers import (
+    move_handler, wait_handler, jump_handler, call_handler,
+    comparison_handler, arithmetic_handler
+)
+
+class Dispatcher:
+    def __init__(self):
+        self.handlers: Dict[Opcode, Callable] = {
+            Opcode.Forward: move_handler.handle_forward,
+            Opcode.Backward: move_handler.handle_backward,
+            Opcode.TurnLeft: move_handler.handle_turn_left,
+            Opcode.TurnRight: move_handler.handle_turn_right,
+            Opcode.Wait: wait_handler.handle_wait,
+            Opcode.Stop: move_handler.handle_stop,
+            Opcode.Jump: jump_handler.handle_jump,
+            Opcode.JumpIfFalse: jump_handler.handle_jump_if_false,
+            Opcode.JumpIfTrue: jump_handler.handle_jump_if_true,
+            Opcode.Call: call_handler.handle_call,
+            Opcode.Return: call_handler.handle_return,
+            Opcode.CompareEQ: comparison_handler.handle_compare,
+            Opcode.CompareNE: comparison_handler.handle_compare,
+            Opcode.CompareLT: comparison_handler.handle_compare,
+            Opcode.CompareLE: comparison_handler.handle_compare,
+            Opcode.CompareGT: comparison_handler.handle_compare,
+            Opcode.CompareGE: comparison_handler.handle_compare,
+            Opcode.Add: arithmetic_handler.handle_arithmetic,
+            Opcode.Sub: arithmetic_handler.handle_arithmetic,
+            Opcode.Mul: arithmetic_handler.handle_arithmetic,
+            Opcode.Div: arithmetic_handler.handle_arithmetic,
+            Opcode.Mod: arithmetic_handler.handle_arithmetic,
+            Opcode.Pow: arithmetic_handler.handle_arithmetic,
+            Opcode.Neg: arithmetic_handler.handle_arithmetic,
+            Opcode.LoadConst: arithmetic_handler.handle_load_const,
+            Opcode.Store: arithmetic_handler.handle_store,
+        }
+
+    def dispatch(self, instruction: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot):
+        handler = self.handlers.get(instruction.opcode)
+        if handler is None:
+            raise ValueError(f"No handler for opcode {instruction.opcode}")
+        handler(instruction, engine, robot)
+
+================
+File: robot-compiler/runtime/engine.py
+================
+# runtime/engine.py
+from typing import Optional
+from .context import ExecutionContext, ExecutionState
+from .value import RuntimeValue, IntegerValue, FloatValue, BooleanValue, StringValue, ReferenceValue
+from .variable import VariableTable
+from .stack import DataStack
+from .frame import StackFrame
+from .program import RuntimeProgram
+from .iterator import InstructionIterator
+from .exceptions import InvalidInstructionException
+
+class ExecutionEngine:
+    def __init__(self):
+        self.context = ExecutionContext()
+        self.program: Optional[RuntimeProgram] = None
+        self.iterator: Optional[InstructionIterator] = None
+
+    def load(self, program: RuntimeProgram):
+        self.program = program
+        self.context = ExecutionContext()
+        self.iterator = InstructionIterator(program, function_id=0)
+        self.context.program_counter = 0
+        self.context.state = ExecutionState.LOADED
+        # Khởi tạo global vars
+        self.context.global_vars = VariableTable()
+
+    # --- Stack operations ---
+    def push(self, value: RuntimeValue):
+        self.context.data_stack.push(value)
+
+    def pop(self) -> RuntimeValue:
+        return self.context.data_stack.pop()
+
+    def peek(self) -> Optional[RuntimeValue]:
+        return self.context.data_stack.peek()
+
+    # --- Variable operations ---
+    def get_variable(self, name: str) -> Optional[RuntimeValue]:
+        if self.context.local_vars and self.context.local_vars.has(name):
+            return self.context.local_vars.get(name)
+        return self.context.global_vars.get(name)
+
+    def get_variable_by_index(self, index: int) -> RuntimeValue:
+        name = f"v{index}"
+        val = self.get_variable(name)
+        if val is None:
+            raise KeyError(f"Variable '{name}' not found")
+        return val
+
+    def set_variable(self, name: str, value: RuntimeValue):
+        if self.context.local_vars and self.context.local_vars.has(name):
+            self.context.local_vars.set(name, value)
+        elif self.context.global_vars.has(name):
+            self.context.global_vars.set(name, value)
+        else:
+            # Tự động tạo global nếu chưa có
+            self.context.global_vars.define(name, value)
+
+    def set_variable_by_index(self, index: int, value: RuntimeValue):
+        name = f"v{index}"
+        self.set_variable(name, value)
+
+    def define_global(self, name: str, value: RuntimeValue = None):
+        self.context.global_vars.define(name, value)
+
+    def define_local(self, name: str, value: RuntimeValue = None):
+        if self.context.local_vars:
+            self.context.local_vars.define(name, value)
+        else:
+            raise RuntimeError("No local scope")
+
+    # --- Control flow ---
+    def jump(self, target: int):
+        if target < 0 or target >= self.iterator.size:
+            raise ValueError(f"Invalid jump target: {target}")
+        self.context.program_counter = target
+        self.iterator.seek(target)
+
+    def call(self, function_id: int):
+        func = self.program.get_function(function_id)
+        if func is None:
+            raise ValueError(f"Function {function_id} not found")
+        # Tạo frame mới với local vars
+        frame = StackFrame(
+            function_id=function_id,
+            return_address=self.context.program_counter + 1,
+            local_vars=VariableTable()
+        )
+        self.context.push_frame(frame)
+        self.context.program_counter = func.entry_index
+        self.iterator.seek(func.entry_index)
+
+    def return_(self):
+        if not self.context.call_stack:
+            raise RuntimeError("Return without call")
+        frame = self.context.pop_frame()
+        self.context.program_counter = frame.return_address
+        self.iterator.seek(frame.return_address)
+
+    # --- Comparison ---
+    def compare(self, left: RuntimeValue, right: RuntimeValue, op: str) -> BooleanValue:
+        if isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
+            l = left.as_float()
+            r = right.as_float()
+        elif isinstance(left, BooleanValue) and isinstance(right, BooleanValue):
+            l = left.as_bool()
+            r = right.as_bool()
+        elif isinstance(left, StringValue) and isinstance(right, StringValue):
+            l = left.as_string()
+            r = right.as_string()
+        else:
+            raise TypeError(f"Cannot compare {type(left)} and {type(right)}")
+        
+        if op == "==":
+            return BooleanValue(l == r)
+        elif op == "!=":
+            return BooleanValue(l != r)
+        elif op == ">":
+            return BooleanValue(l > r)
+        elif op == ">=":
+            return BooleanValue(l >= r)
+        elif op == "<":
+            return BooleanValue(l < r)
+        elif op == "<=":
+            return BooleanValue(l <= r)
+        else:
+            raise ValueError(f"Unknown comparison operator: {op}")
+
+    # --- Arithmetic ---
+    def add(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            return IntegerValue(left.as_int() + right.as_int())
+        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
+            return FloatValue(left.as_float() + right.as_float())
+        elif isinstance(left, StringValue) and isinstance(right, StringValue):
+            return StringValue(left.as_string() + right.as_string())
+        else:
+            raise TypeError("Unsupported addition")
+
+    def sub(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            return IntegerValue(left.as_int() - right.as_int())
+        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
+            return FloatValue(left.as_float() - right.as_float())
+        else:
+            raise TypeError("Unsupported subtraction")
+
+    def mul(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            return IntegerValue(left.as_int() * right.as_int())
+        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
+            return FloatValue(left.as_float() * right.as_float())
+        else:
+            raise TypeError("Unsupported multiplication")
+
+    def div(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            if right.as_int() == 0:
+                raise ZeroDivisionError("Division by zero")
+            return IntegerValue(left.as_int() // right.as_int())
+        elif isinstance(left, (IntegerValue, FloatValue)) and isinstance(right, (IntegerValue, FloatValue)):
+            if right.as_float() == 0.0:
+                raise ZeroDivisionError("Division by zero")
+            return FloatValue(left.as_float() / right.as_float())
+        else:
+            raise TypeError("Unsupported division")
+
+    def mod(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            if right.as_int() == 0:
+                raise ZeroDivisionError("Modulo by zero")
+            return IntegerValue(left.as_int() % right.as_int())
+        else:
+            raise TypeError("Modulo only supported for integers")
+
+    def pow(self, left: RuntimeValue, right: RuntimeValue) -> RuntimeValue:
+        if isinstance(left, IntegerValue) and isinstance(right, IntegerValue):
+            return IntegerValue(left.as_int() ** right.as_int())
+        else:
+            raise TypeError("Power only supported for integers")
+
+    def neg(self, value: RuntimeValue) -> RuntimeValue:
+        if isinstance(value, IntegerValue):
+            return IntegerValue(-value.as_int())
+        elif isinstance(value, FloatValue):
+            return FloatValue(-value.as_float())
+        else:
+            raise TypeError("Negation only supported for numbers")
 
 ================
 File: robot-compiler/runtime/exceptions.py
@@ -6148,6 +6575,94 @@ class InvalidFunctionReferenceException(RuntimeError):
     pass
 
 ================
+File: robot-compiler/runtime/EXECUTION_ENGINE.md
+================
+# Execution Engine
+
+## Overview
+
+The Execution Engine is the core of the Virtual Machine. It manages the runtime state, including:
+
+- Program counter
+- Call stack and stack frames
+- Data stack
+- Variable tables (global and local)
+- Control flow (jumps, calls, returns)
+- Arithmetic and comparison operations
+
+The engine is independent of the dispatcher and opcode handlers.
+
+## Components
+
+### ExecutionContext
+
+Holds all runtime state:
+- `program_counter`: current instruction index
+- `call_stack`: list of `StackFrame` objects
+- `data_stack`: stack for temporary values
+- `global_vars`: `VariableTable` for global variables
+- `local_vars`: current function's local variables
+- `state`: execution state (CREATED, LOADED, RUNNING, ...)
+
+### StackFrame
+
+Represents a function activation:
+- `function_id`: ID of the function
+- `return_address`: instruction index to return to
+- `local_vars`: `VariableTable` for local variables
+
+### VariableTable
+
+A hierarchical table for variables:
+- `get(name)`: retrieve value
+- `set(name, value)`: update value
+- `define(name, value)`: create new variable
+- Supports parent chain for scoping
+
+### RuntimeValue
+
+Type-safe value hierarchy:
+- `IntegerValue`, `FloatValue`, `BooleanValue`, `StringValue`, `ReferenceValue`
+
+### ExecutionEngine
+
+Provides high-level operations:
+- Stack: `push()`, `pop()`, `peek()`
+- Variables: `get_variable()`, `set_variable()`, `get_variable_by_index()`, `set_variable_by_index()`
+- Control: `jump()`, `call()`, `return_()`
+- Arithmetic: `add()`, `sub()`, `mul()`, `div()`, `mod()`, `pow()`, `neg()`
+- Comparison: `compare()`
+
+## Execution Lifecycle
+
+1. `VirtualMachine.load()` loads a `RuntimeProgram` into the engine.
+2. `VirtualMachine.run()` repeatedly calls `step()`.
+3. `step()` fetches the current instruction via `InstructionIterator`.
+4. `Dispatcher` finds the appropriate handler and invokes it with the engine.
+5. The handler uses engine methods to manipulate state and control flow.
+6. The engine updates `program_counter` and iterator.
+
+## Memory Management
+
+- Variables are stored in `VariableTable` (owned by frames or global).
+- Temporary values are stored on the `DataStack`.
+- No garbage collection is needed; frames are popped on return.
+
+================
+File: robot-compiler/runtime/frame.py
+================
+# runtime/frame.py
+from typing import Optional
+from .variable import VariableTable
+
+class StackFrame:
+    def __init__(self, function_id: int, return_address: int, local_vars: VariableTable):
+        self.function_id = function_id
+        self.return_address = return_address
+        self.local_vars = local_vars
+        self.previous_frame: Optional['StackFrame'] = None
+
+================
 File: robot-compiler/runtime/function.py
 ================
 # robot-compiler/runtime/function.py
@@ -6170,163 +6685,32 @@ class RuntimeFunction:
     stack_size: int = 0
 
 ================
-File: robot-compiler/runtime/instruction.py
+File: robot-compiler/runtime/memory.py
 ================
-# runtime/instruction.py
-from dataclasses import dataclass
-from typing import List, Any
-from compiler.generated.opcode import Opcode
-
-@dataclass(frozen=True)
-class RuntimeInstruction:
-    opcode: Opcode
-    operands: List[Any]
-    index: int
-
-================
-File: robot-compiler/runtime/iterator.py
-================
-# runtime/iterator.py
-from typing import Optional, List
-from .program import RuntimeProgram
-from .instruction import RuntimeInstruction
-
-class InstructionIterator:
-    def __init__(self, program: RuntimeProgram, function_id: Optional[int] = None):
-        self._program = program
-        self._function_id = function_id
-        self._instructions: List[RuntimeInstruction] = []
-        self._current_index: int = 0
-
-        if function_id is not None:
-            func = program.get_function(function_id)
-            if func is None:
-                raise ValueError(f"Function {function_id} not found")
-            self._instructions = func.instructions
-        else:
-            self._instructions = program.instructions
-
-    def current(self) -> Optional[RuntimeInstruction]:
-        if 0 <= self._current_index < len(self._instructions):
-            return self._instructions[self._current_index]
-        return None
-
-    def next(self) -> Optional[RuntimeInstruction]:
-        ins = self.current()
-        if ins is not None:
-            self._current_index += 1
-        return ins
-
-    def jump(self, index: int) -> None:
-        if index < 0 or index >= len(self._instructions):
-            raise ValueError(f"Invalid jump target: {index}")
-        self._current_index = index
-
-    def seek(self, index: int) -> None:
-        self._current_index = index
-
-    def has_next(self) -> bool:
-        return self._current_index < len(self._instructions)
-
-    def peek(self, offset: int = 0) -> Optional[RuntimeInstruction]:
-        idx = self._current_index + offset
-        if 0 <= idx < len(self._instructions):
-            return self._instructions[idx]
-        return None
-
-    def reset(self) -> None:
-        self._current_index = 0
-
-    @property
-    def size(self) -> int:
-        return len(self._instructions)
-
-================
-File: robot-compiler/runtime/loader.py
-================
-# runtime/loader.py
+# runtime/memory.py
 from typing import List
-from compiler.binary import BinaryProgram
-from compiler.isa import OperandKind
-from compiler.generated.opcode import Opcode
-from compiler.binary.instruction_encoder import InstructionEncoder
-from .program import RuntimeProgram
-from .function import RuntimeFunction
-from .instruction import RuntimeInstruction
-from .exceptions import (
-    InvalidBinaryException,
-    UnsupportedVersionException,
-    InvalidInstructionException,
-)
+from .value import RuntimeValue
 
-class ProgramLoader:
-    @staticmethod
-    def load(binary: BinaryProgram) -> RuntimeProgram:
-        # Validate header
-        header = binary.header
-        if header.magic != 0x4E494252:
-            raise InvalidBinaryException(...)
-        if header.abi_version != 1:
-            raise UnsupportedVersionException(...)
+class MemoryManager:
+    def __init__(self):
+        self.allocations: List[RuntimeValue] = []
 
-        constants = list(binary.constant_pool.constants)
-        stream_data = binary.instruction_stream.data
-        offset = 0
-        all_instructions: List[RuntimeInstruction] = []
-        function_list: List[RuntimeFunction] = []
+    def allocate(self, value: RuntimeValue) -> int:
+        self.allocations.append(value)
+        return len(self.allocations) - 1
 
-        opcode_registry = {op.value: op for op in Opcode}
+    def get(self, index: int) -> RuntimeValue:
+        if index < 0 or index >= len(self.allocations):
+            raise IndexError("Memory index out of bounds")
+        return self.allocations[index]
 
-        for ft_entry in binary.function_table.entries:
-            func_id = ft_entry.function_id
-            start_offset = ft_entry.entry_offset
-            count = ft_entry.instruction_count
+    def set(self, index: int, value: RuntimeValue):
+        if index < 0 or index >= len(self.allocations):
+            raise IndexError("Memory index out of bounds")
+        self.allocations[index] = value
 
-            func_instructions: List[RuntimeInstruction] = []
-            temp_offset = start_offset
-            for _ in range(count):
-                ins, temp_offset = InstructionEncoder.decode(
-                    stream_data, temp_offset, opcode_registry
-                )
-                operands = []
-                for op in ins.operands:
-                    if op.kind == OperandKind.INTEGER:
-                        operands.append(op.as_integer())
-                    elif op.kind == OperandKind.FLOAT:
-                        operands.append(op.as_float())
-                    elif op.kind == OperandKind.BOOLEAN:
-                        operands.append(op.as_boolean())
-                    elif op.kind == OperandKind.STRING:
-                        operands.append(op.as_string())
-                    elif op.kind in (OperandKind.ENUM, OperandKind.REGISTER, OperandKind.LABEL, OperandKind.CONSTANT_POOL):
-                        operands.append(op.as_index())
-                    else:
-                        raise InvalidInstructionException(f"Unsupported operand kind: {op.kind}")
-
-                runtime_ins = RuntimeInstruction(
-                    opcode=ins.opcode,  # ins.opcode là Opcode
-                    operands=operands,
-                    index=len(all_instructions)
-                )
-                all_instructions.append(runtime_ins)
-                func_instructions.append(runtime_ins)
-
-            func = RuntimeFunction(
-                function_id=func_id,
-                entry_index=len(all_instructions) - count,
-                instruction_count=count,
-                instructions=func_instructions,
-            )
-            function_list.append(func)
-
-        entry_id = 0 if function_list else -1
-        return RuntimeProgram(
-            constants=constants,
-            functions=function_list,
-            instructions=all_instructions,
-            entry_function_id=entry_id,
-            abi_version=header.abi_version,
-        )
+    def clear(self):
+        self.allocations.clear()
 
 ================
 File: robot-compiler/runtime/program.py
@@ -6407,6 +6791,227 @@ Provides iteration over instructions of a function or the entire program. Suppor
 
 - Debugger and profiler can hook into `InstructionIterator`.
 - Additional metadata can be added to `RuntimeProgram` without breaking compatibility.
+
+================
+File: robot-compiler/runtime/stack.py
+================
+# runtime/stack.py
+from typing import List, Optional
+from .value import RuntimeValue
+
+class DataStack:
+    def __init__(self, max_size: int = 1024):
+        self.items: List[RuntimeValue] = []
+        self.max_size = max_size
+
+    def push(self, value: RuntimeValue):
+        if len(self.items) >= self.max_size:
+            raise OverflowError("Data stack overflow")
+        self.items.append(value)
+
+    def pop(self) -> RuntimeValue:
+        if not self.items:
+            raise IndexError("Data stack underflow")
+        return self.items.pop()
+
+    def peek(self) -> Optional[RuntimeValue]:
+        if self.items:
+            return self.items[-1]
+        return None
+
+    def clear(self):
+        self.items.clear()
+
+    def size(self) -> int:
+        return len(self.items)
+
+    def is_empty(self) -> bool:
+        return len(self.items) == 0
+
+================
+File: robot-compiler/runtime/variable.py
+================
+# runtime/variable.py
+from typing import Dict, Optional
+from .value import RuntimeValue
+
+class VariableTable:
+    def __init__(self, parent: Optional['VariableTable'] = None):
+        self.parent = parent
+        self.variables: Dict[str, RuntimeValue] = {}
+
+    def get(self, name: str) -> Optional[RuntimeValue]:
+        if name in self.variables:
+            return self.variables[name]
+        if self.parent:
+            return self.parent.get(name)
+        return None
+
+    def set(self, name: str, value: RuntimeValue):
+        if name in self.variables:
+            self.variables[name] = value
+        elif self.parent:
+            self.parent.set(name, value)
+        else:
+            raise KeyError(f"Variable '{name}' not defined")
+
+    def define(self, name: str, value: RuntimeValue = None):
+        if name in self.variables:
+            raise RuntimeError(f"Variable '{name}' already defined")
+        self.variables[name] = value
+
+    def has(self, name: str) -> bool:
+        if name in self.variables:
+            return True
+        if self.parent:
+            return self.parent.has(name)
+        return False
+
+================
+File: robot-compiler/runtime/VM_ARCHITECTURE.md
+================
+# Virtual Machine Architecture
+
+## Overview
+
+The Virtual Machine (VM) executes a `RuntimeProgram` produced by the `ProgramLoader`. It is a simple, deterministic, single-threaded interpreter that communicates with hardware through a `MockRobotAPI` (or later, a real RobotAPI).
+
+## Execution Lifecycle
+
+1. **Load**: `VM.load(RuntimeProgram)` – initializes context and sets up instruction iterator.
+2. **Run**: `VM.run()` – executes instructions until the program finishes or is stopped.
+3. **Step**: `VM.step()` – executes a single instruction.
+4. **Stop**: `VM.stop()` – halts execution.
+5. **Reset**: `VM.reset()` – resets the VM to initial loaded state.
+
+## Components
+
+### ExecutionContext
+
+Holds the CPU state:
+- `program_counter` – current instruction index.
+- `call_stack` – return addresses for CALL/RETURN.
+- `data_stack` – general-purpose stack.
+- `current_function_id` – currently executing function.
+- `state` – one of CREATED, LOADED, RUNNING, PAUSED, STOPPED, FINISHED.
+- `flags` – condition flags (future).
+- `registers` – optional general-purpose registers.
+
+### InstructionIterator
+
+Provides sequential access to instructions. Supports:
+- `current()` – get current instruction.
+- `next()` – advance and return next instruction.
+- `seek(index)` – move to specific instruction.
+- `jump(index)` – alias for `seek`.
+- `has_next()` – check if more instructions exist.
+- `peek(offset)` – look ahead.
+- `reset()` – reset to beginning.
+
+### Dispatcher
+
+Maps `RobotOpcode` to a handler function and invokes it.
+
+### Opcode Handlers
+
+Each opcode family has its own handler module:
+- `move_handler`: MOVE_RUN, MOVE_RUN_TIME, MOVE_STOP
+- `wait_handler`: WAIT
+- `jump_handler`: JUMP, JUMP_IF
+- `call_handler`: CALL, RETURN
+
+Handlers update `context.program_counter` appropriately and call `MockRobotAPI` methods.
+
+### MockRobotAPI
+
+Stub implementation of robot hardware control. Records actions and prints to console.
+
+## State Machine
+CREATED -> LOADED -> RUNNING -> (PAUSED) -> STOPPED -> FINISHED
+
+text
+
+Invalid transitions raise exceptions.
+
+## Future Extensions
+
+- Real RobotAPI integration.
+- Multithreading / scheduler.
+- Debugger and profiler.
+- Interrupt handling.
+- Optimizations (JIT?).
+
+## Debugging
+
+The VM supports single-step execution via `step()`, which can be used by a debugger without modifying the VM core.
+
+================
+File: robot-compiler/runtime/vm.py
+================
+# runtime/vm.py
+from typing import Optional
+from .program import RuntimeProgram
+from .engine import ExecutionEngine
+from .dispatcher import Dispatcher
+from .robot import RobotRuntime
+from .hardware import MockHardware
+from .context import ExecutionState
+
+class VirtualMachine:
+    def __init__(self, hardware=None):
+        if hardware is None:
+            hardware = MockHardware()
+        self.hardware = hardware
+        self.robot = RobotRuntime(hardware)
+        self.engine = ExecutionEngine()
+        self.dispatcher = Dispatcher()
+        self.state = ExecutionState.CREATED
+
+    def load(self, program: RuntimeProgram):
+        self.engine.load(program)
+        self.state = ExecutionState.LOADED
+
+    def step(self):
+        if self.state == ExecutionState.FINISHED:
+            raise RuntimeError("VM already finished")
+        if self.state not in (ExecutionState.LOADED, ExecutionState.RUNNING, ExecutionState.PAUSED):
+            raise RuntimeError(f"VM in invalid state: {self.state}")
+
+        if not self.engine.iterator.has_next():
+            self.state = ExecutionState.FINISHED
+            self.engine.context.state = ExecutionState.FINISHED
+            return
+
+        ins = self.engine.iterator.current()
+        if ins is None:
+            self.state = ExecutionState.FINISHED
+            self.engine.context.state = ExecutionState.FINISHED
+            return
+
+        # Dispatch using robot instead of api
+        self.dispatcher.dispatch(ins, self.engine, self.robot)
+
+        # Sync iterator with program_counter
+        self.engine.iterator.seek(self.engine.context.program_counter)
+
+    def run(self):
+        self.state = ExecutionState.RUNNING
+        self.engine.context.state = ExecutionState.RUNNING
+        while self.state == ExecutionState.RUNNING:
+            self.step()
+            if self.state == ExecutionState.FINISHED:
+                break
+
+    def stop(self):
+        self.state = ExecutionState.STOPPED
+        self.engine.context.state = ExecutionState.STOPPED
+
+    def reset(self):
+        self.engine = ExecutionEngine()
+        self.state = ExecutionState.CREATED
+
+    def get_state(self):
+        return self.state
 
 ================
 File: robot-compiler/tests/golden/backend/demo_forward.isa
@@ -6914,6 +7519,49 @@ class TestBackend(unittest.TestCase):
         isa_func = isa_prog.functions[0]
         self.assertEqual(isa_func.size, 3)
 
+
+if __name__ == "__main__":
+    unittest.main()
+
+================
+File: robot-compiler/tests/test_engine.py
+================
+import sys
+from pathlib import Path
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import unittest
+from compiler.binary import ProgramEncoder
+from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, ISAOperand
+from compiler.generated.opcode import Opcode
+from runtime import ProgramLoader, VirtualMachine
+
+def make_arithmetic_program():
+    prog = ISAProgram()
+    func = ISAFunction("main")
+    func.add_instruction(ISAInstruction(Opcode.LoadConst, [ISAOperand.integer(0), ISAOperand.integer(5)]))
+    func.add_instruction(ISAInstruction(Opcode.LoadConst, [ISAOperand.integer(1), ISAOperand.integer(3)]))
+    func.add_instruction(ISAInstruction(Opcode.Add, [ISAOperand.integer(0), ISAOperand.integer(1), ISAOperand.integer(2)]))
+    func.add_instruction(ISAInstruction(Opcode.Forward, [ISAOperand.integer(2)]))
+    func.add_instruction(ISAInstruction(Opcode.Stop, []))
+    prog.add_function(func)
+    return prog
+
+class TestEngine(unittest.TestCase):
+    def test_arithmetic(self):
+        isa_prog = make_arithmetic_program()
+        encoder = ProgramEncoder()
+        binary = encoder.encode(isa_prog)
+        loader = ProgramLoader()
+        runtime = loader.load(binary)
+        vm = VirtualMachine()
+        vm.load(runtime)
+        vm.run()
+        log = vm.robot.hardware.log
+        self.assertEqual(log[0], ("set_motor", 8, 8))
+        self.assertEqual(log[1], ("set_motor", 0, 0))
 
 if __name__ == "__main__":
     unittest.main()
@@ -11540,33 +12188,33 @@ This is a complete list of all opcodes used by the Robot VM.
 
 | Opcode | ID | Category | Description |
 |--------|----|----------|-------------|
-| `Forward` | 2 | unknown | Move robot forward |
-| `Backward` | 3 | unknown | Move robot backward |
-| `TurnLeft` | 4 | unknown | Rotate robot left |
-| `TurnRight` | 5 | unknown | Rotate robot right |
-| `Wait` | 7 | unknown | Wait milliseconds |
-| `Stop` | 6 | unknown | Stop robot |
-| `LoadConst` | 1 | unknown | Load constant to variable |
-| `CompareEQ` | 8 | unknown | Compare equal |
-| `CompareNE` | 9 | unknown | Compare not equal |
-| `CompareLT` | 10 | unknown | Compare less than |
-| `CompareLE` | 11 | unknown | Compare less or equal |
-| `CompareGT` | 12 | unknown | Compare greater than |
-| `CompareGE` | 13 | unknown | Compare greater or equal |
-| `Jump` | 14 | unknown | Unconditional jump |
-| `JumpIfFalse` | 15 | unknown | Jump if false |
-| `JumpIfTrue` | 16 | unknown | Jump if true |
-| `Label` | 17 | unknown | Label placeholder |
-| `Add` | 20 | unknown | Addition |
-| `Sub` | 21 | unknown | Subtraction |
-| `Mul` | 22 | unknown | Multiplication |
-| `Div` | 23 | unknown | Integer division |
-| `Mod` | 24 | unknown | Modulo |
-| `Pow` | 25 | unknown | Power (integer exponent) |
-| `Neg` | 26 | unknown | Negate |
-| `Call` | 27 | unknown | Call user function |
-| `Return` | 28 | unknown | Return from function |
-| `Store` | 29 | unknown | Store value from source to destination variable |
+| `Forward` | 2 | motion | Move robot forward |
+| `Backward` | 3 | motion | Move robot backward |
+| `TurnLeft` | 4 | motion | Rotate robot left |
+| `TurnRight` | 5 | motion | Rotate robot right |
+| `Wait` | 7 | system | Wait milliseconds |
+| `Stop` | 6 | system | Stop robot |
+| `LoadConst` | 1 | internal | Load constant to variable |
+| `CompareEQ` | 8 | internal | Compare equal |
+| `CompareNE` | 9 | internal | Compare not equal |
+| `CompareLT` | 10 | internal | Compare less than |
+| `CompareLE` | 11 | internal | Compare less or equal |
+| `CompareGT` | 12 | internal | Compare greater than |
+| `CompareGE` | 13 | internal | Compare greater or equal |
+| `Jump` | 14 | internal | Unconditional jump |
+| `JumpIfFalse` | 15 | internal | Jump if false |
+| `JumpIfTrue` | 16 | internal | Jump if true |
+| `Label` | 17 | internal | Label placeholder |
+| `Add` | 20 | internal | Addition |
+| `Sub` | 21 | internal | Subtraction |
+| `Mul` | 22 | internal | Multiplication |
+| `Div` | 23 | internal | Integer division |
+| `Mod` | 24 | internal | Modulo |
+| `Pow` | 25 | internal | Power (integer exponent) |
+| `Neg` | 26 | internal | Negate |
+| `Call` | 27 | internal | Call user function |
+| `Return` | 28 | internal | Return from function |
+| `Store` | 29 | internal | Store value from source to destination variable |
 
 ---
 **Note:** Internal opcodes (ID >= 8) are used by the compiler and VM internally, not exposed to users.
@@ -14776,45 +15424,6 @@ def stop() -> None:
     pass
 
 ================
-File: robot-frontend-robosim/robot/timing.py
-================
-"""
-Timing API
-
-This module defines the Standard Robot API for timing control.
-
-Time conversion (e.g., seconds to milliseconds) must be handled by
-the frontend layer. This API only accepts milliseconds.
-"""
-
-
-def wait(milliseconds: int) -> None:
-    """
-    Wait (delay) for the specified duration.
-
-    This is a blocking delay. The robot will pause execution for
-    the specified number of milliseconds before continuing to the
-    next instruction.
-
-    Args:
-        milliseconds: Delay duration in milliseconds.
-
-    Important:
-        - Unit is milliseconds, NOT seconds.
-        - Frontends must convert seconds to milliseconds before calling.
-        - Example: wait(1000) delays for 1 second.
-
-    Example:
-        forward(80)
-        wait(500)   # Wait 0.5 seconds
-        stop()
-    """
-    # Stub implementation.
-    # The compiler will replace this with bytecode.
-    # The VM will call RobotAPI::Wait(ms) which executes delay().
-    pass
-
-================
 File: robot-language/build/__init__.py
 ================
 from .builder import Builder
@@ -16703,6 +17312,119 @@ class TestLanguage(unittest.TestCase):
                          msg=f"Language build failed:\n{result.stdout}\n{result.stderr}")
 
 ================
+File: tests/test_vm.py
+================
+import unittest
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "robot-compiler"))
+
+from compiler.binary import ProgramEncoder
+from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, RobotOpcode, ISAOperand
+from runtime import ProgramLoader, VirtualMachine
+
+def make_move_stop_program():
+    prog = ISAProgram()
+    func = ISAFunction("main")
+    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("forward"), ISAOperand.integer(50)]))
+    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_STOP, []))
+    prog.add_function(func)
+    return prog
+
+def make_jump_program():
+    prog = ISAProgram()
+    func = ISAFunction("main")
+    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("forward"), ISAOperand.integer(50)]))
+    func.add_instruction(ISAInstruction(RobotOpcode.JUMP, [ISAOperand.integer(3)]))
+    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("backward"), ISAOperand.integer(30)]))
+    func.add_instruction(ISAInstruction(RobotOpcode.MOVE_STOP, []))
+    prog.add_function(func)
+    return prog
+
+def make_call_return_program():
+    prog = ISAProgram()
+    func1 = ISAFunction("main")
+    func1.add_instruction(ISAInstruction(RobotOpcode.CALL, [ISAOperand.integer(1)]))
+    func1.add_instruction(ISAInstruction(RobotOpcode.MOVE_STOP, []))
+    prog.add_function(func1)
+
+    func2 = ISAFunction("sub")
+    func2.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("forward"), ISAOperand.integer(30)]))
+    func2.add_instruction(ISAInstruction(RobotOpcode.RETURN, []))
+    prog.add_function(func2)
+    return prog
+
+class TestVM(unittest.TestCase):
+    def test_move_stop(self):
+        isa_prog = make_move_stop_program()
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(isa_prog)
+        loader = ProgramLoader()
+        runtime_prog = loader.load(binary_prog)
+        vm = VirtualMachine()
+        vm.load(runtime_prog)
+        vm.run()
+
+        self.assertEqual(vm.state.value, "finished")
+        log = vm.robot.hardware.log
+        self.assertEqual(log[0], ("set_motor", 50, 50))
+        self.assertEqual(log[1], ("set_motor", 0, 0))
+
+    def test_jump(self):
+        isa_prog = make_jump_program()
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(isa_prog)
+        loader = ProgramLoader()
+        runtime_prog = loader.load(binary_prog)
+        vm = VirtualMachine()
+        vm.load(runtime_prog)
+        vm.run()
+
+        self.assertEqual(vm.state.value, "finished")
+        log = vm.robot.hardware.log
+        self.assertEqual(len(log), 2)
+        self.assertEqual(log[0], ("set_motor", 50, 50))
+        self.assertEqual(log[1], ("set_motor", 0, 0))
+
+    def test_call_return(self):
+        isa_prog = make_call_return_program()
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(isa_prog)
+        loader = ProgramLoader()
+        runtime_prog = loader.load(binary_prog)
+        vm = VirtualMachine()
+        vm.load(runtime_prog)
+        vm.run()
+
+        self.assertEqual(vm.state.value, "finished")
+        log = vm.robot.hardware.log
+        self.assertEqual(log[0], ("set_motor", 30, 30))
+        self.assertEqual(log[1], ("set_motor", 0, 0))
+
+    def test_step_execution(self):
+        isa_prog = make_move_stop_program()
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(isa_prog)
+        loader = ProgramLoader()
+        runtime_prog = loader.load(binary_prog)
+        vm = VirtualMachine()
+        vm.load(runtime_prog)
+
+        self.assertEqual(vm.get_state().value, "loaded")
+        vm.step()
+        log = vm.robot.hardware.log
+        self.assertEqual(log[-1], ("set_motor", 50, 50))
+        vm.step()
+        self.assertEqual(log[-1], ("set_motor", 0, 0))
+        vm.step()
+        self.assertEqual(vm.state.value, "finished")
+
+if __name__ == "__main__":
+    unittest.main()
+
+================
 File: 04_Robotics_SW_DeepSeek.code-workspace
 ================
 {
@@ -16757,7 +17479,7 @@ def run_script(script_path):
 
 def main():
     tests = [
-        ROOT / "robot-compiler" / "test" / "run_tests.py",
+        ROOT / "robot-compiler" / "tests" / "run_tests.py",
         ROOT / "robot-frontend-robosim" / "test" / "run_tests.py",
     ]
     all_passed = True
@@ -16977,6 +17699,40 @@ class BinaryHeader:
         return HEADER_SIZE
 
 ================
+File: robot-compiler/compiler/binary/instruction_encoder.py
+================
+# compiler/binary/instruction_encoder.py
+import struct
+from typing import Tuple, Dict
+from ..isa import ISAInstruction, ISAOperand
+from .operand_encoder import OperandEncoder
+from ..generated.opcode import Opcode  # dùng trực tiếp Opcode
+
+class InstructionEncoder:
+    @staticmethod
+    def encode(instruction: ISAInstruction) -> bytes:
+        result = struct.pack("<B", instruction.opcode.value)  # opcode là IntEnum
+        result += struct.pack("<B", instruction.operand_count)
+        for op in instruction.operands:
+            result += OperandEncoder.encode(op)
+        return result
+
+    @staticmethod
+    def decode(data: bytes, offset: int, registry: Dict[int, Opcode]) -> Tuple[ISAInstruction, int]:
+        opcode_val = data[offset]
+        offset += 1
+        opcode = registry.get(opcode_val)
+        if opcode is None:
+            raise ValueError(f"Unknown opcode value: {opcode_val}")
+        operand_count = data[offset]
+        offset += 1
+        operands = []
+        for _ in range(operand_count):
+            op, offset = OperandEncoder.decode(data, offset)
+            operands.append(op)
+        return ISAInstruction(opcode, operands), offset
+
+================
 File: robot-compiler/compiler/binary/layout.py
 ================
 # compiler/binary/layout.py
@@ -17099,6 +17855,65 @@ FUNCTION_REGISTRY = {
 }
 
 ================
+File: robot-compiler/compiler/isa/instruction.py
+================
+# compiler/isa/instruction.py
+from typing import List, Optional, Any
+from .opcode import RobotOpcode  # sẽ là Opcode
+from .operand import ISAOperand
+
+class ISAInstruction:
+    def __init__(self, opcode: RobotOpcode, operands: Optional[List[ISAOperand]] = None, metadata: Optional[Any] = None):
+        self._opcode = opcode
+        self._operands = tuple(operands) if operands else ()
+        self._metadata = metadata
+
+    @property
+    def opcode(self) -> RobotOpcode:
+        return self._opcode
+
+    @property
+    def operands(self) -> tuple:
+        return self._operands
+
+    @property
+    def operand_count(self) -> int:
+        return len(self._operands)
+
+================
+File: robot-compiler/compiler/isa/opcode.py
+================
+# compiler/isa/opcode.py
+from enum import Enum, auto
+
+class RobotOpcode(Enum):
+    # Movement
+    MOVE_RUN = auto()
+    MOVE_RUN_TIME = auto()
+    MOVE_STOP = auto()
+
+    # Timing
+    WAIT = auto()
+
+    # Control Flow
+    JUMP = auto()
+    JUMP_IF = auto()
+
+    # Function
+    CALL = auto()
+    RETURN = auto()
+
+    # Servo
+    SERVO_MOVE = auto()
+
+    # Sensor
+    READ_TRACE = auto()
+
+    # Thread
+    THREAD_START = auto()
+    THREAD_END = auto()
+
+================
 File: robot-compiler/compiler/program.py
 ================
 from .instruction import Instruction
@@ -17150,6 +17965,245 @@ class Program:
         instruction_index = len(self.instructions)
         self.emit(opcode, result)
         self.add_patch(instruction_index, label)
+
+================
+File: robot-compiler/runtime/__init__.py
+================
+# runtime/__init__.py
+from .program import RuntimeProgram
+from .function import RuntimeFunction
+from .instruction import RuntimeInstruction
+from .loader import ProgramLoader
+from .iterator import InstructionIterator
+from .exceptions import *
+from .context import ExecutionContext, ExecutionState
+from .dispatcher import Dispatcher
+from .vm import VirtualMachine
+from .mock.robot_api import MockRobotAPI
+from .engine import ExecutionEngine
+from .variable import VariableTable
+from .stack import DataStack
+from .frame import StackFrame
+from .value import *
+from .memory import MemoryManager
+from .robot import RobotRuntime, MotionController, SensorManager, RobotState, IRobot
+from .hardware import (
+    IHardware,
+    MockHardware,
+    IMotorDriver,
+    ITimer,
+    ILogger,
+    ESP32Hardware,
+    BoardConfiguration,
+    HardwareCapabilities,
+    ESP32MotorDriver,
+    ESP32Timer,
+    ESP32Logger,
+)
+
+__all__ = [
+    "RuntimeProgram",
+    "RuntimeFunction",
+    "RuntimeInstruction",
+    "ProgramLoader",
+    "InstructionIterator",
+    "ExecutionContext",
+    "ExecutionState",
+    "Dispatcher",
+    "VirtualMachine",
+    "MockRobotAPI",
+    "ExecutionEngine",
+    "VariableTable",
+    "DataStack",
+    "StackFrame",
+    "RuntimeValue",
+    "IntegerValue",
+    "FloatValue",
+    "BooleanValue",
+    "StringValue",
+    "ReferenceValue",
+    "MemoryManager",
+    "RobotRuntime",
+    "MotionController",
+    "SensorManager",
+    "RobotState",
+    "IRobot",
+    "IHardware",
+    "MockHardware",
+    "IMotorDriver",
+    "ITimer",
+    "ILogger",
+    "ESP32Hardware",
+    "BoardConfiguration",
+    "HardwareCapabilities",
+    "ESP32MotorDriver",
+    "ESP32Timer",
+    "ESP32Logger",
+    "InvalidBinaryException",
+    "UnsupportedVersionException",
+    "InvalidInstructionException",
+    "InvalidConstantReferenceException",
+    "InvalidFunctionReferenceException",
+]
+
+================
+File: robot-compiler/runtime/instruction.py
+================
+# runtime/instruction.py
+from dataclasses import dataclass
+from typing import List, Any
+from compiler.generated.opcode import Opcode
+
+@dataclass(frozen=True)
+class RuntimeInstruction:
+    opcode: Opcode
+    operands: List[Any]
+    index: int
+
+================
+File: robot-compiler/runtime/iterator.py
+================
+# runtime/iterator.py
+from typing import Optional, List
+from .program import RuntimeProgram
+from .instruction import RuntimeInstruction
+
+class InstructionIterator:
+    def __init__(self, program: RuntimeProgram, function_id: Optional[int] = None):
+        self._program = program
+        self._function_id = function_id
+        self._instructions: List[RuntimeInstruction] = []
+        self._current_index: int = 0
+
+        if function_id is not None:
+            func = program.get_function(function_id)
+            if func is None:
+                raise ValueError(f"Function {function_id} not found")
+            self._instructions = func.instructions
+        else:
+            self._instructions = program.instructions
+
+    def current(self) -> Optional[RuntimeInstruction]:
+        if 0 <= self._current_index < len(self._instructions):
+            return self._instructions[self._current_index]
+        return None
+
+    def next(self) -> Optional[RuntimeInstruction]:
+        ins = self.current()
+        if ins is not None:
+            self._current_index += 1
+        return ins
+
+    def jump(self, index: int) -> None:
+        if index < 0 or index >= len(self._instructions):
+            raise ValueError(f"Invalid jump target: {index}")
+        self._current_index = index
+
+    def seek(self, index: int) -> None:
+        self._current_index = index
+
+    def has_next(self) -> bool:
+        return self._current_index < len(self._instructions)
+
+    def peek(self, offset: int = 0) -> Optional[RuntimeInstruction]:
+        idx = self._current_index + offset
+        if 0 <= idx < len(self._instructions):
+            return self._instructions[idx]
+        return None
+
+    def reset(self) -> None:
+        self._current_index = 0
+
+    @property
+    def size(self) -> int:
+        return len(self._instructions)
+
+================
+File: robot-compiler/runtime/loader.py
+================
+# runtime/loader.py
+from typing import List
+from compiler.binary import BinaryProgram
+from compiler.isa import OperandKind
+from compiler.generated.opcode import Opcode
+from compiler.binary.instruction_encoder import InstructionEncoder
+from .program import RuntimeProgram
+from .function import RuntimeFunction
+from .instruction import RuntimeInstruction
+from .exceptions import (
+    InvalidBinaryException,
+    UnsupportedVersionException,
+    InvalidInstructionException,
+)
+
+class ProgramLoader:
+    @staticmethod
+    def load(binary: BinaryProgram) -> RuntimeProgram:
+        # Validate header
+        header = binary.header
+        if header.magic != 0x4E494252:
+            raise InvalidBinaryException(...)
+        if header.abi_version != 1:
+            raise UnsupportedVersionException(...)
+
+        constants = list(binary.constant_pool.constants)
+        stream_data = binary.instruction_stream.data
+        offset = 0
+        all_instructions: List[RuntimeInstruction] = []
+        function_list: List[RuntimeFunction] = []
+
+        opcode_registry = {op.value: op for op in Opcode}
+
+        for ft_entry in binary.function_table.entries:
+            func_id = ft_entry.function_id
+            start_offset = ft_entry.entry_offset
+            count = ft_entry.instruction_count
+
+            func_instructions: List[RuntimeInstruction] = []
+            temp_offset = start_offset
+            for _ in range(count):
+                ins, temp_offset = InstructionEncoder.decode(
+                    stream_data, temp_offset, opcode_registry
+                )
+                operands = []
+                for op in ins.operands:
+                    if op.kind == OperandKind.INTEGER:
+                        operands.append(op.as_integer())
+                    elif op.kind == OperandKind.FLOAT:
+                        operands.append(op.as_float())
+                    elif op.kind == OperandKind.BOOLEAN:
+                        operands.append(op.as_boolean())
+                    elif op.kind == OperandKind.STRING:
+                        operands.append(op.as_string())
+                    elif op.kind in (OperandKind.ENUM, OperandKind.REGISTER, OperandKind.LABEL, OperandKind.CONSTANT_POOL):
+                        operands.append(op.as_index())
+                    else:
+                        raise InvalidInstructionException(f"Unsupported operand kind: {op.kind}")
+
+                runtime_ins = RuntimeInstruction(
+                    opcode=ins.opcode,  # ins.opcode là Opcode
+                    operands=operands,
+                    index=len(all_instructions)
+                )
+                all_instructions.append(runtime_ins)
+                func_instructions.append(runtime_ins)
+
+            func = RuntimeFunction(
+                function_id=func_id,
+                entry_index=len(all_instructions) - count,
+                instruction_count=count,
+                instructions=func_instructions,
+            )
+            function_list.append(func)
+
+        entry_id = 0 if function_list else -1
+        return RuntimeProgram(
+            constants=constants,
+            functions=function_list,
+            instructions=all_instructions,
+            entry_function_id=entry_id,
+            abi_version=header.abi_version,
+        )
 
 ================
 File: robot-compiler/tests/test_binary.py

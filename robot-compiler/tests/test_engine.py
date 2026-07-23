@@ -7,20 +7,16 @@ if str(ROOT) not in sys.path:
 import unittest
 from compiler.binary import ProgramEncoder
 from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, ISAOperand
-from compiler.generated.opcode import Opcode  # sử dụng Opcode
+from compiler.generated.opcode import Opcode
 from runtime import ProgramLoader, VirtualMachine
 
 def make_arithmetic_program():
     prog = ISAProgram()
     func = ISAFunction("main")
-    # LoadConst: t0=5, t1=3
     func.add_instruction(ISAInstruction(Opcode.LoadConst, [ISAOperand.integer(0), ISAOperand.integer(5)]))
     func.add_instruction(ISAInstruction(Opcode.LoadConst, [ISAOperand.integer(1), ISAOperand.integer(3)]))
-    # Add: t2 = t0 + t1
     func.add_instruction(ISAInstruction(Opcode.Add, [ISAOperand.integer(0), ISAOperand.integer(1), ISAOperand.integer(2)]))
-    # Forward: forward(t2)
     func.add_instruction(ISAInstruction(Opcode.Forward, [ISAOperand.integer(2)]))
-    # Stop
     func.add_instruction(ISAInstruction(Opcode.Stop, []))
     prog.add_function(func)
     return prog
@@ -35,8 +31,9 @@ class TestEngine(unittest.TestCase):
         vm = VirtualMachine()
         vm.load(runtime)
         vm.run()
-        self.assertEqual(vm.api.output[0], ("forward", 8))
-        self.assertEqual(vm.api.output[1], ("stop",))
+        log = vm.robot.hardware.log
+        self.assertEqual(log[0], ("set_motor", 8, 8))
+        self.assertEqual(log[1], ("set_motor", 0, 0))
 
 if __name__ == "__main__":
     unittest.main()

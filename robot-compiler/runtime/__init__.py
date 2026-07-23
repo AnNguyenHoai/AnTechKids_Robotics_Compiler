@@ -15,6 +15,20 @@ from .stack import DataStack
 from .frame import StackFrame
 from .value import *
 from .memory import MemoryManager
+from .robot import RobotRuntime, MotionController, SensorManager, RobotState, IRobot
+from .hardware import (
+    IHardware,
+    MockHardware,
+    IMotorDriver,
+    ITimer,
+    ILogger,
+    ESP32Hardware,
+    BoardConfiguration,
+    HardwareCapabilities,
+    ESP32MotorDriver,
+    ESP32Timer,
+    ESP32Logger,
+)
 
 __all__ = [
     "RuntimeProgram",
@@ -38,6 +52,22 @@ __all__ = [
     "StringValue",
     "ReferenceValue",
     "MemoryManager",
+    "RobotRuntime",
+    "MotionController",
+    "SensorManager",
+    "RobotState",
+    "IRobot",
+    "IHardware",
+    "MockHardware",
+    "IMotorDriver",
+    "ITimer",
+    "ILogger",
+    "ESP32Hardware",
+    "BoardConfiguration",
+    "HardwareCapabilities",
+    "ESP32MotorDriver",
+    "ESP32Timer",
+    "ESP32Logger",
     "InvalidBinaryException",
     "UnsupportedVersionException",
     "InvalidInstructionException",

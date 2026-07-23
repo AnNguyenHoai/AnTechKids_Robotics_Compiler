@@ -1,4 +1,10 @@
 import unittest
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "robot-compiler"))
+
 from compiler.binary import ProgramEncoder
 from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, RobotOpcode, ISAOperand
 from runtime import ProgramLoader, VirtualMachine
@@ -14,13 +20,9 @@ def make_move_stop_program():
 def make_jump_program():
     prog = ISAProgram()
     func = ISAFunction("main")
-    # 0: move_run forward 50
     func.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("forward"), ISAOperand.integer(50)]))
-    # 1: jump to index 3 (stop)
     func.add_instruction(ISAInstruction(RobotOpcode.JUMP, [ISAOperand.integer(3)]))
-    # 2: move_run backward 30 (should be skipped)
     func.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("backward"), ISAOperand.integer(30)]))
-    # 3: stop
     func.add_instruction(ISAInstruction(RobotOpcode.MOVE_STOP, []))
     prog.add_function(func)
     return prog
@@ -28,13 +30,11 @@ def make_jump_program():
 def make_call_return_program():
     prog = ISAProgram()
     func1 = ISAFunction("main")
-    # main: call function 1, then stop
     func1.add_instruction(ISAInstruction(RobotOpcode.CALL, [ISAOperand.integer(1)]))
     func1.add_instruction(ISAInstruction(RobotOpcode.MOVE_STOP, []))
     prog.add_function(func1)
 
     func2 = ISAFunction("sub")
-    # sub: move_run forward 30, return
     func2.add_instruction(ISAInstruction(RobotOpcode.MOVE_RUN, [ISAOperand.string("forward"), ISAOperand.integer(30)]))
     func2.add_instruction(ISAInstruction(RobotOpcode.RETURN, []))
     prog.add_function(func2)
@@ -52,9 +52,9 @@ class TestVM(unittest.TestCase):
         vm.run()
 
         self.assertEqual(vm.state.value, "finished")
-        self.assertEqual(len(vm.api.output), 2)
-        self.assertEqual(vm.api.output[0], ("forward", 50))
-        self.assertEqual(vm.api.output[1], ("stop",))
+        log = vm.robot.hardware.log
+        self.assertEqual(log[0], ("set_motor", 50, 50))
+        self.assertEqual(log[1], ("set_motor", 0, 0))
 
     def test_jump(self):
         isa_prog = make_jump_program()
@@ -67,10 +67,10 @@ class TestVM(unittest.TestCase):
         vm.run()
 
         self.assertEqual(vm.state.value, "finished")
-        # Only forward and stop should be executed, not backward
-        self.assertEqual(len(vm.api.output), 2)
-        self.assertEqual(vm.api.output[0], ("forward", 50))
-        self.assertEqual(vm.api.output[1], ("stop",))
+        log = vm.robot.hardware.log
+        self.assertEqual(len(log), 2)
+        self.assertEqual(log[0], ("set_motor", 50, 50))
+        self.assertEqual(log[1], ("set_motor", 0, 0))
 
     def test_call_return(self):
         isa_prog = make_call_return_program()
@@ -83,10 +83,9 @@ class TestVM(unittest.TestCase):
         vm.run()
 
         self.assertEqual(vm.state.value, "finished")
-        # main: call sub, then stop. sub: forward 30.
-        self.assertEqual(len(vm.api.output), 2)
-        self.assertEqual(vm.api.output[0], ("forward", 30))
-        self.assertEqual(vm.api.output[1], ("stop",))
+        log = vm.robot.hardware.log
+        self.assertEqual(log[0], ("set_motor", 30, 30))
+        self.assertEqual(log[1], ("set_motor", 0, 0))
 
     def test_step_execution(self):
         isa_prog = make_move_stop_program()
@@ -99,9 +98,10 @@ class TestVM(unittest.TestCase):
 
         self.assertEqual(vm.get_state().value, "loaded")
         vm.step()
-        self.assertEqual(vm.api.output[0], ("forward", 50))
+        log = vm.robot.hardware.log
+        self.assertEqual(log[-1], ("set_motor", 50, 50))
         vm.step()
-        self.assertEqual(vm.api.output[1], ("stop",))
+        self.assertEqual(log[-1], ("set_motor", 0, 0))
         vm.step()
         self.assertEqual(vm.state.value, "finished")
 

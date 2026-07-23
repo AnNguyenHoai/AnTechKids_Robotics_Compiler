@@ -21,7 +21,7 @@ def run_script(script_path):
 
 def main():
     tests = [
-        ROOT / "robot-compiler" / "test" / "run_tests.py",
+        ROOT / "robot-compiler" / "tests" / "run_tests.py",
         ROOT / "robot-frontend-robosim" / "test" / "run_tests.py",
     ]
     all_passed = True

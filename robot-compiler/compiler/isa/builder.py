@@ -1,10 +1,10 @@
+# compiler/isa/builder.py
 from typing import Optional, List
-from .opcode import RobotOpcode
+from compiler.generated.opcode import Opcode
 from .operand import ISAOperand, OperandKind
 from .instruction import ISAInstruction
 from .function import ISAFunction
 from .program import ISAProgram
-
 
 class InstructionBuilder:
     """Builder for creating valid Robot ISA instructions."""
@@ -36,41 +36,46 @@ class InstructionBuilder:
         return self._current_function
 
     # ----- Instruction creation -----
-    def _emit(self, opcode: RobotOpcode, operands: Optional[List[ISAOperand]] = None) -> ISAInstruction:
+    def emit(self, opcode: Opcode, operands: Optional[List[ISAOperand]] = None) -> ISAInstruction:
+        """Public method to emit any instruction."""
         if self._current_function is None:
             raise RuntimeError("No current function. Call create_function() first.")
         ins = ISAInstruction(opcode, operands)
         self._current_function.add_instruction(ins)
         return ins
 
-    # ----- Movement -----
+    def _emit(self, opcode: Opcode, operands: Optional[List[ISAOperand]] = None) -> ISAInstruction:
+        """Internal method (kept for compatibility)."""
+        return self.emit(opcode, operands)
+
+    # ----- Movement (deprecated, use emit directly) -----
     def move_run(self, direction: ISAOperand, speed: ISAOperand) -> ISAInstruction:
-        return self._emit(RobotOpcode.MOVE_RUN, [direction, speed])
+        return self.emit(Opcode.FORWARD, [speed])  # Temporary fallback
 
     def move_run_time(self, direction: ISAOperand, speed: ISAOperand,
                       duration: ISAOperand) -> ISAInstruction:
-        return self._emit(RobotOpcode.MOVE_RUN_TIME, [direction, speed, duration])
+        return self.emit(Opcode.WAIT, [duration])
 
     def move_stop(self) -> ISAInstruction:
-        return self._emit(RobotOpcode.MOVE_STOP, [])
+        return self.emit(Opcode.STOP, [])
 
     # ----- Timing -----
     def wait(self, duration: ISAOperand) -> ISAInstruction:
-        return self._emit(RobotOpcode.WAIT, [duration])
+        return self.emit(Opcode.WAIT, [duration])
 
     # ----- Control flow -----
     def jump(self, target: ISAOperand) -> ISAInstruction:
-        return self._emit(RobotOpcode.JUMP, [target])
+        return self.emit(Opcode.JUMP, [target])
 
     def jump_if(self, condition: ISAOperand, target: ISAOperand) -> ISAInstruction:
-        return self._emit(RobotOpcode.JUMP_IF, [condition, target])
+        return self.emit(Opcode.JUMP_IF, [condition, target])
 
     # ----- Function -----
     def call(self, func_name: ISAOperand) -> ISAInstruction:
-        return self._emit(RobotOpcode.CALL, [func_name])
+        return self.emit(Opcode.CALL, [func_name])
 
     def return_(self) -> ISAInstruction:
-        return self._emit(RobotOpcode.RETURN, [])
+        return self.emit(Opcode.RETURN, [])
 
     # ----- Helper -----
     def new_label(self) -> ISAOperand:

@@ -1,10 +1,10 @@
+# compiler/isa/printer.py
 from typing import TextIO, Optional
 from .program import ISAProgram
 from .function import ISAFunction
 from .instruction import ISAInstruction
 from .operand import ISAOperand, OperandKind
-from .opcode import RobotOpcode
-
+from compiler.generated.opcode import Opcode
 
 class InstructionPrinter:
     """Human-readable printer for Robot ISA programs."""

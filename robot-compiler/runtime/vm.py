@@ -3,13 +3,18 @@ from typing import Optional
 from .program import RuntimeProgram
 from .engine import ExecutionEngine
 from .dispatcher import Dispatcher
-from .mock.robot_api import MockRobotAPI
+from .robot import RobotRuntime
+from .hardware import MockHardware
 from .context import ExecutionState
+
 class VirtualMachine:
-    def __init__(self):
+    def __init__(self, hardware=None):
+        if hardware is None:
+            hardware = MockHardware()
+        self.hardware = hardware
+        self.robot = RobotRuntime(hardware)
         self.engine = ExecutionEngine()
         self.dispatcher = Dispatcher()
-        self.api = MockRobotAPI()
         self.state = ExecutionState.CREATED
 
     def load(self, program: RuntimeProgram):
@@ -33,9 +38,10 @@ class VirtualMachine:
             self.engine.context.state = ExecutionState.FINISHED
             return
 
-        self.dispatcher.dispatch(ins, self.engine, self.api)
+        # Dispatch using robot instead of api
+        self.dispatcher.dispatch(ins, self.engine, self.robot)
 
-        # Cập nhật iterator theo program_counter
+        # Sync iterator with program_counter
         self.engine.iterator.seek(self.engine.context.program_counter)
 
     def run(self):

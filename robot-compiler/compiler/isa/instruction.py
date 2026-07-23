@@ -1,16 +1,16 @@
 # compiler/isa/instruction.py
 from typing import List, Optional, Any
-from .opcode import RobotOpcode  # sẽ là Opcode
+from compiler.generated.opcode import Opcode
 from .operand import ISAOperand
 
 class ISAInstruction:
-    def __init__(self, opcode: RobotOpcode, operands: Optional[List[ISAOperand]] = None, metadata: Optional[Any] = None):
+    def __init__(self, opcode: Opcode, operands: Optional[List[ISAOperand]] = None, metadata: Optional[Any] = None):
         self._opcode = opcode
         self._operands = tuple(operands) if operands else ()
         self._metadata = metadata
 
     @property
-    def opcode(self) -> RobotOpcode:
+    def opcode(self) -> Opcode:
         return self._opcode
 
     @property

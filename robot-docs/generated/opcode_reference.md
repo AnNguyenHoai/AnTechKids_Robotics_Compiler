@@ -4,33 +4,33 @@ This is a complete list of all opcodes used by the Robot VM.
 
 | Opcode | ID | Category | Description |
 |--------|----|----------|-------------|
-| `Forward` | 2 | unknown | Move robot forward |
-| `Backward` | 3 | unknown | Move robot backward |
-| `TurnLeft` | 4 | unknown | Rotate robot left |
-| `TurnRight` | 5 | unknown | Rotate robot right |
-| `Wait` | 7 | unknown | Wait milliseconds |
-| `Stop` | 6 | unknown | Stop robot |
-| `LoadConst` | 1 | unknown | Load constant to variable |
-| `CompareEQ` | 8 | unknown | Compare equal |
-| `CompareNE` | 9 | unknown | Compare not equal |
-| `CompareLT` | 10 | unknown | Compare less than |
-| `CompareLE` | 11 | unknown | Compare less or equal |
-| `CompareGT` | 12 | unknown | Compare greater than |
-| `CompareGE` | 13 | unknown | Compare greater or equal |
-| `Jump` | 14 | unknown | Unconditional jump |
-| `JumpIfFalse` | 15 | unknown | Jump if false |
-| `JumpIfTrue` | 16 | unknown | Jump if true |
-| `Label` | 17 | unknown | Label placeholder |
-| `Add` | 20 | unknown | Addition |
-| `Sub` | 21 | unknown | Subtraction |
-| `Mul` | 22 | unknown | Multiplication |
-| `Div` | 23 | unknown | Integer division |
-| `Mod` | 24 | unknown | Modulo |
-| `Pow` | 25 | unknown | Power (integer exponent) |
-| `Neg` | 26 | unknown | Negate |
-| `Call` | 27 | unknown | Call user function |
-| `Return` | 28 | unknown | Return from function |
-| `Store` | 29 | unknown | Store value from source to destination variable |
+| `Forward` | 2 | motion | Move robot forward |
+| `Backward` | 3 | motion | Move robot backward |
+| `TurnLeft` | 4 | motion | Rotate robot left |
+| `TurnRight` | 5 | motion | Rotate robot right |
+| `Wait` | 7 | system | Wait milliseconds |
+| `Stop` | 6 | system | Stop robot |
+| `LoadConst` | 1 | internal | Load constant to variable |
+| `CompareEQ` | 8 | internal | Compare equal |
+| `CompareNE` | 9 | internal | Compare not equal |
+| `CompareLT` | 10 | internal | Compare less than |
+| `CompareLE` | 11 | internal | Compare less or equal |
+| `CompareGT` | 12 | internal | Compare greater than |
+| `CompareGE` | 13 | internal | Compare greater or equal |
+| `Jump` | 14 | internal | Unconditional jump |
+| `JumpIfFalse` | 15 | internal | Jump if false |
+| `JumpIfTrue` | 16 | internal | Jump if true |
+| `Label` | 17 | internal | Label placeholder |
+| `Add` | 20 | internal | Addition |
+| `Sub` | 21 | internal | Subtraction |
+| `Mul` | 22 | internal | Multiplication |
+| `Div` | 23 | internal | Integer division |
+| `Mod` | 24 | internal | Modulo |
+| `Pow` | 25 | internal | Power (integer exponent) |
+| `Neg` | 26 | internal | Negate |
+| `Call` | 27 | internal | Call user function |
+| `Return` | 28 | internal | Return from function |
+| `Store` | 29 | internal | Store value from source to destination variable |
 
 ---
 **Note:** Internal opcodes (ID >= 8) are used by the compiler and VM internally, not exposed to users.
