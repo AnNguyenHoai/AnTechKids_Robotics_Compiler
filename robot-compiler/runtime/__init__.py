@@ -29,6 +29,25 @@ from .hardware import (
     ESP32Timer,
     ESP32Logger,
 )
+from .sensors import (
+    ISensor,
+    SensorValue,
+    SensorEvent,
+    SensorEventType,
+    SensorManager as NewSensorManager,
+    LineSensor,
+    UltrasonicSensor,
+    TouchSensor,
+    LightSensor,
+    ColorSensor,
+    MovingAverageFilter,
+    MedianFilter,
+    ThresholdFilter,
+    create_mock_sensors,
+)
+
+# Keep old SensorManager for backward compatibility, but alias to new one
+SensorManager = NewSensorManager
 
 __all__ = [
     "RuntimeProgram",
@@ -68,6 +87,19 @@ __all__ = [
     "ESP32MotorDriver",
     "ESP32Timer",
     "ESP32Logger",
+    "ISensor",
+    "SensorValue",
+    "SensorEvent",
+    "SensorEventType",
+    "LineSensor",
+    "UltrasonicSensor",
+    "TouchSensor",
+    "LightSensor",
+    "ColorSensor",
+    "MovingAverageFilter",
+    "MedianFilter",
+    "ThresholdFilter",
+    "create_mock_sensors",
     "InvalidBinaryException",
     "UnsupportedVersionException",
     "InvalidInstructionException",

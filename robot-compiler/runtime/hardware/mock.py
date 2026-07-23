@@ -11,6 +11,7 @@ class MockHardware(IHardware):
         self.log = []
         self._ultrasonic_value = 50  # default distance
         self._line_values = {0: 512, 1: 512, 2: 512}  # default middle value
+        self._touch_values = {0: False, 1: False}  # default touch states
 
     def set_motor(self, left: int, right: int) -> None:
         self.motor_left = max(-100, min(100, left))
@@ -36,9 +37,9 @@ class MockHardware(IHardware):
 
     def read_touch(self, port: int) -> bool:
         self.log.append(("read_touch", port))
-        # mock: always False
-        print(f"[MockHardware] Read Touch port {port}: False")
-        return False
+        val = self._touch_values.get(port, False)
+        print(f"[MockHardware] Read Touch port {port}: {val}")
+        return val
 
     # ---- Helper for tests ----
 
@@ -47,6 +48,9 @@ class MockHardware(IHardware):
 
     def set_line_value(self, channel: int, value: int):
         self._line_values[channel] = value
+
+    def set_touch_value(self, port: int, value: bool):
+        self._touch_values[port] = value
 
     def get_log(self):
         return self.log
