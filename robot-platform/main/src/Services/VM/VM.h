@@ -25,7 +25,7 @@ public:
     VM();
 
     /**
-     * Reset VM runtime.
+     * Reset VM runtime context.
      */
     void Reset();
 
@@ -48,6 +48,11 @@ public:
      * Get current program counter.
      */
     uint16_t GetProgramCounter() const;
+
+    /**
+     * Get error code (0 = no error).
+     */
+    uint8_t GetErrorCode() const;
 
 private:
 

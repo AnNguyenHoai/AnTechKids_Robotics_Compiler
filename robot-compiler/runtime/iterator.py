@@ -35,6 +35,8 @@ class InstructionIterator:
         self._current_index = index
 
     def seek(self, index: int) -> None:
+        if index < 0 or index > len(self._instructions):
+            raise ValueError(f"Invalid seek index: {index}")
         self._current_index = index
 
     def has_next(self) -> bool:

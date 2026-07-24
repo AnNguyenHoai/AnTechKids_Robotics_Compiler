@@ -71,7 +71,7 @@ class ExecutionEngine:
 
     # --- Control flow ---
     def jump(self, target: int):
-        if target < 0 or target >= self.iterator.size:
+        if target < 0 or target > self.iterator.size:
             raise ValueError(f"Invalid jump target: {target}")
         self.context.program_counter = target
         self.iterator.seek(target)

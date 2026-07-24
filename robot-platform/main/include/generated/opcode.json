@@ -214,5 +214,45 @@
         "category": "internal",
         "module": "internal",
         "handler": "None"
+    },
+    "ReadUltrasonic": {
+        "id": 30,
+        "opcode": "ReadUltrasonic",
+        "function": "read_ultrasonic",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadTouch": {
+        "id": 31,
+        "opcode": "ReadTouch",
+        "function": "read_touch",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadLight": {
+        "id": 32,
+        "opcode": "ReadLight",
+        "function": "read_light",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadColor": {
+        "id": 33,
+        "opcode": "ReadColor",
+        "function": "read_color",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadLine": {
+        "id": 34,
+        "opcode": "ReadLine",
+        "function": "read_line",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
     }
 }

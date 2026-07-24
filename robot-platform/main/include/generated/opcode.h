@@ -37,4 +37,9 @@ enum class Opcode : uint8_t
     Call = 27,
     Return = 28,
     Store = 29,
+    ReadUltrasonic = 30,
+    ReadTouch = 31,
+    ReadLight = 32,
+    ReadColor = 33,
+    ReadLine = 34,
 };

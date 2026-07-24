@@ -159,6 +159,7 @@ robot-compiler/
       bool_handler.py
       compare_handler.py
       motion_handler.py
+      sensor_handler.py
       system_handler.py
     ir/
       __init__.py
@@ -239,6 +240,22 @@ robot-compiler/
     demo.py
   generated/
     __init__.py
+  integration/
+    end_to_end/
+      programs/
+        demo_backward.py
+        demo_forward.py
+        demo_function.py
+        demo_if.py
+        demo_loop.py
+        demo_sensor.py
+        demo_turn.py
+        demo_variable.py
+      __init__.py
+      benchmark.py
+      run_integration_tests.py
+      test_end_to_end.py
+    __init__.py
   runtime/
     handlers/
       __init__.py
@@ -272,10 +289,24 @@ robot-compiler/
       runtime.py
       sensor.py
       state.py
+    sensors/
+      __init__.py
+      base.py
+      color_sensor.py
+      filters.py
+      light_sensor.py
+      line_sensor.py
+      mock_sensors.py
+      sensor_event.py
+      sensor_manager.py
+      sensor_value.py
+      touch_sensor.py
+      ultrasonic_sensor.py
     tests/
       __init__.py
       test_esp32_adapter.py
       test_integration_esp32.py
+      test_sensors.py
     value/
       __init__.py
       base.py
@@ -300,6 +331,7 @@ robot-compiler/
     program.py
     README.md
     ROBOT_RUNTIME.md
+    SENSOR_RUNTIME.md
     stack.py
     variable.py
     VM_ARCHITECTURE.md
@@ -349,9 +381,23 @@ robot-docs/
   runtime/
     ROBOT_EXECUTION_MODEL.md
     ROBOT_ISA_SPEC.md
+  BEHAVIOR_DEVELOPMENT_GUIDE.md
+  BEHAVIOR_ENGINE.md
+  BEHAVIOR_LIFECYCLE.md
+  BEHAVIOR_VALIDATION.md
+  BOOT_PROCESS.md
   DEVELOPMENT_GUIDE.md
+  END_TO_END_EXECUTION.md
+  FIRST_EXECUTION.md
   FUNCTION_MODEL.md
+  GOLDEN_PROGRAMS.md
   LANGUAGE_SPEC.md
+  MOTION_CALIBRATION.md
+  MOTION_VALIDATION_GUIDE.md
+  PERCEPTION_GUIDE.md
+  PERCEPTION_VALIDATION.md
+  ROBOT_BRINGUP_GUIDE.md
+  SENSOR_CALIBRATION.md
   VM_ABI.md
 robot-frontend-robosim/
   examples/
@@ -367,6 +413,7 @@ robot-frontend-robosim/
   robot/
     __init__.py
     motion.py
+    sensor.py
     system.py
   test/
     run_tests.py
@@ -409,6 +456,7 @@ robot-language/
   robot/
     __init__.py
     motion.py
+    sensor.py
     system.py
   sdk/
     __init__.py
@@ -432,6 +480,22 @@ robot-language/
   build.py
   README.md
 robot-platform/
+  golden/
+    001_forward.py
+    002_backward.py
+    003_turn_left.py
+    004_turn_right.py
+    005_square.py
+    006_triangle.py
+    007_circle_approx.py
+    008_zigzag.py
+  golden_sensors/
+    001_touch_stop.py
+    002_line_detect.py
+    003_obstacle_stop.py
+    004_light_trigger.py
+    005_color_detect.py
+    006_sensor_monitor.py
   main/
     include/
       generated/
@@ -442,21 +506,71 @@ robot-platform/
         generated_program.h
         LineFollowerApp.cpp
         LineFollowerApp.h
+      Behavior/
+        Behavior.h
+        BehaviorContext.h
+        BehaviorScheduler.cpp
+        BehaviorScheduler.h
+        ColorDetectBehavior.cpp
+        ColorDetectBehavior.h
+        LightTriggerBehavior.cpp
+        LightTriggerBehavior.h
+        LineDetectBehavior.cpp
+        LineDetectBehavior.h
+        MoveBackwardBehavior.cpp
+        MoveBackwardBehavior.h
+        MoveForwardBehavior.cpp
+        MoveForwardBehavior.h
+        ObstacleStopBehavior.cpp
+        ObstacleStopBehavior.h
+        StopBehavior.cpp
+        StopBehavior.h
+        TouchStopBehavior.cpp
+        TouchStopBehavior.h
+        TurnLeftBehavior.cpp
+        TurnLeftBehavior.h
+        TurnRightBehavior.cpp
+        TurnRightBehavior.h
+        WaitBehavior.cpp
+        WaitBehavior.h
       Communication/
         ProgramLoader.cpp
+        SerialCommandHandler.cpp
+        SerialCommandHandler.h
         UART.cpp
         UART.h
       Devices/
+        ColorSensor.cpp
+        ColorSensor.h
+        LightSensor.cpp
+        LightSensor.h
+        LineSensor.cpp
+        LineSensor.h
         Motor.cpp
         Sensor.cpp
         Sensor.h
+        SensorConfig.cpp
+        SensorConfig.h
+        Touch.cpp
+        Touch.h
+        Ultrasonic.cpp
+        Ultrasonic.h
+      Diagnostic/
+        Diagnostic.cpp
+        Diagnostic.h
       Drivers/
         Sensor_TRCT5000_3CH.cpp
         Sensor_TRCT5000_3CH.h
+      generated/
+        opcode.h
       HardwareAbstraction/
         GPIO.h
+      Logger/
+        BootLogger.h
       Services/
         Robot/
+          MotionConfig.cpp
+          MotionConfig.h
           RobotAPI.cpp
           RobotAPI.h
         VM/
@@ -468,6 +582,14 @@ robot-platform/
           VM.h
           VMContext.h
     main.ino
+  validation/
+    behavior_report.json
+    behavior_validation.py
+    motion_validation.py
+    sensor_validation.py
+    speed_characterization.py
+  deploy_program.py
+  deploy.py
 tests/
   __init__.py
   runner.py
@@ -485,6 +607,3423 @@ VERSION
 ================================================================
 Files
 ================================================================
+
+================
+File: robot-compiler/compiler/handlers/sensor_handler.py
+================
+from ..generated.opcode import Opcode
+
+class SensorHandler:
+    @staticmethod
+    def read_ultrasonic(compiler, node):
+        compiler.validate_argument_count(node, "read_ultrasonic", 0)
+        dest = compiler.allocate_temp()
+        compiler.program.emit(Opcode.ReadUltrasonic.value, dest, 0, 0)
+        return dest
+
+    @staticmethod
+    def read_touch(compiler, node):
+        compiler.validate_argument_count(node, "read_touch", 1)
+        port = compiler.resolve_argument(node.args[0])
+        dest = compiler.allocate_temp()
+        compiler.program.emit(Opcode.ReadTouch.value, port, dest, 0)
+        return dest
+
+    @staticmethod
+    def read_light(compiler, node):
+        compiler.validate_argument_count(node, "read_light", 1)
+        channel = compiler.resolve_argument(node.args[0])
+        dest = compiler.allocate_temp()
+        compiler.program.emit(Opcode.ReadLight.value, channel, dest, 0)
+        return dest
+
+    @staticmethod
+    def read_color(compiler, node):
+        compiler.validate_argument_count(node, "read_color", 0)
+        dest = compiler.allocate_temp()
+        compiler.program.emit(Opcode.ReadColor.value, dest, 0, 0)
+        return dest
+
+    @staticmethod
+    def read_line(compiler, node):
+        compiler.validate_argument_count(node, "read_line", 1)
+        channel = compiler.resolve_argument(node.args[0])
+        dest = compiler.allocate_temp()
+        compiler.program.emit(Opcode.ReadLine.value, channel, dest, 0)
+        return dest
+
+================
+File: robot-compiler/integration/end_to_end/programs/demo_backward.py
+================
+# integration/end_to_end/programs/demo_backward.py
+import rcu
+rcu.SetMoveRun("backward", 50)
+rcu.SetMoveStop()
+
+================
+File: robot-compiler/integration/end_to_end/programs/demo_forward.py
+================
+# integration/end_to_end/programs/demo_forward.py
+import rcu
+rcu.SetMoveRun("forward", 80)
+rcu.SetMoveStop()
+
+================
+File: robot-compiler/integration/end_to_end/programs/demo_function.py
+================
+# integration/end_to_end/programs/demo_function.py
+import rcu
+
+def move_forward():
+    rcu.SetMoveRun("forward", 80)
+    rcu.SetMoveStop()
+
+move_forward()
+
+================
+File: robot-compiler/integration/end_to_end/programs/demo_if.py
+================
+# integration/end_to_end/programs/demo_if.py
+import rcu
+speed = 80
+if speed > 50:
+    rcu.SetMoveRun("forward", speed)
+else:
+    rcu.SetMoveRun("backward", 30)
+rcu.SetMoveStop()
+
+================
+File: robot-compiler/integration/end_to_end/programs/demo_loop.py
+================
+# integration/end_to_end/programs/demo_loop.py
+import rcu
+
+count = 1
+while count > 0:
+    rcu.SetMoveRun("forward", 70)
+    rcu.SetMoveStop()
+    count = count - 1
+
+================
+File: robot-compiler/integration/end_to_end/programs/demo_sensor.py
+================
+# integration/end_to_end/programs/demo_sensor.py
+import rcu
+
+# Giả sử có một sensor đọc line
+# Trong RoboSim thực tế, sẽ có API đọc sensor, nhưng để demo ta dùng biến
+# Vì chưa có API sensor trong RoboSim spec, ta sẽ dùng biến để mô phỏng
+# Thay vì đó, ta sẽ đọc biến 'sensor_value' đã được set trong test
+# Nhưng để test pipeline, ta có thể dùng một hàm giả lập.
+
+# Ở đây ta dùng lệnh gán và so sánh để mô phỏng logic sensor
+sensor = 512
+if sensor > 300:
+    rcu.SetMoveRun("forward", 50)
+else:
+    rcu.SetMoveRun("backward", 30)
+rcu.SetMoveStop()
+
+================
+File: robot-compiler/integration/end_to_end/programs/demo_turn.py
+================
+# integration/end_to_end/programs/demo_turn.py
+import rcu
+rcu.SetMoveRun("left", 60)
+rcu.SetMoveStop()
+rcu.SetMoveRun("right", 60)
+rcu.SetMoveStop()
+
+================
+File: robot-compiler/integration/end_to_end/programs/demo_variable.py
+================
+# integration/end_to_end/programs/demo_variable.py
+import rcu
+speed = 60
+rcu.SetMoveRun("forward", speed)
+rcu.SetMoveStop()
+
+================
+File: robot-compiler/integration/end_to_end/__init__.py
+================
+
+
+================
+File: robot-compiler/integration/end_to_end/benchmark.py
+================
+# integration/end_to_end/benchmark.py
+import time
+import sys
+import json
+from pathlib import Path
+import statistics
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+COMPILER_ROOT = REPO_ROOT / "robot-compiler"
+FRONTEND_ROOT = REPO_ROOT / "robot-frontend-robosim"
+
+if str(COMPILER_ROOT) not in sys.path:
+    sys.path.insert(0, str(COMPILER_ROOT))
+if str(FRONTEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(FRONTEND_ROOT))
+
+from frontend.compiler import RoboSimCompiler
+from compiler.binary import ProgramEncoder, BinarySerializer
+from runtime import ProgramLoader, VirtualMachine
+from runtime.hardware import MockHardware
+from compiler.generated.opcode import Opcode
+from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, ISAOperand
+
+PROGRAMS_DIR = Path(__file__).parent / "programs"
+RESULTS_FILE = Path(__file__).parent / "benchmark_results.json"
+
+def convert_instruction(ins):
+    """Convert compiler.Instruction to ISAInstruction."""
+    opcode = Opcode(ins.opcode)
+    operands = []
+    
+    if opcode == Opcode.LoadConst:
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+    elif opcode in (Opcode.Forward, Opcode.Backward, Opcode.TurnLeft, Opcode.TurnRight, Opcode.Wait):
+        operands.append(ISAOperand.integer(ins.p1))
+    elif opcode == Opcode.Stop:
+        pass
+    elif opcode == Opcode.Jump:
+        operands.append(ISAOperand.integer(ins.p2))
+    elif opcode in (Opcode.JumpIfFalse, Opcode.JumpIfTrue):
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+    elif opcode in (Opcode.Add, Opcode.Sub, Opcode.Mul, Opcode.Div, Opcode.Mod, Opcode.Pow):
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+        operands.append(ISAOperand.integer(ins.p3))
+    elif opcode == Opcode.Neg:
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p3))
+    elif opcode == Opcode.Store:
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+    elif opcode == Opcode.Call:
+        operands.append(ISAOperand.integer(ins.p1))
+    elif opcode == Opcode.Return:
+        pass
+    elif opcode in (Opcode.CompareEQ, Opcode.CompareNE, Opcode.CompareLT, 
+                    Opcode.CompareLE, Opcode.CompareGT, Opcode.CompareGE):
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+        operands.append(ISAOperand.integer(ins.p3))
+    elif opcode == Opcode.Label:
+        pass
+    else:
+        if ins.p1 != 0: operands.append(ISAOperand.integer(ins.p1))
+        if ins.p2 != 0: operands.append(ISAOperand.integer(ins.p2))
+        if ins.p3 != 0: operands.append(ISAOperand.integer(ins.p3))
+    
+    return ISAInstruction(opcode, operands)
+
+def benchmark_program(program_path, iterations=5):
+    compiler = RoboSimCompiler()
+    
+    compile_times = []
+    for _ in range(iterations):
+        start = time.perf_counter()
+        program = compiler.compile(program_path)
+        compile_times.append(time.perf_counter() - start)
+    
+    isa_prog = ISAProgram()
+    func = ISAFunction("main")
+    for ins in program.instructions:
+        func.add_instruction(convert_instruction(ins))
+    isa_prog.add_function(func)
+    
+    instruction_count = len(program.instructions)
+    
+    encoder = ProgramEncoder()
+    start = time.perf_counter()
+    binary_prog = encoder.encode(isa_prog)
+    encode_time = time.perf_counter() - start
+    
+    serializer = BinarySerializer()
+    start = time.perf_counter()
+    binary_data = serializer.serialize(binary_prog)
+    serialize_time = time.perf_counter() - start
+    
+    loader = ProgramLoader()
+    load_times = []
+    for _ in range(iterations):
+        start = time.perf_counter()
+        runtime_prog = loader.load(binary_prog)
+        load_times.append(time.perf_counter() - start)
+    
+    hardware = MockHardware()
+    vm = VirtualMachine(hardware=hardware)
+    vm.load(runtime_prog)
+    start = time.perf_counter()
+    vm.run()
+    execution_time = time.perf_counter() - start
+    
+    memory_usage = sys.getsizeof(binary_data) + sys.getsizeof(runtime_prog)
+    
+    return {
+        "program": str(program_path.name),
+        "instruction_count": instruction_count,
+        "compile_time_avg": statistics.mean(compile_times),
+        "compile_time_min": min(compile_times),
+        "compile_time_max": max(compile_times),
+        "encode_time": encode_time,
+        "serialize_time": serialize_time,
+        "load_time_avg": statistics.mean(load_times),
+        "load_time_min": min(load_times),
+        "load_time_max": max(load_times),
+        "execution_time": execution_time,
+        "memory_usage_bytes": memory_usage,
+    }
+
+def main():
+    results = []
+    for prog_path in PROGRAMS_DIR.glob("*.py"):
+        print(f"Benchmarking {prog_path.name}...")
+        try:
+            result = benchmark_program(prog_path)
+            results.append(result)
+            print(f"  Instructions: {result['instruction_count']}")
+            print(f"  Compile avg: {result['compile_time_avg']*1000:.2f} ms")
+            print(f"  Load avg:    {result['load_time_avg']*1000:.2f} ms")
+            print(f"  Execute:     {result['execution_time']*1000:.2f} ms")
+            print()
+        except Exception as e:
+            print(f"  FAILED: {e}")
+    
+    with open(RESULTS_FILE, "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"Results saved to {RESULTS_FILE}")
+
+if __name__ == "__main__":
+    main()
+
+================
+File: robot-compiler/integration/end_to_end/run_integration_tests.py
+================
+# integration/end_to_end/run_integration_tests.py
+import unittest
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+COMPILER_ROOT = REPO_ROOT / "robot-compiler"
+if str(COMPILER_ROOT) not in sys.path:
+    sys.path.insert(0, str(COMPILER_ROOT))
+
+if __name__ == "__main__":
+    loader = unittest.TestLoader()
+    suite = loader.discover(str(Path(__file__).parent), pattern="test_*.py")
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    sys.exit(0 if result.wasSuccessful() else 1)
+
+================
+File: robot-compiler/integration/end_to_end/test_end_to_end.py
+================
+# integration/end_to_end/test_end_to_end.py
+import unittest
+import sys
+import time
+import threading
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+COMPILER_ROOT = REPO_ROOT / "robot-compiler"
+FRONTEND_ROOT = REPO_ROOT / "robot-frontend-robosim"
+
+if str(COMPILER_ROOT) not in sys.path:
+    sys.path.insert(0, str(COMPILER_ROOT))
+if str(FRONTEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(FRONTEND_ROOT))
+
+from frontend.compiler import RoboSimCompiler
+from compiler.binary import ProgramEncoder
+from runtime import ProgramLoader, VirtualMachine
+from runtime.hardware import MockHardware
+from compiler.generated.opcode import Opcode
+from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, ISAOperand
+
+PROGRAMS_DIR = Path(__file__).parent / "programs"
+
+def convert_instruction(ins):
+    """Chuyển compiler.Instruction sang ISAInstruction."""
+    opcode = Opcode(ins.opcode)
+    operands = []
+    
+    if opcode == Opcode.LoadConst:
+        operands.append(ISAOperand.integer(ins.p1))
+        if isinstance(ins.p2, float):
+            operands.append(ISAOperand.float(ins.p2))
+        else:
+            operands.append(ISAOperand.integer(ins.p2))
+    elif opcode in (Opcode.Forward, Opcode.Backward, Opcode.TurnLeft, Opcode.TurnRight, Opcode.Wait):
+        operands.append(ISAOperand.integer(ins.p1))
+    elif opcode == Opcode.Stop:
+        pass
+    elif opcode == Opcode.Jump:
+        operands.append(ISAOperand.integer(ins.p2))
+    elif opcode in (Opcode.JumpIfFalse, Opcode.JumpIfTrue):
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+    elif opcode in (Opcode.Add, Opcode.Sub, Opcode.Mul, Opcode.Div, Opcode.Mod, Opcode.Pow):
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+        operands.append(ISAOperand.integer(ins.p3))
+    elif opcode == Opcode.Neg:
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p3))
+    elif opcode == Opcode.Store:
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+    elif opcode == Opcode.Call:
+        operands.append(ISAOperand.integer(ins.p1))
+    elif opcode == Opcode.Return:
+        pass
+    elif opcode in (Opcode.CompareEQ, Opcode.CompareNE, Opcode.CompareLT, 
+                    Opcode.CompareLE, Opcode.CompareGT, Opcode.CompareGE):
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+        operands.append(ISAOperand.integer(ins.p3))
+    elif opcode == Opcode.Label:
+        pass
+    else:
+        if ins.p1 != 0: operands.append(ISAOperand.integer(ins.p1))
+        if ins.p2 != 0: operands.append(ISAOperand.integer(ins.p2))
+        if ins.p3 != 0: operands.append(ISAOperand.integer(ins.p3))
+    
+    return ISAInstruction(opcode, operands)
+
+class TestEndToEnd(unittest.TestCase):
+    def setUp(self):
+        self.compiler = RoboSimCompiler()
+
+    def _run_program(self, program_path, expected_motor_commands, timeout=30):
+        program = self.compiler.compile(program_path)
+        self.assertIsNotNone(program)
+
+        # In ra các instruction để debug
+        print(f"\n--- Instructions for {program_path.name} ---")
+        for i, ins in enumerate(program.instructions):
+            op_name = Opcode(ins.opcode).name
+            print(f"{i}: {op_name} p1={ins.p1} p2={ins.p2} p3={ins.p3}")
+        print("--- End instructions ---\n")
+
+        isa_prog = ISAProgram()
+        func = ISAFunction("main")
+        for ins in program.instructions:
+            func.add_instruction(convert_instruction(ins))
+        isa_prog.add_function(func)
+
+        encoder = ProgramEncoder()
+        binary_prog = encoder.encode(isa_prog)
+
+        loader = ProgramLoader()
+        runtime_prog = loader.load(binary_prog)
+        hardware = MockHardware()
+        vm = VirtualMachine(hardware=hardware)
+        vm.load(runtime_prog)
+        
+        result = {"done": False, "error": None}
+        def run_vm():
+            try:
+                vm.run()
+                result["done"] = True
+            except Exception as e:
+                result["error"] = e
+
+        thread = threading.Thread(target=run_vm)
+        thread.start()
+        thread.join(timeout)
+        if thread.is_alive():
+            vm.stop()
+            thread.join(1)
+            self.fail("Execution timed out")
+        if result["error"]:
+            raise result["error"]
+        
+        self.assertEqual(vm.state.value, "finished")
+
+        motor_commands = []
+        for item in hardware.log:
+            if len(item) >= 3 and item[0] == "set_motor":
+                motor_commands.append((item[1], item[2]))
+        
+        self.assertEqual(len(motor_commands), len(expected_motor_commands))
+        for i, (left, right) in enumerate(expected_motor_commands):
+            self.assertEqual(motor_commands[i][0], left)
+            self.assertEqual(motor_commands[i][1], right)
+
+    def test_demo_forward(self):
+        self._run_program(PROGRAMS_DIR / "demo_forward.py", [(80,80), (0,0)])
+
+    def test_demo_backward(self):
+        self._run_program(PROGRAMS_DIR / "demo_backward.py", [(-50,-50), (0,0)])
+
+    def test_demo_turn(self):
+        self._run_program(PROGRAMS_DIR / "demo_turn.py", [(-60,60), (0,0), (60,-60), (0,0)])
+
+    def test_demo_variable(self):
+        self._run_program(PROGRAMS_DIR / "demo_variable.py", [(60,60), (0,0)])
+
+    def test_demo_if(self):
+        self._run_program(PROGRAMS_DIR / "demo_if.py", [(80,80), (0,0)])
+
+    def test_demo_loop(self):
+        self._run_program(PROGRAMS_DIR / "demo_loop.py", [(70,70), (0,0)])
+
+    def test_demo_function(self):
+        self._run_program(PROGRAMS_DIR / "demo_function.py", [(80,80), (0,0)])
+
+    def test_demo_wait(self):
+        source = """import rcu
+rcu.SetWaitForTime(0.1)
+"""
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write(source)
+            path = Path(f.name)
+        try:
+            program = self.compiler.compile(path)
+            isa_prog = ISAProgram()
+            func = ISAFunction("main")
+            for ins in program.instructions:
+                func.add_instruction(convert_instruction(ins))
+            isa_prog.add_function(func)
+            
+            encoder = ProgramEncoder()
+            binary_prog = encoder.encode(isa_prog)
+            loader = ProgramLoader()
+            runtime_prog = loader.load(binary_prog)
+            hardware = MockHardware()
+            vm = VirtualMachine(hardware=hardware)
+            vm.load(runtime_prog)
+            
+            result = {"done": False, "error": None}
+            def run_vm():
+                try:
+                    vm.run()
+                    result["done"] = True
+                except Exception as e:
+                    result["error"] = e
+            
+            thread = threading.Thread(target=run_vm)
+            thread.start()
+            thread.join(10)
+            if thread.is_alive():
+                vm.stop()
+                thread.join(1)
+                self.fail("Wait test timed out")
+            if result["error"]:
+                raise result["error"]
+            
+            self.assertEqual(vm.state.value, "finished")
+            motor_commands = []
+            for item in hardware.log:
+                if len(item) >= 3 and item[0] == "set_motor":
+                    motor_commands.append((item[1], item[2]))
+            self.assertEqual(len(motor_commands), 0)
+        finally:
+            path.unlink(missing_ok=True)
+
+if __name__ == "__main__":
+    unittest.main()
+
+================
+File: robot-compiler/integration/__init__.py
+================
+
+
+================
+File: robot-docs/BEHAVIOR_DEVELOPMENT_GUIDE.md
+================
+# Behavior Development Guide
+
+## Creating a new Behavior
+1. Kế thừa lớp `Behavior`.
+2. Implement các phương thức lifecycle.
+3. Sử dụng `BehaviorContext` để truy cập runtime.
+4. Đăng ký behavior vào scheduler.
+
+## Example
+```cpp
+class MyBehavior : public Behavior {
+public:
+    MyBehavior() { name = "MyBehavior"; }
+    void init(BehaviorContext& ctx) override { setStatus(BehaviorStatus::INITIALIZED); }
+    void start(BehaviorContext& ctx) override { ... }
+    void update(BehaviorContext& ctx) override { ... }
+    // ... các phương thức khác
+};
+
+================
+File: robot-docs/BEHAVIOR_ENGINE.md
+================
+# Behavior Engine
+
+## Overview
+Behavior Engine là tầng điều phối các hành vi (behaviors) của robot. Behaviors là các đơn vị hành động có thể tái sử dụng, kết hợp cảm biến và chuyển động để tạo ra phản ứng thông minh.
+
+## Architecture
+Mission → Behavior Scheduler → Behavior → BehaviorContext → RobotAPI/Sensors → Hardware
+
+## Components
+- **Behavior**: Lớp cơ sở với lifecycle: init, start, update, pause, resume, stop, reset.
+- **BehaviorContext**: Cung cấp quyền truy cập đến các dịch vụ runtime (motion, sensors, state).
+- **BehaviorScheduler**: Quản lý danh sách behaviors, chạy tuần tự, hỗ trợ timeout và interruption.
+- **Built-in Behaviors**: MoveForward, MoveBackward, TurnLeft, TurnRight, Stop, Wait.
+- **Reactive Behaviors**: TouchStop, ObstacleStop, LightTrigger, LineDetect, ColorDetect.
+
+## Usage
+- Qua Serial: gửi lệnh `behavior start`, `behavior list`, `behavior run <index>`.
+- Trong code: tạo scheduler, add behavior, gọi start() và update() trong loop.
+
+## Lifecycle
+- CREATED → INITIALIZED → RUNNING → COMPLETED/FAILED/INTERRUPTED/CANCELLED
+
+================
+File: robot-docs/BEHAVIOR_LIFECYCLE.md
+================
+# Behavior Lifecycle
+
+## States
+- **CREATED**: Behavior mới được tạo, chưa khởi tạo.
+- **INITIALIZED**: Đã gọi init() nhưng chưa start().
+- **RUNNING**: Đang thực thi.
+- **COMPLETED**: Hoàn thành thành công.
+- **FAILED**: Thất bại.
+- **INTERRUPTED**: Bị dừng giữa chừng.
+- **CANCELLED**: Bị hủy bởi scheduler.
+
+## Methods
+- `init(context)`: Khởi tạo, không block.
+- `start(context)`: Bắt đầu hành động.
+- `update(context)`: Được gọi liên tục trong loop để cập nhật trạng thái.
+- `pause()`, `resume()`: Tạm dừng / tiếp tục.
+- `stop()`: Dừng ngay lập tức.
+- `reset()`: Đưa về CREATED.
+
+## Transition Diagram
+CREATED -> INITIALIZED -> RUNNING -> COMPLETED
+                          -> FAILED
+                          -> INTERRUPTED
+                          -> CANCELLED
+
+================
+File: robot-docs/BEHAVIOR_VALIDATION.md
+================
+### 6.4. `robot-docs/BEHAVIOR_VALIDATION.md`
+
+```markdown
+# Behavior Validation
+
+## Validation Framework
+Chạy `python robot-platform/validation/behavior_validation.py` để thực hiện tất cả golden behaviors.
+
+## Golden Behaviors
+- MoveForward
+- TouchStop
+- ObstacleStop
+- Wait
+- LineDetect
+- ColorDetect
+
+## Acceptance Criteria
+- Mỗi behavior hoàn thành đúng trạng thái.
+- Không crash.
+- Log đầy đủ.
+- Thời gian phản hồi trong ngưỡng cho phép.
+
+================
+File: robot-docs/BOOT_PROCESS.md
+================
+# Boot Process
+
+## Sequence
+1. **Power On**: ESP32 boots.
+2. **Serial Init**: Baud rate 115200.
+3. **Hardware Init**: `RobotAPI::Initialize()` configures PWM and GPIO.
+4. **Diagnostics**: Battery, memory, flash checks.
+5. **Program Load**: `ProgramLoader::LoadFromGenerated()` copies instructions.
+6. **VM Init**: Program counter set to 0.
+7. **Execution Started**: VM begins stepping through instructions.
+
+## Logging
+All stages are logged with timestamps:
+- `[BOOT]`: System startup.
+- `[DIAG]`: Hardware checks.
+- `[EXEC]`: Program execution.
+- `[ERROR]`: Fatal issues.
+- `[STABILITY]`: Test iterations.
+
+## Error Codes
+| Code | Meaning |
+|------|---------|
+| 1    | Invalid opcode |
+| 2    | Program overflow |
+| 3    | Invalid jump target |
+| 4    | Call stack overflow |
+| 5    | Return without call |
+| 6    | Division by zero |
+| 7    | Modulo by zero |
+
+================
+File: robot-docs/END_TO_END_EXECUTION.md
+================
+# End-to-End Execution
+
+**Version:** 1.0  
+**Status:** Ready  
+**Owner:** Platform Team  
+
+## Overview
+
+This document describes the complete execution pipeline from RoboSim source code to robot behavior. It validates that the architecture developed in Sprints 1–11 works as a cohesive system.
+
+## Pipeline
+RoboSim Source (.py)
+│
+▼
+Frontend (robot-frontend-robosim)
+│
+▼
+Python AST (transformed to Standard Robot API)
+│
+▼
+Compiler (robot-compiler)
+│
+▼
+Program (bytecode IR)
+│
+▼
+ISA Program (Robot ISA)
+│
+▼
+Binary Program
+│
+▼
+Binary Loader (runtime/loader.py)
+│
+▼
+Runtime Program
+│
+▼
+Virtual Machine
+│
+▼
+Execution Engine
+│
+▼
+Robot Runtime (motion + sensors)
+│
+▼
+Hardware Adapter (Mock / ESP32)
+│
+▼
+Motors / Sensors
+
+text
+
+## Validation Strategy
+
+We validate the pipeline using a suite of representative RoboSim programs. Each program is compiled, loaded, and executed on a mock hardware environment. The output (motor commands, sensor readings) is verified against expected behavior.
+
+### Test Coverage
+
+| Category | Programs |
+|----------|----------|
+| Motion   | `demo_forward.py`, `demo_backward.py`, `demo_turn.py` |
+| Variables | `demo_variable.py` |
+| Control Flow | `demo_if.py`, `demo_loop.py` |
+| Functions | `demo_function.py` |
+| Timing | `demo_wait.py` (implicitly via wait instruction) |
+
+### Test Execution
+
+```bash
+cd robot-compiler
+python -m integration.end_to_end.test_end_to_end
+Or from the repository root:
+
+bash
+python run_all_tests.py
+Benchmark Results
+Benchmarks measure compile time, load time, execution time, and instruction count. Results are stored in robot-compiler/integration/end_to_end/benchmark_results.json.
+
+To run benchmarks:
+
+bash
+cd robot-compiler
+python -m integration.end_to_end.benchmark
+Continuous Integration
+The integration tests are automatically run on every commit (via run_all_tests.py). This ensures no regression is introduced.
+
+Known Limitations
+Sensor API is not yet fully implemented in RoboSim; sensor programs currently use variables to simulate sensor logic.
+
+Real hardware (ESP32) testing is not part of this suite; it is covered by hardware-specific tests.
+
+Future Work
+Add more complex programs (nested loops, nested functions).
+
+Integrate with real hardware testing.
+
+Extend sensor coverage.
+
+Add performance regression tracking.
+
+Success Criteria
+The end-to-end pipeline is considered validated when all test programs compile and execute without errors, producing the expected robot behavior (verified via mock hardware log).
+
+text
+
+---
+
+## 16. Sửa lỗi import trong test (nếu cần)
+
+Trong `test_end_to_end.py`, ta cần import `RoboSimCompiler` từ `robot-frontend-robosim`. Để đảm bảo, ta thêm:
+
+```python
+# Thêm đường dẫn đến robot-frontend-robosim
+FRONTEND_PATH = ROOT.parent / "robot-frontend-robosim"
+if str(FRONTEND_PATH) not in sys.path:
+    sys.path.insert(0, str(FRONTEND_PATH))
+from frontend.compiler import RoboSimCompiler
+
+================
+File: robot-docs/FIRST_EXECUTION.md
+================
+# First Execution
+
+## Program
+The first official validation program is:
+```python
+import rcu
+rcu.SetMoveRun("forward", 50)
+rcu.SetWaitForTime(1.0)
+rcu.SetMoveStop()
+
+================
+File: robot-docs/GOLDEN_PROGRAMS.md
+================
+# Golden Programs
+
+This is the official regression suite for robot motion.
+
+| Program | Description |
+|---------|-------------|
+| 001_forward.py | Move forward 1 sec at 50% speed |
+| 002_backward.py | Move backward 1 sec at 50% speed |
+| 003_turn_left.py | Turn left 1 sec at 50% speed |
+| 004_turn_right.py | Turn right 1 sec at 50% speed |
+| 005_square.py | Square pattern (4 forward/right) |
+| 006_triangle.py | Triangle pattern |
+| 007_circle_approx.py | Approximate circle |
+| 008_zigzag.py | Zigzag pattern |
+
+All programs use `SetMoveRunSecond` to ensure deterministic timing.
+
+================
+File: robot-docs/MOTION_CALIBRATION.md
+================
+# Motion Calibration
+
+## Calibration Parameters
+- **speedScale**: Overall speed multiplier (default 1.0).
+- **leftMotorScale**: Compensation for left motor (default 1.0).
+- **rightMotorScale**: Compensation for right motor.
+- **turnCompensation**: Additional factor for turning speeds (affects turning radius).
+- **pwmPerSpeed**: Maps speed (0-100) to PWM duty (0-255). Default 2.55.
+
+## Procedure
+1. Run the `forward` golden program and measure actual distance travelled in 1 second.
+2. If distance is less than expected, increase `speedScale`; if more, decrease.
+3. For turning, run `turn_left` and measure angle. Adjust `turnCompensation` to get 90° per second (approximate).
+
+## Saving Calibration
+Use `config save` to store current config (currently placeholder; future EEPROM support).
+
+================
+File: robot-docs/MOTION_VALIDATION_GUIDE.md
+================
+# Motion Validation Guide
+
+## Overview
+This guide describes how to validate robot motion using the golden programs and validation scripts.
+
+## Prerequisites
+- ESP32 robot with motors and encoders (if available)
+- USB cable
+- PlatformIO or Arduino IDE
+- Python 3 with pyserial installed
+
+## Running Validation
+1. Navigate to `robot-platform/validation/`.
+2. Run `python motion_validation.py`.
+   - This compiles each golden program, uploads to robot, reads serial log, and produces `motion_report.json`.
+3. Check the report for duration of each movement.
+
+## Interpreting Results
+- For basic moves (forward/backward), duration should match the specified seconds within ±10% tolerance.
+- For turns, duration may vary due to motor differences; use calibration parameters.
+
+## Calibration
+Use Serial commands to adjust `speedScale`, `leftMotorScale`, `rightMotorScale`, `turnCompensation`, and `pwmPerSpeed`.
+Example:
+config set speedScale 1.05
+config set turnCompensation 0.9
+
+text
+
+## Golden Programs
+All golden programs are in `robot-platform/golden/`. They should be used as regression tests for any firmware changes.
+
+================
+File: robot-docs/PERCEPTION_GUIDE.md
+================
+# Perception Guide
+
+## Overview
+This guide describes how to use sensors in robot programs and validate perception.
+
+## Supported Sensors
+- **Ultrasonic**: HC-SR04 (distance in cm)
+- **Touch**: Digital touch sensors (0/1)
+- **Line**: TCRT5000 (0/1)
+- **Light**: Analog light sensor (0-4095)
+- **Color**: Placeholder (for future)
+
+## API
+```python
+dist = read_ultrasonic()          # returns int cm
+state = read_touch(port)          # port 0 or 1
+light = read_light(channel)       # channel 0
+color = read_color()              # placeholder
+line = read_line(channel)         # channel 0,1,2
+
+Calibration
+Use SensorConfig to adjust:
+
+lightGain, lightOffset
+
+lineInverted
+
+ultrasonicTimeoutMs
+
+Example Program
+python
+while True:
+    if read_touch(0) == 1:
+        stop()
+        break
+    forward(30)
+    wait(100)
+
+================
+File: robot-docs/PERCEPTION_VALIDATION.md
+================
+# Perception Validation
+
+## Validation Framework
+Run `python robot-platform/validation/sensor_validation.py` to execute all golden sensor programs.
+
+## Golden Programs
+| Program | Description |
+|---------|-------------|
+| 001_touch_stop.py | Stop when touch sensor pressed |
+| 002_line_detect.py | Stop when line detected |
+| 003_obstacle_stop.py | Stop when obstacle < 20cm |
+| 004_light_trigger.py | Trigger on light level |
+| 005_color_detect.py | Placeholder |
+| 006_sensor_monitor.py | Monitor all sensors |
+
+## Acceptance Criteria
+- Each program executes without crash.
+- Expected behavior observed.
+- Logs show sensor readings.
+- Regression report generated.
+
+================
+File: robot-docs/ROBOT_BRINGUP_GUIDE.md
+================
+# Robot Bring‑up Guide (M1)
+
+## Hardware Requirements
+- ESP32 development board (e.g., ESP32-WROOM)
+- Motor driver (L298N or similar) with 2 DC motors
+- Power source (battery or USB) providing stable 5V/7.4V
+- USB cable for programming
+
+## Wiring
+Refer to `robot-platform/main/src/HardwareAbstraction/GPIO.h` for pin definitions:
+- Motor Left IN1 → GPIO25
+- Motor Left IN2 → GPIO26
+- Motor Right IN3 → GPIO27
+- Motor Right IN4 → GPIO14
+
+## Software Setup
+1. Install PlatformIO (recommended) or Arduino IDE with ESP32 support.
+2. Install Python dependencies: `pip install pyserial` (for deploy script).
+
+## Build & Deploy
+1. Write your robot program in `robot-platform/deploy_program.py`.
+2. Run `python robot-platform/deploy.py`.
+   - This compiles the program to `generated_program.h`.
+   - Builds the firmware.
+   - Uploads to the ESP32.
+3. Open Serial Monitor (115200 baud) to see boot logs.
+
+## Validation
+- The robot should move forward for 1 second and stop.
+- Serial output should show `[EXEC] Execution Finished`.
+
+================
+File: robot-docs/SENSOR_CALIBRATION.md
+================
+### `robot-docs/SENSOR_CALIBRATION.md`
+
+```markdown
+# Sensor Calibration
+
+## Calibration Parameters
+- `lightGain`: multiplier for light sensor raw value
+- `lightOffset`: offset added
+- `lineInverted`: invert line sensor logic
+- `ultrasonicTimeoutMs`: timeout for ultrasonic pulse
+
+## Procedure
+1. Place robot in controlled environment.
+2. Run `006_sensor_monitor.py` and observe raw values.
+3. Adjust parameters using Serial commands (future).
+4. Save calibration via `saveSensorConfigToStorage()` (placeholder).
+
+================
+File: robot-frontend-robosim/robot/sensor.py
+================
+"""
+AUTO GENERATED FILE – Sensor API
+"""
+
+def read_ultrasonic() -> None:
+    """
+    Read ultrasonic distance in cm
+
+    """
+    pass
+
+def read_touch(port: int) -> None:
+    """
+    Read touch sensor state (0/1)
+
+    Args:
+        port (int):
+    """
+    pass
+
+def read_light(channel: int) -> None:
+    """
+    Read light sensor raw value (0-1023)
+
+    Args:
+        channel (int):
+    """
+    pass
+
+def read_color() -> None:
+    """
+    Read color sensor (placeholder)
+
+    """
+    pass
+
+def read_line(channel: int) -> None:
+    """
+    Read line sensor (0=white, 1=dark)
+
+    Args:
+        channel (int):
+    """
+    pass
+
+================
+File: robot-language/robot/sensor.py
+================
+"""
+AUTO GENERATED FILE – Sensor API
+"""
+
+def read_ultrasonic() -> None:
+    """
+    Read ultrasonic distance in cm
+
+    """
+    pass
+
+def read_touch(port: int) -> None:
+    """
+    Read touch sensor state (0/1)
+
+    Args:
+        port (int):
+    """
+    pass
+
+def read_light(channel: int) -> None:
+    """
+    Read light sensor raw value (0-1023)
+
+    Args:
+        channel (int):
+    """
+    pass
+
+def read_color() -> None:
+    """
+    Read color sensor (placeholder)
+
+    """
+    pass
+
+def read_line(channel: int) -> None:
+    """
+    Read line sensor (0=white, 1=dark)
+
+    Args:
+        channel (int):
+    """
+    pass
+
+================
+File: robot-platform/golden/001_forward.py
+================
+forward(50)
+wait(1000)
+stop()
+
+================
+File: robot-platform/golden/002_backward.py
+================
+backward(50)
+wait(1000)
+stop()
+
+================
+File: robot-platform/golden/003_turn_left.py
+================
+turn_left(50)
+wait(1000)
+stop()
+
+================
+File: robot-platform/golden/004_turn_right.py
+================
+turn_right(50)
+wait(1000)
+stop()
+
+================
+File: robot-platform/golden/005_square.py
+================
+for i in range(4):
+    forward(50)
+    wait(1000)
+    turn_right(50)
+    wait(500)
+stop()
+
+================
+File: robot-platform/golden/006_triangle.py
+================
+for i in range(3):
+    forward(50)
+    wait(1000)
+    turn_right(50)
+    wait(500)
+stop()
+
+================
+File: robot-platform/golden/007_circle_approx.py
+================
+for i in range(36):
+    forward(30)
+    wait(200)
+    turn_right(30)
+    wait(100)
+stop()
+
+================
+File: robot-platform/golden/008_zigzag.py
+================
+for i in range(5):
+    forward(60)
+    wait(500)
+    turn_right(40)
+    wait(300)
+    forward(60)
+    wait(500)
+    turn_left(40)
+    wait(300)
+stop()
+
+================
+File: robot-platform/golden_sensors/001_touch_stop.py
+================
+
+
+================
+File: robot-platform/golden_sensors/002_line_detect.py
+================
+while True:
+    if read_line(0) == 1:
+        stop()
+        break
+    forward(30)
+    wait(100)
+
+================
+File: robot-platform/golden_sensors/003_obstacle_stop.py
+================
+while True:
+    dist = read_ultrasonic()
+    if dist < 20:
+        stop()
+        break
+    forward(30)
+    wait(100)
+
+================
+File: robot-platform/golden_sensors/004_light_trigger.py
+================
+while True:
+    val = read_light(0)
+    if val > 500:
+        # giả sử bật đèn (chưa có API LED)
+        pass
+    wait(50)
+
+================
+File: robot-platform/golden_sensors/005_color_detect.py
+================
+while True:
+    c = read_color()
+    if c == 1:   # placeholder
+        stop()
+        break
+    forward(30)
+    wait(100)
+
+================
+File: robot-platform/golden_sensors/006_sensor_monitor.py
+================
+while True:
+    print(read_ultrasonic())
+    print(read_touch(0))
+    print(read_light(0))
+    print(read_color())
+    wait(1000)
+
+================
+File: robot-platform/main/src/Behavior/Behavior.h
+================
+#ifndef BEHAVIOR_H
+#define BEHAVIOR_H
+
+#include <Arduino.h>
+#include "BehaviorContext.h"
+
+enum class BehaviorStatus {
+    CREATED,
+    INITIALIZED,
+    RUNNING,
+    COMPLETED,
+    FAILED,
+    INTERRUPTED,
+    CANCELLED
+};
+
+class Behavior {
+public:
+    Behavior() : status(BehaviorStatus::CREATED) {}
+    virtual ~Behavior() {}
+
+    // Lifecycle methods (pure virtual)
+    virtual void init(BehaviorContext& context) = 0;
+    virtual void start(BehaviorContext& context) = 0;
+    virtual void update(BehaviorContext& context) = 0;
+    virtual void pause() = 0;
+    virtual void resume() = 0;
+    virtual void stop() = 0;
+    virtual void reset() = 0;
+
+    // Getters
+    BehaviorStatus getStatus() const { return status; }
+    const char* getName() const { return name; }
+
+    // Setter (public để scheduler có thể thay đổi)
+    void setStatus(BehaviorStatus s) { status = s; }
+
+protected:
+    BehaviorStatus status;
+    const char* name = "Behavior";
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/BehaviorContext.h
+================
+#ifndef BEHAVIOR_CONTEXT_H
+#define BEHAVIOR_CONTEXT_H
+
+#include <stdint.h>
+#include "../Services/Robot/RobotAPI.h"
+
+class BehaviorContext {
+public:
+    BehaviorContext() : timestamp(0) {}
+
+    uint32_t getTimestamp() const { return timestamp; }
+    void updateTimestamp() { timestamp = millis(); }
+
+    // Motion APIs
+    void forward(int speed) { RobotAPI::Forward(speed); }
+    void backward(int speed) { RobotAPI::Backward(speed); }
+    void turnLeft(int speed) { RobotAPI::TurnLeft(speed); }
+    void turnRight(int speed) { RobotAPI::TurnRight(speed); }
+    void stop() { RobotAPI::Stop(); }
+    void wait(uint16_t ms) { RobotAPI::Wait(ms); }
+
+    // Sensor APIs
+    int16_t readUltrasonic() { return RobotAPI::ReadUltrasonic(); }
+    int16_t readTouch(int port) { return RobotAPI::ReadTouch(port); }
+    int16_t readLight(int channel) { return RobotAPI::ReadLight(channel); }
+    int16_t readColor() { return RobotAPI::ReadColor(); }
+    int16_t readLine(int channel) { return RobotAPI::ReadLine(channel); }
+
+private:
+    uint32_t timestamp;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/BehaviorScheduler.cpp
+================
+#include "BehaviorScheduler.h"
+#include "../Logger/BootLogger.h"
+
+BehaviorScheduler::BehaviorScheduler()
+    : currentIndex(0), isRunningFlag(false), isPaused(false) {}
+
+BehaviorScheduler::~BehaviorScheduler() {
+    clear();
+}
+
+void BehaviorScheduler::clear() {
+    for (auto b : behaviors) {
+        delete b;
+    }
+    behaviors.clear();
+    currentIndex = 0;
+    isRunningFlag = false;
+}
+
+void BehaviorScheduler::addBehavior(Behavior* behavior) {
+    behaviors.push_back(behavior);
+}
+
+void BehaviorScheduler::start() {
+    if (behaviors.empty()) {
+        BootLogger::log("SCHEDULER", "No behaviors to execute.");
+        return;
+    }
+    currentIndex = 0;
+    isRunningFlag = true;
+    isPaused = false;
+    if (currentIndex < behaviors.size()) {
+        behaviors[currentIndex]->init(context);
+        behaviors[currentIndex]->start(context);
+        BootLogger::logFormat("SCHEDULER", "Started behavior: %s", behaviors[currentIndex]->getName());
+    }
+}
+
+void BehaviorScheduler::update() {
+    if (!isRunningFlag) return;
+    if (isPaused) return;
+
+    if (currentIndex >= behaviors.size()) {
+        isRunningFlag = false;
+        BootLogger::log("SCHEDULER", "All behaviors completed.");
+        return;
+    }
+
+    Behavior* current = behaviors[currentIndex];
+    if (current == nullptr) {
+        advanceToNext();
+        return;
+    }
+
+    context.updateTimestamp();
+    current->update(context);
+
+    BehaviorStatus status = current->getStatus();
+    if (status == BehaviorStatus::COMPLETED || status == BehaviorStatus::FAILED ||
+        status == BehaviorStatus::CANCELLED || status == BehaviorStatus::INTERRUPTED) {
+        BootLogger::logFormat("SCHEDULER", "Behavior %s finished with status %d", current->getName(), (int)status);
+        advanceToNext();
+    }
+}
+
+void BehaviorScheduler::advanceToNext() {
+    currentIndex++;
+    if (currentIndex < behaviors.size()) {
+        behaviors[currentIndex]->init(context);
+        behaviors[currentIndex]->start(context);
+        BootLogger::logFormat("SCHEDULER", "Started behavior: %s", behaviors[currentIndex]->getName());
+    } else {
+        isRunningFlag = false;
+        BootLogger::log("SCHEDULER", "All behaviors completed.");
+    }
+}
+
+void BehaviorScheduler::stopAll() {
+    for (auto b : behaviors) {
+        b->stop();
+    }
+    isRunningFlag = false;
+    BootLogger::log("SCHEDULER", "All behaviors stopped.");
+}
+
+void BehaviorScheduler::cancelCurrent() {
+    if (currentIndex < behaviors.size()) {
+        behaviors[currentIndex]->stop();
+        behaviors[currentIndex]->setStatus(BehaviorStatus::CANCELLED);
+        BootLogger::logFormat("SCHEDULER", "Cancelled behavior: %s", behaviors[currentIndex]->getName());
+        advanceToNext();
+    }
+}
+
+void BehaviorScheduler::runSingle(int index) {
+    if (index < 0 || index >= (int)behaviors.size()) {
+        BootLogger::log("SCHEDULER", "Invalid behavior index.");
+        return;
+    }
+    // Dừng tất cả, xóa hết, chỉ giữ behavior tại index
+    stopAll();
+    clear();
+    // Tạo behavior mới dựa trên index (cần factory, nhưng demo ta tạo cứng)
+    // Vì đây là prototype, ta sẽ không implement chi tiết.
+    // Thay vào đó, ta sẽ tạo một behavior mới với tham số mặc định.
+    // Nhưng để đơn giản, ta chỉ in thông báo.
+    BootLogger::log("SCHEDULER", "runSingle not fully implemented. Use 'behavior start'.");
+    // Nếu muốn, có thể thêm behavior cụ thể:
+    // if (index == 0) addBehavior(new MoveForwardBehavior(50, 2000));
+    // start();
+}
+
+void BehaviorScheduler::logState() {
+    BootLogger::logFormat("SCHEDULER", "Running: %d, Current index: %d, Total: %d",
+                          isRunningFlag, currentIndex, behaviors.size());
+}
+
+================
+File: robot-platform/main/src/Behavior/BehaviorScheduler.h
+================
+#ifndef BEHAVIOR_SCHEDULER_H
+#define BEHAVIOR_SCHEDULER_H
+
+#include <vector>
+#include "Behavior.h"
+#include "BehaviorContext.h"
+
+class BehaviorScheduler {
+public:
+    BehaviorScheduler();
+    ~BehaviorScheduler();
+
+    void addBehavior(Behavior* behavior);
+    void clear();                     // Xóa tất cả behaviors
+    void start();
+    void update();
+    void stopAll();
+    void cancelCurrent();
+    void runSingle(int index);        // Chạy một behavior duy nhất
+    void logState();
+
+    bool isRunning() const { return isRunningFlag; }
+    const std::vector<Behavior*>& getBehaviors() const { return behaviors; }
+
+private:
+    std::vector<Behavior*> behaviors;
+    BehaviorContext context;
+    size_t currentIndex;
+    bool isRunningFlag;
+    bool isPaused;
+
+    void advanceToNext();
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/ColorDetectBehavior.cpp
+================
+#include "ColorDetectBehavior.h"
+
+ColorDetectBehavior::ColorDetectBehavior(int target, int spd)
+    : targetColor(target), speed(spd), isMoving(false) {
+    name = "ColorDetect";
+}
+
+void ColorDetectBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void ColorDetectBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        context.forward(speed);
+        isMoving = true;
+        setStatus(BehaviorStatus::RUNNING);
+    }
+}
+
+void ColorDetectBehavior::update(BehaviorContext& context) {
+    if (!isMoving) return;
+    // Color sensor placeholder: giả sử readColor() trả về giá trị màu
+    if (context.readColor() == targetColor) {
+        context.stop();
+        isMoving = false;
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void ColorDetectBehavior::pause() {}
+void ColorDetectBehavior::resume() {}
+void ColorDetectBehavior::stop() {
+    isMoving = false;
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+void ColorDetectBehavior::reset() {
+    isMoving = false;
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/ColorDetectBehavior.h
+================
+#ifndef COLOR_DETECT_BEHAVIOR_H
+#define COLOR_DETECT_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class ColorDetectBehavior : public Behavior {
+public:
+    ColorDetectBehavior(int targetColor = 0, int speed = 50);
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+
+private:
+    int targetColor;
+    int speed;
+    bool isMoving;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/LightTriggerBehavior.cpp
+================
+#include "LightTriggerBehavior.h"
+
+LightTriggerBehavior::LightTriggerBehavior(int ch, int th, int spd)
+    : channel(ch), threshold(th), speed(spd), isMoving(false) {
+    name = "LightTrigger";
+}
+
+void LightTriggerBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void LightTriggerBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        context.forward(speed);
+        isMoving = true;
+        setStatus(BehaviorStatus::RUNNING);
+    }
+}
+
+void LightTriggerBehavior::update(BehaviorContext& context) {
+    if (!isMoving) return;
+    if (context.readLight(channel) > threshold) {
+        context.stop();
+        isMoving = false;
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void LightTriggerBehavior::pause() {}
+void LightTriggerBehavior::resume() {}
+void LightTriggerBehavior::stop() {
+    isMoving = false;
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+void LightTriggerBehavior::reset() {
+    isMoving = false;
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/LightTriggerBehavior.h
+================
+#ifndef LIGHT_TRIGGER_BEHAVIOR_H
+#define LIGHT_TRIGGER_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class LightTriggerBehavior : public Behavior {
+public:
+    LightTriggerBehavior(int channel = 0, int threshold = 500, int speed = 50);
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+
+private:
+    int channel;
+    int threshold;
+    int speed;
+    bool isMoving;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/LineDetectBehavior.cpp
+================
+#include "LineDetectBehavior.h"
+
+LineDetectBehavior::LineDetectBehavior(int ch, int spd)
+    : channel(ch), speed(spd), isMoving(false) {
+    name = "LineDetect";
+}
+
+void LineDetectBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void LineDetectBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        context.forward(speed);
+        isMoving = true;
+        setStatus(BehaviorStatus::RUNNING);
+    }
+}
+
+void LineDetectBehavior::update(BehaviorContext& context) {
+    if (!isMoving) return;
+    if (context.readLine(channel) == 1) {
+        context.stop();
+        isMoving = false;
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void LineDetectBehavior::pause() {}
+void LineDetectBehavior::resume() {}
+void LineDetectBehavior::stop() {
+    isMoving = false;
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+void LineDetectBehavior::reset() {
+    isMoving = false;
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/LineDetectBehavior.h
+================
+#ifndef LINE_DETECT_BEHAVIOR_H
+#define LINE_DETECT_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class LineDetectBehavior : public Behavior {
+public:
+    LineDetectBehavior(int channel = 0, int speed = 50);
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+
+private:
+    int channel;
+    int speed;
+    bool isMoving;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/MoveBackwardBehavior.cpp
+================
+#include "MoveBackwardBehavior.h"
+
+MoveBackwardBehavior::MoveBackwardBehavior(int spd, uint16_t dur)
+    : speed(spd), durationMs(dur), startTime(0), isRunning(false) {
+    name = "MoveBackward";
+}
+
+void MoveBackwardBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void MoveBackwardBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        context.backward(speed);
+        isRunning = true;
+        startTime = millis();
+        setStatus(BehaviorStatus::RUNNING);
+    }
+}
+
+void MoveBackwardBehavior::update(BehaviorContext& context) {
+    if (!isRunning) return;
+    if (durationMs > 0 && (millis() - startTime >= durationMs)) {
+        context.stop();
+        isRunning = false;
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void MoveBackwardBehavior::pause() {}
+void MoveBackwardBehavior::resume() {}
+void MoveBackwardBehavior::stop() {
+    isRunning = false;
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+void MoveBackwardBehavior::reset() {
+    isRunning = false;
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/MoveBackwardBehavior.h
+================
+#ifndef MOVE_BACKWARD_BEHAVIOR_H
+#define MOVE_BACKWARD_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class MoveBackwardBehavior : public Behavior {
+public:
+    MoveBackwardBehavior(int speed, uint16_t durationMs = 0);
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+
+private:
+    int speed;
+    uint16_t durationMs;
+    uint32_t startTime;
+    bool isRunning;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/MoveForwardBehavior.cpp
+================
+#include "MoveForwardBehavior.h"
+
+MoveForwardBehavior::MoveForwardBehavior(int spd, uint16_t dur) 
+    : speed(spd), durationMs(dur), startTime(0), isRunning(false) {
+    name = "MoveForward";
+}
+
+void MoveForwardBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void MoveForwardBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        context.forward(speed);
+        isRunning = true;
+        startTime = millis();
+        setStatus(BehaviorStatus::RUNNING);
+    }
+}
+
+void MoveForwardBehavior::update(BehaviorContext& context) {
+    if (!isRunning) return;
+    if (durationMs > 0 && (millis() - startTime >= durationMs)) {
+        context.stop();
+        isRunning = false;
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void MoveForwardBehavior::pause() {}
+void MoveForwardBehavior::resume() {}
+void MoveForwardBehavior::stop() {
+    isRunning = false;
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+void MoveForwardBehavior::reset() {
+    isRunning = false;
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/MoveForwardBehavior.h
+================
+#ifndef MOVE_FORWARD_BEHAVIOR_H
+#define MOVE_FORWARD_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class MoveForwardBehavior : public Behavior {
+public:
+    MoveForwardBehavior(int speed, uint16_t durationMs = 0);
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+
+private:
+    int speed;
+    uint16_t durationMs;
+    uint32_t startTime;
+    bool isRunning;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/ObstacleStopBehavior.cpp
+================
+#include "ObstacleStopBehavior.h"
+
+ObstacleStopBehavior::ObstacleStopBehavior(int spd, int thresh)
+    : speed(spd), threshold(thresh), isMoving(false), stopRequested(false) {
+    name = "ObstacleStop";
+}
+
+void ObstacleStopBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void ObstacleStopBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        context.forward(speed);
+        isMoving = true;
+        stopRequested = false;
+        setStatus(BehaviorStatus::RUNNING);
+    }
+}
+
+void ObstacleStopBehavior::update(BehaviorContext& context) {
+    if (!isMoving) return;
+    int dist = context.readUltrasonic();
+    if (dist < threshold) {
+        context.stop();
+        isMoving = false;
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void ObstacleStopBehavior::pause() {}
+void ObstacleStopBehavior::resume() {}
+void ObstacleStopBehavior::stop() {
+    isMoving = false;
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+void ObstacleStopBehavior::reset() {
+    isMoving = false;
+    stopRequested = false;
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/ObstacleStopBehavior.h
+================
+#ifndef OBSTACLE_STOP_BEHAVIOR_H
+#define OBSTACLE_STOP_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class ObstacleStopBehavior : public Behavior {
+public:
+    ObstacleStopBehavior(int speed = 50, int threshold = 20);
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+
+private:
+    int speed;
+    int threshold; // cm
+    bool isMoving;
+    bool stopRequested;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/StopBehavior.cpp
+================
+#include "StopBehavior.h"
+
+StopBehavior::StopBehavior() {
+    name = "Stop";
+}
+
+void StopBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void StopBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        context.stop();
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void StopBehavior::update(BehaviorContext& context) {}
+void StopBehavior::pause() {}
+void StopBehavior::resume() {}
+void StopBehavior::stop() {
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+void StopBehavior::reset() {
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/StopBehavior.h
+================
+#ifndef STOP_BEHAVIOR_H
+#define STOP_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class StopBehavior : public Behavior {
+public:
+    StopBehavior();
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/TouchStopBehavior.cpp
+================
+#include "TouchStopBehavior.h"
+
+TouchStopBehavior::TouchStopBehavior(int p, int spd) 
+    : port(p), speed(spd), isMoving(false), stopRequested(false) {
+    name = "TouchStop";
+}
+
+void TouchStopBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void TouchStopBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        context.forward(speed);
+        isMoving = true;
+        stopRequested = false;
+        setStatus(BehaviorStatus::RUNNING);
+    }
+}
+
+void TouchStopBehavior::update(BehaviorContext& context) {
+    if (!isMoving) return;
+    if (stopRequested) {
+        context.stop();
+        isMoving = false;
+        setStatus(BehaviorStatus::COMPLETED);
+        return;
+    }
+    // Kiểm tra cảm biến touch
+    if (context.readTouch(port) == 1) {
+        stopRequested = true;
+        // Sẽ dừng ở vòng lặp tiếp theo (hoặc dừng ngay)
+        context.stop();
+        isMoving = false;
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void TouchStopBehavior::pause() {}
+void TouchStopBehavior::resume() {}
+void TouchStopBehavior::stop() {
+    isMoving = false;
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+void TouchStopBehavior::reset() {
+    isMoving = false;
+    stopRequested = false;
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/TouchStopBehavior.h
+================
+#ifndef TOUCH_STOP_BEHAVIOR_H
+#define TOUCH_STOP_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class TouchStopBehavior : public Behavior {
+public:
+    TouchStopBehavior(int port = 0, int speed = 50);
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+
+private:
+    int port;
+    int speed;
+    bool isMoving;
+    bool stopRequested;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/TurnLeftBehavior.cpp
+================
+#include "TurnLeftBehavior.h"
+
+TurnLeftBehavior::TurnLeftBehavior(int spd, uint16_t dur)
+    : speed(spd), durationMs(dur), startTime(0), isRunning(false) {
+    name = "TurnLeft";
+}
+
+void TurnLeftBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void TurnLeftBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        context.turnLeft(speed);
+        isRunning = true;
+        startTime = millis();
+        setStatus(BehaviorStatus::RUNNING);
+    }
+}
+
+void TurnLeftBehavior::update(BehaviorContext& context) {
+    if (!isRunning) return;
+    if (durationMs > 0 && (millis() - startTime >= durationMs)) {
+        context.stop();
+        isRunning = false;
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void TurnLeftBehavior::pause() {}
+void TurnLeftBehavior::resume() {}
+void TurnLeftBehavior::stop() {
+    isRunning = false;
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+void TurnLeftBehavior::reset() {
+    isRunning = false;
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/TurnLeftBehavior.h
+================
+#ifndef TURN_LEFT_BEHAVIOR_H
+#define TURN_LEFT_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class TurnLeftBehavior : public Behavior {
+public:
+    TurnLeftBehavior(int speed, uint16_t durationMs = 0);
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+
+private:
+    int speed;
+    uint16_t durationMs;
+    uint32_t startTime;
+    bool isRunning;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/TurnRightBehavior.cpp
+================
+#include "TurnRightBehavior.h"
+
+TurnRightBehavior::TurnRightBehavior(int spd, uint16_t dur)
+    : speed(spd), durationMs(dur), startTime(0), isRunning(false) {
+    name = "TurnRight";
+}
+
+void TurnRightBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void TurnRightBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        context.turnRight(speed);
+        isRunning = true;
+        startTime = millis();
+        setStatus(BehaviorStatus::RUNNING);
+    }
+}
+
+void TurnRightBehavior::update(BehaviorContext& context) {
+    if (!isRunning) return;
+    if (durationMs > 0 && (millis() - startTime >= durationMs)) {
+        context.stop();
+        isRunning = false;
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void TurnRightBehavior::pause() {
+    // Không hỗ trợ tạm dừng
+}
+
+void TurnRightBehavior::resume() {
+    // Không hỗ trợ tiếp tục
+}
+
+void TurnRightBehavior::stop() {
+    isRunning = false;
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+
+void TurnRightBehavior::reset() {
+    isRunning = false;
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/TurnRightBehavior.h
+================
+#ifndef TURN_RIGHT_BEHAVIOR_H
+#define TURN_RIGHT_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class TurnRightBehavior : public Behavior {
+public:
+    TurnRightBehavior(int speed, uint16_t durationMs = 0);
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+
+private:
+    int speed;
+    uint16_t durationMs;
+    uint32_t startTime;
+    bool isRunning;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Behavior/WaitBehavior.cpp
+================
+#include "WaitBehavior.h"
+
+WaitBehavior::WaitBehavior(uint16_t dur)
+    : durationMs(dur), startTime(0), isRunning(false) {
+    name = "Wait";
+}
+
+void WaitBehavior::init(BehaviorContext& context) {
+    setStatus(BehaviorStatus::INITIALIZED);
+}
+
+void WaitBehavior::start(BehaviorContext& context) {
+    if (getStatus() == BehaviorStatus::INITIALIZED) {
+        isRunning = true;
+        startTime = millis();
+        setStatus(BehaviorStatus::RUNNING);
+    }
+}
+
+void WaitBehavior::update(BehaviorContext& context) {
+    if (!isRunning) return;
+    if (millis() - startTime >= durationMs) {
+        isRunning = false;
+        setStatus(BehaviorStatus::COMPLETED);
+    }
+}
+
+void WaitBehavior::pause() {}
+void WaitBehavior::resume() {}
+void WaitBehavior::stop() {
+    isRunning = false;
+    setStatus(BehaviorStatus::INTERRUPTED);
+}
+void WaitBehavior::reset() {
+    isRunning = false;
+    setStatus(BehaviorStatus::CREATED);
+}
+
+================
+File: robot-platform/main/src/Behavior/WaitBehavior.h
+================
+#ifndef WAIT_BEHAVIOR_H
+#define WAIT_BEHAVIOR_H
+
+#include "Behavior.h"
+
+class WaitBehavior : public Behavior {
+public:
+    WaitBehavior(uint16_t durationMs);
+    virtual void init(BehaviorContext& context) override;
+    virtual void start(BehaviorContext& context) override;
+    virtual void update(BehaviorContext& context) override;
+    virtual void pause() override;
+    virtual void resume() override;
+    virtual void stop() override;
+    virtual void reset() override;
+
+private:
+    uint16_t durationMs;
+    uint32_t startTime;
+    bool isRunning;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Communication/SerialCommandHandler.cpp
+================
+#include "SerialCommandHandler.h"
+#include "../Services/Robot/MotionConfig.h"
+#include "../Services/Robot/RobotAPI.h"
+#include "../Devices/SensorConfig.h"
+#include "../Behavior/BehaviorScheduler.h"
+#include <string.h>
+
+// Sử dụng scheduler toàn cục từ main.ino
+extern BehaviorScheduler scheduler;
+extern bool useBehaviorEngine;
+
+void SerialCommandHandler::setup() {
+    Serial.println("SerialCommandHandler ready. Type 'help' for commands.");
+    // Không khởi tạo scheduler ở đây (đã được khởi tạo trong main.ino)
+}
+
+void SerialCommandHandler::handle() {
+    if (!Serial.available()) return;
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    if (input.length() == 0) return;
+
+    if (input.startsWith("help")) {
+        Serial.println("Commands:");
+        Serial.println("  help                - show this message");
+        Serial.println("  config show         - show motion config");
+        Serial.println("  config set <key> <value> - set motion config");
+        Serial.println("  config save         - save motion config");
+        Serial.println("  speed <left> <right> - set motor speeds directly");
+        Serial.println("  sensor show         - show sensor config");
+        Serial.println("  sensor set <key> <value> - set sensor config");
+        Serial.println("  behavior list       - list registered behaviors");
+        Serial.println("  behavior start      - start scheduler");
+        Serial.println("  behavior stop       - stop scheduler");
+        Serial.println("  behavior cancel     - cancel current behavior");
+        Serial.println("  behavior status     - show scheduler status");
+        Serial.println("  mode vm             - switch to VM execution mode");
+        Serial.println("  mode behavior       - switch to Behavior Engine mode");
+    }
+    // ---------- Motion Config ----------
+    else if (input.startsWith("config show")) {
+        auto& cfg = RobotAPI::g_motionConfig;
+        Serial.printf("wheelDiameter_mm: %.2f\n", cfg.wheelDiameter_mm);
+        Serial.printf("wheelBase_mm: %.2f\n", cfg.wheelBase_mm);
+        Serial.printf("speedScale: %.3f\n", cfg.speedScale);
+        Serial.printf("leftMotorScale: %.3f\n", cfg.leftMotorScale);
+        Serial.printf("rightMotorScale: %.3f\n", cfg.rightMotorScale);
+        Serial.printf("minSpeed: %d\n", cfg.minSpeed);
+        Serial.printf("maxSpeed: %d\n", cfg.maxSpeed);
+        Serial.printf("turnCompensation: %.3f\n", cfg.turnCompensation);
+        Serial.printf("pwmPerSpeed: %.3f\n", cfg.pwmPerSpeed);
+    }
+    else if (input.startsWith("config set ")) {
+        String rest = input.substring(11);
+        int space = rest.indexOf(' ');
+        if (space == -1) {
+            Serial.println("Invalid format. Use: config set key value");
+            return;
+        }
+        String key = rest.substring(0, space);
+        String valStr = rest.substring(space + 1);
+        float value = valStr.toFloat();
+        auto& cfg = RobotAPI::g_motionConfig;
+        if (key == "speedScale") cfg.speedScale = value;
+        else if (key == "leftMotorScale") cfg.leftMotorScale = value;
+        else if (key == "rightMotorScale") cfg.rightMotorScale = value;
+        else if (key == "turnCompensation") cfg.turnCompensation = value;
+        else if (key == "pwmPerSpeed") cfg.pwmPerSpeed = value;
+        else if (key == "wheelDiameter_mm") cfg.wheelDiameter_mm = value;
+        else if (key == "wheelBase_mm") cfg.wheelBase_mm = value;
+        else {
+            Serial.printf("Unknown key: %s\n", key.c_str());
+            return;
+        }
+        Serial.printf("Set %s to %.3f\n", key.c_str(), value);
+    }
+    else if (input.startsWith("config save")) {
+        RobotAPI::saveMotionConfigToStorage();
+        Serial.println("Config saved (placeholder).");
+    }
+    else if (input.startsWith("speed ")) {
+        String rest = input.substring(6);
+        int space = rest.indexOf(' ');
+        if (space == -1) {
+            Serial.println("Usage: speed left right");
+            return;
+        }
+        int left = rest.substring(0, space).toInt();
+        int right = rest.substring(space + 1).toInt();
+        RobotAPI::setMotorsDirect(left, right);
+    }
+    // ---------- Sensor Config ----------
+    else if (input.startsWith("sensor show")) {
+        auto& cfg = g_sensorConfig;
+        Serial.printf("ultrasonicTimeoutMs: %d\n", cfg.ultrasonicTimeoutMs);
+        Serial.printf("touchDebounceMs: %d\n", cfg.touchDebounceMs);
+        Serial.printf("lightGain: %.3f\n", cfg.lightGain);
+        Serial.printf("lightOffset: %d\n", cfg.lightOffset);
+        Serial.printf("lineInverted: %d\n", cfg.lineInverted);
+        Serial.printf("colorOffset: %d\n", cfg.colorOffset);
+    }
+    else if (input.startsWith("sensor set ")) {
+        String rest = input.substring(11);
+        int space = rest.indexOf(' ');
+        if (space == -1) {
+            Serial.println("Invalid format. Use: sensor set key value");
+            return;
+        }
+        String key = rest.substring(0, space);
+        String valStr = rest.substring(space + 1);
+        float value = valStr.toFloat();
+        auto& cfg = g_sensorConfig;
+        if (key == "lightGain") cfg.lightGain = value;
+        else if (key == "lightOffset") cfg.lightOffset = (int)value;
+        else if (key == "ultrasonicTimeoutMs") cfg.ultrasonicTimeoutMs = (uint32_t)value;
+        else if (key == "touchDebounceMs") cfg.touchDebounceMs = (uint32_t)value;
+        else if (key == "lineInverted") cfg.lineInverted = (value != 0);
+        else if (key == "colorOffset") cfg.colorOffset = (int)value;
+        else {
+            Serial.printf("Unknown key: %s\n", key.c_str());
+            return;
+        }
+        Serial.printf("Set %s to %.3f\n", key.c_str(), value);
+    }
+    // ---------- Behavior ----------
+    else if (input.startsWith("behavior list")) {
+        auto& behaviors = scheduler.getBehaviors();
+        Serial.printf("Total behaviors: %d\n", behaviors.size());
+        for (size_t i = 0; i < behaviors.size(); i++) {
+            Serial.printf("  %d: %s (status %d)\n", i, behaviors[i]->getName(), (int)behaviors[i]->getStatus());
+        }
+    }
+    else if (input.startsWith("behavior start")) {
+        scheduler.start();
+        Serial.println("Scheduler started.");
+    }
+    else if (input.startsWith("behavior stop")) {
+        scheduler.stopAll();
+        Serial.println("Scheduler stopped.");
+    }
+    else if (input.startsWith("behavior cancel")) {
+        scheduler.cancelCurrent();
+        Serial.println("Current behavior cancelled.");
+    }
+    else if (input.startsWith("behavior status")) {
+        scheduler.logState();
+    }
+    else if (input.startsWith("behavior run ")) {
+        int idx = input.substring(13).toInt();
+        scheduler.runSingle(idx);
+    }
+    // ---------- Mode Switching ----------
+    else if (input.startsWith("mode vm")) {
+        useBehaviorEngine = false;
+        Serial.println("Switched to VM mode.");
+    }
+    else if (input.startsWith("mode behavior")) {
+        useBehaviorEngine = true;
+        Serial.println("Switched to Behavior Engine mode.");
+    }
+    else {
+        Serial.printf("Unknown command: %s\n", input.c_str());
+    }
+}
+
+================
+File: robot-platform/main/src/Communication/SerialCommandHandler.h
+================
+#ifndef SERIAL_COMMAND_HANDLER_H
+#define SERIAL_COMMAND_HANDLER_H
+
+#include <Arduino.h>
+
+class SerialCommandHandler {
+public:
+    static void setup();
+    static void handle();  // call in loop
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Devices/ColorSensor.cpp
+================
+#include "ColorSensor.h"
+
+void ColorSensor::init() {}
+int ColorSensor::readColor() { return 0; }
+
+================
+File: robot-platform/main/src/Devices/ColorSensor.h
+================
+#ifndef COLOR_SENSOR_H
+#define COLOR_SENSOR_H
+
+#include <Arduino.h>
+
+class ColorSensor {
+public:
+    void init();
+    int readColor(); // dummy
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Devices/LightSensor.cpp
+================
+#include "LightSensor.h"
+
+LightSensor::LightSensor(int pin) : _pin(pin) {}
+
+void LightSensor::init() { pinMode(_pin, INPUT); }
+
+int LightSensor::readRaw() { return analogRead(_pin); }
+
+================
+File: robot-platform/main/src/Devices/LightSensor.h
+================
+#ifndef LIGHT_SENSOR_H
+#define LIGHT_SENSOR_H
+
+#include <Arduino.h>
+
+class LightSensor {
+public:
+    LightSensor(int pin);
+    void init();
+    int readRaw(); // 0-4095 (ESP32 ADC)
+private:
+    int _pin;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Devices/LineSensor.cpp
+================
+#include "LineSensor.h"
+
+LineSensor::LineSensor(int l, int c, int r) : _leftPin(l), _centerPin(c), _rightPin(r) {}
+
+void LineSensor::init() {
+    pinMode(_leftPin, INPUT);
+    pinMode(_centerPin, INPUT);
+    pinMode(_rightPin, INPUT);
+}
+
+bool LineSensor::readLeft() { return digitalRead(_leftPin) == HIGH; }
+bool LineSensor::readCenter() { return digitalRead(_centerPin) == HIGH; }
+bool LineSensor::readRight() { return digitalRead(_rightPin) == HIGH; }
+
+================
+File: robot-platform/main/src/Devices/LineSensor.h
+================
+#ifndef LINE_SENSOR_H
+#define LINE_SENSOR_H
+
+#include <Arduino.h>
+
+class LineSensor {
+public:
+    LineSensor(int leftPin, int centerPin, int rightPin);
+    void init();
+    bool readLeft();
+    bool readCenter();
+    bool readRight();
+private:
+    int _leftPin, _centerPin, _rightPin;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Devices/SensorConfig.cpp
+================
+#include "SensorConfig.h"
+
+SensorConfig g_sensorConfig;
+
+void loadDefaultSensorConfig() {
+    g_sensorConfig.ultrasonicTimeoutMs = 30;
+    g_sensorConfig.touchDebounceMs = 50;
+    g_sensorConfig.lightGain = 1.0f;
+    g_sensorConfig.lightOffset = 0;
+    g_sensorConfig.lineInverted = false;
+    g_sensorConfig.colorOffset = 0;
+}
+
+void loadSensorConfigFromStorage() {
+    loadDefaultSensorConfig(); // placeholder
+}
+
+void saveSensorConfigToStorage() {
+    // placeholder
+}
+
+================
+File: robot-platform/main/src/Devices/SensorConfig.h
+================
+#pragma once
+#include <stdint.h>
+
+struct SensorConfig {
+    // Ultrasonic
+    uint32_t ultrasonicTimeoutMs = 30;
+
+    // Touch (debounce)
+    uint32_t touchDebounceMs = 50;
+
+    // Light
+    float lightGain = 1.0f;
+    int lightOffset = 0;
+
+    // Line
+    bool lineInverted = false;
+
+    // Color
+    int colorOffset = 0;
+};
+
+extern SensorConfig g_sensorConfig;
+
+void loadDefaultSensorConfig();
+void loadSensorConfigFromStorage();
+void saveSensorConfigToStorage();
+
+================
+File: robot-platform/main/src/Devices/Touch.cpp
+================
+#include "Touch.h"
+
+Touch::Touch(int pin) : _pin(pin) {}
+
+void Touch::init() { pinMode(_pin, INPUT); }
+
+bool Touch::read() { return digitalRead(_pin) == HIGH; }
+
+================
+File: robot-platform/main/src/Devices/Touch.h
+================
+#ifndef TOUCH_H
+#define TOUCH_H
+
+#include <Arduino.h>
+
+class Touch {
+public:
+    Touch(int pin);
+    void init();
+    bool read();
+private:
+    int _pin;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Devices/Ultrasonic.cpp
+================
+#include "Ultrasonic.h"
+
+Ultrasonic::Ultrasonic(int trigPin, int echoPin) : _trigPin(trigPin), _echoPin(echoPin) {}
+
+void Ultrasonic::init() {
+    pinMode(_trigPin, OUTPUT);
+    pinMode(_echoPin, INPUT);
+}
+
+int Ultrasonic::readDistance() {
+    digitalWrite(_trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(_trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(_trigPin, LOW);
+    long duration = pulseIn(_echoPin, HIGH, 30000); // timeout 30ms
+    if (duration == 0) return 999; // out of range
+    int distance = duration * 0.034 / 2;
+    return distance;
+}
+
+================
+File: robot-platform/main/src/Devices/Ultrasonic.h
+================
+#ifndef ULTRASONIC_H
+#define ULTRASONIC_H
+
+#include <Arduino.h>
+
+class Ultrasonic {
+public:
+    Ultrasonic(int trigPin, int echoPin);
+    void init();
+    int readDistance(); // cm
+private:
+    int _trigPin, _echoPin;
+};
+
+#endif
+
+================
+File: robot-platform/main/src/Diagnostic/Diagnostic.cpp
+================
+#include "Diagnostic.h"
+#include "../HardwareAbstraction/GPIO.h"
+
+void Diagnostic::runAll() {
+    Serial.println("[DIAG] ===== Starting Diagnostics ===== ");
+    checkBattery();
+    checkMotor();
+    checkFlash();
+    checkMemory();
+    checkClock();
+    Serial.println("[DIAG] ===== Diagnostics Complete ===== ");
+}
+
+void Diagnostic::checkBattery() {
+    // Giả sử dùng ADC trên chân GPIO34 (không có pull-up)
+    analogRead(34); // Đọc trước để ổn định
+    int raw = analogRead(34);
+    // Giả sử cầu phân áp 2:1, Vref = 3.3V
+    float voltage = (raw / 4095.0) * 3.3 * 2.0;
+    Serial.printf("[DIAG] Battery Voltage: %.2f V\n", voltage);
+}
+
+void Diagnostic::checkMotor() {
+    // Kiểm tra nhanh bằng cách chạy thử 0.1s (sẽ implement sau)
+    Serial.println("[DIAG] Motor check: OK (placeholder)");
+}
+
+void Diagnostic::checkFlash() {
+    uint32_t size = ESP.getFlashChipSize();
+    Serial.printf("[DIAG] Flash Size: %u bytes\n", size);
+}
+
+void Diagnostic::checkMemory() {
+    Serial.printf("[DIAG] Free Heap: %u bytes\n", ESP.getFreeHeap());
+}
+
+void Diagnostic::checkClock() {
+    Serial.printf("[DIAG] CPU Frequency: %u MHz\n", ESP.getCpuFreqMHz());
+}
+
+================
+File: robot-platform/main/src/Diagnostic/Diagnostic.h
+================
+#pragma once
+#include <Arduino.h>
+
+class Diagnostic {
+public:
+    static void runAll();
+    static void checkBattery();
+    static void checkMotor();
+    static void checkFlash();
+    static void checkMemory();
+    static void checkClock();
+};
+
+================
+File: robot-platform/main/src/generated/opcode.h
+================
+/******************************************************************************
+ * AUTO GENERATED FILE
+ * DO NOT EDIT MANUALLY
+ ******************************************************************************/
+
+#pragma once
+
+#include <stdint.h>
+
+enum class Opcode : uint8_t
+{
+    Forward = 2,
+    Backward = 3,
+    TurnLeft = 4,
+    TurnRight = 5,
+    Wait = 7,
+    Stop = 6,
+    LoadConst = 1,
+    CompareEQ = 8,
+    CompareNE = 9,
+    CompareLT = 10,
+    CompareLE = 11,
+    CompareGT = 12,
+    CompareGE = 13,
+    Jump = 14,
+    JumpIfFalse = 15,
+    JumpIfTrue = 16,
+    Label = 17,
+    Add = 20,
+    Sub = 21,
+    Mul = 22,
+    Div = 23,
+    Mod = 24,
+    Pow = 25,
+    Neg = 26,
+    Call = 27,
+    Return = 28,
+    Store = 29,
+};
+
+================
+File: robot-platform/main/src/Logger/BootLogger.h
+================
+#pragma once
+#include <Arduino.h>
+
+class BootLogger {
+public:
+    static void log(const char* level, const char* message) {
+        Serial.print("[");
+        Serial.print(millis());
+        Serial.print("] ");
+        Serial.print(level);
+        Serial.print(": ");
+        Serial.println(message);
+    }
+
+    static void logFormat(const char* level, const char* format, ...) {
+        char buffer[128];
+        va_list args;
+        va_start(args, format);
+        vsnprintf(buffer, sizeof(buffer), format, args);
+        va_end(args);
+        log(level, buffer);
+    }
+};
+
+================
+File: robot-platform/main/src/Services/Robot/MotionConfig.cpp
+================
+#include "MotionConfig.h"
+
+namespace RobotAPI {
+
+MotionConfig g_motionConfig;
+
+void loadDefaultMotionConfig() {
+    g_motionConfig.wheelDiameter_mm = 65.0f;
+    g_motionConfig.wheelBase_mm = 140.0f;
+    g_motionConfig.speedScale = 1.0f;
+    g_motionConfig.leftMotorScale = 1.0f;
+    g_motionConfig.rightMotorScale = 1.0f;
+    g_motionConfig.minSpeed = 0;
+    g_motionConfig.maxSpeed = 100;
+    g_motionConfig.turnCompensation = 1.0f;
+    g_motionConfig.pwmPerSpeed = 2.55f;
+}
+
+void loadMotionConfigFromStorage() {
+    // Future: read from EEPROM or SD card
+    loadDefaultMotionConfig();
+}
+
+void saveMotionConfigToStorage() {
+    // Future: write to EEPROM or SD card
+}
+
+} // namespace RobotAPI
+
+================
+File: robot-platform/main/src/Services/Robot/MotionConfig.h
+================
+#pragma once
+
+#include <stdint.h>
+
+namespace RobotAPI {
+
+/**
+ * Motion Configuration parameters.
+ * Used to calibrate robot without recompiling.
+ */
+struct MotionConfig {
+    // Wheel parameters
+    float wheelDiameter_mm = 65.0f;
+    float wheelBase_mm = 140.0f;
+
+    // Speed calibration
+    float speedScale = 1.0f;
+    float leftMotorScale = 1.0f;
+    float rightMotorScale = 1.0f;
+
+    // Limits
+    int minSpeed = 0;
+    int maxSpeed = 100;
+
+    // Turn compensation (multiplier for turning speeds)
+    float turnCompensation = 1.0f;
+
+    // PWM mapping
+    float pwmPerSpeed = 2.55f;  // 255/100
+};
+
+// Global config instance
+extern MotionConfig g_motionConfig;
+
+// Load default config
+void loadDefaultMotionConfig();
+
+// Load from storage (placeholder)
+void loadMotionConfigFromStorage();
+
+// Save to storage (placeholder)
+void saveMotionConfigToStorage();
+
+} // namespace RobotAPI
+
+================
+File: robot-platform/validation/behavior_report.json
+================
+[
+  {
+    "behavior": "MoveForward",
+    "completed": false,
+    "logs": [
+      "ets Jul 29 2019 12:21:46"
+    ]
+  },
+  {
+    "behavior": "TouchStop",
+    "completed": false,
+    "logs": [
+      "ets Jul 29 2019 12:21:46"
+    ]
+  },
+  {
+    "behavior": "ObstacleStop",
+    "completed": false,
+    "logs": [
+      "ets Jul 29 2019 12:21:46"
+    ]
+  },
+  {
+    "behavior": "Wait",
+    "completed": false,
+    "logs": [
+      "ets Jul 29 2019 12:21:46"
+    ]
+  },
+  {
+    "behavior": "LineDetect",
+    "completed": false,
+    "logs": [
+      "ets Jul 29 2019 12:21:46"
+    ]
+  },
+  {
+    "behavior": "ColorDetect",
+    "completed": false,
+    "logs": [
+      "ets Jul 29 2019 12:21:46"
+    ]
+  }
+]
+
+================
+File: robot-platform/validation/behavior_validation.py
+================
+#!/usr/bin/env python3
+"""
+Behavior Validation Framework
+Sends serial commands to run behaviors and collects logs.
+"""
+import subprocess
+import sys
+import time
+import json
+import re
+import serial
+import serial.tools.list_ports
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+PLATFORM_DIR = ROOT / "robot-platform"
+VALIDATION_DIR = PLATFORM_DIR / "validation"
+VALIDATION_DIR.mkdir(parents=True, exist_ok=True)
+
+def find_serial_port():
+    ports = serial.tools.list_ports.comports()
+    for p in ports:
+        if "usb" in p.description.lower() or "ch340" in p.description.lower():
+            return p.device
+    return None
+
+def send_command(port, cmd, timeout=2):
+    ser = serial.Serial(port, 115200, timeout=timeout)
+    time.sleep(0.5)
+    ser.write((cmd + "\n").encode())
+    time.sleep(0.5)
+    lines = []
+    while True:
+        line = ser.readline().decode('utf-8', errors='ignore').strip()
+        if not line:
+            break
+        lines.append(line)
+    ser.close()
+    return lines
+
+def run_behavior_test(behavior_name, duration=5):
+    port = find_serial_port()
+    if not port:
+        print("No serial port found.")
+        return None
+
+    # Gửi lệnh behavior run <index> hoặc behavior start sau khi đã cấu hình
+    # Ở đây ta giả định scheduler đã được cấu hình sẵn các behavior.
+    # Có thể gửi lệnh "behavior list" để xem danh sách.
+    # Ta sẽ gửi lệnh "behavior run 0" để chạy behavior đầu tiên.
+    print(f"Running behavior: {behavior_name}")
+    logs = send_command(port, "behavior run 0", timeout=duration+2)
+    return logs
+
+def main():
+    behaviors = ["MoveForward", "TouchStop", "ObstacleStop", "Wait", "LineDetect", "ColorDetect"]
+    results = []
+    for b in behaviors:
+        print(f"\n=== Validating {b} ===")
+        logs = run_behavior_test(b)
+        if logs:
+            # Phân tích log để tìm trạng thái hoàn thành
+            completed = any("COMPLETED" in line for line in logs)
+            results.append({
+                "behavior": b,
+                "completed": completed,
+                "logs": logs
+            })
+            print(f"  Completed: {completed}")
+        else:
+            print("  FAILED.")
+
+    report_path = VALIDATION_DIR / "behavior_report.json"
+    with open(report_path, "w") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+    print(f"\nValidation complete. Report saved to {report_path}")
+
+if __name__ == "__main__":
+    main()
+
+================
+File: robot-platform/validation/motion_validation.py
+================
+#!/usr/bin/env python3
+"""
+Motion Validation Framework
+Automates compilation, upload, and data collection for golden programs.
+"""
+
+import subprocess
+import sys
+import os
+import time
+import json
+import re
+import serial
+import serial.tools.list_ports
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+PLATFORM_DIR = ROOT / "robot-platform"
+GOLDEN_DIR = PLATFORM_DIR / "golden"
+VALIDATION_DIR = PLATFORM_DIR / "validation"
+COMPILER = ROOT / "robot-compiler" / "main.py"
+OUTPUT_HEADER = PLATFORM_DIR / "main" / "src" / "Application" / "generated_program.h"
+
+VALIDATION_DIR.mkdir(parents=True, exist_ok=True)
+
+def find_serial_port():
+    ports = serial.tools.list_ports.comports()
+    print("Available ports:")
+    for p in ports:
+        print(f"  {p.device} - {p.description}")
+    for port in ports:
+        desc = port.description.lower()
+        if "usb" in desc or "ch340" in desc or "cp210" in desc:
+            return port.device
+    return None
+
+def compile_program(source_path):
+    cmd = [sys.executable, str(COMPILER), "--file", str(source_path), "--output", str(OUTPUT_HEADER)]
+    subprocess.check_call(cmd, cwd=ROOT)
+
+def upload_firmware():
+    try:
+        subprocess.check_call(["pio", "run", "-t", "upload", "-d", str(PLATFORM_DIR)])
+    except FileNotFoundError:
+        print("PlatformIO not found. Please upload manually using Arduino IDE.")
+        sys.exit(1)
+
+def read_serial_log(port, timeout=15):
+    ser = serial.Serial(port, 115200, timeout=timeout)
+    time.sleep(2)
+    logs = []
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        line = ser.readline().decode('utf-8', errors='ignore').strip()
+        if line:
+            logs.append(line)
+            if "Execution Finished" in line or "100/100 executions completed" in line:
+                break
+    ser.close()
+    return logs
+
+def parse_motion_times(logs):
+    """
+    Extract start and end timestamps from logs.
+    Assumes first motion command (Forward/Backward/Turn...) is start,
+    and Stop is end.
+    """
+    start = None
+    end = None
+    for line in logs:
+        if "Forward" in line or "Backward" in line or "TurnLeft" in line or "TurnRight" in line:
+            m = re.search(r'\[(\d+)\]', line)
+            if m:
+                start = int(m.group(1))
+        if "Stop" in line:
+            m = re.search(r'\[(\d+)\]', line)
+            if m:
+                end = int(m.group(1))
+    return start, end
+
+def run_validation(program_name):
+    source = GOLDEN_DIR / program_name
+    if not source.exists():
+        print(f"Golden program {source} not found.")
+        return None
+
+    print(f"Compiling {program_name}...")
+    compile_program(source)
+    print("Uploading...")
+    upload_firmware()
+
+    port = find_serial_port()
+    if not port:
+        print("No serial port found.")
+        return None
+
+    print("Reading serial log...")
+    logs = read_serial_log(port)
+
+    start, end = parse_motion_times(logs)
+    duration = (end - start) / 1000.0 if start and end else None
+
+    return {
+        "program": program_name,
+        "start_ms": start,
+        "end_ms": end,
+        "duration_seconds": duration,
+        "logs": logs
+    }
+
+def main():
+    programs = [
+        "001_forward.py",
+        "002_backward.py",
+        "003_turn_left.py",
+        "004_turn_right.py",
+        "005_square.py",
+        "006_triangle.py",
+        "007_circle_approx.py",
+        "008_zigzag.py"
+    ]
+
+    results = []
+    for prog in programs:
+        print(f"\n=== Validating {prog} ===")
+        result = run_validation(prog)
+        if result:
+            results.append(result)
+            print(f"  Duration: {result['duration_seconds']} sec")
+        else:
+            print("  FAILED.")
+
+    report_path = VALIDATION_DIR / "motion_report.json"
+    with open(report_path, "w") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+
+    print(f"\nValidation complete. Report saved to {report_path}")
+
+if __name__ == "__main__":
+    main()
+
+================
+File: robot-platform/validation/sensor_validation.py
+================
+#!/usr/bin/env python3
+"""
+Sensor Validation Framework
+Automates compilation, upload, and data collection for golden sensor programs.
+"""
+import subprocess
+import sys
+import time
+import json
+import re
+import serial
+import serial.tools.list_ports
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+PLATFORM_DIR = ROOT / "robot-platform"
+GOLDEN_DIR = PLATFORM_DIR / "golden_sensors"
+VALIDATION_DIR = PLATFORM_DIR / "validation"
+COMPILER = ROOT / "robot-compiler" / "main.py"
+OUTPUT_HEADER = PLATFORM_DIR / "main" / "src" / "Application" / "generated_program.h"
+
+VALIDATION_DIR.mkdir(parents=True, exist_ok=True)
+
+def find_serial_port():
+    ports = serial.tools.list_ports.comports()
+    print("Available ports:")
+    for p in ports:
+        print(f"  {p.device} - {p.description}")
+    for port in ports:
+        desc = port.description.lower()
+        if "usb" in desc or "ch340" in desc or "cp210" in desc:
+            return port.device
+    return None
+
+def compile_program(source_path):
+    cmd = [sys.executable, str(COMPILER), "--file", str(source_path), "--output", str(OUTPUT_HEADER)]
+    subprocess.check_call(cmd, cwd=ROOT)
+
+def upload_firmware():
+    try:
+        subprocess.check_call(["pio", "run", "-t", "upload", "-d", str(PLATFORM_DIR)])
+    except FileNotFoundError:
+        print("PlatformIO not found. Please upload manually using Arduino IDE.")
+        sys.exit(1)
+
+def read_serial_log(port, timeout=20):
+    ser = serial.Serial(port, 115200, timeout=timeout)
+    time.sleep(2)
+    logs = []
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        line = ser.readline().decode('utf-8', errors='ignore').strip()
+        if line:
+            logs.append(line)
+            if "Execution Finished" in line or "100/100 executions completed" in line:
+                break
+    ser.close()
+    return logs
+
+def parse_sensor_events(logs):
+    # Tìm các sự kiện sensor và stop
+    events = []
+    for line in logs:
+        if "ReadUltrasonic" in line or "ReadTouch" in line or "ReadLight" in line or "ReadColor" in line or "ReadLine" in line:
+            events.append(line)
+        if "Stop" in line and "RobotAPI" in line:
+            events.append(line)
+    return events
+
+def run_validation(program_name):
+    source = GOLDEN_DIR / program_name
+    if not source.exists():
+        print(f"Golden program {source} not found.")
+        return None
+
+    print(f"Compiling {program_name}...")
+    compile_program(source)
+    print("Uploading...")
+    upload_firmware()
+
+    port = find_serial_port()
+    if not port:
+        print("No serial port found.")
+        return None
+
+    print("Reading serial log...")
+    logs = read_serial_log(port)
+
+    events = parse_sensor_events(logs)
+
+    # Kiểm tra xem có lệnh Stop không (tùy program)
+    has_stop = any("Stop" in e for e in events)
+
+    return {
+        "program": program_name,
+        "events": events,
+        "has_stop": has_stop,
+        "logs": logs
+    }
+
+def main():
+    programs = [
+        "001_touch_stop.py",
+        "002_line_detect.py",
+        "003_obstacle_stop.py",
+        "004_light_trigger.py",
+        "005_color_detect.py",
+        "006_sensor_monitor.py"
+    ]
+
+    results = []
+    for prog in programs:
+        print(f"\n=== Validating {prog} ===")
+        result = run_validation(prog)
+        if result:
+            results.append(result)
+            print(f"  Has stop: {result['has_stop']}")
+            for evt in result['events'][:5]:
+                print(f"  {evt}")
+        else:
+            print("  FAILED.")
+
+    report_path = VALIDATION_DIR / "sensor_report.json"
+    with open(report_path, "w") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+
+    print(f"\nValidation complete. Report saved to {report_path}")
+
+if __name__ == "__main__":
+    main()
+
+================
+File: robot-platform/validation/speed_characterization.py
+================
+#!/usr/bin/env python3
+"""
+Speed Characterization
+Tests each speed level (10,20,...,100) and records duration.
+"""
+import subprocess
+import sys
+import json
+import time
+import serial
+import serial.tools.list_ports
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+PLATFORM_DIR = ROOT / "robot-platform"
+COMPILER = ROOT / "robot-compiler" / "main.py"
+OUTPUT_HEADER = PLATFORM_DIR / "main" / "src" / "Application" / "generated_program.h"
+VALIDATION_DIR = PLATFORM_DIR / "validation"
+VALIDATION_DIR.mkdir(parents=True, exist_ok=True)
+
+SPEEDS = range(10, 110, 10)
+
+def find_serial_port():
+    import serial.tools.list_ports
+    for port in serial.tools.list_ports.comports():
+        if "usb" in port.description.lower() or "ch340" in port.description.lower():
+            return port.device
+    return None
+
+def compile_and_upload(speed):
+    # Tạo file tạm với lệnh forward(speed) wait(1) stop
+    source = PLATFORM_DIR / "temp_speed.py"
+    with open(source, "w") as f:
+        f.write(f"""
+import rcu
+rcu.SetMoveRunSecond("forward", {speed}, 1.0)
+""")
+    subprocess.check_call([sys.executable, str(COMPILER), "--file", str(source), "--output", str(OUTPUT_HEADER)])
+    subprocess.check_call(["pio", "run", "-t", "upload", "-d", str(PLATFORM_DIR)])
+    source.unlink()
+
+def read_log(port, timeout=10):
+    ser = serial.Serial(port, 115200, timeout=timeout)
+    time.sleep(2)
+    lines = []
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        line = ser.readline().decode('utf-8', errors='ignore').strip()
+        if line:
+            lines.append(line)
+            if "Stop" in line:
+                break
+    ser.close()
+    return lines
+
+def extract_duration(logs):
+    import re
+    start = None
+    end = None
+    for line in logs:
+        if "Forward" in line:
+            m = re.search(r'\[(\d+)\]', line)
+            if m: start = int(m.group(1))
+        if "Stop" in line:
+            m = re.search(r'\[(\d+)\]', line)
+            if m: end = int(m.group(1))
+    return (end - start)/1000.0 if start and end else None
+
+def main():
+    port = find_serial_port()
+    if not port:
+        print("No serial port found")
+        sys.exit(1)
+
+    results = {}
+    for speed in SPEEDS:
+        print(f"Testing speed {speed}...")
+        compile_and_upload(speed)
+        logs = read_log(port)
+        duration = extract_duration(logs)
+        results[speed] = {"duration_sec": duration}
+        print(f"  Duration: {duration} sec")
+
+    with open(VALIDATION_DIR / "speed_profile.json", "w") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+
+    print("Speed characterization complete.")
+
+if __name__ == "__main__":
+    main()
+
+================
+File: robot-platform/deploy_program.py
+================
+forward(80)
+wait(1000)
+stop()
+
+================
+File: robot-platform/deploy.py
+================
+#!/usr/bin/env python3
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+COMPILER = ROOT / "robot-compiler" / "main.py"
+
+# File nguồn mẫu: chứa chương trình robot (ví dụ forward(50); wait(1000); stop())
+SOURCE_FILE = ROOT / "robot-platform" / "deploy_program.py"
+
+# Đầu ra header
+OUTPUT_HEADER = ROOT / "robot-platform" / "main" / "src" / "Application" / "generated_program.h"
+
+def main():
+    # 1. Kiểm tra file nguồn
+    if not SOURCE_FILE.exists():
+        print(f"❌ Source file not found: {SOURCE_FILE}")
+        print("Please create deploy_program.py with your robot code.")
+        sys.exit(1)
+
+    # 2. Biên dịch sang header
+    print("🛠️  Compiling robot program...")
+    cmd = [sys.executable, str(COMPILER), "--file", str(SOURCE_FILE), "--output", str(OUTPUT_HEADER)]
+    try:
+        subprocess.check_call(cmd)
+        print("✅ Compilation successful.")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Compilation failed: {e}")
+        sys.exit(1)
+
+    # 3. Build firmware (PlatformIO)
+    print("🔨 Building firmware...")
+    try:
+        subprocess.check_call(["pio", "run", "-d", str(ROOT / "robot-platform")])
+        print("✅ Build successful.")
+    except FileNotFoundError:
+        print("⚠️  PlatformIO not found. Please build manually using Arduino IDE.")
+        sys.exit(0)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Build failed: {e}")
+        sys.exit(1)
+
+    # 4. Upload firmware
+    print("📤 Uploading firmware...")
+    try:
+        subprocess.check_call(["pio", "run", "-t", "upload", "-d", str(ROOT / "robot-platform")])
+        print("✅ Upload successful.")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Upload failed: {e}")
+        sys.exit(1)
+
+    print("🎉 Deployment complete! Robot is running.")
+
+if __name__ == "__main__":
+    main()
 
 ================
 File: benchmarks/benchmark_runner.py
@@ -4417,13 +7956,13 @@ def handle_arithmetic(ins: RuntimeInstruction, engine: ExecutionEngine, api: Moc
         else:
             raise ValueError(f"Unknown arithmetic op: {op_name}")
         engine.set_variable_by_index(result_idx, result)
+        print(f"[Arithmetic] {op_name}: left={left}, right={right}, result={result} (idx {result_idx})")
     engine.context.program_counter += 1
     engine.iterator.seek(engine.context.program_counter)
 
 def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
     var_idx = ins.operands[0]
-    const_val = ins.operands[1]  # hằng số có thể là int, float, string, bool
-    # Tạo RuntimeValue tương ứng
+    const_val = ins.operands[1]
     if isinstance(const_val, int):
         from ..value import IntegerValue
         val = IntegerValue(const_val)
@@ -4438,6 +7977,7 @@ def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: Moc
         val = BooleanValue(const_val)
     else:
         raise TypeError(f"Unsupported constant type: {type(const_val)}")
+    print(f"[LoadConst] var_idx={var_idx}, value={val}")
     engine.set_variable_by_index(var_idx, val)
     engine.context.program_counter += 1
     engine.iterator.seek(engine.context.program_counter)
@@ -4445,7 +7985,9 @@ def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: Moc
 def handle_store(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
     src_idx = ins.operands[0]
     dest_idx = ins.operands[1]
+    print(f"[Store] src_idx={src_idx}, dest_idx={dest_idx}")
     val = engine.get_variable_by_index(src_idx)
+    print(f"[Store] value={val}")
     engine.set_variable_by_index(dest_idx, val)
     engine.context.program_counter += 1
     engine.iterator.seek(engine.context.program_counter)
@@ -4490,6 +8032,7 @@ def handle_compare(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRo
     right = engine.get_variable_by_index(right_idx)
     op = COMPARE_OP[ins.opcode.name]
     result = engine.compare(left, right, op)
+    print(f"[Compare] {op}: left={left}, right={right}, result={result} (idx {result_idx})")
     engine.set_variable_by_index(result_idx, result)
     engine.context.program_counter += 1
     engine.iterator.seek(engine.context.program_counter)
@@ -4504,12 +8047,14 @@ from ..mock.robot_api import MockRobotAPI
 
 def handle_jump(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
     target = ins.operands[0]
+    print(f"[Jump] target={target}")
     engine.jump(target)
 
 def handle_jump_if_false(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
     cond_idx = ins.operands[0]
     target = ins.operands[1]
     cond_val = engine.get_variable_by_index(cond_idx)
+    print(f"[JumpIfFalse] cond_idx={cond_idx}, cond_val={cond_val.as_bool()}, target={target}")
     if not cond_val.as_bool():
         engine.jump(target)
     else:
@@ -4848,65 +8393,6 @@ class ILogger(ABC):
         pass
 
 ================
-File: robot-compiler/runtime/hardware/mock.py
-================
-# runtime/hardware/mock.py
-import time
-from .interface import IHardware
-
-class MockHardware(IHardware):
-    """Mock hardware implementation for testing and simulation."""
-
-    def __init__(self):
-        self.motor_left = 0
-        self.motor_right = 0
-        self.log = []
-        self._ultrasonic_value = 50  # default distance
-        self._line_values = {0: 512, 1: 512, 2: 512}  # default middle value
-
-    def set_motor(self, left: int, right: int) -> None:
-        self.motor_left = max(-100, min(100, left))
-        self.motor_right = max(-100, min(100, right))
-        self.log.append(("set_motor", self.motor_left, self.motor_right))
-        print(f"[MockHardware] Motors: L={self.motor_left}, R={self.motor_right}")
-
-    def delay(self, ms: int) -> None:
-        self.log.append(("delay", ms))
-        print(f"[MockHardware] Delay {ms} ms")
-        time.sleep(ms / 1000.0)
-
-    def read_ultrasonic(self) -> int:
-        self.log.append(("read_ultrasonic",))
-        print(f"[MockHardware] Read Ultrasonic: {self._ultrasonic_value} cm")
-        return self._ultrasonic_value
-
-    def read_line_sensor(self, channel: int) -> int:
-        self.log.append(("read_line_sensor", channel))
-        val = self._line_values.get(channel, 512)
-        print(f"[MockHardware] Read Line Sensor channel {channel}: {val}")
-        return val
-
-    def read_touch(self, port: int) -> bool:
-        self.log.append(("read_touch", port))
-        # mock: always False
-        print(f"[MockHardware] Read Touch port {port}: False")
-        return False
-
-    # ---- Helper for tests ----
-
-    def set_ultrasonic_value(self, value: int):
-        self._ultrasonic_value = value
-
-    def set_line_value(self, channel: int, value: int):
-        self._line_values[channel] = value
-
-    def get_log(self):
-        return self.log
-
-    def clear_log(self):
-        self.log.clear()
-
-================
 File: robot-compiler/runtime/mock/__init__.py
 ================
 # runtime/mock/__init__.py
@@ -5120,65 +8606,6 @@ class MotionController:
         self.events.clear()
 
 ================
-File: robot-compiler/runtime/robot/runtime.py
-================
-# runtime/robot/runtime.py
-from .interface import IRobot
-from .motion import MotionController
-from .sensor import SensorManager
-from ..hardware.interface import IHardware
-
-class RobotRuntime(IRobot):
-    """Main robot runtime that orchestrates motion and sensors."""
-
-    def __init__(self, hardware: IHardware):
-        self.hardware = hardware
-        self.motion = MotionController(hardware)
-        self.sensors = SensorManager(hardware)
-
-    # ---- Motion APIs ----
-
-    def forward(self, speed: int) -> None:
-        self.motion.forward(speed)
-
-    def backward(self, speed: int) -> None:
-        self.motion.backward(speed)
-
-    def left(self, speed: int) -> None:
-        self.motion.left(speed)
-
-    def right(self, speed: int) -> None:
-        self.motion.right(speed)
-
-    def stop(self) -> None:
-        self.motion.stop()
-
-    def wait(self, ms: int) -> None:
-        self.motion.wait(ms)
-
-    def set_motor(self, left: int, right: int) -> None:
-        self.hardware.set_motor(left, right)
-
-    # ---- Sensor APIs ----
-
-    def read_ultrasonic(self) -> int:
-        return self.sensors.read_ultrasonic()
-
-    def read_line_sensor(self, channel: int) -> int:
-        return self.sensors.read_line_sensor(channel)
-
-    # ---- State & Events ----
-
-    def get_state(self):
-        return self.motion.get_state()
-
-    def get_events(self):
-        return self.motion.get_events()
-
-    def clear_events(self):
-        self.motion.clear_events()
-
-================
 File: robot-compiler/runtime/robot/sensor.py
 ================
 # runtime/robot/sensor.py
@@ -5213,6 +8640,615 @@ class RobotState(Enum):
     WAITING = "waiting"
     STOPPED = "stopped"
     ERROR = "error"
+
+================
+File: robot-compiler/runtime/sensors/__init__.py
+================
+# runtime/sensors/__init__.py
+from .base import ISensor
+from .sensor_value import SensorValue
+from .sensor_event import SensorEvent, SensorEventType
+from .sensor_manager import SensorManager
+from .line_sensor import LineSensor
+from .ultrasonic_sensor import UltrasonicSensor
+from .touch_sensor import TouchSensor
+from .light_sensor import LightSensor
+from .color_sensor import ColorSensor
+from .filters import MovingAverageFilter, MedianFilter, ThresholdFilter
+from .mock_sensors import create_mock_sensors
+
+__all__ = [
+    "ISensor",
+    "SensorValue",
+    "SensorEvent",
+    "SensorEventType",
+    "SensorManager",
+    "LineSensor",
+    "UltrasonicSensor",
+    "TouchSensor",
+    "LightSensor",
+    "ColorSensor",
+    "MovingAverageFilter",
+    "MedianFilter",
+    "ThresholdFilter",
+    "create_mock_sensors",
+]
+
+================
+File: robot-compiler/runtime/sensors/base.py
+================
+# runtime/sensors/base.py
+from abc import ABC, abstractmethod
+from typing import Any, Optional
+from .sensor_value import SensorValue
+from .sensor_event import SensorEvent, SensorEventType
+
+class ISensor(ABC):
+    """Base interface for all sensors."""
+
+    @abstractmethod
+    def initialize(self) -> None:
+        """Initialize the sensor hardware."""
+        pass
+
+    @abstractmethod
+    def update(self) -> None:
+        """Poll the sensor and update internal state."""
+        pass
+
+    @abstractmethod
+    def read(self) -> SensorValue:
+        """Return the current sensor reading."""
+        pass
+
+    @abstractmethod
+    def reset(self) -> None:
+        """Reset the sensor to default state."""
+        pass
+
+    @abstractmethod
+    def health(self) -> str:
+        """Return health status: 'healthy', 'disconnected', 'timeout', 'invalid', 'calibration_required'."""
+        pass
+
+    @abstractmethod
+    def shutdown(self) -> None:
+        """Release hardware resources."""
+        pass
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Human-readable sensor name."""
+        pass
+
+    @property
+    @abstractmethod
+    def event_handler(self):
+        """Callback for events (optional)."""
+        pass
+
+    @event_handler.setter
+    @abstractmethod
+    def event_handler(self, handler):
+        pass
+
+================
+File: robot-compiler/runtime/sensors/color_sensor.py
+================
+# runtime/sensors/color_sensor.py
+from .base import ISensor
+from .sensor_value import SensorValue
+from ..hardware.interface import IHardware
+from typing import Tuple
+
+class ColorSensor(ISensor):
+    """Color sensor (RGB) - placeholder."""
+
+    def __init__(self, hardware: IHardware, name: str = "color"):
+        self._hardware = hardware
+        self._name = name
+        self._last_value = SensorValue(raw=(0,0,0), normalized=(0.0,0.0,0.0))
+        self._event_handler = None
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def event_handler(self):
+        return self._event_handler
+
+    @event_handler.setter
+    def event_handler(self, handler):
+        self._event_handler = handler
+
+    def initialize(self) -> None:
+        pass
+
+    def update(self) -> None:
+        # Placeholder: read RGB from hardware (not implemented in IHardware)
+        # For now, mock values
+        raw = (0, 0, 0)
+        normalized = (0.0, 0.0, 0.0)
+        self._last_value = SensorValue(raw=raw, normalized=normalized)
+
+    def read(self) -> SensorValue:
+        return self._last_value
+
+    def reset(self) -> None:
+        self._last_value = SensorValue(raw=(0,0,0), normalized=(0.0,0.0,0.0))
+
+    def health(self) -> str:
+        return "healthy"
+
+    def shutdown(self) -> None:
+        pass
+
+    # High-level
+    def color(self) -> Tuple[int, int, int]:
+        return self._last_value.raw
+
+    def rgb(self) -> Tuple[float, float, float]:
+        return self._last_value.normalized
+
+    def confidence(self) -> float:
+        return self._last_value.quality
+
+================
+File: robot-compiler/runtime/sensors/filters.py
+================
+# runtime/sensors/filters.py
+from collections import deque
+from typing import List, Any
+
+class MovingAverageFilter:
+    def __init__(self, window_size: int = 5):
+        self.window_size = window_size
+        self._buffer = deque(maxlen=window_size)
+
+    def filter(self, value: float) -> float:
+        self._buffer.append(value)
+        if len(self._buffer) == 0:
+            return 0.0
+        return sum(self._buffer) / len(self._buffer)
+
+class MedianFilter:
+    def __init__(self, window_size: int = 5):
+        self.window_size = window_size
+        self._buffer = deque(maxlen=window_size)
+
+    def filter(self, value: float) -> float:
+        self._buffer.append(value)
+        if len(self._buffer) == 0:
+            return 0.0
+        sorted_vals = sorted(self._buffer)
+        mid = len(sorted_vals) // 2
+        return sorted_vals[mid]
+
+class ThresholdFilter:
+    def __init__(self, threshold: float = 0.5, hysteresis: float = 0.1):
+        self.threshold = threshold
+        self.hysteresis = hysteresis
+        self._last_state = False
+
+    def filter(self, value: float) -> bool:
+        if value >= self.threshold + self.hysteresis:
+            self._last_state = True
+        elif value <= self.threshold - self.hysteresis:
+            self._last_state = False
+        # else keep last state
+        return self._last_state
+
+================
+File: robot-compiler/runtime/sensors/light_sensor.py
+================
+# runtime/sensors/light_sensor.py
+from .base import ISensor
+from .sensor_value import SensorValue
+from ..hardware.interface import IHardware
+
+class LightSensor(ISensor):
+    """Light sensor (brightness)."""
+
+    def __init__(self, hardware: IHardware, channel: int, name: str = "light"):
+        self._hardware = hardware
+        self._channel = channel
+        self._name = name
+        self._last_value = SensorValue(raw=0, normalized=0.0)
+
+    @property
+    def name(self) -> str:
+        return f"{self._name}_{self._channel}"
+
+    @property
+    def event_handler(self):
+        return None  # not implemented
+
+    @event_handler.setter
+    def event_handler(self, handler):
+        pass
+
+    def initialize(self) -> None:
+        pass
+
+    def update(self) -> None:
+        # Assuming hardware read_line_sensor can be used for light (analog)
+        raw = self._hardware.read_line_sensor(self._channel)
+        # Normalize: 0-1023 to 0.0-1.0
+        normalized = raw / 1023.0
+        self._last_value = SensorValue(raw=raw, normalized=normalized)
+
+    def read(self) -> SensorValue:
+        return self._last_value
+
+    def reset(self) -> None:
+        self._last_value = SensorValue(raw=0, normalized=0.0)
+
+    def health(self) -> str:
+        return "healthy"
+
+    def shutdown(self) -> None:
+        pass
+
+    # High-level
+    def brightness(self) -> float:
+        return float(self._last_value.raw)
+
+    def normalized(self) -> float:
+        return self._last_value.normalized
+
+================
+File: robot-compiler/runtime/sensors/line_sensor.py
+================
+# runtime/sensors/line_sensor.py
+from .base import ISensor
+from .sensor_value import SensorValue
+from .sensor_event import SensorEvent, SensorEventType
+from ..hardware.interface import IHardware
+import time
+
+class LineSensor(ISensor):
+    """Line sensor runtime: reads raw values, normalizes, provides high-level info."""
+
+    def __init__(self, hardware: IHardware, channel: int, name: str = "line"):
+        self._hardware = hardware
+        self._channel = channel
+        self._name = name
+        self._last_value = SensorValue(raw=0, normalized=0.0)
+        self._event_handler = None
+
+    @property
+    def name(self) -> str:
+        return f"{self._name}_{self._channel}"
+
+    @property
+    def event_handler(self):
+        return self._event_handler
+
+    @event_handler.setter
+    def event_handler(self, handler):
+        self._event_handler = handler
+
+    def initialize(self) -> None:
+        # No specific initialization needed for mock/adapters
+        pass
+
+    def update(self) -> None:
+        raw = self._hardware.read_line_sensor(self._channel)
+        # Normalize: assume 0-1023, map to 0.0-1.0
+        normalized = raw / 1023.0
+        self._last_value = SensorValue(raw=raw, normalized=normalized)
+
+    def read(self) -> SensorValue:
+        return self._last_value
+
+    def reset(self) -> None:
+        self._last_value = SensorValue(raw=0, normalized=0.0)
+
+    def health(self) -> str:
+        # Simple health check: if last reading is valid
+        if self._last_value.valid:
+            return "healthy"
+        return "invalid"
+
+    def shutdown(self) -> None:
+        pass
+
+    # High-level methods
+    def is_on_line(self, threshold: float = 0.5) -> bool:
+        """Return True if sensor is over a dark line (assuming normalized < threshold)."""
+        return self._last_value.normalized < threshold
+
+    def position(self) -> float:
+        """Return normalized position (0.0 to 1.0)."""
+        return self._last_value.normalized
+
+    def confidence(self) -> float:
+        """Return confidence based on quality."""
+        return self._last_value.quality
+
+================
+File: robot-compiler/runtime/sensors/mock_sensors.py
+================
+# runtime/sensors/mock_sensors.py
+from .base import ISensor
+from .sensor_value import SensorValue
+from .line_sensor import LineSensor
+from .ultrasonic_sensor import UltrasonicSensor
+from .touch_sensor import TouchSensor
+from .light_sensor import LightSensor
+from .color_sensor import ColorSensor
+from ..hardware.mock import MockHardware
+
+def create_mock_sensors(hardware: MockHardware):
+    """Factory to create a set of mock sensors."""
+    sensors = {
+        "line_0": LineSensor(hardware, 0, "line"),
+        "line_1": LineSensor(hardware, 1, "line"),
+        "line_2": LineSensor(hardware, 2, "line"),
+        "ultrasonic": UltrasonicSensor(hardware, "ultrasonic"),
+        "touch_0": TouchSensor(hardware, 0, "touch"),
+        "touch_1": TouchSensor(hardware, 1, "touch"),
+        "light_0": LightSensor(hardware, 0, "light"),
+        "color": ColorSensor(hardware, "color"),
+    }
+    return sensors
+
+================
+File: robot-compiler/runtime/sensors/sensor_event.py
+================
+# runtime/sensors/sensor_event.py
+from enum import Enum, auto
+from dataclasses import dataclass
+from typing import Any
+
+class SensorEventType(Enum):
+    ACTIVATED = auto()
+    DEACTIVATED = auto()
+    CHANGED = auto()
+    ERROR = auto()
+    DISCONNECTED = auto()
+
+@dataclass
+class SensorEvent:
+    """Event emitted by a sensor."""
+    sensor_name: str
+    event_type: SensorEventType
+    value: Any = None
+    message: str = ""
+
+================
+File: robot-compiler/runtime/sensors/sensor_manager.py
+================
+# runtime/sensors/sensor_manager.py
+from typing import Dict, List, Optional, Type
+from .base import ISensor
+from .sensor_value import SensorValue
+from .sensor_event import SensorEvent, SensorEventType
+
+class SensorManager:
+    """Manages multiple sensors: registration, lifecycle, polling."""
+
+    def __init__(self):
+        self._sensors: Dict[str, ISensor] = {}
+        self._callbacks = []
+
+    def register(self, sensor: ISensor) -> None:
+        """Register a sensor instance."""
+        if sensor.name in self._sensors:
+            raise ValueError(f"Sensor '{sensor.name}' already registered")
+        self._sensors[sensor.name] = sensor
+
+    def initialize_all(self) -> None:
+        """Initialize all registered sensors."""
+        for name, sensor in self._sensors.items():
+            try:
+                sensor.initialize()
+            except Exception as e:
+                print(f"[SensorManager] Error initializing {name}: {e}")
+
+    def update_all(self) -> None:
+        """Update all sensors (poll hardware)."""
+        for name, sensor in self._sensors.items():
+            try:
+                sensor.update()
+            except Exception as e:
+                print(f"[SensorManager] Error updating {name}: {e}")
+
+    def read(self, sensor_name: str) -> Optional[SensorValue]:
+        """Read a sensor by name."""
+        sensor = self._sensors.get(sensor_name)
+        if sensor is None:
+            return None
+        return sensor.read()
+
+    def health(self, sensor_name: str) -> Optional[str]:
+        """Get health status of a sensor."""
+        sensor = self._sensors.get(sensor_name)
+        if sensor is None:
+            return None
+        return sensor.health()
+
+    def shutdown_all(self) -> None:
+        """Shutdown all sensors."""
+        for name, sensor in self._sensors.items():
+            try:
+                sensor.shutdown()
+            except Exception as e:
+                print(f"[SensorManager] Error shutting down {name}: {e}")
+
+    def get_all_sensor_names(self) -> List[str]:
+        return list(self._sensors.keys())
+
+    # Event handling (optional, future)
+    def on_event(self, callback):
+        """Register a callback for sensor events."""
+        self._callbacks.append(callback)
+
+================
+File: robot-compiler/runtime/sensors/sensor_value.py
+================
+# runtime/sensors/sensor_value.py
+from dataclasses import dataclass
+from typing import Optional, Any
+import time
+
+@dataclass
+class SensorValue:
+    """Encapsulates a sensor reading with metadata."""
+    raw: Any                     # raw value from hardware
+    normalized: float            # normalized value (0.0 to 1.0)
+    timestamp: float = None      # time of reading (optional)
+    valid: bool = True
+    quality: float = 1.0         # 0.0 to 1.0
+
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = time.time()
+
+================
+File: robot-compiler/runtime/sensors/touch_sensor.py
+================
+# runtime/sensors/touch_sensor.py
+from .base import ISensor
+from .sensor_value import SensorValue
+from .sensor_event import SensorEvent, SensorEventType
+from ..hardware.interface import IHardware
+import time
+
+class TouchSensor(ISensor):
+    """Touch sensor with debounce."""
+
+    def __init__(self, hardware: IHardware, port: int, name: str = "touch", debounce_ms: int = 50):
+        self._hardware = hardware
+        self._port = port
+        self._name = name
+        self._debounce_ms = debounce_ms
+        self._last_value = SensorValue(raw=False, normalized=0.0)
+        self._last_state = False
+        self._last_click_time = 0
+        self._event_handler = None
+
+    @property
+    def name(self) -> str:
+        return f"{self._name}_{self._port}"
+
+    @property
+    def event_handler(self):
+        return self._event_handler
+
+    @event_handler.setter
+    def event_handler(self, handler):
+        self._event_handler = handler
+
+    def initialize(self) -> None:
+        pass
+
+    def update(self) -> None:
+        raw = self._hardware.read_touch(self._port)
+        # Normalize: bool to 0.0/1.0
+        normalized = 1.0 if raw else 0.0
+        new_val = SensorValue(raw=raw, normalized=normalized)
+        # Debounce logic
+        now = time.time() * 1000
+        if raw != self._last_state:
+            if now - self._last_click_time > self._debounce_ms:
+                self._last_state = raw
+                self._last_click_time = now
+                if self._event_handler:
+                    self._event_handler(SensorEvent(
+                        sensor_name=self.name,
+                        event_type=SensorEventType.CHANGED if raw else SensorEventType.DEACTIVATED,
+                        value=raw
+                    ))
+        self._last_value = new_val
+
+    def read(self) -> SensorValue:
+        return self._last_value
+
+    def reset(self) -> None:
+        self._last_value = SensorValue(raw=False, normalized=0.0)
+        self._last_state = False
+
+    def health(self) -> str:
+        return "healthy"  # simple
+
+    def shutdown(self) -> None:
+        pass
+
+    # High-level methods
+    def pressed(self) -> bool:
+        return self._last_value.raw
+
+    def released(self) -> bool:
+        return not self.pressed()
+
+    def clicked(self) -> bool:
+        # For simplicity, just return if pressed (or implement edge detection)
+        return self.pressed()
+
+================
+File: robot-compiler/runtime/sensors/ultrasonic_sensor.py
+================
+# runtime/sensors/ultrasonic_sensor.py
+from .base import ISensor
+from .sensor_value import SensorValue
+from ..hardware.interface import IHardware
+
+class UltrasonicSensor(ISensor):
+    """Ultrasonic sensor runtime: distance, obstacle detection."""
+
+    def __init__(self, hardware: IHardware, name: str = "ultrasonic"):
+        self._hardware = hardware
+        self._name = name
+        self._last_value = SensorValue(raw=0, normalized=0.0)
+        self._event_handler = None
+        self._threshold = 20.0  # cm
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def event_handler(self):
+        return self._event_handler
+
+    @event_handler.setter
+    def event_handler(self, handler):
+        self._event_handler = handler
+
+    def initialize(self) -> None:
+        pass
+
+    def update(self) -> None:
+        raw = self._hardware.read_ultrasonic()
+        # Normalize: assume range 0-100 cm, map to 0.0-1.0
+        normalized = max(0.0, min(1.0, raw / 100.0))
+        self._last_value = SensorValue(raw=raw, normalized=normalized)
+
+    def read(self) -> SensorValue:
+        return self._last_value
+
+    def reset(self) -> None:
+        self._last_value = SensorValue(raw=0, normalized=0.0)
+
+    def health(self) -> str:
+        if self._last_value.valid:
+            return "healthy"
+        return "invalid"
+
+    def shutdown(self) -> None:
+        pass
+
+    # High-level methods
+    def distance(self) -> float:
+        return float(self._last_value.raw)
+
+    def has_obstacle(self, threshold: float = None) -> bool:
+        if threshold is None:
+            threshold = self._threshold
+        return self.distance() < threshold
 
 ================
 File: robot-compiler/runtime/tests/__init__.py
@@ -5409,6 +9445,104 @@ class TestIntegrationESP32(unittest.TestCase):
         vm.step()
         self.assertEqual(vm.state.value, "finished")
 
+
+if __name__ == "__main__":
+    unittest.main()
+
+================
+File: robot-compiler/runtime/tests/test_sensors.py
+================
+# runtime/tests/test_sensors.py
+import unittest
+import sys
+from pathlib import Path
+import time
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from runtime.hardware.mock import MockHardware
+from runtime.sensors import (
+    SensorManager, LineSensor, UltrasonicSensor, TouchSensor,
+    LightSensor, ColorSensor, create_mock_sensors,
+    MovingAverageFilter, MedianFilter, ThresholdFilter
+)
+
+class TestSensorBase(unittest.TestCase):
+    def setUp(self):
+        self.hardware = MockHardware()
+
+    def test_line_sensor(self):
+        sensor = LineSensor(self.hardware, 0)
+        self.hardware.set_line_value(0, 800)
+        sensor.update()
+        val = sensor.read()
+        self.assertEqual(val.raw, 800)
+        self.assertAlmostEqual(val.normalized, 800/1023, places=2)
+        self.assertTrue(sensor.is_on_line(threshold=0.8))
+
+    def test_ultrasonic(self):
+        sensor = UltrasonicSensor(self.hardware)
+        # Set distance less than threshold to trigger obstacle
+        self.hardware.set_ultrasonic_value(20)  # 20 cm < 25 cm threshold
+        sensor.update()
+        val = sensor.read()
+        self.assertEqual(val.raw, 20)
+        self.assertAlmostEqual(val.normalized, 0.2, places=2)
+        self.assertTrue(sensor.has_obstacle(threshold=25))
+
+    def test_touch(self):
+        sensor = TouchSensor(self.hardware, 0)
+        self.hardware.set_touch_value(0, True)
+        sensor.update()
+        self.assertTrue(sensor.pressed())
+        self.hardware.set_touch_value(0, False)
+        sensor.update()
+        self.assertFalse(sensor.pressed())
+
+    def test_light_sensor(self):
+        sensor = LightSensor(self.hardware, 0)
+        self.hardware.set_line_value(0, 512)
+        sensor.update()
+        val = sensor.read()
+        self.assertEqual(val.raw, 512)
+        self.assertAlmostEqual(val.normalized, 0.5, places=2)
+
+    def test_color_sensor(self):
+        sensor = ColorSensor(self.hardware)
+        sensor.update()  # mock values
+        val = sensor.read()
+        self.assertEqual(val.raw, (0,0,0))
+
+    def test_sensor_manager(self):
+        mgr = SensorManager()
+        sensors = create_mock_sensors(self.hardware)
+        for s in sensors.values():
+            mgr.register(s)
+        mgr.initialize_all()
+        self.hardware.set_line_value(0, 900)
+        mgr.update_all()
+        val = mgr.read("line_0")
+        self.assertIsNotNone(val)
+        self.assertEqual(val.raw, 900)
+
+    def test_filters(self):
+        ma = MovingAverageFilter(3)
+        self.assertEqual(ma.filter(10), 10)
+        self.assertEqual(ma.filter(20), 15)
+        self.assertEqual(ma.filter(30), 20)
+
+        med = MedianFilter(3)
+        med.filter(10)
+        med.filter(30)
+        self.assertEqual(med.filter(20), 20)
+
+        th = ThresholdFilter(0.5, 0.1)
+        self.assertFalse(th.filter(0.4))
+        self.assertFalse(th.filter(0.45))
+        self.assertTrue(th.filter(0.6))   # >= 0.6
+        self.assertTrue(th.filter(0.55))  # hysteresis keeps true
 
 if __name__ == "__main__":
     unittest.main()
@@ -5800,7 +9934,7 @@ class ExecutionEngine:
 
     # --- Control flow ---
     def jump(self, target: int):
-        if target < 0 or target >= self.iterator.size:
+        if target < 0 or target > self.iterator.size:
             raise ValueError(f"Invalid jump target: {target}")
         self.context.program_counter = target
         self.iterator.seek(target)
@@ -6367,6 +10501,122 @@ VirtualMachine -> Dispatcher -> Handlers -> RobotRuntime -> MotionController/Sen
 ## Future ESP32 Integration
 
 To replace MockHardware with ESP32Hardware, implement IHardware and pass it to RobotRuntime. No changes needed in VirtualMachine or handlers.
+
+================
+File: robot-compiler/runtime/SENSOR_RUNTIME.md
+================
+# Sensor Runtime Architecture
+
+**Version:** 1.0  
+**Status:** Ready  
+**Owner:** Platform Team  
+
+## Overview
+
+The Sensor Runtime provides a unified infrastructure for all robot sensors. It decouples sensor hardware from robot logic, enabling easy addition of new sensors and consistent data access.
+
+## Architecture
+RobotRuntime
+│
+▼
+SensorManager
+│
+├── LineSensor
+├── UltrasonicSensor
+├── TouchSensor
+├── LightSensor
+└── ColorSensor
+│
+▼
+Hardware Interface (IHardware)
+│
+▼
+ESP32Adapter / MockHardware
+
+text
+
+## Components
+
+### ISensor
+Base interface for all sensors:
+- `initialize()`, `update()`, `read()`, `reset()`, `health()`, `shutdown()`
+- Each sensor implementation must inherit.
+
+### SensorValue
+Encapsulates a reading with metadata:
+- `raw`: raw value from hardware
+- `normalized`: normalized to 0.0–1.0
+- `timestamp`: time of reading
+- `valid`: boolean
+- `quality`: 0.0–1.0
+
+### SensorEvent
+Events emitted by sensors:
+- `ACTIVATED`, `DEACTIVATED`, `CHANGED`, `ERROR`, `DISCONNECTED`
+- Used for debugging and future event-driven programming.
+
+### SensorManager
+Central registry and lifecycle manager:
+- Register sensors
+- Initialize/update/shutdown all
+- Read individual sensors
+- Health monitoring
+
+## Sensor Implementations
+
+### LineSensor
+- `is_on_line(threshold)`: returns True if over dark line
+- `position()`: normalized position
+- `confidence()`: confidence score
+
+### UltrasonicSensor
+- `distance()`: distance in cm
+- `has_obstacle(threshold)`: obstacle detection
+
+### TouchSensor
+- `pressed()`, `released()`, `clicked()`
+- Built-in debounce
+
+### LightSensor
+- `brightness()`: raw brightness
+- `normalized()`: normalized brightness
+
+### ColorSensor
+- `color()`: RGB tuple
+- `rgb()`: normalized RGB
+- `confidence()`
+
+## Filtering
+
+Filters can be applied to sensor values:
+- `MovingAverageFilter`: smooths noise
+- `MedianFilter`: removes outliers
+- `ThresholdFilter`: hysteresis thresholding
+
+## Health Monitoring
+
+Each sensor reports health status:
+- `healthy`
+- `disconnected`
+- `timeout`
+- `invalid`
+- `calibration_required`
+
+## Integration with RobotRuntime
+
+`RobotRuntime` automatically registers a default set of sensors using the provided hardware. Sensor data can be accessed via `RobotRuntime.sensor_manager`.
+
+## Future Extensions
+
+- More sensors (gyroscope, accelerometer, GPS)
+- Calibration framework
+- Sensor fusion
+- Event-driven callbacks
+- Debugger integration
+
+## Testing
+
+Mock sensors are provided for deterministic testing. See `tests/test_sensors.py`.
 
 ================
 File: robot-compiler/runtime/stack.py
@@ -11623,6 +15873,11 @@ Robot Language provides several built-in functions:
 | `turn_right(speed)` | 1 | Rotate robot right |
 | `wait(milliseconds)` | 1 | Wait milliseconds |
 | `stop()` | 0 | Stop robot |
+| `read_ultrasonic()` | 0 | Read ultrasonic distance in cm |
+| `read_touch(port)` | 1 | Read touch sensor state (0/1) |
+| `read_light(channel)` | 1 | Read light sensor raw value (0-1023) |
+| `read_color()` | 0 | Read color sensor (placeholder) |
+| `read_line(channel)` | 1 | Read line sensor (0=white, 1=dark) |
 
 ### User-Defined Functions
 ```python
@@ -11673,6 +15928,22 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 #### `void stop()`
 - Stop robot
 
+### Sensor
+#### `void read_ultrasonic()`
+- Read ultrasonic distance in cm
+
+#### `void read_touch(int port)`
+- Read touch sensor state (0/1)
+
+#### `void read_light(int channel)`
+- Read light sensor raw value (0-1023)
+
+#### `void read_color()`
+- Read color sensor (placeholder)
+
+#### `void read_line(int channel)`
+- Read line sensor (0=white, 1=dark)
+
 
 ## Implementation
 The RobotAPI is implemented in `robot-platform/main/src/Services/Robot/RobotAPI.cpp`.
@@ -11709,6 +15980,22 @@ The SDK is automatically installed as part of the `robot-language` build.
 
 #### `stop()`
 - Stop robot
+
+### Sensor
+#### `read_ultrasonic()`
+- Read ultrasonic distance in cm
+
+#### `read_touch(port)`
+- Read touch sensor state (0/1)
+
+#### `read_light(channel)`
+- Read light sensor raw value (0-1023)
+
+#### `read_color()`
+- Read color sensor (placeholder)
+
+#### `read_line(channel)`
+- Read line sensor (0=white, 1=dark)
 
 ================
 File: robot-docs/language/ROBOSIM_API_SPEC.yaml
@@ -14756,13 +19043,14 @@ class RoboSimCompiler:
 ================
 File: robot-frontend-robosim/frontend/mapping.py
 ================
+# frontend/mapping.py
 ROBOSIM_API = {
-
     "forward": "forward",
     "backward": "backward",
     "turnleft": "turn_left",
     "turnright": "turn_right",
-
+    "left": "turn_left",      # thêm
+    "right": "turn_right",    # thêm
 }
 
 ================
@@ -14777,8 +19065,9 @@ DO NOT EDIT MANUALLY.
 
 from .motion import *
 from .system import *
+from .sensor import *
 
-__all__ = ['forward', 'backward', 'turn_left', 'turn_right', 'wait', 'stop']
+__all__ = ['forward', 'backward', 'turn_left', 'turn_right', 'wait', 'stop', 'read_ultrasonic', 'read_touch', 'read_light', 'read_color', 'read_line']
 
 __version__ = "1.0.0"
 
@@ -14903,6 +19192,11 @@ Robot Language provides several built-in functions:
 | `turn_right(speed)` | 1 | Rotate robot right |
 | `wait(milliseconds)` | 1 | Wait milliseconds |
 | `stop()` | 0 | Stop robot |
+| `read_ultrasonic()` | 0 | Read ultrasonic distance in cm |
+| `read_touch(port)` | 1 | Read touch sensor state (0/1) |
+| `read_light(channel)` | 1 | Read light sensor raw value (0-1023) |
+| `read_color()` | 0 | Read color sensor (placeholder) |
+| `read_line(channel)` | 1 | Read line sensor (0=white, 1=dark) |
 
 ### User-Defined Functions
 ```python
@@ -14953,6 +19247,22 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 #### `void stop()`
 - Stop robot
 
+### Sensor
+#### `void read_ultrasonic()`
+- Read ultrasonic distance in cm
+
+#### `void read_touch(int port)`
+- Read touch sensor state (0/1)
+
+#### `void read_light(int channel)`
+- Read light sensor raw value (0-1023)
+
+#### `void read_color()`
+- Read color sensor (placeholder)
+
+#### `void read_line(int channel)`
+- Read line sensor (0=white, 1=dark)
+
 
 ## Implementation
 The RobotAPI is implemented in `robot-platform/main/src/Services/Robot/RobotAPI.cpp`.
@@ -14990,6 +19300,22 @@ The SDK is automatically installed as part of the `robot-language` build.
 #### `stop()`
 - Stop robot
 
+### Sensor
+#### `read_ultrasonic()`
+- Read ultrasonic distance in cm
+
+#### `read_touch(port)`
+- Read touch sensor state (0/1)
+
+#### `read_light(channel)`
+- Read light sensor raw value (0-1023)
+
+#### `read_color()`
+- Read color sensor (placeholder)
+
+#### `read_line(channel)`
+- Read line sensor (0=white, 1=dark)
+
 ================
 File: robot-language/generated/__init__.py
 ================
@@ -15004,6 +19330,7 @@ AUTO GENERATED FILE
 
 from compiler.handlers.motion_handler import MotionHandler
 from compiler.handlers.system_handler import SystemHandler
+from compiler.handlers.sensor_handler import SensorHandler
 
 FUNCTION_REGISTRY = {
     "forward": {
@@ -15047,6 +19374,41 @@ FUNCTION_REGISTRY = {
         "arguments": 0,
         "category": "system",
         "description": "Stop robot"
+    },
+    "read_ultrasonic": {
+        "handler": SensorHandler.read_ultrasonic,
+        "opcode": "ReadUltrasonic",
+        "arguments": 0,
+        "category": "sensor",
+        "description": "Read ultrasonic distance in cm"
+    },
+    "read_touch": {
+        "handler": SensorHandler.read_touch,
+        "opcode": "ReadTouch",
+        "arguments": 1,
+        "category": "sensor",
+        "description": "Read touch sensor state (0/1)"
+    },
+    "read_light": {
+        "handler": SensorHandler.read_light,
+        "opcode": "ReadLight",
+        "arguments": 1,
+        "category": "sensor",
+        "description": "Read light sensor raw value (0-1023)"
+    },
+    "read_color": {
+        "handler": SensorHandler.read_color,
+        "opcode": "ReadColor",
+        "arguments": 0,
+        "category": "sensor",
+        "description": "Read color sensor (placeholder)"
+    },
+    "read_line": {
+        "handler": SensorHandler.read_line,
+        "opcode": "ReadLine",
+        "arguments": 1,
+        "category": "sensor",
+        "description": "Read line sensor (0=white, 1=dark)"
     },
 }
 
@@ -15318,8 +19680,9 @@ DO NOT EDIT MANUALLY.
 
 from .motion import *
 from .system import *
+from .sensor import *
 
-__all__ = ['forward', 'backward', 'turn_left', 'turn_right', 'wait', 'stop']
+__all__ = ['forward', 'backward', 'turn_left', 'turn_right', 'wait', 'stop', 'read_ultrasonic', 'read_touch', 'read_light', 'read_color', 'read_line']
 
 __version__ = "1.0.0"
 
@@ -16270,86 +20633,203 @@ File: robot-platform/main/src/Services/Robot/RobotAPI.cpp
  *
  * Description :
  *      Robot Hardware Abstraction API Implementation.
- *
+ *      Supports ESP32 PWM motor control using GPIO pin definitions.
  ******************************************************************************/
 
 #include "RobotAPI.h"
-
+#include "MotionConfig.h"
 #include <Arduino.h>
+#include <esp32-hal-ledc.h>
 
-namespace RobotAPI
-{
+// Sửa đường dẫn: từ Services/Robot lên src, rồi vào Devices
+#include "../../Devices/Ultrasonic.h"
+#include "../../Devices/Touch.h"
+#include "../../Devices/LineSensor.h"
+#include "../../Devices/LightSensor.h"
+#include "../../Devices/ColorSensor.h"
+#include "../../Devices/SensorConfig.h"
+#include "../../HardwareAbstraction/GPIO.h"
+
+namespace RobotAPI {
+
+// Cấu hình PWM cho ESP32
+#define PWM_FREQ 5000
+#define PWM_RES 8 // 0-255
+
+// Kênh PWM: dùng 4 kênh cho 4 chân điều khiển
+// Left: IN1 (kênh 0), IN2 (kênh 1)
+// Right: IN3 (kênh 2), IN4 (kênh 3)
+static const int PWM_CH_L_IN1 = 0;
+static const int PWM_CH_L_IN2 = 1;
+static const int PWM_CH_R_IN3 = 2;
+static const int PWM_CH_R_IN4 = 3;
+
+// Định nghĩa các đối tượng cảm biến (toàn cục trong namespace)
+static Ultrasonic ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN);
+static Touch touch0(ROBOT_PIN_5);     // ví dụ
+static Touch touch1(ROBOT_PIN_14);    // ví dụ
+static LineSensor lineSensor(SENSOR_TRCT5000_L_PIN, SENSOR_TRCT5000_C_PIN, SENSOR_TRCT5000_R_PIN);
+static LightSensor lightSensor(ROBOT_PIN_32); // ví dụ
+static ColorSensor colorSensor;
+
+// Hàm nội bộ: điều khiển motor
+static void _setMotors(int leftSpeed, int rightSpeed) {
+    // Áp dụng cấu hình
+    leftSpeed = (int)(leftSpeed * g_motionConfig.speedScale * g_motionConfig.leftMotorScale);
+    rightSpeed = (int)(rightSpeed * g_motionConfig.speedScale * g_motionConfig.rightMotorScale);
+
+    // Giới hạn
+    leftSpeed = constrain(leftSpeed, -100, 100);
+    rightSpeed = constrain(rightSpeed, -100, 100);
+
+    int leftPWM = abs(leftSpeed) * g_motionConfig.pwmPerSpeed;
+    int rightPWM = abs(rightSpeed) * g_motionConfig.pwmPerSpeed;
+    leftPWM = constrain(leftPWM, 0, 255);
+    rightPWM = constrain(rightPWM, 0, 255);
+
+    // Điều khiển động cơ trái
+    if (leftSpeed >= 0) {
+        // Tiến / dừng (dương hoặc 0)
+        ledcWrite(PWM_CH_L_IN1, leftPWM);
+        ledcWrite(PWM_CH_L_IN2, 0);
+    } else {
+        // Lùi
+        ledcWrite(PWM_CH_L_IN1, 0);
+        ledcWrite(PWM_CH_L_IN2, leftPWM);
+    }
+
+    // Điều khiển động cơ phải
+    if (rightSpeed >= 0) {
+        // Tiến / dừng
+        ledcWrite(PWM_CH_R_IN3, rightPWM);
+        ledcWrite(PWM_CH_R_IN4, 0);
+    } else {
+        // Lùi
+        ledcWrite(PWM_CH_R_IN3, 0);
+        ledcWrite(PWM_CH_R_IN4, rightPWM);
+    }
+}
+
+void setMotorsDirect(int left, int right) {
+    _setMotors(left, right);
+}
+
+/******************************************************************************
+ * Initialization
+ ******************************************************************************/
+
+void Initialize() {
+    // Load motion config
+    loadMotionConfigFromStorage();
+
+    // Pin setup cho motor
+    pinMode(MOTOR_L_IN1_PIN, OUTPUT);
+    pinMode(MOTOR_L_IN2_PIN, OUTPUT);
+    pinMode(MOTOR_R_IN3_PIN, OUTPUT);
+    pinMode(MOTOR_R_IN4_PIN, OUTPUT);
+
+    // PWM setup
+    ledcAttach(MOTOR_L_IN1_PIN, PWM_FREQ, PWM_RES);
+    ledcAttach(MOTOR_L_IN2_PIN, PWM_FREQ, PWM_RES);
+    ledcAttach(MOTOR_R_IN3_PIN, PWM_FREQ, PWM_RES);
+    ledcAttach(MOTOR_R_IN4_PIN, PWM_FREQ, PWM_RES);
+
+    _setMotors(0, 0);
+    Serial.println("[RobotAPI] Motors initialized with MotionConfig.");
+
+    // Khởi tạo cảm biến
+    ultrasonic.init();
+    touch0.init();
+    touch1.init();
+    lineSensor.init();
+    lightSensor.init();
+    colorSensor.init();
+
+    // Load sensor config
+    loadSensorConfigFromStorage();
+    Serial.println("[RobotAPI] Sensors initialized with SensorConfig.");
+}
 
 /******************************************************************************
  * Motion Control
  ******************************************************************************/
 
-void Forward(int16_t speed)
-{
-    Serial.print("[RobotAPI] Forward : ");
-    Serial.println(speed);
-
-    /*
-     * TODO (Commit002)
-     *
-     * MotorDevice::Forward(speed);
-     */
+void Forward(int16_t speed) {
+    Serial.printf("[%lu] Forward : %d\n", millis(), speed);
+    _setMotors(speed, speed);
 }
 
-void Backward(int16_t speed)
-{
-    Serial.print("[RobotAPI] Backward : ");
-    Serial.println(speed);
+void Backward(int16_t speed) {
+    Serial.printf("[%lu] Backward : %d\n", millis(), speed);
+    _setMotors(-speed, -speed);
 }
 
-void TurnLeft(int16_t speed)
-{
-    Serial.print("[RobotAPI] TurnLeft : ");
-    Serial.println(speed);
+void TurnLeft(int16_t speed) {
+    Serial.printf("[%lu] TurnLeft : %d\n", millis(), speed);
+    _setMotors(-speed * g_motionConfig.turnCompensation, speed * g_motionConfig.turnCompensation);
 }
 
-void TurnRight(int16_t speed)
-{
-    Serial.print("[RobotAPI] TurnRight : ");
-    Serial.println(speed);
+void TurnRight(int16_t speed) {
+    Serial.printf("[%lu] TurnRight : %d\n", millis(), speed);
+    _setMotors(speed * g_motionConfig.turnCompensation, -speed * g_motionConfig.turnCompensation);
 }
 
-void Stop()
-{
-    Serial.println("[RobotAPI] Stop");
+void Stop() {
+    Serial.printf("[%lu] Stop\n", millis());
+    _setMotors(0, 0);
 }
 
 /******************************************************************************
  * Sensor
  ******************************************************************************/
 
-int16_t ReadUltrasonic()
-{
-    Serial.println("[RobotAPI] Read Ultrasonic");
+int16_t ReadUltrasonic() {
+    int distance = ultrasonic.readDistance();
+    Serial.printf("[%lu] ReadUltrasonic: %d cm\n", millis(), distance);
+    return distance;
+}
 
-    /*
-     * Prototype
-     *
-     * Always return 50 cm.
-     */
+int16_t ReadTouch(int port) {
+    bool state = false;
+    if (port == 0) state = touch0.read();
+    else if (port == 1) state = touch1.read();
+    Serial.printf("[%lu] ReadTouch port %d: %d\n", millis(), port, state);
+    return state ? 1 : 0;
+}
 
-    return 50;
+int16_t ReadLight(int channel) {
+    int raw = lightSensor.readRaw();
+    int corrected = (int)(raw * g_sensorConfig.lightGain + g_sensorConfig.lightOffset);
+    Serial.printf("[%lu] ReadLight ch %d: %d\n", millis(), channel, corrected);
+    return corrected;
+}
+
+int16_t ReadColor() {
+    int val = colorSensor.readColor();
+    Serial.printf("[%lu] ReadColor: %d\n", millis(), val);
+    return val;
+}
+
+int16_t ReadLine(int channel) {
+    bool val = false;
+    if (channel == 0) val = lineSensor.readLeft();
+    else if (channel == 1) val = lineSensor.readCenter();
+    else if (channel == 2) val = lineSensor.readRight();
+    if (g_sensorConfig.lineInverted) val = !val;
+    Serial.printf("[%lu] ReadLine ch %d: %d\n", millis(), channel, val);
+    return val ? 1 : 0;
 }
 
 /******************************************************************************
  * Utility
  ******************************************************************************/
 
-void Wait(uint16_t ms)
-{
-    Serial.print("[RobotAPI] Wait : ");
-    Serial.print(ms);
-    Serial.println(" ms");
-
+void Wait(uint16_t ms) {
+    Serial.printf("[%lu] Wait : %d ms\n", millis(), ms);
     delay(ms);
 }
 
-}
+} // namespace RobotAPI
 
 ================
 File: robot-platform/main/src/Services/Robot/RobotAPI.h
@@ -16367,9 +20847,20 @@ File: robot-platform/main/src/Services/Robot/RobotAPI.h
 #pragma once
 
 #include <stdint.h>
-
+#include "RobotAPI.h"
+#include <Arduino.h>
+#include "../../HardwareAbstraction/GPIO.h"
 namespace RobotAPI
 {
+
+/******************************************************************************
+ * Initialization
+ ******************************************************************************/
+
+/**
+ * Initialize hardware (motor pins, PWM, etc.)
+ */
+void Initialize();
 
 /******************************************************************************
  * Motion Control
@@ -16379,7 +20870,7 @@ namespace RobotAPI
  * Move forward.
  *
  * @param speed
- *      Motor speed.
+ *      Motor speed (-100 to 100).
  */
 void Forward(int16_t speed);
 
@@ -16387,7 +20878,7 @@ void Forward(int16_t speed);
  * Move backward.
  *
  * @param speed
- *      Motor speed.
+ *      Motor speed (-100 to 100).
  */
 void Backward(int16_t speed);
 
@@ -16395,7 +20886,7 @@ void Backward(int16_t speed);
  * Turn left.
  *
  * @param speed
- *      Motor speed.
+ *      Motor speed (-100 to 100).
  */
 void TurnLeft(int16_t speed);
 
@@ -16403,7 +20894,7 @@ void TurnLeft(int16_t speed);
  * Turn right.
  *
  * @param speed
- *      Motor speed.
+ *      Motor speed (-100 to 100).
  */
 void TurnRight(int16_t speed);
 
@@ -16422,6 +20913,30 @@ void Stop();
  * @return Distance (cm)
  */
 int16_t ReadUltrasonic();
+/**
+ * Read ultrasonic sensor.
+ *
+ * @return port (bool)
+ */
+int16_t ReadTouch(int port);
+/**
+ * Read ultrasonic sensor.
+ *
+ * @return Distance (cm)
+ */
+int16_t ReadLight(int channel);
+/**
+ * Read ultrasonic sensor.
+ *
+ * @return Distance (cm)
+ */
+int16_t ReadColor();
+/**
+ * Read ultrasonic sensor.
+ *
+ * @return Distance (cm)
+ */
+int16_t ReadLine(int channel);
 
 /******************************************************************************
  * Utility
@@ -16434,6 +20949,9 @@ int16_t ReadUltrasonic();
  *      Delay time.
  */
 void Wait(uint16_t ms);
+
+
+void setMotorsDirect(int left, int right);
 
 }
 
@@ -16546,7 +21064,7 @@ public:
     VM();
 
     /**
-     * Reset VM runtime.
+     * Reset VM runtime context.
      */
     void Reset();
 
@@ -16569,6 +21087,11 @@ public:
      * Get current program counter.
      */
     uint16_t GetProgramCounter() const;
+
+    /**
+     * Get error code (0 = no error).
+     */
+    uint8_t GetErrorCode() const;
 
 private:
 
@@ -17046,6 +21569,7 @@ AUTO GENERATED FILE
 
 from compiler.handlers.motion_handler import MotionHandler
 from compiler.handlers.system_handler import SystemHandler
+from compiler.handlers.sensor_handler import SensorHandler
 
 FUNCTION_REGISTRY = {
     "forward": {
@@ -17089,6 +21613,41 @@ FUNCTION_REGISTRY = {
         "arguments": 0,
         "category": "system",
         "description": "Stop robot"
+    },
+    "read_ultrasonic": {
+        "handler": SensorHandler.read_ultrasonic,
+        "opcode": "ReadUltrasonic",
+        "arguments": 0,
+        "category": "sensor",
+        "description": "Read ultrasonic distance in cm"
+    },
+    "read_touch": {
+        "handler": SensorHandler.read_touch,
+        "opcode": "ReadTouch",
+        "arguments": 1,
+        "category": "sensor",
+        "description": "Read touch sensor state (0/1)"
+    },
+    "read_light": {
+        "handler": SensorHandler.read_light,
+        "opcode": "ReadLight",
+        "arguments": 1,
+        "category": "sensor",
+        "description": "Read light sensor raw value (0-1023)"
+    },
+    "read_color": {
+        "handler": SensorHandler.read_color,
+        "opcode": "ReadColor",
+        "arguments": 0,
+        "category": "sensor",
+        "description": "Read color sensor (placeholder)"
+    },
+    "read_line": {
+        "handler": SensorHandler.read_line,
+        "opcode": "ReadLine",
+        "arguments": 1,
+        "category": "sensor",
+        "description": "Read line sensor (0=white, 1=dark)"
     },
 }
 
@@ -17548,6 +22107,166 @@ def handle_wait(ins: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot)
     engine.iterator.seek(engine.context.program_counter)
 
 ================
+File: robot-compiler/runtime/hardware/mock.py
+================
+# runtime/hardware/mock.py
+import time
+from .interface import IHardware
+
+class MockHardware(IHardware):
+    """Mock hardware implementation for testing and simulation."""
+
+    def __init__(self):
+        self.motor_left = 0
+        self.motor_right = 0
+        self.log = []
+        self._ultrasonic_value = 50  # default distance
+        self._line_values = {0: 512, 1: 512, 2: 512}  # default middle value
+        self._touch_values = {0: False, 1: False}  # default touch states
+
+    def set_motor(self, left: int, right: int) -> None:
+        self.motor_left = max(-100, min(100, left))
+        self.motor_right = max(-100, min(100, right))
+        self.log.append(("set_motor", self.motor_left, self.motor_right))
+        print(f"[MockHardware] Motors: L={self.motor_left}, R={self.motor_right}")
+
+    def delay(self, ms: int) -> None:
+        self.log.append(("delay", ms))
+        print(f"[MockHardware] Delay {ms} ms")
+        time.sleep(ms / 1000.0)
+
+    def read_ultrasonic(self) -> int:
+        self.log.append(("read_ultrasonic",))
+        print(f"[MockHardware] Read Ultrasonic: {self._ultrasonic_value} cm")
+        return self._ultrasonic_value
+
+    def read_line_sensor(self, channel: int) -> int:
+        self.log.append(("read_line_sensor", channel))
+        val = self._line_values.get(channel, 512)
+        print(f"[MockHardware] Read Line Sensor channel {channel}: {val}")
+        return val
+
+    def read_touch(self, port: int) -> bool:
+        self.log.append(("read_touch", port))
+        val = self._touch_values.get(port, False)
+        print(f"[MockHardware] Read Touch port {port}: {val}")
+        return val
+
+    # ---- Helper for tests ----
+
+    def set_ultrasonic_value(self, value: int):
+        self._ultrasonic_value = value
+
+    def set_line_value(self, channel: int, value: int):
+        self._line_values[channel] = value
+
+    def set_touch_value(self, port: int, value: bool):
+        self._touch_values[port] = value
+
+    def get_log(self):
+        return self.log
+
+    def clear_log(self):
+        self.log.clear()
+
+================
+File: robot-compiler/runtime/robot/runtime.py
+================
+# runtime/robot/runtime.py
+from .interface import IRobot
+from .motion import MotionController
+from ..sensors.sensor_manager import SensorManager
+from ..sensors.line_sensor import LineSensor
+from ..sensors.ultrasonic_sensor import UltrasonicSensor
+from ..sensors.touch_sensor import TouchSensor
+from ..sensors.light_sensor import LightSensor
+from ..sensors.color_sensor import ColorSensor
+from ..hardware.interface import IHardware
+from typing import Dict, Any
+
+class RobotRuntime(IRobot):
+    """Main robot runtime that orchestrates motion and sensors."""
+
+    def __init__(self, hardware: IHardware):
+        self.hardware = hardware
+        self.motion = MotionController(hardware)
+        # Initialize sensor manager and register sensors
+        self.sensor_manager = SensorManager()
+        self._register_sensors()
+
+    def _register_sensors(self):
+        # Register line sensors (3 channels)
+        for ch in range(3):
+            sensor = LineSensor(self.hardware, ch, f"line_{ch}")
+            self.sensor_manager.register(sensor)
+        # Register ultrasonic
+        self.sensor_manager.register(UltrasonicSensor(self.hardware, "ultrasonic"))
+        # Register touch sensors (2 ports)
+        for port in range(2):
+            sensor = TouchSensor(self.hardware, port, f"touch_{port}")
+            self.sensor_manager.register(sensor)
+        # Register light sensor (use channel 0 for demo)
+        self.sensor_manager.register(LightSensor(self.hardware, 0, "light"))
+        # Register color sensor (placeholder)
+        self.sensor_manager.register(ColorSensor(self.hardware, "color"))
+
+    # ---- Motion APIs ----
+    def forward(self, speed: int) -> None:
+        self.motion.forward(speed)
+
+    def backward(self, speed: int) -> None:
+        self.motion.backward(speed)
+
+    def left(self, speed: int) -> None:
+        self.motion.left(speed)
+
+    def right(self, speed: int) -> None:
+        self.motion.right(speed)
+
+    def stop(self) -> None:
+        self.motion.stop()
+
+    def wait(self, ms: int) -> None:
+        self.motion.wait(ms)
+
+    def set_motor(self, left: int, right: int) -> None:
+        self.hardware.set_motor(left, right)
+
+    # ---- Sensor APIs ----
+    def read_line_sensor(self, channel: int) -> int:
+        # For backward compatibility, read raw value
+        val = self.sensor_manager.read(f"line_{channel}")
+        if val:
+            return val.raw
+        return 0
+
+    def read_ultrasonic(self) -> int:
+        val = self.sensor_manager.read("ultrasonic")
+        if val:
+            return val.raw
+        return 0
+
+    def read_touch(self, port: int) -> bool:
+        val = self.sensor_manager.read(f"touch_{port}")
+        if val:
+            return val.raw
+        return False
+
+    # ---- State & Events ----
+    def get_state(self):
+        return self.motion.get_state()
+
+    def get_events(self):
+        return self.motion.get_events()
+
+    def clear_events(self):
+        self.motion.clear_events()
+
+    def update_sensors(self):
+        """Update all sensors (should be called periodically)."""
+        self.sensor_manager.update_all()
+
+================
 File: robot-compiler/runtime/dispatcher.py
 ================
 # runtime/dispatcher.py
@@ -17652,6 +22371,8 @@ class InstructionIterator:
         self._current_index = index
 
     def seek(self, index: int) -> None:
+        if index < 0 or index > len(self._instructions):
+            raise ValueError(f"Invalid seek index: {index}")
         self._current_index = index
 
     def has_next(self) -> bool:
@@ -18080,6 +22801,11 @@ This is a complete list of all opcodes used by the Robot VM.
 | `Call` | 27 | internal | Call user function |
 | `Return` | 28 | internal | Return from function |
 | `Store` | 29 | internal | Store value from source to destination variable |
+| `ReadUltrasonic` | 30 | sensor | Read ultrasonic distance in cm |
+| `ReadTouch` | 31 | sensor | Read touch sensor state (0/1) |
+| `ReadLight` | 32 | sensor | Read light sensor raw value (0-1023) |
+| `ReadColor` | 33 | sensor | Read color sensor (placeholder) |
+| `ReadLine` | 34 | sensor | Read line sensor (0=white, 1=dark) |
 
 ---
 **Note:** Internal opcodes (ID >= 8) are used by the compiler and VM internally, not exposed to users.
@@ -18393,6 +23119,11 @@ This is a complete list of all opcodes used by the Robot VM.
 | `Call` | 27 | internal | Call user function |
 | `Return` | 28 | internal | Return from function |
 | `Store` | 29 | internal | Store value from source to destination variable |
+| `ReadUltrasonic` | 30 | sensor | Read ultrasonic distance in cm |
+| `ReadTouch` | 31 | sensor | Read touch sensor state (0/1) |
+| `ReadLight` | 32 | sensor | Read light sensor raw value (0-1023) |
+| `ReadColor` | 33 | sensor | Read color sensor (placeholder) |
+| `ReadLine` | 34 | sensor | Read line sensor (0=white, 1=dark) |
 
 ---
 **Note:** Internal opcodes (ID >= 8) are used by the compiler and VM internally, not exposed to users.
@@ -18755,17 +23486,19 @@ const Instruction generatedProgram[] =
 {
     Instruction(Opcode::LoadConst, 0, 80, 0),
     Instruction(Opcode::Forward, 0, 0, 0),
+    Instruction(Opcode::LoadConst, 1, 1000, 0),
+    Instruction(Opcode::Wait, 1, 0, 0),
     Instruction(Opcode::Stop, 0, 0, 0),
 };
 
-const uint16_t generatedProgramSize = 3;
+const uint16_t generatedProgramSize = 5;
 
 ================
 File: robot-platform/main/src/Services/VM/Instruction.h
 ================
 #pragma once
 #include <stdint.h>
-#include "generated/opcode.h"
+#include "../../generated/opcode.h"
 
 struct Instruction
 {
@@ -18783,7 +23516,7 @@ struct Instruction
 File: robot-platform/main/src/Services/VM/ProgramLoader.cpp
 ================
 #include "ProgramLoader.h"
-#include "../Application/generated_program.h"
+#include "../../Application/generated_program.h"
 
 bool ProgramLoader::LoadFromGenerated(Program& program)
 {
@@ -19159,8 +23892,10 @@ def run_script(script_path):
         text=True
     )
     print(result.stdout)
+    if result.stderr:
+        print("STDERR:", result.stderr, file=sys.stderr)
     if result.returncode != 0:
-        print(result.stderr)
+        print(f"FAILED with exit code {result.returncode}", file=sys.stderr)
         return False
     return True
 
@@ -19168,9 +23903,13 @@ def main():
     tests = [
         ROOT / "robot-compiler" / "tests" / "run_tests.py",
         ROOT / "robot-frontend-robosim" / "test" / "run_tests.py",
+        ROOT / "robot-compiler" / "integration" / "end_to_end" / "run_integration_tests.py",
     ]
     all_passed = True
     for test in tests:
+        if not test.exists():
+            print(f"Test script {test} not found, skipping.")
+            continue
         if not run_script(test):
             all_passed = False
             break
@@ -19251,6 +23990,11 @@ class Opcode(IntEnum):
     Call = 27
     Return = 28
     Store = 29
+    ReadUltrasonic = 30
+    ReadTouch = 31
+    ReadLight = 32
+    ReadColor = 33
+    ReadLine = 34
 
 ================
 File: robot-compiler/compiler/handlers/bool_handler.py
@@ -19423,86 +24167,6 @@ class HeaderEmitter:
             f.write(f"const uint16_t generatedProgramSize = {len(program.instructions)};\n")
 
 ================
-File: robot-compiler/runtime/__init__.py
-================
-# runtime/__init__.py
-from .program import RuntimeProgram
-from .function import RuntimeFunction
-from .instruction import RuntimeInstruction
-from .loader import ProgramLoader
-from .iterator import InstructionIterator
-from .exceptions import *
-from .context import ExecutionContext, ExecutionState
-from .dispatcher import Dispatcher
-from .vm import VirtualMachine
-from .mock.robot_api import MockRobotAPI
-from .engine import ExecutionEngine
-from .variable import VariableTable
-from .stack import DataStack
-from .frame import StackFrame
-from .value import *
-from .memory import MemoryManager
-from .robot import RobotRuntime, MotionController, SensorManager, RobotState, IRobot
-from .hardware import (
-    IHardware,
-    MockHardware,
-    IMotorDriver,
-    ITimer,
-    ILogger,
-    ESP32Hardware,
-    BoardConfiguration,
-    HardwareCapabilities,
-    ESP32MotorDriver,
-    ESP32Timer,
-    ESP32Logger,
-)
-
-__all__ = [
-    "RuntimeProgram",
-    "RuntimeFunction",
-    "RuntimeInstruction",
-    "ProgramLoader",
-    "InstructionIterator",
-    "ExecutionContext",
-    "ExecutionState",
-    "Dispatcher",
-    "VirtualMachine",
-    "MockRobotAPI",
-    "ExecutionEngine",
-    "VariableTable",
-    "DataStack",
-    "StackFrame",
-    "RuntimeValue",
-    "IntegerValue",
-    "FloatValue",
-    "BooleanValue",
-    "StringValue",
-    "ReferenceValue",
-    "MemoryManager",
-    "RobotRuntime",
-    "MotionController",
-    "SensorManager",
-    "RobotState",
-    "IRobot",
-    "IHardware",
-    "MockHardware",
-    "IMotorDriver",
-    "ITimer",
-    "ILogger",
-    "ESP32Hardware",
-    "BoardConfiguration",
-    "HardwareCapabilities",
-    "ESP32MotorDriver",
-    "ESP32Timer",
-    "ESP32Logger",
-    "InvalidBinaryException",
-    "UnsupportedVersionException",
-    "InvalidInstructionException",
-    "InvalidConstantReferenceException",
-    "InvalidFunctionReferenceException",
-]
-
-================
 File: robot-compiler/main.py
 ================
 #!/usr/bin/env python3
@@ -19655,6 +24319,11 @@ enum class Opcode : uint8_t
     Call = 27,
     Return = 28,
     Store = 29,
+    ReadUltrasonic = 30,
+    ReadTouch = 31,
+    ReadLight = 32,
+    ReadColor = 33,
+    ReadLine = 34,
 };
 
 ================
@@ -19903,6 +24572,51 @@ File: robot-language/generated/registry.json
         "handler": "None",
         "arguments": 0,
         "description": "Store value from source to destination variable"
+    },
+    "read_ultrasonic": {
+        "opcode": "ReadUltrasonic",
+        "opcode_id": 30,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 0,
+        "description": "Read ultrasonic distance in cm"
+    },
+    "read_touch": {
+        "opcode": "ReadTouch",
+        "opcode_id": 31,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Read touch sensor state (0/1)"
+    },
+    "read_light": {
+        "opcode": "ReadLight",
+        "opcode_id": 32,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Read light sensor raw value (0-1023)"
+    },
+    "read_color": {
+        "opcode": "ReadColor",
+        "opcode_id": 33,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 0,
+        "description": "Read color sensor (placeholder)"
+    },
+    "read_line": {
+        "opcode": "ReadLine",
+        "opcode_id": 34,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Read line sensor (0=white, 1=dark)"
     }
 }
 
@@ -20111,6 +24825,11 @@ enum class Opcode : uint8_t
     Call = 27,
     Return = 28,
     Store = 29,
+    ReadUltrasonic = 30,
+    ReadTouch = 31,
+    ReadLight = 32,
+    ReadColor = 33,
+    ReadLine = 34,
 };
 
 ================
@@ -20332,6 +25051,46 @@ File: robot-platform/main/include/generated/opcode.json
         "category": "internal",
         "module": "internal",
         "handler": "None"
+    },
+    "ReadUltrasonic": {
+        "id": 30,
+        "opcode": "ReadUltrasonic",
+        "function": "read_ultrasonic",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadTouch": {
+        "id": 31,
+        "opcode": "ReadTouch",
+        "function": "read_touch",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadLight": {
+        "id": 32,
+        "opcode": "ReadLight",
+        "function": "read_light",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadColor": {
+        "id": 33,
+        "opcode": "ReadColor",
+        "function": "read_color",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadLine": {
+        "id": 34,
+        "opcode": "ReadLine",
+        "function": "read_line",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
     }
 }
 
@@ -20339,54 +25098,118 @@ File: robot-platform/main/include/generated/opcode.json
 File: robot-platform/main/main.ino
 ================
 #include "src/Services/VM/ProgramLoader.h"
+#include "src/Services/VM/VM.h"
+#include "src/Services/Robot/RobotAPI.h"
+#include "src/Logger/BootLogger.h"
+#include "src/Diagnostic/Diagnostic.h"
+#include "src/Communication/SerialCommandHandler.h"
 
+// === Behavior Engine ===
+#include "src/Behavior/BehaviorScheduler.h"
+#include "src/Behavior/MoveForwardBehavior.h"
+#include "src/Behavior/MoveBackwardBehavior.h"
+#include "src/Behavior/TurnLeftBehavior.h"
+#include "src/Behavior/TurnRightBehavior.h"
+#include "src/Behavior/StopBehavior.h"
+#include "src/Behavior/WaitBehavior.h"
+#include "src/Behavior/TouchStopBehavior.h"
+#include "src/Behavior/ObstacleStopBehavior.h"
+#include "src/Behavior/LineDetectBehavior.h"
+#include "src/Behavior/LightTriggerBehavior.h"
+#include "src/Behavior/ColorDetectBehavior.h"
+
+// VM
 VM vm;
 Program program;
+const int STABILITY_ITERATIONS = 2;
+int executionCounter = 0;
 
-void setup()
-{
+// Behavior Engine
+BehaviorScheduler scheduler;
+bool useBehaviorEngine = false;  // Mặc định chạy VM
+
+void setup() {
     Serial.begin(115200);
+    while (!Serial) { }
 
-    while (!Serial)
-    {
+    BootLogger::log("BOOT", "Power On");
+
+    // 1. Hardware Initialization
+    RobotAPI::Initialize();
+    BootLogger::log("BOOT", "Hardware Ready");
+
+    // 2. Diagnostics
+    Diagnostic::runAll();
+    BootLogger::log("BOOT", "Diagnostics Complete");
+
+    // 3. Load Program for VM
+    if (!ProgramLoader::LoadFromGenerated(program)) {
+        BootLogger::log("ERROR", "Failed to load program. Halted.");
+        while (1) { }
     }
-
-    Serial.println();
-    Serial.println("==================================");
-    Serial.println(" Robot VM Prototype");
-    Serial.println("==================================");
-
-    // Load program from generated header
-    ProgramLoader::LoadFromGenerated(program);
+    BootLogger::log("BOOT", "Binary Loaded");
 
     vm.LoadProgram(&program);
+    BootLogger::log("BOOT", "VM Ready");
 
-    Serial.println("Program Loaded");
-    Serial.println();
+    // 4. Serial Command Handler
+    SerialCommandHandler::setup();
+    BootLogger::log("BOOT", "Serial Handler Ready");
+
+    // 5. Initialize Behavior Scheduler with default behaviors
+    // (có thể thêm bất kỳ behavior nào muốn chạy)
+    // Các behavior này sẽ được dùng với lệnh "behavior start" hoặc "behavior run"
+    scheduler.addBehavior(new MoveForwardBehavior(50, 2000));
+    scheduler.addBehavior(new TouchStopBehavior(0, 50));
+    scheduler.addBehavior(new WaitBehavior(1000));
+    scheduler.addBehavior(new TurnLeftBehavior(50, 500));
+    scheduler.addBehavior(new StopBehavior());
+    scheduler.addBehavior(new ObstacleStopBehavior(50, 20));
+    scheduler.addBehavior(new LineDetectBehavior(0, 50));
+    scheduler.addBehavior(new LightTriggerBehavior(0, 500, 50));
+    scheduler.addBehavior(new ColorDetectBehavior(0, 50));
+    
+    BootLogger::log("BOOT", "Behavior Scheduler initialized with 9 behaviors");
+
+    BootLogger::log("EXEC", "System Ready. Type 'help' for commands.");
+    BootLogger::log("INFO", "Default mode: VM. Type 'mode behavior' to switch.");
 }
 
-/******************************************************************************
- * Loop
- ******************************************************************************/
+void loop() {
+    // Xử lý lệnh Serial
+    SerialCommandHandler::handle();
 
-void loop()
-{
-    if (vm.IsRunning())
-    {
-        Serial.print("[VM] PC = ");
-        Serial.println(vm.GetProgramCounter());
+    if (useBehaviorEngine) {
+        // === Chạy Behavior Engine ===
+        scheduler.update();
+        if (!scheduler.isRunning()) {
+            // Nếu scheduler kết thúc, có thể ở trạng thái idle
+            // Không làm gì thêm
+        }
+    } else {
+        // === Chạy VM ===
+        if (vm.IsRunning()) {
+            vm.Step();
+        } else {
+            uint8_t err = vm.GetErrorCode();
+            if (err != 0) {
+                BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
+                while (1) { }
+            }
+            executionCounter++;
+            BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
 
-        vm.Step();
-
-        delay(100);
-    }
-    else
-    {
-        Serial.println();
-        Serial.println("========== VM FINISHED ==========");
-
-        while (true)
-        {
+            if (executionCounter < STABILITY_ITERATIONS) {
+                BootLogger::log("STABILITY", "Restarting VM...");
+                vm.Reset();
+                vm.LoadProgram(&program);
+            } else {
+                BootLogger::log("STABILITY", "VM stability test completed.");
+                // Sau khi hoàn thành test, có thể chuyển sang behavior mode nếu muốn
+                // Ví dụ: useBehaviorEngine = true;
+                // Hoặc để nguyên vòng lặp dừng.
+                while (1) { }
+            }
         }
     }
 }
@@ -20499,15 +25322,39 @@ class RobotCompiler(ast.NodeVisitor):
     # ----------------------------------------------------------
     # AST Visitors
     # ----------------------------------------------------------
+    # compiler/compiler.py - phần visit_Assign
+
     def visit_Assign(self, node):
-        # Chỉ hỗ trợ gán hằng hoặc biểu thức đơn giản? 
-        # Để không ảnh hưởng, ta giữ nguyên như cũ.
-        name = node.targets[0].id
-        if not isinstance(node.value, ast.Constant):
-            raise CompilerError("Only constant assignment is supported in this version.")
-        value = node.value.value
-        index = self.current_scope.allocate(name)
-        self.program.emit(Opcode.LoadConst.value, index, value)
+        # Chỉ hỗ trợ gán cho một biến đơn
+        if len(node.targets) != 1:
+            raise CompilerError("Multiple assignment not supported.")
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            raise CompilerError("Only variable assignment supported.")
+        name = target.id
+        
+        # Trường hợp 1: Gán hằng
+        if isinstance(node.value, ast.Constant):
+            value = node.value.value
+            index = self.current_scope.allocate(name)
+            self.program.emit(Opcode.LoadConst.value, index, value)
+            return
+        
+        # Trường hợp 2: Gán biểu thức (BinOp hoặc UnaryOp)
+        if isinstance(node.value, (ast.BinOp, ast.UnaryOp)):
+            result = self.compile_expression(node.value)
+            index = self.current_scope.allocate(name)
+            self.program.emit(Opcode.Store.value, result, index, 0)
+            return
+        
+        # Trường hợp 3: Gán biến (copy) - ví dụ: x = y
+        if isinstance(node.value, ast.Name):
+            src = self.current_scope.resolve(node.value.id)
+            dest = self.current_scope.allocate(name)
+            self.program.emit(Opcode.Store.value, src, dest, 0)
+            return
+        
+        raise CompilerError(f"Only constant, expression, or variable assignment is supported. Got {type(node.value)}")
 
     def visit_FunctionDef(self, node):
         self.functions[node.name] = node
@@ -20568,6 +25415,69 @@ class RobotCompiler(ast.NodeVisitor):
 
         self.program.emit_label(end_label)
 
+    def visit_For(self, node):
+        # Chỉ hỗ trợ for i in range(start, end, step) với step=1
+        if not isinstance(node.iter, ast.Call):
+            raise CompilerError("For loop only supports range()")
+        if not isinstance(node.iter.func, ast.Name) or node.iter.func.id != 'range':
+            raise CompilerError("For loop only supports range()")
+        
+        args = node.iter.args
+        if len(args) == 1:
+            start = 0
+            end = self.compile_expression(args[0])
+            step = 1
+        elif len(args) == 2:
+            start = self.compile_expression(args[0])
+            end = self.compile_expression(args[1])
+            step = 1
+        elif len(args) == 3:
+            start = self.compile_expression(args[0])
+            end = self.compile_expression(args[1])
+            step = self.compile_expression(args[2])
+            # Đơn giản: chỉ hỗ trợ step=1
+            if step != 1:
+                raise CompilerError("Only step=1 is supported in for loop")
+        else:
+            raise CompilerError("range() requires 1-3 arguments")
+        
+        # Tên biến đếm
+        target = node.target
+        if not isinstance(target, ast.Name):
+            raise CompilerError("For loop target must be a variable name")
+        var_name = target.id
+        var_index = self.current_scope.allocate(var_name)
+        
+        # Khởi tạo biến đếm = start
+        self.program.emit(Opcode.LoadConst.value, var_index, start)
+        
+        # Labels
+        begin_label = self.program.new_label()
+        end_label = self.program.new_label()
+        self.loop_stack.append({"begin": begin_label, "end": end_label})
+        
+        self.program.emit_label(begin_label)
+        
+        # So sánh: var_index < end
+        temp = self.allocate_temp()
+        self.program.emit(Opcode.CompareLT.value, var_index, end, temp)
+        self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, temp, end_label)
+        
+        # Thân vòng lặp
+        for stmt in node.body:
+            self.visit(stmt)
+        
+        # Tăng biến đếm lên 1
+        temp2 = self.allocate_temp()
+        self.program.emit(Opcode.LoadConst.value, temp2, 1)
+        self.program.emit(Opcode.Add.value, var_index, temp2, temp)
+        self.program.emit(Opcode.Store.value, temp, var_index, 0)
+        
+        self.program.emit_jump(Opcode.Jump.value, begin_label)
+        
+        self.loop_stack.pop()
+        self.program.emit_label(end_label)
+
     def visit_While(self, node):
         begin_label = self.program.new_label()
         end_label = self.program.new_label()
@@ -20600,6 +25510,118 @@ class RobotCompiler(ast.NodeVisitor):
             raise CompilerError("'continue' outside loop.")
         context = self.loop_stack[-1]
         self.program.emit_jump(Opcode.Jump.value, context["begin"])
+
+================
+File: robot-compiler/runtime/__init__.py
+================
+# runtime/__init__.py
+from .program import RuntimeProgram
+from .function import RuntimeFunction
+from .instruction import RuntimeInstruction
+from .loader import ProgramLoader
+from .iterator import InstructionIterator
+from .exceptions import *
+from .context import ExecutionContext, ExecutionState
+from .dispatcher import Dispatcher
+from .vm import VirtualMachine
+from .mock.robot_api import MockRobotAPI
+from .engine import ExecutionEngine
+from .variable import VariableTable
+from .stack import DataStack
+from .frame import StackFrame
+from .value import *
+from .memory import MemoryManager
+from .robot import RobotRuntime, MotionController, SensorManager, RobotState, IRobot
+from .hardware import (
+    IHardware,
+    MockHardware,
+    IMotorDriver,
+    ITimer,
+    ILogger,
+    ESP32Hardware,
+    BoardConfiguration,
+    HardwareCapabilities,
+    ESP32MotorDriver,
+    ESP32Timer,
+    ESP32Logger,
+)
+from .sensors import (
+    ISensor,
+    SensorValue,
+    SensorEvent,
+    SensorEventType,
+    SensorManager as NewSensorManager,
+    LineSensor,
+    UltrasonicSensor,
+    TouchSensor,
+    LightSensor,
+    ColorSensor,
+    MovingAverageFilter,
+    MedianFilter,
+    ThresholdFilter,
+    create_mock_sensors,
+)
+
+# Keep old SensorManager for backward compatibility, but alias to new one
+SensorManager = NewSensorManager
+
+__all__ = [
+    "RuntimeProgram",
+    "RuntimeFunction",
+    "RuntimeInstruction",
+    "ProgramLoader",
+    "InstructionIterator",
+    "ExecutionContext",
+    "ExecutionState",
+    "Dispatcher",
+    "VirtualMachine",
+    "MockRobotAPI",
+    "ExecutionEngine",
+    "VariableTable",
+    "DataStack",
+    "StackFrame",
+    "RuntimeValue",
+    "IntegerValue",
+    "FloatValue",
+    "BooleanValue",
+    "StringValue",
+    "ReferenceValue",
+    "MemoryManager",
+    "RobotRuntime",
+    "MotionController",
+    "SensorManager",
+    "RobotState",
+    "IRobot",
+    "IHardware",
+    "MockHardware",
+    "IMotorDriver",
+    "ITimer",
+    "ILogger",
+    "ESP32Hardware",
+    "BoardConfiguration",
+    "HardwareCapabilities",
+    "ESP32MotorDriver",
+    "ESP32Timer",
+    "ESP32Logger",
+    "ISensor",
+    "SensorValue",
+    "SensorEvent",
+    "SensorEventType",
+    "LineSensor",
+    "UltrasonicSensor",
+    "TouchSensor",
+    "LightSensor",
+    "ColorSensor",
+    "MovingAverageFilter",
+    "MedianFilter",
+    "ThresholdFilter",
+    "create_mock_sensors",
+    "InvalidBinaryException",
+    "UnsupportedVersionException",
+    "InvalidInstructionException",
+    "InvalidConstantReferenceException",
+    "InvalidFunctionReferenceException",
+]
 
 ================
 File: robot-language/build/install.py
@@ -20879,6 +25901,46 @@ File: robot-language/generated/opcode.json
         "category": "internal",
         "module": "internal",
         "handler": "None"
+    },
+    "ReadUltrasonic": {
+        "id": 30,
+        "opcode": "ReadUltrasonic",
+        "function": "read_ultrasonic",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadTouch": {
+        "id": 31,
+        "opcode": "ReadTouch",
+        "function": "read_touch",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadLight": {
+        "id": 32,
+        "opcode": "ReadLight",
+        "function": "read_light",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadColor": {
+        "id": 33,
+        "opcode": "ReadColor",
+        "function": "read_color",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadLine": {
+        "id": 34,
+        "opcode": "ReadLine",
+        "function": "read_line",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
     }
 }
 
@@ -20919,6 +25981,11 @@ class Opcode(IntEnum):
     Call = 27
     Return = 28
     Store = 29
+    ReadUltrasonic = 30
+    ReadTouch = 31
+    ReadLight = 32
+    ReadColor = 33
+    ReadLine = 34
 
 ================
 File: robot-language/generators/sdk_generator.py
@@ -21168,7 +26235,53 @@ categories:
         opcode: Store
         opcode_id: 29
         description: Store value from source to destination variable
+        args: []   
+  sensor:
+    description: Sensor APIs
+    module: sensor_handler
+    handler: SensorHandler
+
+    functions:
+      - name: read_ultrasonic
+        opcode: ReadUltrasonic
+        opcode_id: 30
+        description: Read ultrasonic distance in cm
         args: []
+        returns: int
+
+      - name: read_touch
+        opcode: ReadTouch
+        opcode_id: 31
+        description: Read touch sensor state (0/1)
+        args:
+          - name: port
+            type: int
+        returns: int
+
+      - name: read_light
+        opcode: ReadLight
+        opcode_id: 32
+        description: Read light sensor raw value (0-1023)
+        args:
+          - name: channel
+            type: int
+        returns: int
+
+      - name: read_color
+        opcode: ReadColor
+        opcode_id: 33
+        description: Read color sensor (placeholder)
+        args: []
+        returns: int
+
+      - name: read_line
+        opcode: ReadLine
+        opcode_id: 34
+        description: Read line sensor (0=white, 1=dark)
+        args:
+          - name: channel
+            type: int
+        returns: int
 
 ================
 File: robot-docs/DEVELOPMENT_GUIDE.md
@@ -21495,11 +26608,16 @@ File: robot-platform/main/src/Services/VM/VM.cpp
 ================
 #include "VM.h"
 #include "../Robot/RobotAPI.h"
-#include "generated/opcode.h"
+#include "../../generated/opcode.h"
+#include <Arduino.h> 
+// Bật trace để debug (có thể comment để tắt)
+#define VM_TRACE_ENABLED 1
 
 VM::VM() : mProgram(nullptr) {}
 
-void VM::Reset() { mContext.Reset(); }
+void VM::Reset() {
+    mContext.Reset();
+}
 
 bool VM::LoadProgram(const Program* program)
 {
@@ -21520,19 +26638,37 @@ uint16_t VM::GetProgramCounter() const
     return mContext.mProgramCounter;
 }
 
+uint8_t VM::GetErrorCode() const
+{
+    return mContext.mErrorCode;
+}
+
 void VM::Step()
 {
     if (!IsRunning()) return;
+
+    // Nếu đã hết chương trình → dừng bình thường (không lỗi)
     if (mContext.mProgramCounter >= mProgram->mInstructionCount)
     {
         mContext.mRunning = false;
-        mContext.mErrorCode = 2;  // program overflow
+        mContext.mErrorCode = 0;   // <-- không báo lỗi
         return;
     }
-    const Instruction& instruction = mProgram->mInstructions[mContext.mProgramCounter];
-    ExecuteInstruction(instruction);
-}
 
+    const Instruction& instruction = mProgram->mInstructions[mContext.mProgramCounter];
+
+#ifdef VM_TRACE_ENABLED
+    Serial.printf("[TRACE] PC=%03d | Opcode=%d\n", mContext.mProgramCounter, (uint8_t)instruction.opcode);
+#endif
+
+    ExecuteInstruction(instruction);
+
+    // Nếu sau khi execute mà lỗi thực sự (khác 0) thì dừng
+    if (mContext.mErrorCode != 0) {
+        mContext.mRunning = false;
+        Serial.printf("[VM] Error code: %d\n", mContext.mErrorCode);
+    }
+}
 void VM::ExecuteInstruction(const Instruction& instruction)
 {
     switch (instruction.opcode)
@@ -21611,13 +26747,10 @@ void VM::ExecuteInstruction(const Instruction& instruction)
         case Opcode::Jump:
         {
             uint16_t target = instruction.p1;
-            if (target >= mProgram->mInstructionCount)
-            {
+            if (target >= mProgram->mInstructionCount) {
                 mContext.mRunning = false;
-                mContext.mErrorCode = 3;  // invalid jump target
-            }
-            else
-            {
+                mContext.mErrorCode = 3; // Invalid jump target
+            } else {
                 mContext.mProgramCounter = target;
             }
             break;
@@ -21625,21 +26758,15 @@ void VM::ExecuteInstruction(const Instruction& instruction)
 
         case Opcode::JumpIfFalse:
         {
-            if (mContext.mVariables[instruction.p1] == 0)
-            {
+            if (mContext.mVariables[instruction.p1] == 0) {
                 uint16_t target = instruction.p2;
-                if (target >= mProgram->mInstructionCount)
-                {
+                if (target >= mProgram->mInstructionCount) {
                     mContext.mRunning = false;
-                    mContext.mErrorCode = 3;  // invalid jump target
-                }
-                else
-                {
+                    mContext.mErrorCode = 3;
+                } else {
                     mContext.mProgramCounter = target;
                 }
-            }
-            else
-            {
+            } else {
                 mContext.mProgramCounter++;
             }
             break;
@@ -21647,27 +26774,20 @@ void VM::ExecuteInstruction(const Instruction& instruction)
 
         case Opcode::JumpIfTrue:
         {
-            if (mContext.mVariables[instruction.p1] != 0)
-            {
+            if (mContext.mVariables[instruction.p1] != 0) {
                 uint16_t target = instruction.p2;
-                if (target >= mProgram->mInstructionCount)
-                {
+                if (target >= mProgram->mInstructionCount) {
                     mContext.mRunning = false;
-                    mContext.mErrorCode = 3;  // invalid jump target
-                }
-                else
-                {
+                    mContext.mErrorCode = 3;
+                } else {
                     mContext.mProgramCounter = target;
                 }
-            }
-            else
-            {
+            } else {
                 mContext.mProgramCounter++;
             }
             break;
         }
 
-        // --- Arithmetic operations ---
         case Opcode::Add:
             mContext.mVariables[instruction.p3] =
                 mContext.mVariables[instruction.p1] + mContext.mVariables[instruction.p2];
@@ -21687,21 +26807,27 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             break;
 
         case Opcode::Div:
-            if (mContext.mVariables[instruction.p2] == 0)
+            if (mContext.mVariables[instruction.p2] == 0) {
                 mContext.mVariables[instruction.p3] = 0;
-            else
+                mContext.mErrorCode = 6; // Division by zero
+                mContext.mRunning = false;
+            } else {
                 mContext.mVariables[instruction.p3] =
                     mContext.mVariables[instruction.p1] / mContext.mVariables[instruction.p2];
-            mContext.mProgramCounter++;
+                mContext.mProgramCounter++;
+            }
             break;
 
         case Opcode::Mod:
-            if (mContext.mVariables[instruction.p2] == 0)
+            if (mContext.mVariables[instruction.p2] == 0) {
                 mContext.mVariables[instruction.p3] = 0;
-            else
+                mContext.mErrorCode = 7; // Modulo by zero
+                mContext.mRunning = false;
+            } else {
                 mContext.mVariables[instruction.p3] =
                     mContext.mVariables[instruction.p1] % mContext.mVariables[instruction.p2];
-            mContext.mProgramCounter++;
+                mContext.mProgramCounter++;
+            }
             break;
 
         case Opcode::Pow:
@@ -21721,41 +26847,61 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             mContext.mVariables[instruction.p3] = -mContext.mVariables[instruction.p1];
             mContext.mProgramCounter++;
             break;
-            
+
         case Opcode::Store:
             mContext.mVariables[instruction.p2] = mContext.mVariables[instruction.p1];
             mContext.mProgramCounter++;
             break;
 
         case Opcode::Call:
-            // Lưu địa chỉ trả về (PC hiện tại + 1)
             mContext.mReturnAddress = mContext.mProgramCounter + 1;
-            // Lưu frame pointer hiện tại
             mContext.mFramePointer = mContext.mCallStackPointer;
-            // Đẩy return address vào call stack
             if (mContext.mCallStackPointer < MAX_CALL_STACK) {
                 mContext.mCallStack[mContext.mCallStackPointer++] = mContext.mReturnAddress;
             } else {
                 mContext.mRunning = false;
-                mContext.mErrorCode = 4; // stack overflow
+                mContext.mErrorCode = 4; // Stack overflow
+                return;
             }
-            // Nhảy đến địa chỉ hàm (p1)
             mContext.mProgramCounter = instruction.p1;
             break;
 
         case Opcode::Return:
-            // Lấy return address từ stack
             if (mContext.mCallStackPointer > 0) {
                 mContext.mCallStackPointer--;
                 mContext.mProgramCounter = mContext.mCallStack[mContext.mCallStackPointer];
             } else {
                 mContext.mRunning = false;
-                mContext.mErrorCode = 5; // return without call
+                mContext.mErrorCode = 5; // Return without call
             }
+            break;
+        case Opcode::ReadUltrasonic:
+            mContext.mVariables[instruction.p1] = RobotAPI::ReadUltrasonic();
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::ReadTouch:
+            mContext.mVariables[instruction.p2] = RobotAPI::ReadTouch(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::ReadLight:
+            mContext.mVariables[instruction.p2] = RobotAPI::ReadLight(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::ReadColor:
+            mContext.mVariables[instruction.p1] = RobotAPI::ReadColor();
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::ReadLine:
+            mContext.mVariables[instruction.p2] = RobotAPI::ReadLine(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
             break;
         default:
             mContext.mRunning = false;
-            mContext.mErrorCode = 1;  // invalid opcode
+            mContext.mErrorCode = 1; // Invalid opcode
             break;
     }
 }

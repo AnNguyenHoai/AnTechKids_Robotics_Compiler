@@ -1,0 +1,10 @@
+for i in range(5):
+    forward(60)
+    wait(500)
+    turn_right(40)
+    wait(300)
+    forward(60)
+    wait(500)
+    turn_left(40)
+    wait(300)
+stop()

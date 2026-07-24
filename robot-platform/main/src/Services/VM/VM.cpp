@@ -1,10 +1,15 @@
 #include "VM.h"
 #include "../Robot/RobotAPI.h"
-#include "generated/opcode.h"
+#include "../../../include/generated/opcode.h"
+#include <Arduino.h> 
+// Bật trace để debug (có thể comment để tắt)
+#define VM_TRACE_ENABLED 1
 
 VM::VM() : mProgram(nullptr) {}
 
-void VM::Reset() { mContext.Reset(); }
+void VM::Reset() {
+    mContext.Reset();
+}
 
 bool VM::LoadProgram(const Program* program)
 {
@@ -25,19 +30,37 @@ uint16_t VM::GetProgramCounter() const
     return mContext.mProgramCounter;
 }
 
+uint8_t VM::GetErrorCode() const
+{
+    return mContext.mErrorCode;
+}
+
 void VM::Step()
 {
     if (!IsRunning()) return;
+
+    // Nếu đã hết chương trình → dừng bình thường (không lỗi)
     if (mContext.mProgramCounter >= mProgram->mInstructionCount)
     {
         mContext.mRunning = false;
-        mContext.mErrorCode = 2;  // program overflow
+        mContext.mErrorCode = 0;   // <-- không báo lỗi
         return;
     }
-    const Instruction& instruction = mProgram->mInstructions[mContext.mProgramCounter];
-    ExecuteInstruction(instruction);
-}
 
+    const Instruction& instruction = mProgram->mInstructions[mContext.mProgramCounter];
+
+#ifdef VM_TRACE_ENABLED
+    Serial.printf("[TRACE] PC=%03d | Opcode=%d\n", mContext.mProgramCounter, (uint8_t)instruction.opcode);
+#endif
+
+    ExecuteInstruction(instruction);
+
+    // Nếu sau khi execute mà lỗi thực sự (khác 0) thì dừng
+    if (mContext.mErrorCode != 0) {
+        mContext.mRunning = false;
+        Serial.printf("[VM] Error code: %d\n", mContext.mErrorCode);
+    }
+}
 void VM::ExecuteInstruction(const Instruction& instruction)
 {
     switch (instruction.opcode)
@@ -116,13 +139,10 @@ void VM::ExecuteInstruction(const Instruction& instruction)
         case Opcode::Jump:
         {
             uint16_t target = instruction.p1;
-            if (target >= mProgram->mInstructionCount)
-            {
+            if (target >= mProgram->mInstructionCount) {
                 mContext.mRunning = false;
-                mContext.mErrorCode = 3;  // invalid jump target
-            }
-            else
-            {
+                mContext.mErrorCode = 3; // Invalid jump target
+            } else {
                 mContext.mProgramCounter = target;
             }
             break;
@@ -130,21 +150,15 @@ void VM::ExecuteInstruction(const Instruction& instruction)
 
         case Opcode::JumpIfFalse:
         {
-            if (mContext.mVariables[instruction.p1] == 0)
-            {
+            if (mContext.mVariables[instruction.p1] == 0) {
                 uint16_t target = instruction.p2;
-                if (target >= mProgram->mInstructionCount)
-                {
+                if (target >= mProgram->mInstructionCount) {
                     mContext.mRunning = false;
-                    mContext.mErrorCode = 3;  // invalid jump target
-                }
-                else
-                {
+                    mContext.mErrorCode = 3;
+                } else {
                     mContext.mProgramCounter = target;
                 }
-            }
-            else
-            {
+            } else {
                 mContext.mProgramCounter++;
             }
             break;
@@ -152,27 +166,20 @@ void VM::ExecuteInstruction(const Instruction& instruction)
 
         case Opcode::JumpIfTrue:
         {
-            if (mContext.mVariables[instruction.p1] != 0)
-            {
+            if (mContext.mVariables[instruction.p1] != 0) {
                 uint16_t target = instruction.p2;
-                if (target >= mProgram->mInstructionCount)
-                {
+                if (target >= mProgram->mInstructionCount) {
                     mContext.mRunning = false;
-                    mContext.mErrorCode = 3;  // invalid jump target
-                }
-                else
-                {
+                    mContext.mErrorCode = 3;
+                } else {
                     mContext.mProgramCounter = target;
                 }
-            }
-            else
-            {
+            } else {
                 mContext.mProgramCounter++;
             }
             break;
         }
 
-        // --- Arithmetic operations ---
         case Opcode::Add:
             mContext.mVariables[instruction.p3] =
                 mContext.mVariables[instruction.p1] + mContext.mVariables[instruction.p2];
@@ -192,21 +199,27 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             break;
 
         case Opcode::Div:
-            if (mContext.mVariables[instruction.p2] == 0)
+            if (mContext.mVariables[instruction.p2] == 0) {
                 mContext.mVariables[instruction.p3] = 0;
-            else
+                mContext.mErrorCode = 6; // Division by zero
+                mContext.mRunning = false;
+            } else {
                 mContext.mVariables[instruction.p3] =
                     mContext.mVariables[instruction.p1] / mContext.mVariables[instruction.p2];
-            mContext.mProgramCounter++;
+                mContext.mProgramCounter++;
+            }
             break;
 
         case Opcode::Mod:
-            if (mContext.mVariables[instruction.p2] == 0)
+            if (mContext.mVariables[instruction.p2] == 0) {
                 mContext.mVariables[instruction.p3] = 0;
-            else
+                mContext.mErrorCode = 7; // Modulo by zero
+                mContext.mRunning = false;
+            } else {
                 mContext.mVariables[instruction.p3] =
                     mContext.mVariables[instruction.p1] % mContext.mVariables[instruction.p2];
-            mContext.mProgramCounter++;
+                mContext.mProgramCounter++;
+            }
             break;
 
         case Opcode::Pow:
@@ -226,41 +239,61 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             mContext.mVariables[instruction.p3] = -mContext.mVariables[instruction.p1];
             mContext.mProgramCounter++;
             break;
-            
+
         case Opcode::Store:
             mContext.mVariables[instruction.p2] = mContext.mVariables[instruction.p1];
             mContext.mProgramCounter++;
             break;
 
         case Opcode::Call:
-            // Lưu địa chỉ trả về (PC hiện tại + 1)
             mContext.mReturnAddress = mContext.mProgramCounter + 1;
-            // Lưu frame pointer hiện tại
             mContext.mFramePointer = mContext.mCallStackPointer;
-            // Đẩy return address vào call stack
             if (mContext.mCallStackPointer < MAX_CALL_STACK) {
                 mContext.mCallStack[mContext.mCallStackPointer++] = mContext.mReturnAddress;
             } else {
                 mContext.mRunning = false;
-                mContext.mErrorCode = 4; // stack overflow
+                mContext.mErrorCode = 4; // Stack overflow
+                return;
             }
-            // Nhảy đến địa chỉ hàm (p1)
             mContext.mProgramCounter = instruction.p1;
             break;
 
         case Opcode::Return:
-            // Lấy return address từ stack
             if (mContext.mCallStackPointer > 0) {
                 mContext.mCallStackPointer--;
                 mContext.mProgramCounter = mContext.mCallStack[mContext.mCallStackPointer];
             } else {
                 mContext.mRunning = false;
-                mContext.mErrorCode = 5; // return without call
+                mContext.mErrorCode = 5; // Return without call
             }
+            break;
+        case Opcode::ReadUltrasonic:
+            mContext.mVariables[instruction.p1] = RobotAPI::ReadUltrasonic();
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::ReadTouch:
+            mContext.mVariables[instruction.p2] = RobotAPI::ReadTouch(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::ReadLight:
+            mContext.mVariables[instruction.p2] = RobotAPI::ReadLight(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::ReadColor:
+            mContext.mVariables[instruction.p1] = RobotAPI::ReadColor();
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::ReadLine:
+            mContext.mVariables[instruction.p2] = RobotAPI::ReadLine(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
             break;
         default:
             mContext.mRunning = false;
-            mContext.mErrorCode = 1;  // invalid opcode
+            mContext.mErrorCode = 1; // Invalid opcode
             break;
     }
 }

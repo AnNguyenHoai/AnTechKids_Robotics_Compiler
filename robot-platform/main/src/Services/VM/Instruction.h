@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-#include "generated/opcode.h"
+#include "../../../include/generated/opcode.h"
 
 struct Instruction
 {

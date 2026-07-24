@@ -31,6 +31,11 @@ This is a complete list of all opcodes used by the Robot VM.
 | `Call` | 27 | internal | Call user function |
 | `Return` | 28 | internal | Return from function |
 | `Store` | 29 | internal | Store value from source to destination variable |
+| `ReadUltrasonic` | 30 | sensor | Read ultrasonic distance in cm |
+| `ReadTouch` | 31 | sensor | Read touch sensor state (0/1) |
+| `ReadLight` | 32 | sensor | Read light sensor raw value (0-1023) |
+| `ReadColor` | 33 | sensor | Read color sensor (placeholder) |
+| `ReadLine` | 34 | sensor | Read line sensor (0=white, 1=dark) |
 
 ---
 **Note:** Internal opcodes (ID >= 8) are used by the compiler and VM internally, not exposed to users.

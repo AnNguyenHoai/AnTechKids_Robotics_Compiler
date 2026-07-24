@@ -14,8 +14,10 @@ def run_script(script_path):
         text=True
     )
     print(result.stdout)
+    if result.stderr:
+        print("STDERR:", result.stderr, file=sys.stderr)
     if result.returncode != 0:
-        print(result.stderr)
+        print(f"FAILED with exit code {result.returncode}", file=sys.stderr)
         return False
     return True
 
@@ -23,9 +25,13 @@ def main():
     tests = [
         ROOT / "robot-compiler" / "tests" / "run_tests.py",
         ROOT / "robot-frontend-robosim" / "test" / "run_tests.py",
+        ROOT / "robot-compiler" / "integration" / "end_to_end" / "run_integration_tests.py",
     ]
     all_passed = True
     for test in tests:
+        if not test.exists():
+            print(f"Test script {test} not found, skipping.")
+            continue
         if not run_script(test):
             all_passed = False
             break

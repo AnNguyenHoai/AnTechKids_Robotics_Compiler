@@ -43,13 +43,13 @@ def handle_arithmetic(ins: RuntimeInstruction, engine: ExecutionEngine, api: Moc
         else:
             raise ValueError(f"Unknown arithmetic op: {op_name}")
         engine.set_variable_by_index(result_idx, result)
+        print(f"[Arithmetic] {op_name}: left={left}, right={right}, result={result} (idx {result_idx})")
     engine.context.program_counter += 1
     engine.iterator.seek(engine.context.program_counter)
 
 def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
     var_idx = ins.operands[0]
-    const_val = ins.operands[1]  # hằng số có thể là int, float, string, bool
-    # Tạo RuntimeValue tương ứng
+    const_val = ins.operands[1]
     if isinstance(const_val, int):
         from ..value import IntegerValue
         val = IntegerValue(const_val)
@@ -64,6 +64,7 @@ def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: Moc
         val = BooleanValue(const_val)
     else:
         raise TypeError(f"Unsupported constant type: {type(const_val)}")
+    print(f"[LoadConst] var_idx={var_idx}, value={val}")
     engine.set_variable_by_index(var_idx, val)
     engine.context.program_counter += 1
     engine.iterator.seek(engine.context.program_counter)
@@ -71,7 +72,9 @@ def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: Moc
 def handle_store(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
     src_idx = ins.operands[0]
     dest_idx = ins.operands[1]
+    print(f"[Store] src_idx={src_idx}, dest_idx={dest_idx}")
     val = engine.get_variable_by_index(src_idx)
+    print(f"[Store] value={val}")
     engine.set_variable_by_index(dest_idx, val)
     engine.context.program_counter += 1
     engine.iterator.seek(engine.context.program_counter)

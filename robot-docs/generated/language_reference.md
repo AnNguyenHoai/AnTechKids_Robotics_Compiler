@@ -23,6 +23,11 @@ Robot Language provides several built-in functions:
 | `turn_right(speed)` | 1 | Rotate robot right |
 | `wait(milliseconds)` | 1 | Wait milliseconds |
 | `stop()` | 0 | Stop robot |
+| `read_ultrasonic()` | 0 | Read ultrasonic distance in cm |
+| `read_touch(port)` | 1 | Read touch sensor state (0/1) |
+| `read_light(channel)` | 1 | Read light sensor raw value (0-1023) |
+| `read_color()` | 0 | Read color sensor (placeholder) |
+| `read_line(channel)` | 1 | Read line sensor (0=white, 1=dark) |
 
 ### User-Defined Functions
 ```python

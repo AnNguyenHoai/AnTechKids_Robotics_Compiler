@@ -103,15 +103,39 @@ class RobotCompiler(ast.NodeVisitor):
     # ----------------------------------------------------------
     # AST Visitors
     # ----------------------------------------------------------
+    # compiler/compiler.py - phần visit_Assign
+
     def visit_Assign(self, node):
-        # Chỉ hỗ trợ gán hằng hoặc biểu thức đơn giản? 
-        # Để không ảnh hưởng, ta giữ nguyên như cũ.
-        name = node.targets[0].id
-        if not isinstance(node.value, ast.Constant):
-            raise CompilerError("Only constant assignment is supported in this version.")
-        value = node.value.value
-        index = self.current_scope.allocate(name)
-        self.program.emit(Opcode.LoadConst.value, index, value)
+        # Chỉ hỗ trợ gán cho một biến đơn
+        if len(node.targets) != 1:
+            raise CompilerError("Multiple assignment not supported.")
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            raise CompilerError("Only variable assignment supported.")
+        name = target.id
+        
+        # Trường hợp 1: Gán hằng
+        if isinstance(node.value, ast.Constant):
+            value = node.value.value
+            index = self.current_scope.allocate(name)
+            self.program.emit(Opcode.LoadConst.value, index, value)
+            return
+        
+        # Trường hợp 2: Gán biểu thức (BinOp hoặc UnaryOp)
+        if isinstance(node.value, (ast.BinOp, ast.UnaryOp)):
+            result = self.compile_expression(node.value)
+            index = self.current_scope.allocate(name)
+            self.program.emit(Opcode.Store.value, result, index, 0)
+            return
+        
+        # Trường hợp 3: Gán biến (copy) - ví dụ: x = y
+        if isinstance(node.value, ast.Name):
+            src = self.current_scope.resolve(node.value.id)
+            dest = self.current_scope.allocate(name)
+            self.program.emit(Opcode.Store.value, src, dest, 0)
+            return
+        
+        raise CompilerError(f"Only constant, expression, or variable assignment is supported. Got {type(node.value)}")
 
     def visit_FunctionDef(self, node):
         self.functions[node.name] = node
@@ -170,6 +194,69 @@ class RobotCompiler(ast.NodeVisitor):
         for stmt in node.orelse:
             self.visit(stmt)
 
+        self.program.emit_label(end_label)
+
+    def visit_For(self, node):
+        # Chỉ hỗ trợ for i in range(start, end, step) với step=1
+        if not isinstance(node.iter, ast.Call):
+            raise CompilerError("For loop only supports range()")
+        if not isinstance(node.iter.func, ast.Name) or node.iter.func.id != 'range':
+            raise CompilerError("For loop only supports range()")
+        
+        args = node.iter.args
+        if len(args) == 1:
+            start = 0
+            end = self.compile_expression(args[0])
+            step = 1
+        elif len(args) == 2:
+            start = self.compile_expression(args[0])
+            end = self.compile_expression(args[1])
+            step = 1
+        elif len(args) == 3:
+            start = self.compile_expression(args[0])
+            end = self.compile_expression(args[1])
+            step = self.compile_expression(args[2])
+            # Đơn giản: chỉ hỗ trợ step=1
+            if step != 1:
+                raise CompilerError("Only step=1 is supported in for loop")
+        else:
+            raise CompilerError("range() requires 1-3 arguments")
+        
+        # Tên biến đếm
+        target = node.target
+        if not isinstance(target, ast.Name):
+            raise CompilerError("For loop target must be a variable name")
+        var_name = target.id
+        var_index = self.current_scope.allocate(var_name)
+        
+        # Khởi tạo biến đếm = start
+        self.program.emit(Opcode.LoadConst.value, var_index, start)
+        
+        # Labels
+        begin_label = self.program.new_label()
+        end_label = self.program.new_label()
+        self.loop_stack.append({"begin": begin_label, "end": end_label})
+        
+        self.program.emit_label(begin_label)
+        
+        # So sánh: var_index < end
+        temp = self.allocate_temp()
+        self.program.emit(Opcode.CompareLT.value, var_index, end, temp)
+        self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, temp, end_label)
+        
+        # Thân vòng lặp
+        for stmt in node.body:
+            self.visit(stmt)
+        
+        # Tăng biến đếm lên 1
+        temp2 = self.allocate_temp()
+        self.program.emit(Opcode.LoadConst.value, temp2, 1)
+        self.program.emit(Opcode.Add.value, var_index, temp2, temp)
+        self.program.emit(Opcode.Store.value, temp, var_index, 0)
+        
+        self.program.emit_jump(Opcode.Jump.value, begin_label)
+        
+        self.loop_stack.pop()
         self.program.emit_label(end_label)
 
     def visit_While(self, node):

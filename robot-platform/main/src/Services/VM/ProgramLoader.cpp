@@ -1,5 +1,5 @@
 #include "ProgramLoader.h"
-#include "../Application/generated_program.h"
+#include "../../Application/generated_program.h"
 
 bool ProgramLoader::LoadFromGenerated(Program& program)
 {

@@ -241,5 +241,50 @@
         "handler": "None",
         "arguments": 0,
         "description": "Store value from source to destination variable"
+    },
+    "read_ultrasonic": {
+        "opcode": "ReadUltrasonic",
+        "opcode_id": 30,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 0,
+        "description": "Read ultrasonic distance in cm"
+    },
+    "read_touch": {
+        "opcode": "ReadTouch",
+        "opcode_id": 31,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Read touch sensor state (0/1)"
+    },
+    "read_light": {
+        "opcode": "ReadLight",
+        "opcode_id": 32,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Read light sensor raw value (0-1023)"
+    },
+    "read_color": {
+        "opcode": "ReadColor",
+        "opcode_id": 33,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 0,
+        "description": "Read color sensor (placeholder)"
+    },
+    "read_line": {
+        "opcode": "ReadLine",
+        "opcode_id": 34,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Read line sensor (0=white, 1=dark)"
     }
 }

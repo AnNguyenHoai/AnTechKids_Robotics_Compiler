@@ -5,12 +5,14 @@ from ..mock.robot_api import MockRobotAPI
 
 def handle_jump(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
     target = ins.operands[0]
+    print(f"[Jump] target={target}")
     engine.jump(target)
 
 def handle_jump_if_false(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
     cond_idx = ins.operands[0]
     target = ins.operands[1]
     cond_val = engine.get_variable_by_index(cond_idx)
+    print(f"[JumpIfFalse] cond_idx={cond_idx}, cond_val={cond_val.as_bool()}, target={target}")
     if not cond_val.as_bool():
         engine.jump(target)
     else:

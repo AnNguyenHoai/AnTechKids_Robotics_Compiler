@@ -20,6 +20,7 @@ def handle_compare(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRo
     right = engine.get_variable_by_index(right_idx)
     op = COMPARE_OP[ins.opcode.name]
     result = engine.compare(left, right, op)
+    print(f"[Compare] {op}: left={left}, right={right}, result={result} (idx {result_idx})")
     engine.set_variable_by_index(result_idx, result)
     engine.context.program_counter += 1
     engine.iterator.seek(engine.context.program_counter)

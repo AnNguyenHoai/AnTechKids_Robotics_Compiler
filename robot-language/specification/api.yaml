@@ -173,4 +173,50 @@ categories:
         opcode: Store
         opcode_id: 29
         description: Store value from source to destination variable
-        args: []        
+        args: []   
+  sensor:
+    description: Sensor APIs
+    module: sensor_handler
+    handler: SensorHandler
+
+    functions:
+      - name: read_ultrasonic
+        opcode: ReadUltrasonic
+        opcode_id: 30
+        description: Read ultrasonic distance in cm
+        args: []
+        returns: int
+
+      - name: read_touch
+        opcode: ReadTouch
+        opcode_id: 31
+        description: Read touch sensor state (0/1)
+        args:
+          - name: port
+            type: int
+        returns: int
+
+      - name: read_light
+        opcode: ReadLight
+        opcode_id: 32
+        description: Read light sensor raw value (0-1023)
+        args:
+          - name: channel
+            type: int
+        returns: int
+
+      - name: read_color
+        opcode: ReadColor
+        opcode_id: 33
+        description: Read color sensor (placeholder)
+        args: []
+        returns: int
+
+      - name: read_line
+        opcode: ReadLine
+        opcode_id: 34
+        description: Read line sensor (0=white, 1=dark)
+        args:
+          - name: channel
+            type: int
+        returns: int         
