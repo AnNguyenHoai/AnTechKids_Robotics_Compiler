@@ -1,5 +1,4 @@
 import ast
-
 from .handlers.compare_handler import CompareHandler
 from .program import Program
 from .scope import Scope
@@ -42,11 +41,13 @@ class RobotCompiler(ast.NodeVisitor):
         self.temp_id += 1
         return self.current_scope.allocate(name)
 
+    def allocate_result(self):
+        return self.allocate_temp()
+
     # ----------------------------------------------------------
     # Expression compilation
     # ----------------------------------------------------------
     def compile_expression(self, expr):
-        """Compile an expression and return variable index of result."""
         if isinstance(expr, ast.Constant):
             index = self.allocate_temp()
             self.program.emit(Opcode.LoadConst.value, index, expr.value)
@@ -78,6 +79,10 @@ class RobotCompiler(ast.NodeVisitor):
             else:
                 raise CompilerError(f"Unsupported unary operator: {type(expr.op).__name__}")
             return result
+        elif isinstance(expr, ast.Compare):
+            return CompareHandler.compare(self, expr)
+        elif isinstance(expr, ast.BoolOp):
+            return BoolHandler.bool_op(self, expr)
         else:
             raise CompilerError(f"Unsupported expression type: {type(expr)}")
 
@@ -88,7 +93,7 @@ class RobotCompiler(ast.NodeVisitor):
             index = self.allocate_temp()
             self.program.emit(Opcode.LoadConst.value, index, arg.value)
             return index
-        elif isinstance(arg, (ast.BinOp, ast.UnaryOp)):
+        elif isinstance(arg, (ast.BinOp, ast.UnaryOp, ast.Compare, ast.BoolOp)):
             return self.compile_expression(arg)
         else:
             raise CompilerError(f"Unsupported argument type: {type(arg)}")
@@ -103,58 +108,84 @@ class RobotCompiler(ast.NodeVisitor):
     # ----------------------------------------------------------
     # AST Visitors
     # ----------------------------------------------------------
-    # compiler/compiler.py - phần visit_Assign
 
+    # ---------- Xử lý import ----------
+    def visit_Import(self, node):
+        new_names = []
+        for alias in node.names:
+            if alias.name not in ('rcu', '_thread'):
+                new_names.append(alias)
+        if new_names:
+            node.names = new_names
+            return node
+        return None
+
+    def visit_ImportFrom(self, node):
+        if node.module in ('rcu', '_thread'):
+            return None
+        return node
+
+    # ---------- Xử lý _thread.start_new_thread ----------
+    def visit_Expr(self, node):
+        # Nếu là _thread.start_new_thread, chuyển thành gọi hàm trực tiếp
+        if (isinstance(node.value, ast.Call) and
+            isinstance(node.value.func, ast.Attribute) and
+            isinstance(node.value.func.value, ast.Name) and
+            node.value.func.value.id == '_thread' and
+            node.value.func.attr == 'start_new_thread'):
+            func = node.value.args[0]
+            return ast.Expr(ast.Call(func=func, args=[], keywords=[]))
+        self.generic_visit(node)
+        return node
+
+    # ---------- Gán biến ----------
     def visit_Assign(self, node):
-        # Chỉ hỗ trợ gán cho một biến đơn
         if len(node.targets) != 1:
             raise CompilerError("Multiple assignment not supported.")
         target = node.targets[0]
         if not isinstance(target, ast.Name):
             raise CompilerError("Only variable assignment supported.")
         name = target.id
-        
-        # Trường hợp 1: Gán hằng
+
         if isinstance(node.value, ast.Constant):
             value = node.value.value
             index = self.current_scope.allocate(name)
             self.program.emit(Opcode.LoadConst.value, index, value)
             return
-        
-        # Trường hợp 2: Gán biểu thức (BinOp hoặc UnaryOp)
+
         if isinstance(node.value, (ast.BinOp, ast.UnaryOp)):
             result = self.compile_expression(node.value)
             index = self.current_scope.allocate(name)
             self.program.emit(Opcode.Store.value, result, index, 0)
             return
-        
-        # Trường hợp 3: Gán biến (copy) - ví dụ: x = y
+
         if isinstance(node.value, ast.Name):
             src = self.current_scope.resolve(node.value.id)
             dest = self.current_scope.allocate(name)
             self.program.emit(Opcode.Store.value, src, dest, 0)
             return
-        
+
         raise CompilerError(f"Only constant, expression, or variable assignment is supported. Got {type(node.value)}")
 
+    # ---------- Hàm ----------
     def visit_FunctionDef(self, node):
         self.functions[node.name] = node
         return
 
-    def visit_Expr(self, node):
-        self.visit(node.value)
-
+    # ---------- Lời gọi hàm ----------
     def visit_Call(self, node):
         if not isinstance(node.func, ast.Name):
             raise CompilerError(f"Unsupported function call: {ast.dump(node.func)}")
         func = node.func.id
 
+        # Hàm do người dùng định nghĩa
         if func in self.functions:
             function = self.functions[func]
             for stmt in function.body:
                 self.visit(stmt)
             return
 
+        # Hàm built-in
         info = FUNCTION_REGISTRY.get(func)
         if info is None:
             raise CompilerError(f"Unknown function '{func}()'")
@@ -167,17 +198,25 @@ class RobotCompiler(ast.NodeVisitor):
         handler = info["handler"]
         handler(self, node)
 
-    def allocate_result(self):
-        return self.allocate_temp()
-
+    # ---------- So sánh ----------
     def visit_Compare(self, node):
         return CompareHandler.compare(self, node)
 
+    # ---------- Boolean ----------
     def visit_BoolOp(self, node):
         return BoolHandler.bool_op(self, node)
 
+    # ---------- Hằng số ----------
+    def visit_Constant(self, node):
+        return self.compile_expression(node)
+
+    # ---------- Tên biến ----------
+    def visit_Name(self, node):
+        return self.current_scope.resolve(node.id)
+
+    # ---------- If ----------
     def visit_If(self, node):
-        result = self.visit(node.test)
+        result = self.compile_expression(node.test)
         else_label = self.program.new_label()
         end_label = self.program.new_label()
 
@@ -196,96 +235,99 @@ class RobotCompiler(ast.NodeVisitor):
 
         self.program.emit_label(end_label)
 
+    # ---------- For ----------
     def visit_For(self, node):
-        # Chỉ hỗ trợ for i in range(start, end, step) với step=1
         if not isinstance(node.iter, ast.Call):
             raise CompilerError("For loop only supports range()")
         if not isinstance(node.iter.func, ast.Name) or node.iter.func.id != 'range':
             raise CompilerError("For loop only supports range()")
-        
+
         args = node.iter.args
         if len(args) == 1:
             start = 0
             end = self.compile_expression(args[0])
-            step = 1
         elif len(args) == 2:
             start = self.compile_expression(args[0])
             end = self.compile_expression(args[1])
-            step = 1
         elif len(args) == 3:
             start = self.compile_expression(args[0])
             end = self.compile_expression(args[1])
             step = self.compile_expression(args[2])
-            # Đơn giản: chỉ hỗ trợ step=1
             if step != 1:
                 raise CompilerError("Only step=1 is supported in for loop")
         else:
             raise CompilerError("range() requires 1-3 arguments")
-        
-        # Tên biến đếm
+
         target = node.target
         if not isinstance(target, ast.Name):
             raise CompilerError("For loop target must be a variable name")
         var_name = target.id
         var_index = self.current_scope.allocate(var_name)
-        
-        # Khởi tạo biến đếm = start
+
         self.program.emit(Opcode.LoadConst.value, var_index, start)
-        
-        # Labels
+
         begin_label = self.program.new_label()
         end_label = self.program.new_label()
         self.loop_stack.append({"begin": begin_label, "end": end_label})
-        
+
         self.program.emit_label(begin_label)
-        
-        # So sánh: var_index < end
+
         temp = self.allocate_temp()
         self.program.emit(Opcode.CompareLT.value, var_index, end, temp)
         self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, temp, end_label)
-        
-        # Thân vòng lặp
+
         for stmt in node.body:
             self.visit(stmt)
-        
-        # Tăng biến đếm lên 1
+
         temp2 = self.allocate_temp()
         self.program.emit(Opcode.LoadConst.value, temp2, 1)
         self.program.emit(Opcode.Add.value, var_index, temp2, temp)
         self.program.emit(Opcode.Store.value, temp, var_index, 0)
-        
+
         self.program.emit_jump(Opcode.Jump.value, begin_label)
-        
+
         self.loop_stack.pop()
         self.program.emit_label(end_label)
 
+    # ---------- While ----------
     def visit_While(self, node):
+        # Nếu là while 1: pass -> bỏ qua, không sinh instruction
+        if (isinstance(node.test, ast.Constant) and node.test.value in (True, 1) and
+            len(node.body) == 1 and isinstance(node.body[0], ast.Pass)):
+            return  # không làm gì
+
+        # Xử lý while vô hạn thông thường (có body)
+        if isinstance(node.test, ast.Constant) and node.test.value in (True, 1):
+            begin_label = self.program.new_label()
+            self.loop_stack.append({"begin": begin_label, "end": None})
+            self.program.emit_label(begin_label)
+            for stmt in node.body:
+                self.visit(stmt)
+            self.program.emit_jump(Opcode.Jump.value, begin_label)
+            self.loop_stack.pop()
+            return
+
+        # Xử lý while có điều kiện (giữ nguyên)
         begin_label = self.program.new_label()
         end_label = self.program.new_label()
-
         self.loop_stack.append({"begin": begin_label, "end": end_label})
-
         self.program.emit_label(begin_label)
-
-        result = self.visit(node.test)
-
+        result = self.compile_expression(node.test)
         self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, end_label)
-
         for stmt in node.body:
             self.visit(stmt)
-
         self.program.emit_jump(Opcode.Jump.value, begin_label)
-
         self.loop_stack.pop()
-
         self.program.emit_label(end_label)
 
+    # ---------- Break ----------
     def visit_Break(self, node):
         if len(self.loop_stack) == 0:
             raise CompilerError("'break' outside loop.")
         context = self.loop_stack[-1]
         self.program.emit_jump(Opcode.Jump.value, context["end"])
 
+    # ---------- Continue ----------
     def visit_Continue(self, node):
         if len(self.loop_stack) == 0:
             raise CompilerError("'continue' outside loop.")

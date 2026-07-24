@@ -1,58 +1,48 @@
 from pathlib import Path
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT))
 
-from frontend.compiler import RoboSimCompiler
-from compiler.generated.opcode import Opcode
+from frontend import rewrite
 
-EXAMPLES = ROOT / "examples"
-compiler = RoboSimCompiler()
+def test_rewrite(input_file, golden_file):
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp:
+        output_path = Path(tmp.name)
+    try:
+        rewrite(input_file, output_path)
+        with open(output_path, 'r') as f:
+            actual = f.read()
+        with open(golden_file, 'r') as f:
+            expected = f.read()
+        assert actual == expected, (
+            f"Mismatch for {input_file.name}\n"
+            f"Expected:\n{expected}\n"
+            f"Actual:\n{actual}"
+        )
+        print(f"PASS: {input_file.name}")
+    finally:
+        output_path.unlink(missing_ok=True)
 
-# ---- Test 1: robosim_demo.py ----
-program = compiler.compile(EXAMPLES / "robosim_demo.py")
-print("\nInstruction Count:", len(program.instructions))
-for i, ins in enumerate(program.instructions):
-    print(i, f"Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
-print()
-assert len(program.instructions) == 5
-assert program.instructions[0].opcode == Opcode.LoadConst.value
-assert program.instructions[0].p1 == 0 and program.instructions[0].p2 == 80
-assert program.instructions[1].opcode == Opcode.Forward.value
-assert program.instructions[1].p1 == 0
-assert program.instructions[2].opcode == Opcode.LoadConst.value
-assert program.instructions[2].p1 == 1 and program.instructions[2].p2 == 1000
-assert program.instructions[3].opcode == Opcode.Wait.value
-assert program.instructions[3].p1 == 1
-assert program.instructions[4].opcode == Opcode.Stop.value
-print("Test robosim_demo.py : PASS")
+def main():
+    examples = ROOT / "examples"
+    golden_dir = ROOT / "test" / "golden"
+    if not golden_dir.exists():
+        print("Golden directory not found.")
+        sys.exit(1)
+    all_passed = True
+    for py_file in examples.glob("*.py"):
+        golden_file = golden_dir / f"{py_file.stem}.rewrite.py"
+        if golden_file.exists():
+            try:
+                test_rewrite(py_file, golden_file)
+            except AssertionError as e:
+                print(e)
+                all_passed = False
+        else:
+            print(f"SKIP: {py_file.name} (no golden)")
+    sys.exit(0 if all_passed else 1)
 
-# ---- Test 2: robosim_wait.py ----
-program = compiler.compile(EXAMPLES / "robosim_wait.py")
-assert len(program.instructions) == 2
-assert program.instructions[0].opcode == Opcode.LoadConst.value
-assert program.instructions[1].opcode == Opcode.Wait.value
-print("Test robosim_wait.py : PASS")
-
-# ---- Test 3: robosim_move_second.py ----
-program = compiler.compile(EXAMPLES / "robosim_move_second.py")
-print("\nrobosim_move_second.py instructions:")
-for i, ins in enumerate(program.instructions):
-    print(i, f"Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
-print()
-assert len(program.instructions) == 7
-# Có thể kiểm tra thêm giá trị của Mul
-assert program.instructions[4].opcode == Opcode.Mul.value
-assert program.instructions[4].p1 == 1
-assert program.instructions[4].p2 == 2
-assert program.instructions[4].p3 == 3
-print("Test robosim_move_second.py : PASS")
-# ---- Test 4: robosim_variable.py ----
-program = compiler.compile(EXAMPLES / "robosim_variable.py")
-assert len(program.instructions) == 3
-assert program.instructions[0].opcode == Opcode.LoadConst.value
-assert program.instructions[1].opcode == Opcode.Forward.value
-assert program.instructions[2].opcode == Opcode.Stop.value
-print("Test robosim_variable.py : PASS")
+if __name__ == "__main__":
+    main()

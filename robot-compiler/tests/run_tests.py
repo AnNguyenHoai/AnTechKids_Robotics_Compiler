@@ -17,11 +17,22 @@ def compile_file(filename):
 
 def assert_instruction(actual, opcode_name, p1, p2, p3):
     actual_name = Opcode(actual.opcode).name
-    assert actual_name == opcode_name, f"Expected {opcode_name}, got {actual_name}"
-    assert actual.p1 == p1
-    assert actual.p2 == p2
-    assert actual.p3 == p3
 
+    assert actual_name == opcode_name, (
+        f"Opcode mismatch: expected={opcode_name}, actual={actual_name}"
+    )
+
+    assert actual.p1 == p1, (
+        f"{opcode_name} p1 mismatch: expected={p1}, actual={actual.p1}"
+    )
+
+    assert actual.p2 == p2, (
+        f"{opcode_name} p2 mismatch: expected={p2}, actual={actual.p2}"
+    )
+
+    assert actual.p3 == p3, (
+        f"{opcode_name} p3 mismatch: expected={p3}, actual={actual.p3}"
+    )
 
 def expect_program(program, expected):
     assert len(program.instructions) == len(expected), (

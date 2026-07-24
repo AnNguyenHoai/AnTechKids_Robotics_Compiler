@@ -1,7 +1,7 @@
 from .instruction import Instruction
 from .label import Label
 from .patch import Patch
-
+from .generated.opcode import Opcode
 class Program:
     def __init__(self):
         self.instructions = []
@@ -34,7 +34,6 @@ class Program:
                 raise Exception(f"Unresolved label {patch.label.id}")
             instruction = self.instructions[patch.instruction_index]
             instruction.p2 = patch.label.position
-
     def emit_label(self, label):
         self.mark(label)
 

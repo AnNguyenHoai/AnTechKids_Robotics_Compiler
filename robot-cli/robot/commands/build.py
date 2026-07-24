@@ -1,4 +1,5 @@
 import click
+import subprocess
 import sys
 from pathlib import Path
 from ..core import config, utils
@@ -6,26 +7,24 @@ from ..core import config, utils
 @click.command()
 @click.option('--file', '-f', default='main.py', help='Source file to compile')
 @click.option('--output', '-o', default=None, help='Output header file')
-def build(file, output):
+@click.option('--build-dir', help='Build directory')
+@click.option('--copy', is_flag=True, help='Copy header to robot-platform after build')
+def build(file, output, build_dir, copy):
     click.echo(f"🔧 Building {file} ...")
-    compiler_script = config.REPO_COMPILER / "main.py"
-    if not compiler_script.exists():
-        click.echo("❌ robot-compiler not found.", err=True)
+    build_script = config.ROOT / "tools" / "build.py"
+    if not build_script.exists():
+        click.echo("❌ tools/build.py not found.", err=True)
         sys.exit(1)
 
-    # Chuyển file thành đường dẫn tuyệt đối
-    source_path = Path(file).resolve()
-    if not source_path.exists():
-        click.echo(f"❌ Source file '{file}' not found.", err=True)
-        sys.exit(1)
-
-    args = []
+    cmd = [sys.executable, str(build_script), "--input", str(Path(file).resolve())]
     if output:
-        args.extend(['--output', str(Path(output).resolve())])
-    # Truyền đường dẫn tuyệt đối cho compiler
-    args.extend(['--file', str(source_path)])
+        cmd.extend(["--output", str(Path(output).resolve())])
+    if build_dir:
+        cmd.extend(["--build-dir", str(Path(build_dir).resolve())])
+    if copy:
+        cmd.append("--copy")
 
-    result = utils.run_script(compiler_script, args, capture=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
     click.echo(result.stdout)
     if result.returncode != 0:
         click.echo(result.stderr, err=True)

@@ -111,7 +111,7 @@ void loop() {
                 // Hoặc để nguyên vòng lặp dừng.
                 while (1) {
                         SerialCommandHandler::handle(); // vẫn xử lý Serial
-                        delay(10);
+                        delay(30);
                  }
             }
         }

@@ -1,7 +1,7 @@
-# integration/end_to_end/benchmark.py
 import time
 import sys
 import json
+import tempfile
 from pathlib import Path
 import statistics
 
@@ -14,7 +14,8 @@ if str(COMPILER_ROOT) not in sys.path:
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
-from frontend.compiler import RoboSimCompiler
+from frontend import rewrite
+from compiler.compiler import RobotCompiler
 from compiler.binary import ProgramEncoder, BinarySerializer
 from runtime import ProgramLoader, VirtualMachine
 from runtime.hardware import MockHardware
@@ -24,14 +25,26 @@ from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, ISAOperand
 PROGRAMS_DIR = Path(__file__).parent / "programs"
 RESULTS_FILE = Path(__file__).parent / "benchmark_results.json"
 
+def compile_robosim(source_path):
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.rewrite.py', delete=False) as tmp:
+        rewrite_path = Path(tmp.name)
+    try:
+        rewrite(source_path, rewrite_path)
+        compiler = RobotCompiler()
+        program = compiler.compile(rewrite_path)
+        return program
+    finally:
+        rewrite_path.unlink(missing_ok=True)
+
 def convert_instruction(ins):
-    """Convert compiler.Instruction to ISAInstruction."""
     opcode = Opcode(ins.opcode)
     operands = []
-    
     if opcode == Opcode.LoadConst:
         operands.append(ISAOperand.integer(ins.p1))
-        operands.append(ISAOperand.integer(ins.p2))
+        if isinstance(ins.p2, float):
+            operands.append(ISAOperand.float(ins.p2))
+        else:
+            operands.append(ISAOperand.integer(ins.p2))
     elif opcode in (Opcode.Forward, Opcode.Backward, Opcode.TurnLeft, Opcode.TurnRight, Opcode.Wait):
         operands.append(ISAOperand.integer(ins.p1))
     elif opcode == Opcode.Stop:
@@ -55,7 +68,7 @@ def convert_instruction(ins):
         operands.append(ISAOperand.integer(ins.p1))
     elif opcode == Opcode.Return:
         pass
-    elif opcode in (Opcode.CompareEQ, Opcode.CompareNE, Opcode.CompareLT, 
+    elif opcode in (Opcode.CompareEQ, Opcode.CompareNE, Opcode.CompareLT,
                     Opcode.CompareLE, Opcode.CompareGT, Opcode.CompareGE):
         operands.append(ISAOperand.integer(ins.p1))
         operands.append(ISAOperand.integer(ins.p2))
@@ -66,52 +79,50 @@ def convert_instruction(ins):
         if ins.p1 != 0: operands.append(ISAOperand.integer(ins.p1))
         if ins.p2 != 0: operands.append(ISAOperand.integer(ins.p2))
         if ins.p3 != 0: operands.append(ISAOperand.integer(ins.p3))
-    
     return ISAInstruction(opcode, operands)
 
 def benchmark_program(program_path, iterations=5):
-    compiler = RoboSimCompiler()
-    
     compile_times = []
+    program = None
     for _ in range(iterations):
         start = time.perf_counter()
-        program = compiler.compile(program_path)
+        program = compile_robosim(program_path)
         compile_times.append(time.perf_counter() - start)
-    
+
     isa_prog = ISAProgram()
     func = ISAFunction("main")
     for ins in program.instructions:
         func.add_instruction(convert_instruction(ins))
     isa_prog.add_function(func)
-    
+
     instruction_count = len(program.instructions)
-    
+
     encoder = ProgramEncoder()
     start = time.perf_counter()
     binary_prog = encoder.encode(isa_prog)
     encode_time = time.perf_counter() - start
-    
+
     serializer = BinarySerializer()
     start = time.perf_counter()
     binary_data = serializer.serialize(binary_prog)
     serialize_time = time.perf_counter() - start
-    
+
     loader = ProgramLoader()
     load_times = []
     for _ in range(iterations):
         start = time.perf_counter()
         runtime_prog = loader.load(binary_prog)
         load_times.append(time.perf_counter() - start)
-    
+
     hardware = MockHardware()
     vm = VirtualMachine(hardware=hardware)
     vm.load(runtime_prog)
     start = time.perf_counter()
     vm.run()
     execution_time = time.perf_counter() - start
-    
+
     memory_usage = sys.getsizeof(binary_data) + sys.getsizeof(runtime_prog)
-    
+
     return {
         "program": str(program_path.name),
         "instruction_count": instruction_count,
@@ -141,7 +152,7 @@ def main():
             print()
         except Exception as e:
             print(f"  FAILED: {e}")
-    
+
     with open(RESULTS_FILE, "w") as f:
         json.dump(results, f, indent=2)
     print(f"Results saved to {RESULTS_FILE}")

@@ -138,13 +138,22 @@ void VM::ExecuteInstruction(const Instruction& instruction)
 
         case Opcode::Jump:
         {
-            uint16_t target = instruction.p1;
-            if (target >= mProgram->mInstructionCount) {
+            uint16_t target = instruction.p2;
+
+            if (target > mProgram->mInstructionCount) {
+                // Target vượt quá END thật sự là invalid
                 mContext.mRunning = false;
-                mContext.mErrorCode = 3; // Invalid jump target
-            } else {
+                mContext.mErrorCode = 3;
+            }
+            else if (target == mProgram->mInstructionCount) {
+                // Jump tới END label = kết thúc chương trình bình thường
+                mContext.mRunning = false;
+                mContext.mErrorCode = 0;
+            }
+            else {
                 mContext.mProgramCounter = target;
             }
+
             break;
         }
 
@@ -152,15 +161,25 @@ void VM::ExecuteInstruction(const Instruction& instruction)
         {
             if (mContext.mVariables[instruction.p1] == 0) {
                 uint16_t target = instruction.p2;
-                if (target >= mProgram->mInstructionCount) {
+
+                if (target > mProgram->mInstructionCount) {
+                    // Invalid jump target
                     mContext.mRunning = false;
                     mContext.mErrorCode = 3;
-                } else {
+                }
+                else if (target == mProgram->mInstructionCount) {
+                    // Jump to END = normal program termination
+                    mContext.mRunning = false;
+                    mContext.mErrorCode = 0;
+                }
+                else {
                     mContext.mProgramCounter = target;
                 }
-            } else {
+            }
+            else {
                 mContext.mProgramCounter++;
             }
+
             break;
         }
 
@@ -168,15 +187,25 @@ void VM::ExecuteInstruction(const Instruction& instruction)
         {
             if (mContext.mVariables[instruction.p1] != 0) {
                 uint16_t target = instruction.p2;
-                if (target >= mProgram->mInstructionCount) {
+
+                if (target > mProgram->mInstructionCount) {
+                    // Invalid jump target
                     mContext.mRunning = false;
                     mContext.mErrorCode = 3;
-                } else {
+                }
+                else if (target == mProgram->mInstructionCount) {
+                    // Jump to END = normal program termination
+                    mContext.mRunning = false;
+                    mContext.mErrorCode = 0;
+                }
+                else {
                     mContext.mProgramCounter = target;
                 }
-            } else {
+            }
+            else {
                 mContext.mProgramCounter++;
             }
+
             break;
         }
 

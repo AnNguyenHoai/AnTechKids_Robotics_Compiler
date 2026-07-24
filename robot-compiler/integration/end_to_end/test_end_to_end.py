@@ -1,8 +1,8 @@
-# integration/end_to_end/test_end_to_end.py
 import unittest
 import sys
 import time
 import threading
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -14,7 +14,8 @@ if str(COMPILER_ROOT) not in sys.path:
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
-from frontend.compiler import RoboSimCompiler
+from frontend import rewrite
+from compiler.compiler import RobotCompiler
 from compiler.binary import ProgramEncoder
 from runtime import ProgramLoader, VirtualMachine
 from runtime.hardware import MockHardware
@@ -23,11 +24,22 @@ from compiler.isa import ISAProgram, ISAFunction, ISAInstruction, ISAOperand
 
 PROGRAMS_DIR = Path(__file__).parent / "programs"
 
+def compile_robosim(source_path):
+    """Rewrite and compile a RoboSim source file."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.rewrite.py', delete=False) as tmp:
+        rewrite_path = Path(tmp.name)
+    try:
+        rewrite(source_path, rewrite_path)
+        compiler = RobotCompiler()
+        program = compiler.compile(rewrite_path)
+        return program
+    finally:
+        rewrite_path.unlink(missing_ok=True)
+
+# Hàm chuyển đổi Instruction sang ISA (giữ nguyên)
 def convert_instruction(ins):
-    """Chuyển compiler.Instruction sang ISAInstruction."""
     opcode = Opcode(ins.opcode)
     operands = []
-    
     if opcode == Opcode.LoadConst:
         operands.append(ISAOperand.integer(ins.p1))
         if isinstance(ins.p2, float):
@@ -68,18 +80,17 @@ def convert_instruction(ins):
         if ins.p1 != 0: operands.append(ISAOperand.integer(ins.p1))
         if ins.p2 != 0: operands.append(ISAOperand.integer(ins.p2))
         if ins.p3 != 0: operands.append(ISAOperand.integer(ins.p3))
-    
     return ISAInstruction(opcode, operands)
 
 class TestEndToEnd(unittest.TestCase):
     def setUp(self):
-        self.compiler = RoboSimCompiler()
+        pass  # không còn compiler instance
 
     def _run_program(self, program_path, expected_motor_commands, timeout=30):
-        program = self.compiler.compile(program_path)
+        program = compile_robosim(program_path)
         self.assertIsNotNone(program)
 
-        # In ra các instruction để debug
+        # In debug
         print(f"\n--- Instructions for {program_path.name} ---")
         for i, ins in enumerate(program.instructions):
             op_name = Opcode(ins.opcode).name
@@ -100,7 +111,7 @@ class TestEndToEnd(unittest.TestCase):
         hardware = MockHardware()
         vm = VirtualMachine(hardware=hardware)
         vm.load(runtime_prog)
-        
+
         result = {"done": False, "error": None}
         def run_vm():
             try:
@@ -118,19 +129,18 @@ class TestEndToEnd(unittest.TestCase):
             self.fail("Execution timed out")
         if result["error"]:
             raise result["error"]
-        
-        self.assertEqual(vm.state.value, "finished")
 
+        self.assertEqual(vm.state.value, "finished")
         motor_commands = []
         for item in hardware.log:
             if len(item) >= 3 and item[0] == "set_motor":
                 motor_commands.append((item[1], item[2]))
-        
         self.assertEqual(len(motor_commands), len(expected_motor_commands))
         for i, (left, right) in enumerate(expected_motor_commands):
             self.assertEqual(motor_commands[i][0], left)
             self.assertEqual(motor_commands[i][1], right)
 
+    # Các test cases
     def test_demo_forward(self):
         self._run_program(PROGRAMS_DIR / "demo_forward.py", [(80,80), (0,0)])
 
@@ -161,13 +171,13 @@ rcu.SetWaitForTime(0.1)
             f.write(source)
             path = Path(f.name)
         try:
-            program = self.compiler.compile(path)
+            program = compile_robosim(path)
             isa_prog = ISAProgram()
             func = ISAFunction("main")
             for ins in program.instructions:
                 func.add_instruction(convert_instruction(ins))
             isa_prog.add_function(func)
-            
+
             encoder = ProgramEncoder()
             binary_prog = encoder.encode(isa_prog)
             loader = ProgramLoader()
@@ -175,7 +185,7 @@ rcu.SetWaitForTime(0.1)
             hardware = MockHardware()
             vm = VirtualMachine(hardware=hardware)
             vm.load(runtime_prog)
-            
+
             result = {"done": False, "error": None}
             def run_vm():
                 try:
@@ -183,7 +193,7 @@ rcu.SetWaitForTime(0.1)
                     result["done"] = True
                 except Exception as e:
                     result["error"] = e
-            
+
             thread = threading.Thread(target=run_vm)
             thread.start()
             thread.join(10)
@@ -193,7 +203,7 @@ rcu.SetWaitForTime(0.1)
                 self.fail("Wait test timed out")
             if result["error"]:
                 raise result["error"]
-            
+
             self.assertEqual(vm.state.value, "finished")
             motor_commands = []
             for item in hardware.log:
