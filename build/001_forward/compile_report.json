@@ -1,7 +1,7 @@
 {
   "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\001_forward\\001_forward.rewrite.py",
   "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\001_forward\\program.h",
-  "compile_time_seconds": 0.0,
+  "compile_time_seconds": 0.002008199691772461,
   "instruction_count": 5,
   "variable_count": 2,
   "temp_count": 2,
