@@ -1,7 +1,7 @@
 {
   "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\004_forward_wait_stop\\004_forward_wait_stop.rewrite.py",
   "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\004_forward_wait_stop\\program.h",
-  "compile_time_seconds": 0.0,
+  "compile_time_seconds": 0.02031111717224121,
   "instruction_count": 6,
   "variable_count": 2,
   "temp_count": 2,

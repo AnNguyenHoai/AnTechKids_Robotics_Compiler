@@ -1,0 +1,1 @@
+light = read_light(1)

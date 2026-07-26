@@ -1,5 +1,5 @@
 def task1():
-    forward(50)
+    forward(70)
     wait(2000)
     stop()
     stop()

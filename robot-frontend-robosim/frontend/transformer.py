@@ -1,5 +1,5 @@
 import ast
-from frontend.mapping import ROBOSIM_API
+from frontend.mapping import ROBOSIM_API, SENSOR_API_MAPPING
 
 
 class RoboSimTransformer(ast.NodeTransformer):
@@ -10,7 +10,6 @@ class RoboSimTransformer(ast.NodeTransformer):
     # ----------------------------------------------------------------------
 
     def visit_Import(self, node):
-        # Keep only imports that are not rcu or _thread
         new_names = [alias for alias in node.names if alias.name not in ('rcu', '_thread')]
         if new_names:
             node.names = new_names
@@ -85,25 +84,39 @@ class RoboSimTransformer(ast.NodeTransformer):
         return node
 
     # ----------------------------------------------------------------------
+    # Transform all calls, including nested ones
+    # ----------------------------------------------------------------------
+
+    def visit_Call(self, node):
+        # First, visit child nodes to transform any nested RoboSim calls
+        node = self.generic_visit(node)
+
+        # Check if this is a RoboSim sensor API call
+        if (isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == 'rcu'):
+            attr = node.func.attr
+            mapping = SENSOR_API_MAPPING.get(attr)
+            if mapping:
+                return self._transform_sensor_call(node, attr, mapping)
+
+        return node
+
+    # ----------------------------------------------------------------------
     # Helper methods
     # ----------------------------------------------------------------------
 
     def _handle_move_run_second(self, call):
-        """Transform rcu.SetMoveRunSecond(direction, speed, seconds) into:
-           forward(speed); wait(seconds*1000); stop()
-        """
         direction = call.args[0].value
         speed = call.args[1]
         seconds = call.args[2]
 
-        # Convert seconds to milliseconds
         if isinstance(seconds, ast.Constant) and isinstance(seconds.value, (int, float)):
             ms = int(seconds.value * 1000)
             wait_arg = ast.Constant(value=ms)
         else:
             wait_arg = ast.BinOp(left=seconds, op=ast.Mult(), right=ast.Constant(value=1000))
 
-        # Build three statements
         forward_call = ast.Call(
             func=ast.Name(id=ROBOSIM_API.get(direction, direction), ctx=ast.Load()),
             args=[speed],
@@ -127,9 +140,6 @@ class RoboSimTransformer(ast.NodeTransformer):
         ]
 
     def _handle_move_run(self, call):
-        """Transform rcu.SetMoveRun(direction, speed) into:
-           forward(speed) / backward(speed) / turn_left(speed) / turn_right(speed)
-        """
         direction = call.args[0].value
         speed = call.args[1]
         func_name = ROBOSIM_API.get(direction, direction)
@@ -142,7 +152,6 @@ class RoboSimTransformer(ast.NodeTransformer):
         )
 
     def _handle_thread_start(self, call):
-        """Transform _thread.start_new_thread(func, ()) into func()"""
         func = call.args[0]
         return ast.Expr(
             ast.Call(
@@ -150,4 +159,23 @@ class RoboSimTransformer(ast.NodeTransformer):
                 args=[],
                 keywords=[]
             )
+        )
+
+    def _transform_sensor_call(self, node, attr, mapping):
+        """Transform a RoboSim sensor call based on mapping."""
+        expected = mapping["expected_args"]
+        actual = len(node.args)
+        if actual != expected:
+            raise SyntaxError(
+                f"RoboSim API '{attr}()' expects exactly {expected} argument(s), got {actual}"
+            )
+
+        target_name = mapping["target"]
+        arg_indices = mapping["arg_indices"]
+        args = [node.args[i] for i in arg_indices if i < len(node.args)]
+
+        return ast.Call(
+            func=ast.Name(id=target_name, ctx=ast.Load()),
+            args=args,
+            keywords=[]
         )

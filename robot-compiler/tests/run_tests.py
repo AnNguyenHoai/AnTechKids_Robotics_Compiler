@@ -6,7 +6,7 @@ sys.path.insert(0, str(ROOT))
 
 from compiler.compiler import RobotCompiler
 from compiler.generated.opcode import Opcode
-
+from compiler.error import CompilerError
 EXAMPLES = ROOT / "examples"
 compiler = RobotCompiler()
 
@@ -249,3 +249,159 @@ expect_program(program, [
     ("Stop", 0, 0, 0)
 ])
 print("Test demo_arithmetic.py : PASS")
+
+# ---- Sensor tests ----
+# Tạo file tạm cho sensor tests
+# ---- Sensor tests ----
+# Tạo file tạm cho sensor tests
+sensor_files = [
+    ("sensor_ultrasonic.py", "distance = read_ultrasonic()"),
+    ("sensor_touch.py", "touch = read_touch(1)"),
+    ("sensor_light.py", "light = read_light(1)"),
+    ("sensor_line.py", "line = read_line(1)"),
+]
+
+for filename, source in sensor_files:
+    with open(EXAMPLES / filename, "w") as f:
+        f.write(source)
+
+# Test ultrasonic assignment (biến distance index 0, temp index 1)
+program = compile_file("sensor_ultrasonic.py")
+expect_program(program, [
+    ("ReadUltrasonic", 1, 0, 0),  # temp 1
+    ("Store", 1, 0, 0),           # temp 1 -> biến 0
+])
+print("Test sensor_ultrasonic.py : PASS")
+
+# Test touch assignment (biến touch index 0, temp1=1, temp2=2)
+program = compile_file("sensor_touch.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),      # temp1 = 1
+    ("ReadTouch", 1, 2, 0),      # p1=temp1, p2=temp2
+    ("Store", 2, 0, 0),          # temp2 -> biến 0
+])
+print("Test sensor_touch.py : PASS")
+
+# Test light assignment
+program = compile_file("sensor_light.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),
+    ("ReadLight", 1, 2, 0),
+    ("Store", 2, 0, 0),
+])
+print("Test sensor_light.py : PASS")
+
+# Test line assignment
+program = compile_file("sensor_line.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),
+    ("ReadLine", 1, 2, 0),
+    ("Store", 2, 0, 0),
+])
+print("Test sensor_line.py : PASS")
+
+# Test sensor + if
+program = compile_file("sensor_if.py")
+# Dự kiến: biến distance index 0, temp 1 (ReadUltrasonic), temp 2 (LoadConst 20), temp 3 (Compare), temp 4 (LoadConst 50), temp 5 (LoadConst 50 cho backward)
+expect_program(program, [
+    ("ReadUltrasonic", 1, 0, 0),
+    ("Store", 1, 0, 0),
+    ("LoadConst", 2, 20, 0),
+    ("CompareLT", 0, 2, 3),
+    ("JumpIfFalse", 3, 8, 0),
+    ("LoadConst", 4, 50, 0),
+    ("Forward", 4, 0, 0),
+    ("Jump", 0, 10, 0),   # nhảy đến end (index 10)
+    ("LoadConst", 5, 50, 0),
+    ("Backward", 5, 0, 0),
+])
+print("Test sensor_if.py : PASS")
+
+# ---- Negative test: statement function used as value ----
+def test_invalid_value_call():
+    source = "x = forward(50)"
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        f.write(source)
+        path = Path(f.name)
+    try:
+        compiler = RobotCompiler()
+        compiler.compile(path)
+        assert False, "Expected CompilerError"
+    except CompilerError as e:
+        assert "does not return a value" in str(e)
+    finally:
+        path.unlink(missing_ok=True)
+
+test_invalid_value_call()
+print("Test invalid_value_call.py : PASS")
+
+def test_invalid_stop_value():
+    source = "x = stop()"
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        f.write(source)
+        path = Path(f.name)
+    try:
+        compiler = RobotCompiler()
+        compiler.compile(path)
+        assert False, "Expected CompilerError"
+    except CompilerError as e:
+        assert "does not return a value" in str(e)
+    finally:
+        path.unlink(missing_ok=True)
+
+test_invalid_stop_value()
+print("Test invalid_stop_value.py : PASS")
+
+# ---- Sensor tests (using committed example files) ----
+# The files sensor_ultrasonic.py, sensor_touch.py, sensor_light.py, sensor_line.py
+# are already committed in robot-compiler/examples/.
+# We do NOT rewrite them during test execution.
+
+program = compile_file("sensor_ultrasonic.py")
+expect_program(program, [
+    ("ReadUltrasonic", 1, 0, 0),
+    ("Store", 1, 0, 0),
+])
+print("Test sensor_ultrasonic.py : PASS")
+
+program = compile_file("sensor_touch.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),
+    ("ReadTouch", 1, 2, 0),
+    ("Store", 2, 0, 0),
+])
+print("Test sensor_touch.py : PASS")
+
+program = compile_file("sensor_light.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),
+    ("ReadLight", 1, 2, 0),
+    ("Store", 2, 0, 0),
+])
+print("Test sensor_light.py : PASS")
+
+program = compile_file("sensor_line.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),
+    ("ReadLine", 1, 2, 0),
+    ("Store", 2, 0, 0),
+])
+print("Test sensor_line.py : PASS")
+
+# Test sensor + if
+program = compile_file("sensor_if.py")
+expect_program(program, [
+    ("ReadUltrasonic", 1, 0, 0),
+    ("Store", 1, 0, 0),
+    ("LoadConst", 2, 20, 0),
+    ("CompareLT", 0, 2, 3),
+    ("JumpIfFalse", 3, 8, 0),
+    ("LoadConst", 4, 50, 0),
+    ("Forward", 4, 0, 0),
+    ("Jump", 0, 10, 0),
+    ("LoadConst", 5, 50, 0),
+    ("Backward", 5, 0, 0),
+])
+print("Test sensor_if.py : PASS")

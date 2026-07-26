@@ -1,0 +1,1 @@
+light = rcu.GetLightSensor(1)

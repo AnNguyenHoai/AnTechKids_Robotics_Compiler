@@ -1,6 +1,6 @@
 def task1():
     for i in range(3):
-        forward(50)
+        forward(150)
         wait(500)
         stop()
 task1()

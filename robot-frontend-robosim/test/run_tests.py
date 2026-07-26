@@ -1,11 +1,13 @@
 from pathlib import Path
 import sys
 import tempfile
+import ast
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from frontend import rewrite
+from frontend.transformer import RoboSimTransformer
 
 def test_rewrite(input_file, golden_file):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp:
@@ -25,6 +27,27 @@ def test_rewrite(input_file, golden_file):
     finally:
         output_path.unlink(missing_ok=True)
 
+def test_invalid_sensor_args():
+    """Test that wrong argument counts raise SyntaxError."""
+    invalid_cases = [
+        ("rcu.GetUltrasound()", "GetUltrasound", 1, 0),
+        ("rcu.GetUltrasound(1, 2)", "GetUltrasound", 1, 2),
+        ("rcu.GetTouch()", "GetTouch", 1, 0),
+        ("rcu.GetTouch(1, 2)", "GetTouch", 1, 2),
+        ("rcu.GetLightSensor()", "GetLightSensor", 1, 0),
+        ("rcu.GetLightSensor(1, 2)", "GetLightSensor", 1, 2),
+        ("rcu.GetTraceV2I2CChxState(1)", "GetTraceV2I2CChxState", 2, 1),
+        ("rcu.GetTraceV2I2CChxState(1, 2, 3)", "GetTraceV2I2CChxState", 2, 3),
+    ]
+    for source, api_name, expected, actual in invalid_cases:
+        try:
+            tree = ast.parse(source)
+            transformer = RoboSimTransformer()
+            transformer.visit(tree)
+            assert False, f"Expected SyntaxError for {api_name} with {actual} args"
+        except SyntaxError as e:
+            assert f"'{api_name}()' expects exactly {expected} argument(s)" in str(e)
+            print(f"PASS: invalid {api_name} with {actual} args")
 def main():
     examples = ROOT / "examples"
     golden_dir = ROOT / "test" / "golden"
@@ -42,7 +65,9 @@ def main():
                 all_passed = False
         else:
             print(f"SKIP: {py_file.name} (no golden)")
-    sys.exit(0 if all_passed else 1)
+    test_invalid_sensor_args()
+    sys.exit(0 if all_passed else 1)            
+
 
 if __name__ == "__main__":
     main()

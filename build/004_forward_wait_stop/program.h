@@ -8,7 +8,7 @@
 
 const Instruction generatedProgram[] =
 {
-    Instruction(Opcode::LoadConst, 0, 50, 0),
+    Instruction(Opcode::LoadConst, 0, 70, 0),
     Instruction(Opcode::Forward, 0, 0, 0),
     Instruction(Opcode::LoadConst, 1, 2000, 0),
     Instruction(Opcode::Wait, 1, 0, 0),

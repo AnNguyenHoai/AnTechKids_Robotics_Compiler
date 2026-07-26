@@ -1,0 +1,1 @@
+line = rcu.GetTraceV2I2CChxState(1, 2)

@@ -1,0 +1,1 @@
+distance = rcu.GetUltrasound(1)

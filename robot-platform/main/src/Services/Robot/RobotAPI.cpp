@@ -59,24 +59,19 @@ static void _setMotors(int leftSpeed, int rightSpeed) {
 
     // Điều khiển động cơ trái
     if (leftSpeed >= 0) {
-        // Tiến / dừng (dương hoặc 0)
-        ledcWrite(PWM_CH_L_IN1, leftPWM);
-        ledcWrite(PWM_CH_L_IN2, 0);
+        ledcWrite(MOTOR_L_IN1_PIN, leftPWM);
+        ledcWrite(MOTOR_L_IN2_PIN, 0);
     } else {
-        // Lùi
-        ledcWrite(PWM_CH_L_IN1, 0);
-        ledcWrite(PWM_CH_L_IN2, leftPWM);
+        ledcWrite(MOTOR_L_IN1_PIN, 0);
+        ledcWrite(MOTOR_L_IN2_PIN, leftPWM);
     }
 
-    // Điều khiển động cơ phải
     if (rightSpeed >= 0) {
-        // Tiến / dừng
-        ledcWrite(PWM_CH_R_IN3, rightPWM);
-        ledcWrite(PWM_CH_R_IN4, 0);
+        ledcWrite(MOTOR_R_IN3_PIN, rightPWM);
+        ledcWrite(MOTOR_R_IN4_PIN, 0);
     } else {
-        // Lùi
-        ledcWrite(PWM_CH_R_IN3, 0);
-        ledcWrite(PWM_CH_R_IN4, rightPWM);
+        ledcWrite(MOTOR_R_IN3_PIN, 0);
+        ledcWrite(MOTOR_R_IN4_PIN, rightPWM);
     }
 }
 

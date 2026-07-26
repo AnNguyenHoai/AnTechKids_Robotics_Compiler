@@ -83,6 +83,8 @@ class RobotCompiler(ast.NodeVisitor):
             return CompareHandler.compare(self, expr)
         elif isinstance(expr, ast.BoolOp):
             return BoolHandler.bool_op(self, expr)
+        elif isinstance(expr, ast.Call):
+            return self.compile_call_value(expr)
         else:
             raise CompilerError(f"Unsupported expression type: {type(expr)}")
 
@@ -93,7 +95,7 @@ class RobotCompiler(ast.NodeVisitor):
             index = self.allocate_temp()
             self.program.emit(Opcode.LoadConst.value, index, arg.value)
             return index
-        elif isinstance(arg, (ast.BinOp, ast.UnaryOp, ast.Compare, ast.BoolOp)):
+        elif isinstance(arg, (ast.BinOp, ast.UnaryOp, ast.Compare, ast.BoolOp, ast.Call)):
             return self.compile_expression(arg)
         else:
             raise CompilerError(f"Unsupported argument type: {type(arg)}")
@@ -109,7 +111,7 @@ class RobotCompiler(ast.NodeVisitor):
     # AST Visitors
     # ----------------------------------------------------------
 
-    # ---------- Xử lý import ----------
+    # ---------- Import ----------
     def visit_Import(self, node):
         new_names = []
         for alias in node.names:
@@ -125,7 +127,7 @@ class RobotCompiler(ast.NodeVisitor):
             return None
         return node
 
-    # ---------- Xử lý _thread.start_new_thread ----------
+    # ---------- _thread.start_new_thread ----------
     def visit_Expr(self, node):
         # Nếu là _thread.start_new_thread, chuyển thành gọi hàm trực tiếp
         if (isinstance(node.value, ast.Call) and
@@ -138,7 +140,7 @@ class RobotCompiler(ast.NodeVisitor):
         self.generic_visit(node)
         return node
 
-    # ---------- Gán biến ----------
+    # ---------- Assign ----------
     def visit_Assign(self, node):
         if len(node.targets) != 1:
             raise CompilerError("Multiple assignment not supported.")
@@ -146,46 +148,42 @@ class RobotCompiler(ast.NodeVisitor):
         if not isinstance(target, ast.Name):
             raise CompilerError("Only variable assignment supported.")
         name = target.id
+        dest = self.current_scope.allocate(name)
 
+        # Gán hằng số trực tiếp vào biến đích (không cần temp)
         if isinstance(node.value, ast.Constant):
-            value = node.value.value
-            index = self.current_scope.allocate(name)
-            self.program.emit(Opcode.LoadConst.value, index, value)
+            self.program.emit(Opcode.LoadConst.value, dest, node.value.value)
             return
 
-        if isinstance(node.value, (ast.BinOp, ast.UnaryOp)):
-            result = self.compile_expression(node.value)
-            index = self.current_scope.allocate(name)
-            self.program.emit(Opcode.Store.value, result, index, 0)
-            return
-
+        # Gán biến nguồn -> biến đích (không cần temp)
         if isinstance(node.value, ast.Name):
             src = self.current_scope.resolve(node.value.id)
-            dest = self.current_scope.allocate(name)
             self.program.emit(Opcode.Store.value, src, dest, 0)
             return
 
-        raise CompilerError(f"Only constant, expression, or variable assignment is supported. Got {type(node.value)}")
+        # Các biểu thức phức tạp: BinOp, Compare, BoolOp, Call, ...
+        result = self.compile_expression(node.value)
+        self.program.emit(Opcode.Store.value, result, dest, 0)
 
-    # ---------- Hàm ----------
+    # ---------- Function definition ----------
     def visit_FunctionDef(self, node):
         self.functions[node.name] = node
         return
 
-    # ---------- Lời gọi hàm ----------
+    # ---------- Function call (statement level) ----------
     def visit_Call(self, node):
         if not isinstance(node.func, ast.Name):
             raise CompilerError(f"Unsupported function call: {ast.dump(node.func)}")
         func = node.func.id
 
-        # Hàm do người dùng định nghĩa
+        # User-defined function
         if func in self.functions:
             function = self.functions[func]
             for stmt in function.body:
                 self.visit(stmt)
             return
 
-        # Hàm built-in
+        # Built-in function
         info = FUNCTION_REGISTRY.get(func)
         if info is None:
             raise CompilerError(f"Unknown function '{func}()'")
@@ -196,21 +194,48 @@ class RobotCompiler(ast.NodeVisitor):
             raise CompilerError(f"{func}() expects exactly {expected} argument(s).")
 
         handler = info["handler"]
+        # Các handler statement không trả về giá trị, chỉ thực thi
         handler(self, node)
 
-    # ---------- So sánh ----------
+    # ---------- Function call (expression level, e.g. assigned to variable) ----------
+    def compile_call_value(self, node):
+        """Compile a function call that returns a value (sensor read, etc.)"""
+        if not isinstance(node.func, ast.Name):
+            raise CompilerError(f"Unsupported function call in expression: {ast.dump(node.func)}")
+        func = node.func.id
+
+        # User-defined functions not supported as value yet
+        if func in self.functions:
+            raise CompilerError(f"User-defined function '{func}()' cannot be used as a value")
+
+        info = FUNCTION_REGISTRY.get(func)
+        if info is None:
+            raise CompilerError(f"Unknown function '{func}()'")
+
+        expected = info["arguments"]
+        actual = len(node.args)
+        if actual != expected:
+            raise CompilerError(f"{func}() expects exactly {expected} argument(s).")
+
+        handler = info["handler"]
+        result = handler(self, node)   # handler trả về index của kết quả (temp)
+        if result is None:
+            raise CompilerError(f"Function '{func}()' does not return a value")
+        return result
+
+    # ---------- Compare ----------
     def visit_Compare(self, node):
         return CompareHandler.compare(self, node)
 
-    # ---------- Boolean ----------
+    # ---------- BoolOp ----------
     def visit_BoolOp(self, node):
         return BoolHandler.bool_op(self, node)
 
-    # ---------- Hằng số ----------
+    # ---------- Constant ----------
     def visit_Constant(self, node):
         return self.compile_expression(node)
 
-    # ---------- Tên biến ----------
+    # ---------- Name ----------
     def visit_Name(self, node):
         return self.current_scope.resolve(node.id)
 
@@ -291,12 +316,12 @@ class RobotCompiler(ast.NodeVisitor):
 
     # ---------- While ----------
     def visit_While(self, node):
-        # Nếu là while 1: pass -> bỏ qua, không sinh instruction
+        # Bỏ qua while 1: pass (không sinh mã)
         if (isinstance(node.test, ast.Constant) and node.test.value in (True, 1) and
             len(node.body) == 1 and isinstance(node.body[0], ast.Pass)):
-            return  # không làm gì
+            return
 
-        # Xử lý while vô hạn thông thường (có body)
+        # Vòng lặp vô hạn có body
         if isinstance(node.test, ast.Constant) and node.test.value in (True, 1):
             begin_label = self.program.new_label()
             self.loop_stack.append({"begin": begin_label, "end": None})
@@ -307,7 +332,7 @@ class RobotCompiler(ast.NodeVisitor):
             self.loop_stack.pop()
             return
 
-        # Xử lý while có điều kiện (giữ nguyên)
+        # Vòng lặp có điều kiện
         begin_label = self.program.new_label()
         end_label = self.program.new_label()
         self.loop_stack.append({"begin": begin_label, "end": end_label})
