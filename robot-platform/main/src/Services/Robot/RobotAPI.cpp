@@ -37,7 +37,7 @@ static const int PWM_CH_R_IN4 = 3;
 // Định nghĩa các đối tượng cảm biến (toàn cục trong namespace)
 static Ultrasonic ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN);
 static Touch touch0(ROBOT_PIN_5);     // ví dụ
-static Touch touch1(ROBOT_PIN_14);    // ví dụ
+static Touch touch1(ROBOT_PIN_5);    // ví dụ
 static LineSensor lineSensor(SENSOR_TRCT5000_L_PIN, SENSOR_TRCT5000_C_PIN, SENSOR_TRCT5000_R_PIN);
 static LightSensor lightSensor(ROBOT_PIN_32); // ví dụ
 static ColorSensor colorSensor;

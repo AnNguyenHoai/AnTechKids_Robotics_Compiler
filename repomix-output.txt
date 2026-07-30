@@ -62,6 +62,8 @@ examples/
     008_truebranch.py
     009_3loop.py
     010_real_ultra_motor.py
+    011_real_touch_sen.py
+    012_Line_TRC5000.py
 packages/
   arduino/
     package.yaml
@@ -657,73 +659,29 @@ Files
 ================================================================
 
 ================
-File: robot-compiler/examples/sensor_if.py
+File: examples/physical/011_real_touch_sen.py
 ================
-distance = read_ultrasonic()
-if distance < 20:
-    forward(50)
-else:
-    backward(50)
+import rcu
+
+
+def task1():
+  while True:
+    if (rcu.GetTouch(1)):
+      rcu.SetMoveSpeed(50, 50)
+
+task1()
 
 ================
-File: robot-compiler/examples/sensor_light.py
+File: examples/physical/012_Line_TRC5000.py
 ================
-light = read_light(1)
+# import rcu
 
-================
-File: robot-compiler/examples/sensor_line.py
-================
-line = read_line(1)
+# line = rcu.GetTraceV2I2CChxState(1,2)
 
-================
-File: robot-compiler/examples/sensor_touch.py
-================
-touch = read_touch(1)
-
-================
-File: robot-compiler/examples/sensor_ultrasonic.py
-================
-distance = read_ultrasonic()
-
-================
-File: robot-frontend-robosim/examples/sensor_light.py
-================
-light = rcu.GetLightSensor(1)
-
-================
-File: robot-frontend-robosim/examples/sensor_line.py
-================
-line = rcu.GetTraceV2I2CChxState(1, 2)
-
-================
-File: robot-frontend-robosim/examples/sensor_touch.py
-================
-touch = rcu.GetTouch(1)
-
-================
-File: robot-frontend-robosim/examples/sensor_ultrasonic.py
-================
-distance = rcu.GetUltrasound(1)
-
-================
-File: robot-frontend-robosim/test/golden/sensor_light.rewrite.py
-================
-light = read_light(1)
-
-================
-File: robot-frontend-robosim/test/golden/sensor_line.rewrite.py
-================
-line = read_line(2)
-
-================
-File: robot-frontend-robosim/test/golden/sensor_touch.rewrite.py
-================
-touch = read_touch(1)
-
-================
-File: robot-frontend-robosim/test/golden/sensor_ultrasonic.rewrite.py
-================
-distance = read_ultrasonic()
+# if line:
+#     rcu.SetMoveRunSecond("forward",80,1)
+# else:
+rcu.SetMoveRunSecond("backward",80,1)
 
 ================
 File: benchmarks/benchmark_runner.py
@@ -967,21 +925,6 @@ while 1:
     pass
 
 ================
-File: examples/physical/004_forward_wait_stop.py
-================
-import rcu
-import _thread
-
-def task1():
-    rcu.SetMoveRunSecond("forward", 70, 2)
-    rcu.SetMoveStop()
-
-_thread.start_new_thread(task1, ())
-
-while 1:
-    pass
-
-================
 File: examples/physical/005_turn_left.py
 ================
 import rcu
@@ -1002,7 +945,7 @@ import rcu
 import _thread
 
 def task1():
-    rcu.SetMoveRunSecond("right", 50, 1)
+    rcu.SetMoveRunSecond("backward", 70, 1)
 
 _thread.start_new_thread(task1, ())
 
@@ -1066,38 +1009,6 @@ _thread.start_new_thread(task1, ())
 
 while 1:
     pass
-
-================
-File: examples/physical/009_3loop.py
-================
-import rcu
-import _thread
-
-def task1():
-    for i in range(3):
-        rcu.SetMoveRunSecond("forward", 150, 0.5)
-
-_thread.start_new_thread(task1, ())
-
-while 1:
-    pass
-
-================
-File: examples/physical/010_real_ultra_motor.py
-================
-import rcu
-
-VAR_distance = 0
-
-def task1():
-  global VAR_distance
-  VAR_distance = rcu.GetUltrasound(1)
-  if (VAR_distance < 20):
-    rcu.SetMoveRunSecond("forward", 50, 1)
-  else:
-    rcu.SetMoveRunSecond("backward", 50, 1)
-
-task1()
 
 ================
 File: packages/arduino/package.yaml
@@ -4774,6 +4685,35 @@ File: robot-compiler/examples/demo.py
 wait(1000)
 
 stop()
+
+================
+File: robot-compiler/examples/sensor_if.py
+================
+distance = read_ultrasonic()
+if distance < 20:
+    forward(50)
+else:
+    backward(50)
+
+================
+File: robot-compiler/examples/sensor_light.py
+================
+light = read_light(1)
+
+================
+File: robot-compiler/examples/sensor_line.py
+================
+line = read_line(1)
+
+================
+File: robot-compiler/examples/sensor_touch.py
+================
+touch = read_touch(1)
+
+================
+File: robot-compiler/examples/sensor_ultrasonic.py
+================
+distance = read_ultrasonic()
 
 ================
 File: robot-compiler/generated/__init__.py
@@ -15996,6 +15936,26 @@ import rcu
 rcu.SetWaitForTime(2)
 
 ================
+File: robot-frontend-robosim/examples/sensor_light.py
+================
+light = rcu.GetLightSensor(1)
+
+================
+File: robot-frontend-robosim/examples/sensor_line.py
+================
+line = rcu.GetTraceV2I2CChxState(1, 2)
+
+================
+File: robot-frontend-robosim/examples/sensor_touch.py
+================
+touch = rcu.GetTouch(1)
+
+================
+File: robot-frontend-robosim/examples/sensor_ultrasonic.py
+================
+distance = rcu.GetUltrasound(1)
+
+================
 File: robot-frontend-robosim/frontend/rewriter.py
 ================
 import ast
@@ -16154,6 +16114,26 @@ stop()
 File: robot-frontend-robosim/test/golden/robosim_wait.rewrite.py
 ================
 wait(2)
+
+================
+File: robot-frontend-robosim/test/golden/sensor_light.rewrite.py
+================
+light = read_light(1)
+
+================
+File: robot-frontend-robosim/test/golden/sensor_line.rewrite.py
+================
+line = read_line(2)
+
+================
+File: robot-frontend-robosim/test/golden/sensor_touch.rewrite.py
+================
+touch = read_touch(1)
+
+================
+File: robot-frontend-robosim/test/golden/sensor_ultrasonic.rewrite.py
+================
+distance = read_ultrasonic()
 
 ================
 File: robot-language/build/__init__.py
@@ -20608,6 +20588,50 @@ File: VERSION
 0.1.1
 
 ================
+File: examples/physical/004_forward_wait_stop.py
+================
+import rcu
+import _thread
+
+def task1():
+    rcu.SetMoveRunSecond("forward", 70, 2)
+    rcu.SetMoveStop()
+
+_thread.start_new_thread(task1, ())
+
+while 1:
+    pass
+
+================
+File: examples/physical/009_3loop.py
+================
+import rcu
+import _thread
+
+def task1():
+    for i in range(3):
+        rcu.SetMoveRunSecond("forward", 150, 0.5)
+
+_thread.start_new_thread(task1, ())
+
+while 1:
+    pass
+
+================
+File: examples/physical/010_real_ultra_motor.py
+================
+import rcu
+
+
+
+def task1():
+  for i in range(100):
+    VAR_distance = rcu.GetUltrasound(1)
+
+
+task1()
+
+================
 File: robot-cli/robot/commands/build.py
 ================
 import click
@@ -22419,328 +22443,6 @@ class VirtualMachine:
         return self.state
 
 ================
-File: robot-compiler/tests/run_tests.py
-================
-from pathlib import Path
-import sys
-
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-
-from compiler.compiler import RobotCompiler
-from compiler.generated.opcode import Opcode
-
-EXAMPLES = ROOT / "examples"
-compiler = RobotCompiler()
-
-
-def compile_file(filename):
-    return compiler.compile(EXAMPLES / filename)
-
-
-def assert_instruction(actual, opcode_name, p1, p2, p3):
-    actual_name = Opcode(actual.opcode).name
-
-    assert actual_name == opcode_name, (
-        f"Opcode mismatch: expected={opcode_name}, actual={actual_name}"
-    )
-
-    assert actual.p1 == p1, (
-        f"{opcode_name} p1 mismatch: expected={p1}, actual={actual.p1}"
-    )
-
-    assert actual.p2 == p2, (
-        f"{opcode_name} p2 mismatch: expected={p2}, actual={actual.p2}"
-    )
-
-    assert actual.p3 == p3, (
-        f"{opcode_name} p3 mismatch: expected={p3}, actual={actual.p3}"
-    )
-
-def expect_program(program, expected):
-    assert len(program.instructions) == len(expected), (
-        f"Expected {len(expected)} instructions, got {len(program.instructions)}"
-    )
-    for i, (opcode, p1, p2, p3) in enumerate(expected):
-        assert_instruction(program.instructions[i], opcode, p1, p2, p3)
-
-
-def expect_last_opcode(filename, opcode_name):
-    program = compile_file(filename)
-    expected = Opcode[opcode_name].value
-    assert program.instructions[-1].opcode == expected, f"Expected {opcode_name}"
-
-
-def print_program(program):
-    print(f"Instruction Count: {len(program.instructions)}")
-    for i, ins in enumerate(program.instructions):
-        print(f"{i}: Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
-    print()
-
-
-# ---- Test cases ----
-program = compile_file("demo_forward.py")
-expect_program(program, [
-    ("LoadConst", 0, 80, 0),
-    ("Forward", 0, 0, 0),
-    ("Stop", 0, 0, 0)
-])
-print("Test demo_forward.py : PASS")
-
-program = compile_file("demo_backward.py")
-expect_program(program, [
-    ("LoadConst", 0, 30, 0),
-    ("Backward", 0, 0, 0),
-    ("Stop", 0, 0, 0)
-])
-print("Test demo_backward.py : PASS")
-
-program = compile_file("demo_variable.py")
-expect_program(program, [
-    ("LoadConst", 0, 80, 0),
-    ("LoadConst", 1, 50, 0),
-    ("Forward", 0, 0, 0),
-    ("TurnLeft", 1, 0, 0),
-    ("Backward", 0, 0, 0),
-    ("TurnRight", 1, 0, 0),
-    ("Stop", 0, 0, 0)
-])
-print("Test demo_variable.py : PASS")
-
-try:
-    compile_file("demo_unknown_function.py")
-    assert False, "CompilerError expected"
-except Exception as e:
-    assert "Unknown function" in str(e)
-print("Test demo_unknown_function.py : PASS")
-
-try:
-    compile_file("demo_wrong_argument.py")
-    assert False, "CompilerError expected"
-except Exception as e:
-    assert "expects exactly 1 argument" in str(e)
-print("Test demo_wrong_argument.py : PASS")
-
-program = compile_file("demo_function.py")
-expect_program(program, [
-    ("LoadConst", 0, 80, 0),
-    ("Forward", 0, 0, 0),
-    ("Stop", 0, 0, 0)
-])
-print("Test demo_function.py : PASS")
-
-program = compile_file("demo_function_multiple.py")
-expect_program(program, [
-    ("LoadConst", 0, 80, 0),
-    ("Forward", 0, 0, 0),
-    ("LoadConst", 1, 80, 0),
-    ("Forward", 1, 0, 0),
-])
-print("Test demo_function_multiple.py : PASS")
-
-expect_last_opcode("demo_compare_gt.py", "CompareGT")
-print("Test CompareGT : PASS")
-expect_last_opcode("demo_compare_eq.py", "CompareEQ")
-print("Test CompareEQ : PASS")
-expect_last_opcode("demo_compare_ne.py", "CompareNE")
-print("Test CompareNE : PASS")
-expect_last_opcode("demo_compare_lt.py", "CompareLT")
-print("Test CompareLT : PASS")
-expect_last_opcode("demo_compare_le.py", "CompareLE")
-print("Test CompareLE : PASS")
-expect_last_opcode("demo_compare_ge.py", "CompareGE")
-print("Test CompareGE : PASS")
-
-program = compile_file("demo_if.py")
-expect_program(program, [
-    ("LoadConst", 0, 80, 0),
-    ("LoadConst", 1, 50, 0),
-    ("CompareGT", 0, 1, 2),
-    ("JumpIfFalse", 2, 6, 0),
-    ("LoadConst", 3, 80, 0),
-    ("Forward", 3, 0, 0),
-    ("Stop", 0, 0, 0)
-])
-print("Test demo_if.py : PASS")
-
-program = compile_file("demo_if_else.py")
-expect_program(program, [
-    ("LoadConst", 0, 80, 0),
-    ("LoadConst", 1, 50, 0),
-    ("CompareGT", 0, 1, 2),
-    ("JumpIfFalse", 2, 7, 0),
-    ("LoadConst", 3, 80, 0),
-    ("Forward", 3, 0, 0),
-    ("Jump", 0, 9, 0),
-    ("LoadConst", 4, 30, 0),
-    ("Backward", 4, 0, 0),
-    ("Stop", 0, 0, 0)
-])
-print("Test demo_if_else.py : PASS")
-
-program = compile_file("demo_nested_if.py")
-expect_program(program, [
-    ("LoadConst", 0, 80, 0),
-    ("LoadConst", 1, 40, 0),
-    ("LoadConst", 2, 50, 0),
-    ("CompareGT", 0, 2, 3),
-    ("JumpIfFalse", 3, 10, 0),
-    ("LoadConst", 4, 60, 0),
-    ("CompareLT", 1, 4, 5),
-    ("JumpIfFalse", 5, 10, 0),
-    ("LoadConst", 6, 80, 0),
-    ("Forward", 6, 0, 0),
-    ("Stop", 0, 0, 0)
-])
-print("demo_nested_if.py : PASS")
-
-program = compile_file("demo_while.py")
-expect_program(program, [
-    ("LoadConst", 0, 80, 0),
-    ("LoadConst", 1, 50, 0),
-    ("CompareGT", 0, 1, 2),
-    ("JumpIfFalse", 2, 7, 0),
-    ("LoadConst", 3, 80, 0),
-    ("Forward", 3, 0, 0),
-    ("Jump", 0, 1, 0),
-    ("Stop", 0, 0, 0)
-])
-print("Test demo_while.py : PASS")
-
-program = compile_file("demo_nested_while.py")
-expect_program(program, [
-    ("LoadConst", 0, 80, 0),
-    ("LoadConst", 1, 40, 0),
-    ("LoadConst", 2, 50, 0),
-    ("CompareGT", 0, 2, 3),
-    ("JumpIfFalse", 3, 12, 0),
-    ("LoadConst", 4, 60, 0),
-    ("CompareLT", 1, 4, 5),
-    ("JumpIfFalse", 5, 11, 0),
-    ("LoadConst", 6, 80, 0),
-    ("Forward", 6, 0, 0),
-    ("Jump", 0, 5, 0),
-    ("Jump", 0, 2, 0),
-    ("Stop", 0, 0, 0)
-])
-print("Test demo_nested_while.py : PASS")
-
-program = compile_file("demo_break.py")
-expect_program(program, [
-    ("LoadConst", 0, 80, 0),
-    ("LoadConst", 1, 50, 0),
-    ("CompareGT", 0, 1, 2),
-    ("JumpIfFalse", 2, 8, 0),
-    ("LoadConst", 3, 80, 0),
-    ("Forward", 3, 0, 0),
-    ("Jump", 0, 8, 0),
-    ("Jump", 0, 1, 0),
-    ("Stop", 0, 0, 0)
-])
-print("Test demo_break.py : PASS")
-
-program = compile_file("demo_continue.py")
-# Continue không có bytecode cụ thể, chỉ là jump, nên ta chỉ kiểm tra không lỗi.
-print("Test demo_continue.py : PASS")
-
-program = compile_file("demo_bool_and.py")
-expect_program(program, [
-    ("LoadConst", 1, 5, 0),
-    ("LoadConst", 2, 2, 0),
-    ("CompareGT", 1, 2, 3),
-    ("JumpIfFalse", 3, 10, 0),
-    ("LoadConst", 4, 8, 0),
-    ("LoadConst", 5, 3, 0),
-    ("CompareGT", 4, 5, 6),
-    ("JumpIfFalse", 6, 10, 0),
-    ("LoadConst", 0, 1, 0),
-    ("Jump", 0, 11, 0),
-    ("LoadConst", 0, 0, 0),
-    ("JumpIfFalse", 0, 14, 0),
-    ("LoadConst", 7, 50, 0),
-    ("Forward", 7, 0, 0),
-])
-print("Test demo_bool_and.py : PASS")
-
-# ---- Test Arithmetic Expression (không gán biến) ----
-program = compile_file("demo_arithmetic.py")
-expect_program(program, [
-    ("LoadConst", 0, 5, 0),
-    ("LoadConst", 1, 3, 0),
-    ("Add", 0, 1, 2),
-    ("Forward", 2, 0, 0),
-    ("Stop", 0, 0, 0)
-])
-print("Test demo_arithmetic.py : PASS")
-
-# ---- Sensor tests ----
-# Tạo file tạm cho sensor tests
-# ---- Sensor tests ----
-# Tạo file tạm cho sensor tests
-sensor_files = [
-    ("sensor_ultrasonic.py", "distance = read_ultrasonic()"),
-    ("sensor_touch.py", "touch = read_touch(1)"),
-    ("sensor_light.py", "light = read_light(1)"),
-    ("sensor_line.py", "line = read_line(1)"),
-]
-
-for filename, source in sensor_files:
-    with open(EXAMPLES / filename, "w") as f:
-        f.write(source)
-
-# Test ultrasonic assignment (biến distance index 0, temp index 1)
-program = compile_file("sensor_ultrasonic.py")
-expect_program(program, [
-    ("ReadUltrasonic", 1, 0, 0),  # temp 1
-    ("Store", 1, 0, 0),           # temp 1 -> biến 0
-])
-print("Test sensor_ultrasonic.py : PASS")
-
-# Test touch assignment (biến touch index 0, temp1=1, temp2=2)
-program = compile_file("sensor_touch.py")
-expect_program(program, [
-    ("LoadConst", 1, 1, 0),      # temp1 = 1
-    ("ReadTouch", 1, 2, 0),      # p1=temp1, p2=temp2
-    ("Store", 2, 0, 0),          # temp2 -> biến 0
-])
-print("Test sensor_touch.py : PASS")
-
-# Test light assignment
-program = compile_file("sensor_light.py")
-expect_program(program, [
-    ("LoadConst", 1, 1, 0),
-    ("ReadLight", 1, 2, 0),
-    ("Store", 2, 0, 0),
-])
-print("Test sensor_light.py : PASS")
-
-# Test line assignment
-program = compile_file("sensor_line.py")
-expect_program(program, [
-    ("LoadConst", 1, 1, 0),
-    ("ReadLine", 1, 2, 0),
-    ("Store", 2, 0, 0),
-])
-print("Test sensor_line.py : PASS")
-
-# Test sensor + if
-program = compile_file("sensor_if.py")
-# Dự kiến: biến distance index 0, temp 1 (ReadUltrasonic), temp 2 (LoadConst 20), temp 3 (Compare), temp 4 (LoadConst 50), temp 5 (LoadConst 50 cho backward)
-expect_program(program, [
-    ("ReadUltrasonic", 1, 0, 0),
-    ("Store", 1, 0, 0),
-    ("LoadConst", 2, 20, 0),
-    ("CompareLT", 0, 2, 3),
-    ("JumpIfFalse", 3, 8, 0),
-    ("LoadConst", 4, 50, 0),
-    ("Forward", 4, 0, 0),
-    ("Jump", 0, 10, 0),   # nhảy đến end (index 10)
-    ("LoadConst", 5, 50, 0),
-    ("Backward", 5, 0, 0),
-])
-print("Test sensor_if.py : PASS")
-
-================
 File: robot-compiler/tests/test_binary.py
 ================
 import unittest
@@ -23190,24 +22892,6 @@ from .rewriter import rewrite
 from .transformer import RoboSimTransformer
 
 __all__ = ["rewrite", "RoboSimTransformer"]
-
-================
-File: robot-frontend-robosim/frontend/mapping.py
-================
-# frontend/mapping.py
-ROBOSIM_API = {
-    "forward": "forward",
-    "backward": "backward",
-    "turnleft": "turn_left",
-    "turnright": "turn_right",
-    "left": "turn_left",
-    "right": "turn_right",
-    # Thêm sensor mappings
-    "GetUltrasound": "read_ultrasonic",
-    "GetTouch": "read_touch",
-    "GetLightSensor": "read_light",
-    "GetTraceV2I2CChxState": "read_line",
-}
 
 ================
 File: robot-frontend-robosim/robot/__init__.py
@@ -23920,207 +23604,6 @@ class DuplicateValidator(BaseValidator):
             if value in visited:
                 raise DuplicateError(f"Duplicate {object_name}: {value}")
             visited.add(value)
-
-================
-File: robot-platform/main/src/Services/Robot/RobotAPI.cpp
-================
-/******************************************************************************
- * File        : RobotAPI.cpp
- *
- * Description :
- *      Robot Hardware Abstraction API Implementation.
- *      Supports ESP32 PWM motor control using GPIO pin definitions.
- ******************************************************************************/
-
-#include "RobotAPI.h"
-#include "MotionConfig.h"
-#include <Arduino.h>
-#include <esp32-hal-ledc.h>
-
-// Sửa đường dẫn: từ Services/Robot lên src, rồi vào Devices
-#include "../../Devices/Ultrasonic.h"
-#include "../../Devices/Touch.h"
-#include "../../Devices/LineSensor.h"
-#include "../../Devices/LightSensor.h"
-#include "../../Devices/ColorSensor.h"
-#include "../../Devices/SensorConfig.h"
-#include "../../HardwareAbstraction/GPIO.h"
-
-namespace RobotAPI {
-
-// Cấu hình PWM cho ESP32
-#define PWM_FREQ 5000
-#define PWM_RES 8 // 0-255
-
-// Kênh PWM: dùng 4 kênh cho 4 chân điều khiển
-// Left: IN1 (kênh 0), IN2 (kênh 1)
-// Right: IN3 (kênh 2), IN4 (kênh 3)
-static const int PWM_CH_L_IN1 = 0;
-static const int PWM_CH_L_IN2 = 1;
-static const int PWM_CH_R_IN3 = 2;
-static const int PWM_CH_R_IN4 = 3;
-
-// Định nghĩa các đối tượng cảm biến (toàn cục trong namespace)
-static Ultrasonic ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN);
-static Touch touch0(ROBOT_PIN_5);     // ví dụ
-static Touch touch1(ROBOT_PIN_14);    // ví dụ
-static LineSensor lineSensor(SENSOR_TRCT5000_L_PIN, SENSOR_TRCT5000_C_PIN, SENSOR_TRCT5000_R_PIN);
-static LightSensor lightSensor(ROBOT_PIN_32); // ví dụ
-static ColorSensor colorSensor;
-
-// Hàm nội bộ: điều khiển motor
-static void _setMotors(int leftSpeed, int rightSpeed) {
-    // Áp dụng cấu hình
-    leftSpeed = (int)(leftSpeed * g_motionConfig.speedScale * g_motionConfig.leftMotorScale);
-    rightSpeed = (int)(rightSpeed * g_motionConfig.speedScale * g_motionConfig.rightMotorScale);
-
-    // Giới hạn
-    leftSpeed = constrain(leftSpeed, -100, 100);
-    rightSpeed = constrain(rightSpeed, -100, 100);
-
-    int leftPWM = abs(leftSpeed) * g_motionConfig.pwmPerSpeed;
-    int rightPWM = abs(rightSpeed) * g_motionConfig.pwmPerSpeed;
-    leftPWM = constrain(leftPWM, 0, 255);
-    rightPWM = constrain(rightPWM, 0, 255);
-
-    // Điều khiển động cơ trái
-    if (leftSpeed >= 0) {
-        ledcWrite(MOTOR_L_IN1_PIN, leftPWM);
-        ledcWrite(MOTOR_L_IN2_PIN, 0);
-    } else {
-        ledcWrite(MOTOR_L_IN1_PIN, 0);
-        ledcWrite(MOTOR_L_IN2_PIN, leftPWM);
-    }
-
-    if (rightSpeed >= 0) {
-        ledcWrite(MOTOR_R_IN3_PIN, rightPWM);
-        ledcWrite(MOTOR_R_IN4_PIN, 0);
-    } else {
-        ledcWrite(MOTOR_R_IN3_PIN, 0);
-        ledcWrite(MOTOR_R_IN4_PIN, rightPWM);
-    }
-}
-
-void setMotorsDirect(int left, int right) {
-    _setMotors(left, right);
-}
-
-/******************************************************************************
- * Initialization
- ******************************************************************************/
-
-void Initialize() {
-    // Load motion config
-    loadMotionConfigFromStorage();
-
-    // Pin setup cho motor
-    pinMode(MOTOR_L_IN1_PIN, OUTPUT);
-    pinMode(MOTOR_L_IN2_PIN, OUTPUT);
-    pinMode(MOTOR_R_IN3_PIN, OUTPUT);
-    pinMode(MOTOR_R_IN4_PIN, OUTPUT);
-
-    // PWM setup
-    ledcAttach(MOTOR_L_IN1_PIN, PWM_FREQ, PWM_RES);
-    ledcAttach(MOTOR_L_IN2_PIN, PWM_FREQ, PWM_RES);
-    ledcAttach(MOTOR_R_IN3_PIN, PWM_FREQ, PWM_RES);
-    ledcAttach(MOTOR_R_IN4_PIN, PWM_FREQ, PWM_RES);
-
-    _setMotors(0, 0);
-    Serial.println("[RobotAPI] Motors initialized with MotionConfig.");
-
-    // Khởi tạo cảm biến
-    ultrasonic.init();
-    touch0.init();
-    touch1.init();
-    lineSensor.init();
-    lightSensor.init();
-    colorSensor.init();
-
-    // Load sensor config
-    loadSensorConfigFromStorage();
-    Serial.println("[RobotAPI] Sensors initialized with SensorConfig.");
-}
-
-/******************************************************************************
- * Motion Control
- ******************************************************************************/
-
-void Forward(int16_t speed) {
-    Serial.printf("[%lu] Forward : %d\n", millis(), speed);
-    _setMotors(speed, speed);
-}
-
-void Backward(int16_t speed) {
-    Serial.printf("[%lu] Backward : %d\n", millis(), speed);
-    _setMotors(-speed, -speed);
-}
-
-void TurnLeft(int16_t speed) {
-    Serial.printf("[%lu] TurnLeft : %d\n", millis(), speed);
-    _setMotors(-speed * g_motionConfig.turnCompensation, speed * g_motionConfig.turnCompensation);
-}
-
-void TurnRight(int16_t speed) {
-    Serial.printf("[%lu] TurnRight : %d\n", millis(), speed);
-    _setMotors(speed * g_motionConfig.turnCompensation, -speed * g_motionConfig.turnCompensation);
-}
-
-void Stop() {
-    Serial.printf("[%lu] Stop\n", millis());
-    _setMotors(0, 0);
-}
-
-/******************************************************************************
- * Sensor
- ******************************************************************************/
-
-int16_t ReadUltrasonic() {
-    int distance = ultrasonic.readDistance();
-    Serial.printf("[%lu] ReadUltrasonic: %d cm\n", millis(), distance);
-    return distance;
-}
-
-int16_t ReadTouch(int port) {
-    bool state = false;
-    if (port == 0) state = touch0.read();
-    else if (port == 1) state = touch1.read();
-    Serial.printf("[%lu] ReadTouch port %d: %d\n", millis(), port, state);
-    return state ? 1 : 0;
-}
-
-int16_t ReadLight(int channel) {
-    int raw = lightSensor.readRaw();
-    int corrected = (int)(raw * g_sensorConfig.lightGain + g_sensorConfig.lightOffset);
-    Serial.printf("[%lu] ReadLight ch %d: %d\n", millis(), channel, corrected);
-    return corrected;
-}
-
-int16_t ReadColor() {
-    int val = colorSensor.readColor();
-    Serial.printf("[%lu] ReadColor: %d\n", millis(), val);
-    return val;
-}
-
-int16_t ReadLine(int channel) {
-    bool val = false;
-    if (channel == 0) val = lineSensor.readLeft();
-    else if (channel == 1) val = lineSensor.readCenter();
-    else if (channel == 2) val = lineSensor.readRight();
-    if (g_sensorConfig.lineInverted) val = !val;
-    Serial.printf("[%lu] ReadLine ch %d: %d\n", millis(), channel, val);
-    return val ? 1 : 0;
-}
-
-/******************************************************************************
- * Utility
- ******************************************************************************/
-
-void Wait(uint16_t ms) {
-    Serial.printf("[%lu] Wait : %d ms\n", millis(), ms);
-    delay(ms);
-}
-
-} // namespace RobotAPI
 
 ================
 File: robot-platform/main/src/Services/Robot/RobotAPI.h
@@ -25037,6 +24520,417 @@ class InstructionIterator:
         return len(self._instructions)
 
 ================
+File: robot-compiler/tests/run_tests.py
+================
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from compiler.compiler import RobotCompiler
+from compiler.generated.opcode import Opcode
+from compiler.error import CompilerError
+EXAMPLES = ROOT / "examples"
+compiler = RobotCompiler()
+
+
+def compile_file(filename):
+    return compiler.compile(EXAMPLES / filename)
+
+
+def assert_instruction(actual, opcode_name, p1, p2, p3):
+    actual_name = Opcode(actual.opcode).name
+
+    assert actual_name == opcode_name, (
+        f"Opcode mismatch: expected={opcode_name}, actual={actual_name}"
+    )
+
+    assert actual.p1 == p1, (
+        f"{opcode_name} p1 mismatch: expected={p1}, actual={actual.p1}"
+    )
+
+    assert actual.p2 == p2, (
+        f"{opcode_name} p2 mismatch: expected={p2}, actual={actual.p2}"
+    )
+
+    assert actual.p3 == p3, (
+        f"{opcode_name} p3 mismatch: expected={p3}, actual={actual.p3}"
+    )
+
+def expect_program(program, expected):
+    assert len(program.instructions) == len(expected), (
+        f"Expected {len(expected)} instructions, got {len(program.instructions)}"
+    )
+    for i, (opcode, p1, p2, p3) in enumerate(expected):
+        assert_instruction(program.instructions[i], opcode, p1, p2, p3)
+
+
+def expect_last_opcode(filename, opcode_name):
+    program = compile_file(filename)
+    expected = Opcode[opcode_name].value
+    assert program.instructions[-1].opcode == expected, f"Expected {opcode_name}"
+
+
+def print_program(program):
+    print(f"Instruction Count: {len(program.instructions)}")
+    for i, ins in enumerate(program.instructions):
+        print(f"{i}: Opcode: {Opcode(ins.opcode).name}, p1={ins.p1}, p2={ins.p2}, p3={ins.p3}")
+    print()
+
+
+# ---- Test cases ----
+program = compile_file("demo_forward.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("Forward", 0, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_forward.py : PASS")
+
+program = compile_file("demo_backward.py")
+expect_program(program, [
+    ("LoadConst", 0, 30, 0),
+    ("Backward", 0, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_backward.py : PASS")
+
+program = compile_file("demo_variable.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 50, 0),
+    ("Forward", 0, 0, 0),
+    ("TurnLeft", 1, 0, 0),
+    ("Backward", 0, 0, 0),
+    ("TurnRight", 1, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_variable.py : PASS")
+
+try:
+    compile_file("demo_unknown_function.py")
+    assert False, "CompilerError expected"
+except Exception as e:
+    assert "Unknown function" in str(e)
+print("Test demo_unknown_function.py : PASS")
+
+try:
+    compile_file("demo_wrong_argument.py")
+    assert False, "CompilerError expected"
+except Exception as e:
+    assert "expects exactly 1 argument" in str(e)
+print("Test demo_wrong_argument.py : PASS")
+
+program = compile_file("demo_function.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("Forward", 0, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_function.py : PASS")
+
+program = compile_file("demo_function_multiple.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("Forward", 0, 0, 0),
+    ("LoadConst", 1, 80, 0),
+    ("Forward", 1, 0, 0),
+])
+print("Test demo_function_multiple.py : PASS")
+
+expect_last_opcode("demo_compare_gt.py", "CompareGT")
+print("Test CompareGT : PASS")
+expect_last_opcode("demo_compare_eq.py", "CompareEQ")
+print("Test CompareEQ : PASS")
+expect_last_opcode("demo_compare_ne.py", "CompareNE")
+print("Test CompareNE : PASS")
+expect_last_opcode("demo_compare_lt.py", "CompareLT")
+print("Test CompareLT : PASS")
+expect_last_opcode("demo_compare_le.py", "CompareLE")
+print("Test CompareLE : PASS")
+expect_last_opcode("demo_compare_ge.py", "CompareGE")
+print("Test CompareGE : PASS")
+
+program = compile_file("demo_if.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 50, 0),
+    ("CompareGT", 0, 1, 2),
+    ("JumpIfFalse", 2, 6, 0),
+    ("LoadConst", 3, 80, 0),
+    ("Forward", 3, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_if.py : PASS")
+
+program = compile_file("demo_if_else.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 50, 0),
+    ("CompareGT", 0, 1, 2),
+    ("JumpIfFalse", 2, 7, 0),
+    ("LoadConst", 3, 80, 0),
+    ("Forward", 3, 0, 0),
+    ("Jump", 0, 9, 0),
+    ("LoadConst", 4, 30, 0),
+    ("Backward", 4, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_if_else.py : PASS")
+
+program = compile_file("demo_nested_if.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 40, 0),
+    ("LoadConst", 2, 50, 0),
+    ("CompareGT", 0, 2, 3),
+    ("JumpIfFalse", 3, 10, 0),
+    ("LoadConst", 4, 60, 0),
+    ("CompareLT", 1, 4, 5),
+    ("JumpIfFalse", 5, 10, 0),
+    ("LoadConst", 6, 80, 0),
+    ("Forward", 6, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("demo_nested_if.py : PASS")
+
+program = compile_file("demo_while.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 50, 0),
+    ("CompareGT", 0, 1, 2),
+    ("JumpIfFalse", 2, 7, 0),
+    ("LoadConst", 3, 80, 0),
+    ("Forward", 3, 0, 0),
+    ("Jump", 0, 1, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_while.py : PASS")
+
+program = compile_file("demo_nested_while.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 40, 0),
+    ("LoadConst", 2, 50, 0),
+    ("CompareGT", 0, 2, 3),
+    ("JumpIfFalse", 3, 12, 0),
+    ("LoadConst", 4, 60, 0),
+    ("CompareLT", 1, 4, 5),
+    ("JumpIfFalse", 5, 11, 0),
+    ("LoadConst", 6, 80, 0),
+    ("Forward", 6, 0, 0),
+    ("Jump", 0, 5, 0),
+    ("Jump", 0, 2, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_nested_while.py : PASS")
+
+program = compile_file("demo_break.py")
+expect_program(program, [
+    ("LoadConst", 0, 80, 0),
+    ("LoadConst", 1, 50, 0),
+    ("CompareGT", 0, 1, 2),
+    ("JumpIfFalse", 2, 8, 0),
+    ("LoadConst", 3, 80, 0),
+    ("Forward", 3, 0, 0),
+    ("Jump", 0, 8, 0),
+    ("Jump", 0, 1, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_break.py : PASS")
+
+program = compile_file("demo_continue.py")
+# Continue không có bytecode cụ thể, chỉ là jump, nên ta chỉ kiểm tra không lỗi.
+print("Test demo_continue.py : PASS")
+
+program = compile_file("demo_bool_and.py")
+expect_program(program, [
+    ("LoadConst", 1, 5, 0),
+    ("LoadConst", 2, 2, 0),
+    ("CompareGT", 1, 2, 3),
+    ("JumpIfFalse", 3, 10, 0),
+    ("LoadConst", 4, 8, 0),
+    ("LoadConst", 5, 3, 0),
+    ("CompareGT", 4, 5, 6),
+    ("JumpIfFalse", 6, 10, 0),
+    ("LoadConst", 0, 1, 0),
+    ("Jump", 0, 11, 0),
+    ("LoadConst", 0, 0, 0),
+    ("JumpIfFalse", 0, 14, 0),
+    ("LoadConst", 7, 50, 0),
+    ("Forward", 7, 0, 0),
+])
+print("Test demo_bool_and.py : PASS")
+
+# ---- Test Arithmetic Expression (không gán biến) ----
+program = compile_file("demo_arithmetic.py")
+expect_program(program, [
+    ("LoadConst", 0, 5, 0),
+    ("LoadConst", 1, 3, 0),
+    ("Add", 0, 1, 2),
+    ("Forward", 2, 0, 0),
+    ("Stop", 0, 0, 0)
+])
+print("Test demo_arithmetic.py : PASS")
+
+# ---- Sensor tests ----
+# Tạo file tạm cho sensor tests
+# ---- Sensor tests ----
+# Tạo file tạm cho sensor tests
+sensor_files = [
+    ("sensor_ultrasonic.py", "distance = read_ultrasonic()"),
+    ("sensor_touch.py", "touch = read_touch(1)"),
+    ("sensor_light.py", "light = read_light(1)"),
+    ("sensor_line.py", "line = read_line(1)"),
+]
+
+for filename, source in sensor_files:
+    with open(EXAMPLES / filename, "w") as f:
+        f.write(source)
+
+# Test ultrasonic assignment (biến distance index 0, temp index 1)
+program = compile_file("sensor_ultrasonic.py")
+expect_program(program, [
+    ("ReadUltrasonic", 1, 0, 0),  # temp 1
+    ("Store", 1, 0, 0),           # temp 1 -> biến 0
+])
+print("Test sensor_ultrasonic.py : PASS")
+
+# Test touch assignment (biến touch index 0, temp1=1, temp2=2)
+program = compile_file("sensor_touch.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),      # temp1 = 1
+    ("ReadTouch", 1, 2, 0),      # p1=temp1, p2=temp2
+    ("Store", 2, 0, 0),          # temp2 -> biến 0
+])
+print("Test sensor_touch.py : PASS")
+
+# Test light assignment
+program = compile_file("sensor_light.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),
+    ("ReadLight", 1, 2, 0),
+    ("Store", 2, 0, 0),
+])
+print("Test sensor_light.py : PASS")
+
+# Test line assignment
+program = compile_file("sensor_line.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),
+    ("ReadLine", 1, 2, 0),
+    ("Store", 2, 0, 0),
+])
+print("Test sensor_line.py : PASS")
+
+# Test sensor + if
+program = compile_file("sensor_if.py")
+# Dự kiến: biến distance index 0, temp 1 (ReadUltrasonic), temp 2 (LoadConst 20), temp 3 (Compare), temp 4 (LoadConst 50), temp 5 (LoadConst 50 cho backward)
+expect_program(program, [
+    ("ReadUltrasonic", 1, 0, 0),
+    ("Store", 1, 0, 0),
+    ("LoadConst", 2, 20, 0),
+    ("CompareLT", 0, 2, 3),
+    ("JumpIfFalse", 3, 8, 0),
+    ("LoadConst", 4, 50, 0),
+    ("Forward", 4, 0, 0),
+    ("Jump", 0, 10, 0),   # nhảy đến end (index 10)
+    ("LoadConst", 5, 50, 0),
+    ("Backward", 5, 0, 0),
+])
+print("Test sensor_if.py : PASS")
+
+# ---- Negative test: statement function used as value ----
+def test_invalid_value_call():
+    source = "x = forward(50)"
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        f.write(source)
+        path = Path(f.name)
+    try:
+        compiler = RobotCompiler()
+        compiler.compile(path)
+        assert False, "Expected CompilerError"
+    except CompilerError as e:
+        assert "does not return a value" in str(e)
+    finally:
+        path.unlink(missing_ok=True)
+
+test_invalid_value_call()
+print("Test invalid_value_call.py : PASS")
+
+def test_invalid_stop_value():
+    source = "x = stop()"
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        f.write(source)
+        path = Path(f.name)
+    try:
+        compiler = RobotCompiler()
+        compiler.compile(path)
+        assert False, "Expected CompilerError"
+    except CompilerError as e:
+        assert "does not return a value" in str(e)
+    finally:
+        path.unlink(missing_ok=True)
+
+test_invalid_stop_value()
+print("Test invalid_stop_value.py : PASS")
+
+# ---- Sensor tests (using committed example files) ----
+# The files sensor_ultrasonic.py, sensor_touch.py, sensor_light.py, sensor_line.py
+# are already committed in robot-compiler/examples/.
+# We do NOT rewrite them during test execution.
+
+program = compile_file("sensor_ultrasonic.py")
+expect_program(program, [
+    ("ReadUltrasonic", 1, 0, 0),
+    ("Store", 1, 0, 0),
+])
+print("Test sensor_ultrasonic.py : PASS")
+
+program = compile_file("sensor_touch.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),
+    ("ReadTouch", 1, 2, 0),
+    ("Store", 2, 0, 0),
+])
+print("Test sensor_touch.py : PASS")
+
+program = compile_file("sensor_light.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),
+    ("ReadLight", 1, 2, 0),
+    ("Store", 2, 0, 0),
+])
+print("Test sensor_light.py : PASS")
+
+program = compile_file("sensor_line.py")
+expect_program(program, [
+    ("LoadConst", 1, 1, 0),
+    ("ReadLine", 1, 2, 0),
+    ("Store", 2, 0, 0),
+])
+print("Test sensor_line.py : PASS")
+
+# Test sensor + if
+program = compile_file("sensor_if.py")
+expect_program(program, [
+    ("ReadUltrasonic", 1, 0, 0),
+    ("Store", 1, 0, 0),
+    ("LoadConst", 2, 20, 0),
+    ("CompareLT", 0, 2, 3),
+    ("JumpIfFalse", 3, 8, 0),
+    ("LoadConst", 4, 50, 0),
+    ("Forward", 4, 0, 0),
+    ("Jump", 0, 10, 0),
+    ("LoadConst", 5, 50, 0),
+    ("Backward", 5, 0, 0),
+])
+print("Test sensor_if.py : PASS")
+
+================
 File: robot-docs/generated/opcode_reference.md
 ================
 # Opcode Reference
@@ -25082,202 +24976,44 @@ This is a complete list of all opcodes used by the Robot VM.
 **Note:** Internal opcodes (ID >= 8) are used by the compiler and VM internally, not exposed to users.
 
 ================
-File: robot-frontend-robosim/frontend/transformer.py
+File: robot-frontend-robosim/frontend/mapping.py
 ================
-import ast
-from frontend.mapping import ROBOSIM_API
+# frontend/mapping.py
+ROBOSIM_API = {
+    "forward": "forward",
+    "backward": "backward",
+    "turnleft": "turn_left",
+    "turnright": "turn_right",
+    "left": "turn_left",
+    "right": "turn_right",
+}
 
-
-class RoboSimTransformer(ast.NodeTransformer):
-    """Transform RoboSim AST to Standard Robot API AST."""
-
-    # ----------------------------------------------------------------------
-    # Remove 'import rcu' and 'import _thread' statements
-    # ----------------------------------------------------------------------
-
-    def visit_Import(self, node):
-        # Keep only imports that are not rcu or _thread
-        new_names = [alias for alias in node.names if alias.name not in ('rcu', '_thread')]
-        if new_names:
-            node.names = new_names
-            return node
-        return None
-
-    def visit_ImportFrom(self, node):
-        if node.module in ('rcu', '_thread'):
-            return None
-        return node
-
-    # ----------------------------------------------------------------------
-    # Transform expressions: function calls
-    # ----------------------------------------------------------------------
-
-    def visit_Expr(self, node):
-        self.generic_visit(node)
-
-        # Handle rcu.SetMoveRunSecond -> forward, wait, stop
-        if (isinstance(node.value, ast.Call)
-                and isinstance(node.value.func, ast.Attribute)
-                and node.value.func.attr == "SetMoveRunSecond"
-                and isinstance(node.value.func.value, ast.Name)
-                and node.value.func.value.id == "rcu"):
-            return self._handle_move_run_second(node.value)
-
-        # Handle rcu.SetMoveRun -> forward/backward/turn_left/turn_right
-        if (isinstance(node.value, ast.Call)
-                and isinstance(node.value.func, ast.Attribute)
-                and node.value.func.attr == "SetMoveRun"
-                and isinstance(node.value.func.value, ast.Name)
-                and node.value.func.value.id == "rcu"):
-            return self._handle_move_run(node.value)
-
-        # Handle rcu.SetMoveStop -> stop()
-        if (isinstance(node.value, ast.Call)
-                and isinstance(node.value.func, ast.Attribute)
-                and node.value.func.attr == "SetMoveStop"
-                and isinstance(node.value.func.value, ast.Name)
-                and node.value.func.value.id == "rcu"):
-            return ast.Expr(
-                ast.Call(
-                    func=ast.Name(id="stop", ctx=ast.Load()),
-                    args=[],
-                    keywords=[]
-                )
-            )
-
-        # Handle rcu.SetWaitForTime -> wait(milliseconds)
-        if (isinstance(node.value, ast.Call)
-                and isinstance(node.value.func, ast.Attribute)
-                and node.value.func.attr == "SetWaitForTime"
-                and isinstance(node.value.func.value, ast.Name)
-                and node.value.func.value.id == "rcu"):
-            arg = node.value.args[0]
-            return ast.Expr(
-                ast.Call(
-                    func=ast.Name(id="wait", ctx=ast.Load()),
-                    args=[arg],
-                    keywords=[]
-                )
-            )
-
-        # Handle _thread.start_new_thread(func, ()) -> func()
-        if (isinstance(node.value, ast.Call)
-                and isinstance(node.value.func, ast.Attribute)
-                and isinstance(node.value.func.value, ast.Name)
-                and node.value.func.value.id == '_thread'
-                and node.value.func.attr == 'start_new_thread'):
-            return self._handle_thread_start(node.value)
-
-        return node
-
-    # ----------------------------------------------------------------------
-    # Helper methods
-    # ----------------------------------------------------------------------
-
-    def _handle_move_run_second(self, call):
-        """Transform rcu.SetMoveRunSecond(direction, speed, seconds) into:
-           forward(speed); wait(seconds*1000); stop()
-        """
-        direction = call.args[0].value
-        speed = call.args[1]
-        seconds = call.args[2]
-
-        # Convert seconds to milliseconds
-        if isinstance(seconds, ast.Constant) and isinstance(seconds.value, (int, float)):
-            ms = int(seconds.value * 1000)
-            wait_arg = ast.Constant(value=ms)
-        else:
-            wait_arg = ast.BinOp(left=seconds, op=ast.Mult(), right=ast.Constant(value=1000))
-
-        # Build three statements
-        forward_call = ast.Call(
-            func=ast.Name(id=ROBOSIM_API.get(direction, direction), ctx=ast.Load()),
-            args=[speed],
-            keywords=[]
-        )
-        wait_call = ast.Call(
-            func=ast.Name(id="wait", ctx=ast.Load()),
-            args=[wait_arg],
-            keywords=[]
-        )
-        stop_call = ast.Call(
-            func=ast.Name(id="stop", ctx=ast.Load()),
-            args=[],
-            keywords=[]
-        )
-
-        return [
-            ast.Expr(forward_call),
-            ast.Expr(wait_call),
-            ast.Expr(stop_call)
-        ]
-
-    def _handle_move_run(self, call):
-        """Transform rcu.SetMoveRun(direction, speed) into:
-           forward(speed) / backward(speed) / turn_left(speed) / turn_right(speed)
-        """
-        direction = call.args[0].value
-        speed = call.args[1]
-        func_name = ROBOSIM_API.get(direction, direction)
-        return ast.Expr(
-            ast.Call(
-                func=ast.Name(id=func_name, ctx=ast.Load()),
-                args=[speed],
-                keywords=[]
-            )
-        )
-
-    def _handle_thread_start(self, call):
-        """Transform _thread.start_new_thread(func, ()) into func()"""
-        func = call.args[0]
-        return ast.Expr(
-            ast.Call(
-                func=func,
-                args=[],
-                keywords=[]
-            )
-        )
-    
-    def visit_Call(self, node):
-        # Chuyển đổi lời gọi rcu.GetUltrasound, GetTouch, GetLightSensor, GetTraceV2I2CChxState
-        if (isinstance(node.func, ast.Attribute) and
-            isinstance(node.func.value, ast.Name) and
-            node.func.value.id == 'rcu'):
-            attr = node.func.attr
-            if attr == 'GetUltrasound':
-                # bỏ qua port
-                return ast.Call(
-                    func=ast.Name(id='read_ultrasonic', ctx=ast.Load()),
-                    args=[],
-                    keywords=[]
-                )
-            elif attr == 'GetTouch':
-                if len(node.args) >= 1:
-                    port = node.args[0]
-                    return ast.Call(
-                        func=ast.Name(id='read_touch', ctx=ast.Load()),
-                        args=[port],
-                        keywords=[]
-                    )
-            elif attr == 'GetLightSensor':
-                if len(node.args) >= 1:
-                    channel = node.args[0]
-                    return ast.Call(
-                        func=ast.Name(id='read_light', ctx=ast.Load()),
-                        args=[channel],
-                        keywords=[]
-                    )
-            elif attr == 'GetTraceV2I2CChxState':
-                if len(node.args) >= 2:
-                    # bỏ qua device id, giữ channel (arg 1)
-                    channel = node.args[1]
-                    return ast.Call(
-                        func=ast.Name(id='read_line', ctx=ast.Load()),
-                        args=[channel],
-                        keywords=[]
-                    )
-        # Các lời gọi khác giữ nguyên
-        return node
+# Sensor API mapping: authoritative definition for all RoboSim sensor adapters.
+# - target: Standard Robot API function name
+# - arg_indices: which arguments from RoboSim call to preserve (empty = discard all)
+# - expected_args: exact number of arguments RoboSim must provide
+SENSOR_API_MAPPING = {
+    "GetUltrasound": {
+        "target": "read_ultrasonic",
+        "arg_indices": [],
+        "expected_args": 1,
+    },
+    "GetTouch": {
+        "target": "read_touch",
+        "arg_indices": [0],
+        "expected_args": 1,
+    },
+    "GetLightSensor": {
+        "target": "read_light",
+        "arg_indices": [0],
+        "expected_args": 1,
+    },
+    "GetTraceV2I2CChxState": {
+        "target": "read_line",
+        "arg_indices": [1],
+        "expected_args": 2,
+    },
+}
 
 ================
 File: robot-language/docs/generated/opcode_reference.md
@@ -25487,6 +25223,207 @@ builder.register(OpcodeHeaderGenerator())
 builder.register(DocGenerator())
 
 builder.build()
+
+================
+File: robot-platform/main/src/Services/Robot/RobotAPI.cpp
+================
+/******************************************************************************
+ * File        : RobotAPI.cpp
+ *
+ * Description :
+ *      Robot Hardware Abstraction API Implementation.
+ *      Supports ESP32 PWM motor control using GPIO pin definitions.
+ ******************************************************************************/
+
+#include "RobotAPI.h"
+#include "MotionConfig.h"
+#include <Arduino.h>
+#include <esp32-hal-ledc.h>
+
+// Sửa đường dẫn: từ Services/Robot lên src, rồi vào Devices
+#include "../../Devices/Ultrasonic.h"
+#include "../../Devices/Touch.h"
+#include "../../Devices/LineSensor.h"
+#include "../../Devices/LightSensor.h"
+#include "../../Devices/ColorSensor.h"
+#include "../../Devices/SensorConfig.h"
+#include "../../HardwareAbstraction/GPIO.h"
+
+namespace RobotAPI {
+
+// Cấu hình PWM cho ESP32
+#define PWM_FREQ 5000
+#define PWM_RES 8 // 0-255
+
+// Kênh PWM: dùng 4 kênh cho 4 chân điều khiển
+// Left: IN1 (kênh 0), IN2 (kênh 1)
+// Right: IN3 (kênh 2), IN4 (kênh 3)
+static const int PWM_CH_L_IN1 = 0;
+static const int PWM_CH_L_IN2 = 1;
+static const int PWM_CH_R_IN3 = 2;
+static const int PWM_CH_R_IN4 = 3;
+
+// Định nghĩa các đối tượng cảm biến (toàn cục trong namespace)
+static Ultrasonic ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN);
+static Touch touch0(ROBOT_PIN_5);     // ví dụ
+static Touch touch1(ROBOT_PIN_5);    // ví dụ
+static LineSensor lineSensor(SENSOR_TRCT5000_L_PIN, SENSOR_TRCT5000_C_PIN, SENSOR_TRCT5000_R_PIN);
+static LightSensor lightSensor(ROBOT_PIN_32); // ví dụ
+static ColorSensor colorSensor;
+
+// Hàm nội bộ: điều khiển motor
+static void _setMotors(int leftSpeed, int rightSpeed) {
+    // Áp dụng cấu hình
+    leftSpeed = (int)(leftSpeed * g_motionConfig.speedScale * g_motionConfig.leftMotorScale);
+    rightSpeed = (int)(rightSpeed * g_motionConfig.speedScale * g_motionConfig.rightMotorScale);
+
+    // Giới hạn
+    leftSpeed = constrain(leftSpeed, -100, 100);
+    rightSpeed = constrain(rightSpeed, -100, 100);
+
+    int leftPWM = abs(leftSpeed) * g_motionConfig.pwmPerSpeed;
+    int rightPWM = abs(rightSpeed) * g_motionConfig.pwmPerSpeed;
+    leftPWM = constrain(leftPWM, 0, 255);
+    rightPWM = constrain(rightPWM, 0, 255);
+
+    // Điều khiển động cơ trái
+    if (leftSpeed >= 0) {
+        ledcWrite(MOTOR_L_IN1_PIN, leftPWM);
+        ledcWrite(MOTOR_L_IN2_PIN, 0);
+    } else {
+        ledcWrite(MOTOR_L_IN1_PIN, 0);
+        ledcWrite(MOTOR_L_IN2_PIN, leftPWM);
+    }
+
+    if (rightSpeed >= 0) {
+        ledcWrite(MOTOR_R_IN3_PIN, rightPWM);
+        ledcWrite(MOTOR_R_IN4_PIN, 0);
+    } else {
+        ledcWrite(MOTOR_R_IN3_PIN, 0);
+        ledcWrite(MOTOR_R_IN4_PIN, rightPWM);
+    }
+}
+
+void setMotorsDirect(int left, int right) {
+    _setMotors(left, right);
+}
+
+/******************************************************************************
+ * Initialization
+ ******************************************************************************/
+
+void Initialize() {
+    // Load motion config
+    loadMotionConfigFromStorage();
+
+    // Pin setup cho motor
+    pinMode(MOTOR_L_IN1_PIN, OUTPUT);
+    pinMode(MOTOR_L_IN2_PIN, OUTPUT);
+    pinMode(MOTOR_R_IN3_PIN, OUTPUT);
+    pinMode(MOTOR_R_IN4_PIN, OUTPUT);
+
+    // PWM setup
+    ledcAttach(MOTOR_L_IN1_PIN, PWM_FREQ, PWM_RES);
+    ledcAttach(MOTOR_L_IN2_PIN, PWM_FREQ, PWM_RES);
+    ledcAttach(MOTOR_R_IN3_PIN, PWM_FREQ, PWM_RES);
+    ledcAttach(MOTOR_R_IN4_PIN, PWM_FREQ, PWM_RES);
+
+    _setMotors(0, 0);
+    Serial.println("[RobotAPI] Motors initialized with MotionConfig.");
+
+    // Khởi tạo cảm biến
+    ultrasonic.init();
+    touch0.init();
+    touch1.init();
+    lineSensor.init();
+    lightSensor.init();
+    colorSensor.init();
+
+    // Load sensor config
+    loadSensorConfigFromStorage();
+    Serial.println("[RobotAPI] Sensors initialized with SensorConfig.");
+}
+
+/******************************************************************************
+ * Motion Control
+ ******************************************************************************/
+
+void Forward(int16_t speed) {
+    Serial.printf("[%lu] Forward : %d\n", millis(), speed);
+    _setMotors(speed, speed);
+}
+
+void Backward(int16_t speed) {
+    Serial.printf("[%lu] Backward : %d\n", millis(), speed);
+    _setMotors(-speed, -speed);
+}
+
+void TurnLeft(int16_t speed) {
+    Serial.printf("[%lu] TurnLeft : %d\n", millis(), speed);
+    _setMotors(-speed * g_motionConfig.turnCompensation, speed * g_motionConfig.turnCompensation);
+}
+
+void TurnRight(int16_t speed) {
+    Serial.printf("[%lu] TurnRight : %d\n", millis(), speed);
+    _setMotors(speed * g_motionConfig.turnCompensation, -speed * g_motionConfig.turnCompensation);
+}
+
+void Stop() {
+    Serial.printf("[%lu] Stop\n", millis());
+    _setMotors(0, 0);
+}
+
+/******************************************************************************
+ * Sensor
+ ******************************************************************************/
+
+int16_t ReadUltrasonic() {
+    int distance = ultrasonic.readDistance();
+    Serial.printf("[%lu] ReadUltrasonic: %d cm\n", millis(), distance);
+    return distance;
+}
+
+int16_t ReadTouch(int port) {
+    bool state = false;
+    if (port == 0) state = touch0.read();
+    else if (port == 1) state = touch1.read();
+    Serial.printf("[%lu] ReadTouch port %d: %d\n", millis(), port, state);
+    return state ? 1 : 0;
+}
+
+int16_t ReadLight(int channel) {
+    int raw = lightSensor.readRaw();
+    int corrected = (int)(raw * g_sensorConfig.lightGain + g_sensorConfig.lightOffset);
+    Serial.printf("[%lu] ReadLight ch %d: %d\n", millis(), channel, corrected);
+    return corrected;
+}
+
+int16_t ReadColor() {
+    int val = colorSensor.readColor();
+    Serial.printf("[%lu] ReadColor: %d\n", millis(), val);
+    return val;
+}
+
+int16_t ReadLine(int channel) {
+    bool val = false;
+    if (channel == 0) val = lineSensor.readLeft();
+    else if (channel == 1) val = lineSensor.readCenter();
+    else if (channel == 2) val = lineSensor.readRight();
+    if (g_sensorConfig.lineInverted) val = !val;
+    Serial.printf("[%lu] ReadLine ch %d: %d\n", millis(), channel, val);
+    return val ? 1 : 0;
+}
+
+/******************************************************************************
+ * Utility
+ ******************************************************************************/
+
+void Wait(uint16_t ms) {
+    Serial.printf("[%lu] Wait : %d ms\n", millis(), ms);
+    delay(ms);
+}
+
+} // namespace RobotAPI
 
 ================
 File: robot-platform/main/src/Services/VM/Instruction.h
@@ -25824,56 +25761,189 @@ if __name__ == "__main__":
     sys.exit(main())
 
 ================
-File: robot-frontend-robosim/test/run_tests.py
+File: robot-frontend-robosim/frontend/transformer.py
 ================
-from pathlib import Path
-import sys
-import tempfile
+import ast
+from frontend.mapping import ROBOSIM_API, SENSOR_API_MAPPING
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
 
-from frontend import rewrite
+class RoboSimTransformer(ast.NodeTransformer):
+    """Transform RoboSim AST to Standard Robot API AST."""
 
-def test_rewrite(input_file, golden_file):
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp:
-        output_path = Path(tmp.name)
-    try:
-        rewrite(input_file, output_path)
-        with open(output_path, 'r') as f:
-            actual = f.read()
-        with open(golden_file, 'r') as f:
-            expected = f.read()
-        assert actual == expected, (
-            f"Mismatch for {input_file.name}\n"
-            f"Expected:\n{expected}\n"
-            f"Actual:\n{actual}"
-        )
-        print(f"PASS: {input_file.name}")
-    finally:
-        output_path.unlink(missing_ok=True)
+    # ----------------------------------------------------------------------
+    # Remove 'import rcu' and 'import _thread' statements
+    # ----------------------------------------------------------------------
 
-def main():
-    examples = ROOT / "examples"
-    golden_dir = ROOT / "test" / "golden"
-    if not golden_dir.exists():
-        print("Golden directory not found.")
-        sys.exit(1)
-    all_passed = True
-    for py_file in examples.glob("*.py"):
-        golden_file = golden_dir / f"{py_file.stem}.rewrite.py"
-        if golden_file.exists():
-            try:
-                test_rewrite(py_file, golden_file)
-            except AssertionError as e:
-                print(e)
-                all_passed = False
+    def visit_Import(self, node):
+        new_names = [alias for alias in node.names if alias.name not in ('rcu', '_thread')]
+        if new_names:
+            node.names = new_names
+            return node
+        return None
+
+    def visit_ImportFrom(self, node):
+        if node.module in ('rcu', '_thread'):
+            return None
+        return node
+
+    # ----------------------------------------------------------------------
+    # Transform expressions: function calls
+    # ----------------------------------------------------------------------
+
+    def visit_Expr(self, node):
+        self.generic_visit(node)
+
+        # Handle rcu.SetMoveRunSecond -> forward, wait, stop
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetMoveRunSecond"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_move_run_second(node.value)
+
+        # Handle rcu.SetMoveRun -> forward/backward/turn_left/turn_right
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetMoveRun"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_move_run(node.value)
+
+        # Handle rcu.SetMoveStop -> stop()
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetMoveStop"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return ast.Expr(
+                ast.Call(
+                    func=ast.Name(id="stop", ctx=ast.Load()),
+                    args=[],
+                    keywords=[]
+                )
+            )
+
+        # Handle rcu.SetWaitForTime -> wait(milliseconds)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetWaitForTime"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            arg = node.value.args[0]
+            return ast.Expr(
+                ast.Call(
+                    func=ast.Name(id="wait", ctx=ast.Load()),
+                    args=[arg],
+                    keywords=[]
+                )
+            )
+
+        # Handle _thread.start_new_thread(func, ()) -> func()
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == '_thread'
+                and node.value.func.attr == 'start_new_thread'):
+            return self._handle_thread_start(node.value)
+
+        return node
+
+    # ----------------------------------------------------------------------
+    # Transform all calls, including nested ones
+    # ----------------------------------------------------------------------
+
+    def visit_Call(self, node):
+        # First, visit child nodes to transform any nested RoboSim calls
+        node = self.generic_visit(node)
+
+        # Check if this is a RoboSim sensor API call
+        if (isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == 'rcu'):
+            attr = node.func.attr
+            mapping = SENSOR_API_MAPPING.get(attr)
+            if mapping:
+                return self._transform_sensor_call(node, attr, mapping)
+
+        return node
+
+    # ----------------------------------------------------------------------
+    # Helper methods
+    # ----------------------------------------------------------------------
+
+    def _handle_move_run_second(self, call):
+        direction = call.args[0].value
+        speed = call.args[1]
+        seconds = call.args[2]
+
+        if isinstance(seconds, ast.Constant) and isinstance(seconds.value, (int, float)):
+            ms = int(seconds.value * 1000)
+            wait_arg = ast.Constant(value=ms)
         else:
-            print(f"SKIP: {py_file.name} (no golden)")
-    sys.exit(0 if all_passed else 1)
+            wait_arg = ast.BinOp(left=seconds, op=ast.Mult(), right=ast.Constant(value=1000))
 
-if __name__ == "__main__":
-    main()
+        forward_call = ast.Call(
+            func=ast.Name(id=ROBOSIM_API.get(direction, direction), ctx=ast.Load()),
+            args=[speed],
+            keywords=[]
+        )
+        wait_call = ast.Call(
+            func=ast.Name(id="wait", ctx=ast.Load()),
+            args=[wait_arg],
+            keywords=[]
+        )
+        stop_call = ast.Call(
+            func=ast.Name(id="stop", ctx=ast.Load()),
+            args=[],
+            keywords=[]
+        )
+
+        return [
+            ast.Expr(forward_call),
+            ast.Expr(wait_call),
+            ast.Expr(stop_call)
+        ]
+
+    def _handle_move_run(self, call):
+        direction = call.args[0].value
+        speed = call.args[1]
+        func_name = ROBOSIM_API.get(direction, direction)
+        return ast.Expr(
+            ast.Call(
+                func=ast.Name(id=func_name, ctx=ast.Load()),
+                args=[speed],
+                keywords=[]
+            )
+        )
+
+    def _handle_thread_start(self, call):
+        func = call.args[0]
+        return ast.Expr(
+            ast.Call(
+                func=func,
+                args=[],
+                keywords=[]
+            )
+        )
+
+    def _transform_sensor_call(self, node, attr, mapping):
+        """Transform a RoboSim sensor call based on mapping."""
+        expected = mapping["expected_args"]
+        actual = len(node.args)
+        if actual != expected:
+            raise SyntaxError(
+                f"RoboSim API '{attr}()' expects exactly {expected} argument(s), got {actual}"
+            )
+
+        target_name = mapping["target"]
+        arg_indices = mapping["arg_indices"]
+        args = [node.args[i] for i in arg_indices if i < len(node.args)]
+
+        return ast.Call(
+            func=ast.Name(id=target_name, ctx=ast.Load()),
+            args=args,
+            keywords=[]
+        )
 
 ================
 File: robot-language/build/install.py
@@ -26657,38 +26727,81 @@ File: robot-platform/main/include/generated/opcode.json
 }
 
 ================
-File: robot-platform/main/src/Application/generated_program.h
+File: robot-frontend-robosim/test/run_tests.py
 ================
-/******************************************************************************
- * AUTO GENERATED FILE
- *
- * DO NOT EDIT MANUALLY.
- ******************************************************************************/
+from pathlib import Path
+import sys
+import tempfile
+import ast
 
-#pragma once
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
-const Instruction generatedProgram[] =
-{
-    Instruction(Opcode::LoadConst, 0, 0, 0),
-    Instruction(Opcode::ReadUltrasonic, 1, 0, 0),
-    Instruction(Opcode::Store, 1, 0, 0),
-    Instruction(Opcode::LoadConst, 2, 20, 0),
-    Instruction(Opcode::CompareLT, 0, 2, 3),
-    Instruction(Opcode::JumpIfFalse, 3, 12, 0),
-    Instruction(Opcode::LoadConst, 4, 50, 0),
-    Instruction(Opcode::Forward, 4, 0, 0),
-    Instruction(Opcode::LoadConst, 5, 1000, 0),
-    Instruction(Opcode::Wait, 5, 0, 0),
-    Instruction(Opcode::Stop, 0, 0, 0),
-    Instruction(Opcode::Jump, 0, 17, 0),
-    Instruction(Opcode::LoadConst, 6, 50, 0),
-    Instruction(Opcode::Backward, 6, 0, 0),
-    Instruction(Opcode::LoadConst, 7, 1000, 0),
-    Instruction(Opcode::Wait, 7, 0, 0),
-    Instruction(Opcode::Stop, 0, 0, 0),
-};
+from frontend import rewrite
+from frontend.transformer import RoboSimTransformer
 
-const uint16_t generatedProgramSize = 17;
+def test_rewrite(input_file, golden_file):
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp:
+        output_path = Path(tmp.name)
+    try:
+        rewrite(input_file, output_path)
+        with open(output_path, 'r') as f:
+            actual = f.read()
+        with open(golden_file, 'r') as f:
+            expected = f.read()
+        assert actual == expected, (
+            f"Mismatch for {input_file.name}\n"
+            f"Expected:\n{expected}\n"
+            f"Actual:\n{actual}"
+        )
+        print(f"PASS: {input_file.name}")
+    finally:
+        output_path.unlink(missing_ok=True)
+
+def test_invalid_sensor_args():
+    """Test that wrong argument counts raise SyntaxError."""
+    invalid_cases = [
+        ("rcu.GetUltrasound()", "GetUltrasound", 1, 0),
+        ("rcu.GetUltrasound(1, 2)", "GetUltrasound", 1, 2),
+        ("rcu.GetTouch()", "GetTouch", 1, 0),
+        ("rcu.GetTouch(1, 2)", "GetTouch", 1, 2),
+        ("rcu.GetLightSensor()", "GetLightSensor", 1, 0),
+        ("rcu.GetLightSensor(1, 2)", "GetLightSensor", 1, 2),
+        ("rcu.GetTraceV2I2CChxState(1)", "GetTraceV2I2CChxState", 2, 1),
+        ("rcu.GetTraceV2I2CChxState(1, 2, 3)", "GetTraceV2I2CChxState", 2, 3),
+    ]
+    for source, api_name, expected, actual in invalid_cases:
+        try:
+            tree = ast.parse(source)
+            transformer = RoboSimTransformer()
+            transformer.visit(tree)
+            assert False, f"Expected SyntaxError for {api_name} with {actual} args"
+        except SyntaxError as e:
+            assert f"'{api_name}()' expects exactly {expected} argument(s)" in str(e)
+            print(f"PASS: invalid {api_name} with {actual} args")
+def main():
+    examples = ROOT / "examples"
+    golden_dir = ROOT / "test" / "golden"
+    if not golden_dir.exists():
+        print("Golden directory not found.")
+        sys.exit(1)
+    all_passed = True
+    for py_file in examples.glob("*.py"):
+        golden_file = golden_dir / f"{py_file.stem}.rewrite.py"
+        if golden_file.exists():
+            try:
+                test_rewrite(py_file, golden_file)
+            except AssertionError as e:
+                print(e)
+                all_passed = False
+        else:
+            print(f"SKIP: {py_file.name} (no golden)")
+    test_invalid_sensor_args()
+    sys.exit(0 if all_passed else 1)            
+
+
+if __name__ == "__main__":
+    main()
 
 ================
 File: robot-language/generated/opcode.json
@@ -27222,6 +27335,348 @@ categories:
         returns: int
 
 ================
+File: robot-platform/main/src/Application/generated_program.h
+================
+/******************************************************************************
+ * AUTO GENERATED FILE
+ *
+ * DO NOT EDIT MANUALLY.
+ ******************************************************************************/
+
+#pragma once
+
+const Instruction generatedProgram[] =
+{
+    Instruction(Opcode::LoadConst, 0, 70, 0),
+    Instruction(Opcode::Backward, 0, 0, 0),
+    Instruction(Opcode::LoadConst, 1, 1000, 0),
+    Instruction(Opcode::Wait, 1, 0, 0),
+    Instruction(Opcode::Stop, 0, 0, 0),
+};
+
+const uint16_t generatedProgramSize = 5;
+
+================
+File: robot-docs/DEVELOPMENT_GUIDE.md
+================
+# DEVELOPMENT_GUIDE.md
+
+# Robot Development Platform
+
+## Development Guide
+
+Version: Foundation v1 (Draft)
+
+------------------------------------------------------------------------
+
+
+# 1. Purpose
+
+Tài liệu này định nghĩa quy trình phát triển chuẩn của Robot Development
+Platform.
+
+Mọi tính năng mới đều phải tuân theo quy trình này.
+
+------------------------------------------------------------------------
+
+# 2. Development Workflow
+
+``` text
+Requirement
+    │
+    ▼
+Specification
+    │
+    ▼
+Validation
+    │
+    ▼
+Generation
+    │
+    ▼
+Artifact
+    │
+    ▼
+Compiler
+    │
+    ▼
+Runtime
+    │
+    ▼
+Regression
+
+------------------------------------------------------------------------
+
+3. Feature Development Flow
+Phân tích yêu cầu.
+
+Xác định ảnh hưởng tới Specification.
+
+Cập nhật Specification.
+
+Build Artifact.
+
+Cập nhật Consumer.
+
+Regression Test.
+
+Cập nhật Documentation.
+
+4. Build and Install Artifacts
+Sau khi thay đổi api.yaml (thêm hàm mới, sửa opcode, v.v.), cần chạy build để sinh artifact mới:
+
+bash
+cd robot-language
+python build.py
+Lệnh này sẽ:
+
+Load specification
+
+Chạy validators (Duplicate, Semantic, Reference)
+
+Sinh các artifact (opcode.py, opcode.h, function_registry.py, sdk, ...)
+
+Sau đó, chạy install để phân phối artifact đến các consumer:
+
+bash
+python install.py
+Install sẽ copy các file sinh ra vào đúng thư mục của từng consumer:
+
+robot-compiler/compiler/generated/ (các file .py)
+
+robot-platform/main/include/generated/ (opcode.h)
+
+Quy tắc: Tuyệt đối không sửa tay bất kỳ file nào trong thư mục generated/. Mọi thay đổi đều phải thông qua api.yaml và build.
+
+5. Adding a New Robot API
+text
+Requirement
+    ↓
+api.yaml
+    ↓
+Validation
+    ↓
+Generator
+    ↓
+Artifact
+    ↓
+Compiler
+    ↓
+Runtime
+    ↓
+Test
+Checklist
+
+□ Specification
+□ Validation
+□ Artifact
+□ Compiler
+□ Runtime
+□ Documentation
+□ Regression
+6. Adding a New Generator
+Tạo Generator mới.
+
+Đăng ký trong Build System.
+
+Sinh Artifact.
+
+Kiểm tra Output.
+
+Cập nhật Install.
+
+Không sửa Generator hiện có nếu không cần thiết.
+
+7. Adding a New Artifact
+Quy trình
+
+Thiết kế Artifact.
+
+Xây dựng Generator.
+
+Sinh Artifact.
+
+Install.
+
+Consumer sử dụng Artifact.
+
+Rule
+
+Một Artifact chỉ có một Producer.
+
+8. Modifying Compiler
+Được phép
+
+AST
+
+Opcode Handling
+
+Bytecode
+
+Optimization
+
+Không được
+
+Parse Specification
+
+Gọi RobotAPI
+
+Chỉnh Frontend
+
+9. Modifying Runtime
+Được phép
+
+VM
+
+Dispatch
+
+RobotAPI
+
+Không được
+
+Compile
+
+Parse AST
+
+Parse Specification
+
+10. Modifying Frontend
+Được phép
+
+Rewrite
+
+Mapping
+
+Không được
+
+Generate Bytecode
+
+Execute
+
+Parse Specification
+
+11. Build Checklist
+□ Build thành công
+□ Artifact được sinh
+□ Install hoàn tất
+□ Consumer đồng bộ
+12. Regression Checklist
+□ Build
+□ Compiler
+□ VM
+□ Existing Demo
+□ Existing Artifact
+□ Documentation
+Không merge nếu Regression chưa hoàn thành.
+
+13. Commit Guideline
+Một Commit chỉ nên:
+
+Một Feature
+
+Một Bug Fix
+
+Một Refactor
+
+Một Documentation Update
+
+Không trộn nhiều mục đích trong cùng một Commit.
+
+14. Pull Request Checklist
+□ Build thành công
+□ Regression thành công
+□ Documentation cập nhật
+□ Không phá Design Contract
+□ Không tạo Circular Dependency
+15. Code Review Checklist
+Đúng Responsibility.
+
+Đúng Layer.
+
+Không duplicate logic.
+
+Không sửa Generated File.
+
+Không thêm dependency không cần thiết.
+
+16. Documentation Checklist
+Sau mỗi Feature cần cập nhật nếu cần:
+
+PROJECT_STATUS.md
+
+ARCHITECTURE.md
+
+BUILD_SYSTEM.md
+
+DESIGN_CONTRACT.md
+
+DEVELOPMENT_GUIDE.md
+
+ENGINEERING_PHILOSOPHY.md
+
+ROADMAP.md
+
+17. Definition of Done
+Một Feature được xem là hoàn thành khi:
+
+Requirement hoàn thành.
+
+Code hoàn thành.
+
+Build thành công.
+
+Regression thành công.
+
+Documentation cập nhật.
+
+Pull Request được review.
+
+Không vi phạm Design Contract.
+
+## Using Arithmetic Expressions
+
+Trong lời gọi robot API, bạn có thể sử dụng biểu thức số học:
+
+```python
+forward(80 + 20)          # → forward(100)
+turn_left(speed * 2)      # sử dụng biến
+wait(seconds * 1000)      # chuyển đổi đơn vị
+
+
+## 18. Runtime ABI
+
+Sau khi Sprint 14.5 hoàn tất, Runtime ABI được đóng băng. Xem chi tiết tại
+`robot-docs/VM_ABI.md`.
+
+Khi thêm opcode mới, phải cập nhật:
+- `api.yaml` (spec)
+- `VM_ABI.md`
+- VM dispatcher (`VM.cpp`)
+- Compiler handler (nếu là API người dùng)
+
+## 18. Runtime ABI
+
+Sau khi Sprint 14.6 hoàn tất, Runtime ABI được đóng băng. Xem chi tiết tại
+`robot-docs/VM_ABI.md`.
+
+**Foundation v1 đã được đóng băng.**  
+Mọi thay đổi về ABI, opcode, hoặc giao diện VM phải được xem xét cẩn thận và chỉ được thực hiện khi có quyết định thiết kế mới.
+
+Khi thêm opcode mới, phải cập nhật:
+- `api.yaml` (spec)
+- `VM_ABI.md`
+- VM dispatcher (`VM.cpp`)
+- Compiler handler (nếu là API người dùng)
+- Regression tests
+
+## 19. Documentation Generation
+
+Tài liệu được sinh tự động từ `api.yaml` bằng lệnh:
+
+```bash
+robot docs
+
+================
 File: robot-compiler/compiler/compiler.py
 ================
 import ast
@@ -27586,326 +28041,6 @@ class RobotCompiler(ast.NodeVisitor):
         self.program.emit_jump(Opcode.Jump.value, context["begin"])
 
 ================
-File: robot-docs/DEVELOPMENT_GUIDE.md
-================
-# DEVELOPMENT_GUIDE.md
-
-# Robot Development Platform
-
-## Development Guide
-
-Version: Foundation v1 (Draft)
-
-------------------------------------------------------------------------
-
-
-# 1. Purpose
-
-Tài liệu này định nghĩa quy trình phát triển chuẩn của Robot Development
-Platform.
-
-Mọi tính năng mới đều phải tuân theo quy trình này.
-
-------------------------------------------------------------------------
-
-# 2. Development Workflow
-
-``` text
-Requirement
-    │
-    ▼
-Specification
-    │
-    ▼
-Validation
-    │
-    ▼
-Generation
-    │
-    ▼
-Artifact
-    │
-    ▼
-Compiler
-    │
-    ▼
-Runtime
-    │
-    ▼
-Regression
-
-------------------------------------------------------------------------
-
-3. Feature Development Flow
-Phân tích yêu cầu.
-
-Xác định ảnh hưởng tới Specification.
-
-Cập nhật Specification.
-
-Build Artifact.
-
-Cập nhật Consumer.
-
-Regression Test.
-
-Cập nhật Documentation.
-
-4. Build and Install Artifacts
-Sau khi thay đổi api.yaml (thêm hàm mới, sửa opcode, v.v.), cần chạy build để sinh artifact mới:
-
-bash
-cd robot-language
-python build.py
-Lệnh này sẽ:
-
-Load specification
-
-Chạy validators (Duplicate, Semantic, Reference)
-
-Sinh các artifact (opcode.py, opcode.h, function_registry.py, sdk, ...)
-
-Sau đó, chạy install để phân phối artifact đến các consumer:
-
-bash
-python install.py
-Install sẽ copy các file sinh ra vào đúng thư mục của từng consumer:
-
-robot-compiler/compiler/generated/ (các file .py)
-
-robot-platform/main/include/generated/ (opcode.h)
-
-Quy tắc: Tuyệt đối không sửa tay bất kỳ file nào trong thư mục generated/. Mọi thay đổi đều phải thông qua api.yaml và build.
-
-5. Adding a New Robot API
-text
-Requirement
-    ↓
-api.yaml
-    ↓
-Validation
-    ↓
-Generator
-    ↓
-Artifact
-    ↓
-Compiler
-    ↓
-Runtime
-    ↓
-Test
-Checklist
-
-□ Specification
-□ Validation
-□ Artifact
-□ Compiler
-□ Runtime
-□ Documentation
-□ Regression
-6. Adding a New Generator
-Tạo Generator mới.
-
-Đăng ký trong Build System.
-
-Sinh Artifact.
-
-Kiểm tra Output.
-
-Cập nhật Install.
-
-Không sửa Generator hiện có nếu không cần thiết.
-
-7. Adding a New Artifact
-Quy trình
-
-Thiết kế Artifact.
-
-Xây dựng Generator.
-
-Sinh Artifact.
-
-Install.
-
-Consumer sử dụng Artifact.
-
-Rule
-
-Một Artifact chỉ có một Producer.
-
-8. Modifying Compiler
-Được phép
-
-AST
-
-Opcode Handling
-
-Bytecode
-
-Optimization
-
-Không được
-
-Parse Specification
-
-Gọi RobotAPI
-
-Chỉnh Frontend
-
-9. Modifying Runtime
-Được phép
-
-VM
-
-Dispatch
-
-RobotAPI
-
-Không được
-
-Compile
-
-Parse AST
-
-Parse Specification
-
-10. Modifying Frontend
-Được phép
-
-Rewrite
-
-Mapping
-
-Không được
-
-Generate Bytecode
-
-Execute
-
-Parse Specification
-
-11. Build Checklist
-□ Build thành công
-□ Artifact được sinh
-□ Install hoàn tất
-□ Consumer đồng bộ
-12. Regression Checklist
-□ Build
-□ Compiler
-□ VM
-□ Existing Demo
-□ Existing Artifact
-□ Documentation
-Không merge nếu Regression chưa hoàn thành.
-
-13. Commit Guideline
-Một Commit chỉ nên:
-
-Một Feature
-
-Một Bug Fix
-
-Một Refactor
-
-Một Documentation Update
-
-Không trộn nhiều mục đích trong cùng một Commit.
-
-14. Pull Request Checklist
-□ Build thành công
-□ Regression thành công
-□ Documentation cập nhật
-□ Không phá Design Contract
-□ Không tạo Circular Dependency
-15. Code Review Checklist
-Đúng Responsibility.
-
-Đúng Layer.
-
-Không duplicate logic.
-
-Không sửa Generated File.
-
-Không thêm dependency không cần thiết.
-
-16. Documentation Checklist
-Sau mỗi Feature cần cập nhật nếu cần:
-
-PROJECT_STATUS.md
-
-ARCHITECTURE.md
-
-BUILD_SYSTEM.md
-
-DESIGN_CONTRACT.md
-
-DEVELOPMENT_GUIDE.md
-
-ENGINEERING_PHILOSOPHY.md
-
-ROADMAP.md
-
-17. Definition of Done
-Một Feature được xem là hoàn thành khi:
-
-Requirement hoàn thành.
-
-Code hoàn thành.
-
-Build thành công.
-
-Regression thành công.
-
-Documentation cập nhật.
-
-Pull Request được review.
-
-Không vi phạm Design Contract.
-
-## Using Arithmetic Expressions
-
-Trong lời gọi robot API, bạn có thể sử dụng biểu thức số học:
-
-```python
-forward(80 + 20)          # → forward(100)
-turn_left(speed * 2)      # sử dụng biến
-wait(seconds * 1000)      # chuyển đổi đơn vị
-
-
-## 18. Runtime ABI
-
-Sau khi Sprint 14.5 hoàn tất, Runtime ABI được đóng băng. Xem chi tiết tại
-`robot-docs/VM_ABI.md`.
-
-Khi thêm opcode mới, phải cập nhật:
-- `api.yaml` (spec)
-- `VM_ABI.md`
-- VM dispatcher (`VM.cpp`)
-- Compiler handler (nếu là API người dùng)
-
-## 18. Runtime ABI
-
-Sau khi Sprint 14.6 hoàn tất, Runtime ABI được đóng băng. Xem chi tiết tại
-`robot-docs/VM_ABI.md`.
-
-**Foundation v1 đã được đóng băng.**  
-Mọi thay đổi về ABI, opcode, hoặc giao diện VM phải được xem xét cẩn thận và chỉ được thực hiện khi có quyết định thiết kế mới.
-
-Khi thêm opcode mới, phải cập nhật:
-- `api.yaml` (spec)
-- `VM_ABI.md`
-- VM dispatcher (`VM.cpp`)
-- Compiler handler (nếu là API người dùng)
-- Regression tests
-
-## 19. Documentation Generation
-
-Tài liệu được sinh tự động từ `api.yaml` bằng lệnh:
-
-```bash
-robot docs
-
-================
 File: robot-platform/main/main.ino
 ================
 #include "src/Services/VM/ProgramLoader.h"
@@ -27932,7 +28067,7 @@ File: robot-platform/main/main.ino
 // VM
 VM vm;
 Program program;
-const int STABILITY_ITERATIONS = 3;
+const int STABILITY_ITERATIONS = 10;
 int executionCounter = 0;
 
 // Behavior Engine
