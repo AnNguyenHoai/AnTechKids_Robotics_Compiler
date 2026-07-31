@@ -1,7 +1,7 @@
 {
   "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\012_Line_TRC5000\\012_Line_TRC5000.rewrite.py",
   "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\012_Line_TRC5000\\program.h",
-  "compile_time_seconds": 0.0020160675048828125,
+  "compile_time_seconds": 0.02996039390563965,
   "instruction_count": 15,
   "variable_count": 7,
   "temp_count": 6,

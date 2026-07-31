@@ -116,15 +116,13 @@ void Initialize() {
     lightSensor.init();
     colorSensor.init();
     // ---- Register line sensors using new framework ----
-    auto& mgr = SensorManager::instance();
+    auto& mgr = SensorManager::instance();   // chỉ khai báo một lần
     mgr.registerSensor(SensorID::LineLeft,
                        new TCRT5000(SENSOR_TRCT5000_L_PIN, "line_left"));
     mgr.registerSensor(SensorID::LineCenter,
                        new TCRT5000(SENSOR_TRCT5000_C_PIN, "line_center"));
     mgr.registerSensor(SensorID::LineRight,
                        new TCRT5000(SENSOR_TRCT5000_R_PIN, "line_right"));
-    mgr.initializeAll();
-    auto& mgr = SensorManager::instance();
     mgr.registerSensor(SensorID::Ultrasonic,
                        new Ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN, 30000, "ultrasonic"));
     mgr.initializeAll();

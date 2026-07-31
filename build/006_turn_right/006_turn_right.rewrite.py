@@ -1,5 +1,5 @@
 def task1():
-    backward(70)
+    turn_right(70)
     wait(1000)
     stop()
 task1()

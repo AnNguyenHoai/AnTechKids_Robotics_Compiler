@@ -1,20 +1,19 @@
 #include "TCRT5000.h"
-#include <Arduino.h>
+#include "../HAL/HAL.h"
 
 TCRT5000::TCRT5000(int pin, const char* sensorName, int threshold)
     : _pin(pin), _name(sensorName), _threshold(threshold),
-      _lastReading(LOW), _healthy(true) {}
+      _lastReading(0), _healthy(true) {}
 
 bool TCRT5000::initialize() {
-    pinMode(_pin, INPUT);
+    HAL::getGPIO().pinMode(_pin, HAL::PinMode::INPUT_MODE);
     _healthy = true;
     return true;
 }
 
 void TCRT5000::update() {
-    _lastReading = digitalRead(_pin);
-    // Basic health check: if pin is not changing (stuck), could mark unhealthy
-    // but for simplicity we keep healthy always true.
+    auto state = HAL::getGPIO().digitalRead(_pin);
+    _lastReading = (state == HAL::PinState::HIGH_STATE) ? 1 : 0;
 }
 
 bool TCRT5000::healthy() const {
@@ -26,7 +25,7 @@ const char* TCRT5000::name() const {
 }
 
 void TCRT5000::shutdown() {
-    // Nothing to release for simple GPIO sensor
+    // Nothing to release
 }
 
 int TCRT5000::read() const {
@@ -34,7 +33,6 @@ int TCRT5000::read() const {
 }
 
 bool TCRT5000::isLineDetected() const {
-    // By convention, HIGH means line (black) detected.
     return (_lastReading == _threshold);
 }
 

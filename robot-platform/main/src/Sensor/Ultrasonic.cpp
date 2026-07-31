@@ -1,5 +1,5 @@
 #include "Ultrasonic.h"
-#include <Arduino.h>
+#include "../HAL/HAL.h"
 
 Ultrasonic::Ultrasonic(int trigPin, int echoPin, uint32_t timeoutUs, const char* name)
     : _trigPin(trigPin), _echoPin(echoPin), _timeoutUs(timeoutUs),
@@ -7,9 +7,9 @@ Ultrasonic::Ultrasonic(int trigPin, int echoPin, uint32_t timeoutUs, const char*
       _consecutiveTimeouts(0) {}
 
 bool Ultrasonic::initialize() {
-    pinMode(_trigPin, OUTPUT);
-    pinMode(_echoPin, INPUT);
-    digitalWrite(_trigPin, LOW);
+    HAL::getGPIO().pinMode(_trigPin, HAL::PinMode::OUTPUT_MODE);
+    HAL::getGPIO().pinMode(_echoPin, HAL::PinMode::INPUT_MODE);
+    HAL::getGPIO().digitalWrite(_trigPin, HAL::PinState::LOW_STATE);
     _initialized = true;
     _healthy = true;
     _consecutiveTimeouts = 0;
@@ -22,28 +22,21 @@ void Ultrasonic::update() {
         return;
     }
 
-    // Send trigger pulse
-    digitalWrite(_trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(_trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(_trigPin, LOW);
+    HAL::getGPIO().digitalWrite(_trigPin, HAL::PinState::LOW_STATE);
+    HAL::getTime().delayUs(2);
+    HAL::getGPIO().digitalWrite(_trigPin, HAL::PinState::HIGH_STATE);
+    HAL::getTime().delayUs(10);
+    HAL::getGPIO().digitalWrite(_trigPin, HAL::PinState::LOW_STATE);
 
-    // Measure echo pulse
-    unsigned long duration = pulseIn(_echoPin, HIGH, _timeoutUs);
+    uint32_t duration = HAL::getPulse().pulseIn(_echoPin, HAL::PinState::HIGH_STATE, _timeoutUs);
 
     if (duration == 0) {
-        // Timeout: no obstacle detected
         _lastDistance = -1.0f;
         _consecutiveTimeouts++;
-
-        // Health logic: too many timeouts in a row = sensor disconnected / faulty
         if (_consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
             _healthy = false;
         }
-        // Note: we keep _healthy true for the first few timeouts
     } else {
-        // Valid reading: reset timeout counter and mark healthy
         _lastDistance = (duration * 0.034f) / 2.0f;
         _consecutiveTimeouts = 0;
         _healthy = true;
@@ -58,16 +51,14 @@ const char* Ultrasonic::name() const {
     return _name;
 }
 
-void Ultrasonic::shutdown() {
-    // Nothing to release for GPIO sensor
-}
+void Ultrasonic::shutdown() {}
 
 float Ultrasonic::distanceCm() const {
     return _lastDistance;
 }
 
 float Ultrasonic::maxRangeCm() const {
-    return 400.0f;  // HC-SR04 typical max range
+    return 400.0f;
 }
 
 const char* Ultrasonic::unit() const {

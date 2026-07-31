@@ -1,5 +1,5 @@
 def task1():
-    turn_left(50)
+    turn_left(80)
     wait(1000)
     stop()
 task1()
