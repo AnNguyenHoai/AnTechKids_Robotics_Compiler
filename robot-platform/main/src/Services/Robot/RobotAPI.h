@@ -80,6 +80,12 @@ int16_t ReadUltrasonic();
 /**
  * Read ultrasonic sensor.
  *
+ * @return distanceFront (cm)
+ */
+float distanceFront();
+/**
+ * Read ultrasonic sensor.
+ *
  * @return port (bool)
  */
 int16_t ReadTouch(int port);

@@ -12,7 +12,6 @@
 #include <esp32-hal-ledc.h>
 
 // Sửa đường dẫn: từ Services/Robot lên src, rồi vào Devices
-#include "../../Devices/Ultrasonic.h"
 #include "../../Devices/Touch.h"
 #include "../../Devices/LineSensor.h"
 #include "../../Devices/LightSensor.h"
@@ -22,6 +21,13 @@
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/TCRT5000.h"
 #include "../../HardwareAbstraction/GPIO.h"
+#include "../../Sensor/SensorManager.h"
+#include "../../Sensor/TCRT5000.h"
+#include "../../Sensor/SensorID.h"
+#include "../../HardwareAbstraction/GPIO.h"
+#include "../../Sensor/SensorManager.h"
+#include "../../Sensor/Ultrasonic.h"
+#include "../../Sensor/SensorID.h"
 namespace RobotAPI {
 
 // Cấu hình PWM cho ESP32
@@ -37,7 +43,6 @@ static const int PWM_CH_R_IN3 = 2;
 static const int PWM_CH_R_IN4 = 3;
 
 // Định nghĩa các đối tượng cảm biến (toàn cục trong namespace)
-static Ultrasonic ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN);
 static Touch touch0(ROBOT_PIN_5);     // ví dụ
 static Touch touch1(ROBOT_PIN_5);    // ví dụ
 //static LineSensor lineSensor(SENSOR_TRCT5000_L_PIN, SENSOR_TRCT5000_C_PIN, SENSOR_TRCT5000_R_PIN);
@@ -105,16 +110,23 @@ void Initialize() {
     Serial.println("[RobotAPI] Motors initialized with MotionConfig.");
 
     // Khởi tạo cảm biến
-    ultrasonic.init();
     touch0.init();
     touch1.init();
     //lineSensor.init();
     lightSensor.init();
     colorSensor.init();
+    // ---- Register line sensors using new framework ----
     auto& mgr = SensorManager::instance();
-    mgr.registerSensor(new TCRT5000(SENSOR_TRCT5000_L_PIN, "line_left"));
-    mgr.registerSensor(new TCRT5000(SENSOR_TRCT5000_C_PIN, "line_center"));
-    mgr.registerSensor(new TCRT5000(SENSOR_TRCT5000_R_PIN, "line_right"));
+    mgr.registerSensor(SensorID::LineLeft,
+                       new TCRT5000(SENSOR_TRCT5000_L_PIN, "line_left"));
+    mgr.registerSensor(SensorID::LineCenter,
+                       new TCRT5000(SENSOR_TRCT5000_C_PIN, "line_center"));
+    mgr.registerSensor(SensorID::LineRight,
+                       new TCRT5000(SENSOR_TRCT5000_R_PIN, "line_right"));
+    mgr.initializeAll();
+    auto& mgr = SensorManager::instance();
+    mgr.registerSensor(SensorID::Ultrasonic,
+                       new Ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN, 30000, "ultrasonic"));
     mgr.initializeAll();
     // Load sensor config
     loadSensorConfigFromStorage();
@@ -154,12 +166,6 @@ void Stop() {
  * Sensor
  ******************************************************************************/
 
-int16_t ReadUltrasonic() {
-    int distance = ultrasonic.readDistance();
-    Serial.printf("[%lu] ReadUltrasonic: %d cm\n", millis(), distance);
-    return distance;
-}
-
 int16_t ReadTouch(int port) {
     bool state = false;
     if (port == 0) state = touch0.read();
@@ -182,20 +188,59 @@ int16_t ReadColor() {
 }
 
 int16_t ReadLine(int channel) {
-    const char* name = nullptr;
+    SensorID id;
     switch (channel) {
-        case 0: name = "line_left"; break;
-        case 1: name = "line_center"; break;
-        case 2: name = "line_right"; break;
+        case 0: id = SensorID::LineLeft; break;
+        case 1: id = SensorID::LineCenter; break;
+        case 2: id = SensorID::LineRight; break;
         default: return 0;
     }
-    auto sensor = SensorManager::instance().getSensor(name);
+    auto sensor = SensorManager::instance().getSensor(id);
     if (sensor) {
-        sensor->update(); // ensure latest reading
-        // TCRT5000 returns HIGH when line is detected (black)
-        return (sensor->read() == HIGH) ? 1 : 0;
+        // Cast to TCRT5000* to use semantic API
+        auto lineSensor = static_cast<TCRT5000*>(sensor);
+        lineSensor->update();   // ensure fresh reading
+        return lineSensor->isLineDetected() ? 1 : 0;
     }
     return 0;
+}
+
+int16_t ReadLineRaw(int channel) {
+    SensorID id;
+    switch (channel) {
+        case 0: id = SensorID::LineLeft; break;
+        case 1: id = SensorID::LineCenter; break;
+        case 2: id = SensorID::LineRight; break;
+        default: return 0;
+    }
+    auto sensor = SensorManager::instance().getSensor(id);
+    if (sensor) {
+        auto lineSensor = static_cast<TCRT5000*>(sensor);
+        lineSensor->update();
+        return lineSensor->rawLevel();
+    }
+    return 0;
+}
+
+int16_t ReadUltrasonic() {
+    auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
+    if (sensor) {
+        auto us = static_cast<Ultrasonic*>(sensor);
+        us->update();
+        float dist = us->distanceCm();
+        return (dist < 0) ? -1 : (int16_t)dist;
+    }
+    return -1;
+}
+
+float distanceFront() {
+    auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
+    if (sensor) {
+        auto us = static_cast<Ultrasonic*>(sensor);
+        us->update();
+        return us->distanceCm();
+    }
+    return -1.0f;
 }
 
 /******************************************************************************
