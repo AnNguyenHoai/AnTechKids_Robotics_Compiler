@@ -60,7 +60,7 @@ public:
     }
 
 public:
-    int16_t mVariables[MAX_VARIABLE_COUNT];
+    int32_t mVariables[MAX_VARIABLE_COUNT];
     int16_t mRegister0;
     bool mFlag;
     uint16_t mProgramCounter;

@@ -65,10 +65,15 @@ class RoboSimTransformer(ast.NodeTransformer):
                 and isinstance(node.value.func.value, ast.Name)
                 and node.value.func.value.id == "rcu"):
             arg = node.value.args[0]
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, (int, float)):
+                ms = int(arg.value * 1000)
+                wait_arg = ast.Constant(value=ms)
+            else:
+                wait_arg = ast.BinOp(left=arg, op=ast.Mult(), right=ast.Constant(value=1000))
             return ast.Expr(
                 ast.Call(
                     func=ast.Name(id="wait", ctx=ast.Load()),
-                    args=[arg],
+                    args=[wait_arg],
                     keywords=[]
                 )
             )
@@ -81,6 +86,76 @@ class RoboSimTransformer(ast.NodeTransformer):
                 and node.value.func.attr == 'start_new_thread'):
             return self._handle_thread_start(node.value)
 
+        # Handle rcu.SetMoveSpeed(left, right) -> set_motor_speed(left, right)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetMoveSpeed"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_move_speed(node.value)
+
+        # Handle rcu.SetServo(port, angle) -> set_servo(port, angle)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetServo"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_servo", 2)
+
+        # Handle rcu.Set3CLed(port, state) -> set_3c_led(port, state)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "Set3CLed"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_3c_led", 2)
+
+        # Handle rcu.SetLightSensorLed(port, state) -> set_light_sensor_led(port, state)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetLightSensorLed"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_light_sensor_led", 2)
+
+        # Handle rcu.SetMotorStraightAngle(left_port, right_port, speed, angle) -> set_motor_straight_angle(...)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetMotorStraightAngle"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_motor_straight_angle", 4)
+
+        # Handle rcu.line_intersection_stop(speed, type) -> line_intersection_stop(speed, type)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "line_intersection_stop"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "line_intersection_stop", 2)
+
+        # Handle rcu.SetMp3Play(index) -> set_mp3_play(index)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetMp3Play"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_mp3_play", 1)
+        
+        return node
+
+    def _handle_simple_call(self, call, target_name, expected_args):
+        """Helper to transform a simple RoboSim call to canonical."""
+        if len(call.args) != expected_args:
+            raise SyntaxError(f"{call.func.attr}() expects exactly {expected_args} argument(s)")
+        return ast.Expr(
+            ast.Call(
+                func=ast.Name(id=target_name, ctx=ast.Load()),
+                args=call.args,
+                keywords=[]
+            )
+        )
+    
         return node
 
     # ----------------------------------------------------------------------
@@ -178,4 +253,16 @@ class RoboSimTransformer(ast.NodeTransformer):
             func=ast.Name(id=target_name, ctx=ast.Load()),
             args=args,
             keywords=[]
+        )
+    def _handle_move_speed(self, call):
+        if len(call.args) != 2:
+            raise SyntaxError("SetMoveSpeed expects exactly 2 arguments")
+        left = call.args[0]
+        right = call.args[1]
+        return ast.Expr(
+            ast.Call(
+                func=ast.Name(id="set_motor_speed", ctx=ast.Load()),
+                args=[left, right],
+                keywords=[]
+            )
         )

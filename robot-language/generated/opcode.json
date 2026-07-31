@@ -31,6 +31,14 @@
         "module": "motion_handler",
         "handler": "MotionHandler"
     },
+    "SetMotorSpeed": {
+        "id": 35,
+        "opcode": "SetMotorSpeed",
+        "function": "set_motor_speed",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
     "Wait": {
         "id": 7,
         "opcode": "Wait",
@@ -254,5 +262,53 @@
         "category": "sensor",
         "module": "sensor_handler",
         "handler": "SensorHandler"
+    },
+    "SetServo": {
+        "id": 36,
+        "opcode": "SetServo",
+        "function": "set_servo",
+        "category": "servo",
+        "module": "servo_handler",
+        "handler": "ServoHandler"
+    },
+    "Set3CLed": {
+        "id": 37,
+        "opcode": "Set3CLed",
+        "function": "set_3c_led",
+        "category": "led",
+        "module": "led_handler",
+        "handler": "LedHandler"
+    },
+    "SetLightSensorLed": {
+        "id": 38,
+        "opcode": "SetLightSensorLed",
+        "function": "set_light_sensor_led",
+        "category": "led",
+        "module": "led_handler",
+        "handler": "LedHandler"
+    },
+    "SetMotorStraightAngle": {
+        "id": 39,
+        "opcode": "SetMotorStraightAngle",
+        "function": "set_motor_straight_angle",
+        "category": "motor",
+        "module": "motor_handler",
+        "handler": "MotorHandler"
+    },
+    "LineIntersectionStop": {
+        "id": 40,
+        "opcode": "LineIntersectionStop",
+        "function": "line_intersection_stop",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "SetMp3Play": {
+        "id": 41,
+        "opcode": "SetMp3Play",
+        "function": "set_mp3_play",
+        "category": "peripheral",
+        "module": "peripheral_handler",
+        "handler": "PeripheralHandler"
     }
 }

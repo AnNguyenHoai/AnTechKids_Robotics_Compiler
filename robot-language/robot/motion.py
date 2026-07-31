@@ -38,3 +38,13 @@ def turn_right(speed: int) -> None:
     """
     pass
 
+def set_motor_speed(left_speed: int, right_speed: int) -> None:
+    """
+    Set motor speeds independently
+
+    Args:
+        left_speed (int):
+        right_speed (int):
+    """
+    pass
+

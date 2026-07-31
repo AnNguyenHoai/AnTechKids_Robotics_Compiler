@@ -42,7 +42,15 @@ categories:
         args:
           - name: speed
             type: int
-
+      - name: set_motor_speed
+        opcode: SetMotorSpeed
+        opcode_id: 35
+        description: Set motor speeds independently
+        args:
+          - name: left_speed
+            type: int
+          - name: right_speed
+            type: int   
   system:
     module: system_handler
     handler: SystemHandler
@@ -219,4 +227,91 @@ categories:
         args:
           - name: channel
             type: int
-        returns: int         
+        returns: int   
+   
+  servo:
+    description: Servo control APIs
+    module: servo_handler
+    handler: ServoHandler
+    functions:
+      - name: set_servo
+        opcode: SetServo
+        opcode_id: 36
+        description: Set servo angle
+        args:
+          - name: port
+            type: int
+          - name: angle
+            type: int
+
+  led:
+    description: LED control APIs
+    module: led_handler
+    handler: LedHandler
+    functions:
+      - name: set_3c_led
+        opcode: Set3CLed
+        opcode_id: 37
+        description: Set 3-color LED state
+        args:
+          - name: port
+            type: int
+          - name: state
+            type: int
+
+      - name: set_light_sensor_led
+        opcode: SetLightSensorLed
+        opcode_id: 38
+        description: Set light sensor LED state
+        args:
+          - name: port
+            type: int
+          - name: state
+            type: int
+
+  motor:
+    description: Motor control APIs (beyond basic motion)
+    module: motor_handler
+    handler: MotorHandler
+    functions:
+      - name: set_motor_straight_angle
+        opcode: SetMotorStraightAngle
+        opcode_id: 39
+        description: Set motor straight angle
+        args:
+          - name: left_port
+            type: int
+          - name: right_port
+            type: int
+          - name: speed
+            type: int
+          - name: angle
+            type: int
+
+  line:
+    description: Line following behavior APIs
+    module: line_handler
+    handler: LineHandler
+    functions:
+      - name: line_intersection_stop
+        opcode: LineIntersectionStop
+        opcode_id: 40
+        description: Stop at line intersection
+        args:
+          - name: speed
+            type: int
+          - name: type
+            type: int
+
+  peripheral:
+    description: Peripheral control APIs (buzzer, etc.)
+    module: peripheral_handler
+    handler: PeripheralHandler
+    functions:
+      - name: set_mp3_play
+        opcode: SetMp3Play
+        opcode_id: 41
+        description: Play MP3 track (adapted to active buzzer beep)
+        args:
+          - name: index
+            type: int

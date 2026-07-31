@@ -46,7 +46,7 @@ static const int PWM_CH_R_IN4 = 3;
 static Touch touch0(ROBOT_PIN_5);     // ví dụ
 static Touch touch1(ROBOT_PIN_5);    // ví dụ
 //static LineSensor lineSensor(SENSOR_TRCT5000_L_PIN, SENSOR_TRCT5000_C_PIN, SENSOR_TRCT5000_R_PIN);
-static LightSensor lightSensor(ROBOT_PIN_32); // ví dụ
+static LightSensor lightSensor(ROBOT_PIN_5); // ví dụ
 static ColorSensor colorSensor;
 
 // Hàm nội bộ: điều khiển motor
@@ -86,6 +86,9 @@ void setMotorsDirect(int left, int right) {
     _setMotors(left, right);
 }
 
+void SetMotorSpeed(int left, int right) {
+    setMotorsDirect(left, right);
+}
 /******************************************************************************
  * Initialization
  ******************************************************************************/
@@ -112,6 +115,13 @@ void Initialize() {
     // Khởi tạo cảm biến
     touch0.init();
     touch1.init();
+    //light and buzzer
+    // LED pins
+    pinMode(OUTPUT_LED_LEFT_PIN, OUTPUT);
+    pinMode(OUTPUT_LED_RIGHT_PIN, OUTPUT);
+    digitalWrite(OUTPUT_LED_LEFT_PIN, LOW);
+    digitalWrite(OUTPUT_LED_RIGHT_PIN, LOW);
+    Serial.println("[RobotAPI] LEDs initialized (OFF)");
     //lineSensor.init();
     lightSensor.init();
     colorSensor.init();
@@ -126,6 +136,10 @@ void Initialize() {
     mgr.registerSensor(SensorID::Ultrasonic,
                        new Ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN, 30000, "ultrasonic"));
     mgr.initializeAll();
+    //khoi tao buzzer
+    pinMode(OUTPUT_BUZZER_PIN, OUTPUT);
+    digitalWrite(OUTPUT_BUZZER_PIN, LOW);
+    Serial.println("[RobotAPI] Buzzer initialized (OFF)");
     // Load sensor config
     loadSensorConfigFromStorage();
     Serial.println("[RobotAPI] Sensors initialized with SensorConfig.");
@@ -245,9 +259,48 @@ float distanceFront() {
  * Utility
  ******************************************************************************/
 
-void Wait(uint16_t ms) {
-    Serial.printf("[%lu] Wait : %d ms\n", millis(), ms);
+void Wait(uint32_t ms) {
+    Serial.printf("[%lu] Wait : %lu ms\n", millis(), ms);
     delay(ms);
 }
 
+void SetServo(int port, int angle) {
+    Serial.printf("[DUMMY][SetServo] port=%d angle=%d\n", port, angle);
+}
+
+void Set3CLed(int port, int state) {
+    // Odd port -> GPIO33, even port -> GPIO32
+    int pin = (port % 2 == 0) ? OUTPUT_LED_LEFT_PIN : OUTPUT_LED_RIGHT_PIN;
+    digitalWrite(pin, state ? HIGH : LOW);
+    Serial.printf("[LED] Set3CLed port=%d state=%d (GPIO %d)\n", port, state, pin);
+}
+
+void SetLightSensorLed(int port, int state) {
+    Serial.printf(
+        "[DUMMY][SetLightSensorLed] port=%d state=%d\n",
+        port, state
+    );
+}
+
+void SetMotorStraightAngle(int leftPort, int rightPort, int speed, int angle) {
+    Serial.printf("[DUMMY][SetMotorStraightAngle] leftPort=%d rightPort=%d speed=%d angle=%d\n",
+                  leftPort, rightPort, speed, angle);
+}
+
+void LineIntersectionStop(int speed, int type) {
+    Serial.printf("[DUMMY][LineIntersectionStop] speed=%d type=%d\n", speed, type);
+}
+
+//periparal
+
+void SetMp3Play(int index) {
+    Serial.printf("[BUZZER] SetMp3Play index=%d -> fixed beep 200ms\n", index);
+    digitalWrite(OUTPUT_BUZZER_PIN, HIGH);
+    delay(200);
+    digitalWrite(OUTPUT_BUZZER_PIN, LOW);
+}
+
+
+
 } // namespace RobotAPI
+

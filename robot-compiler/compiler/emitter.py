@@ -18,7 +18,7 @@ class HeaderEmitter:
             for ins in program.instructions:
                 opcode_name = Opcode(ins.opcode).name
                 f.write(
-                    f"    Instruction(Opcode::{opcode_name}, {ins.p1}, {ins.p2}, {ins.p3}),\n"
+                    f"    Instruction(Opcode::{opcode_name}, {ins.p1}, {ins.p2}, {ins.p3}, {ins.p4}),\n"
                 )
             f.write("};\n\n")
             f.write(f"const uint16_t generatedProgramSize = {len(program.instructions)};\n")

@@ -1,0 +1,5 @@
+set_mp3_play(1)
+wait(1000)
+set_mp3_play(3)
+wait(1000)
+set_mp3_play(8)

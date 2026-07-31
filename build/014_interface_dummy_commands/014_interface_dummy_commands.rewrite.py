@@ -1,0 +1,5 @@
+set_servo(1, 90)
+set_3c_led(2, 1)
+set_light_sensor_led(3, 0)
+set_motor_straight_angle(1, 2, 70, 360)
+line_intersection_stop(70, 17)

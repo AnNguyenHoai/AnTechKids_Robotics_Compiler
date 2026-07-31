@@ -35,6 +35,15 @@
         "arguments": 1,
         "description": "Rotate robot right"
     },
+    "set_motor_speed": {
+        "opcode": "SetMotorSpeed",
+        "opcode_id": 35,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 2,
+        "description": "Set motor speeds independently"
+    },
     "wait": {
         "opcode": "Wait",
         "opcode_id": 7,
@@ -286,5 +295,59 @@
         "handler": "SensorHandler",
         "arguments": 1,
         "description": "Read line sensor (0=white, 1=dark)"
+    },
+    "set_servo": {
+        "opcode": "SetServo",
+        "opcode_id": 36,
+        "category": "servo",
+        "module": "servo_handler",
+        "handler": "ServoHandler",
+        "arguments": 2,
+        "description": "Set servo angle"
+    },
+    "set_3c_led": {
+        "opcode": "Set3CLed",
+        "opcode_id": 37,
+        "category": "led",
+        "module": "led_handler",
+        "handler": "LedHandler",
+        "arguments": 2,
+        "description": "Set 3-color LED state"
+    },
+    "set_light_sensor_led": {
+        "opcode": "SetLightSensorLed",
+        "opcode_id": 38,
+        "category": "led",
+        "module": "led_handler",
+        "handler": "LedHandler",
+        "arguments": 2,
+        "description": "Set light sensor LED state"
+    },
+    "set_motor_straight_angle": {
+        "opcode": "SetMotorStraightAngle",
+        "opcode_id": 39,
+        "category": "motor",
+        "module": "motor_handler",
+        "handler": "MotorHandler",
+        "arguments": 4,
+        "description": "Set motor straight angle"
+    },
+    "line_intersection_stop": {
+        "opcode": "LineIntersectionStop",
+        "opcode_id": 40,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 2,
+        "description": "Stop at line intersection"
+    },
+    "set_mp3_play": {
+        "opcode": "SetMp3Play",
+        "opcode_id": 41,
+        "category": "peripheral",
+        "module": "peripheral_handler",
+        "handler": "PeripheralHandler",
+        "arguments": 1,
+        "description": "Play MP3 track (adapted to active buzzer beep)"
     }
 }

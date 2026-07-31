@@ -74,7 +74,7 @@ Serial Logs
 See artifacts/physical/ for captured logs.
 
 Timing Audit
-rcu.SetWaitForTime(seconds) → wait(seconds) (no conversion; unit is milliseconds as per RoboSim behavior).
+rcu.SetWaitForTime(seconds) → wait(int(seconds * 1000)); RoboSim unit is seconds and canonical/VM/Firmware unit is milliseconds.
 
 rcu.SetMoveRunSecond(direction, speed, seconds) → forward(speed); wait(seconds*1000); stop() (converts seconds to milliseconds).
 

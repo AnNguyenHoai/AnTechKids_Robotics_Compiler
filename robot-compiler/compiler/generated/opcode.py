@@ -9,6 +9,7 @@ class Opcode(IntEnum):
     Backward = 3
     TurnLeft = 4
     TurnRight = 5
+    SetMotorSpeed = 35
     Wait = 7
     Stop = 6
     LoadConst = 1
@@ -37,3 +38,9 @@ class Opcode(IntEnum):
     ReadLight = 32
     ReadColor = 33
     ReadLine = 34
+    SetServo = 36
+    Set3CLed = 37
+    SetLightSensorLed = 38
+    SetMotorStraightAngle = 39
+    LineIntersectionStop = 40
+    SetMp3Play = 41

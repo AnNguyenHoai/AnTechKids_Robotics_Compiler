@@ -5,11 +5,12 @@
 struct Instruction
 {
     Opcode opcode;
-    int16_t p1;
-    int16_t p2;
-    int16_t p3;
+    int32_t p1;
+    int32_t p2;
+    int32_t p3;
+    int32_t p4;
 
-    Instruction() : opcode(Opcode::LoadConst), p1(0), p2(0), p3(0) {}
-    Instruction(Opcode op, int16_t param1, int16_t param2, int16_t param3)
-        : opcode(op), p1(param1), p2(param2), p3(param3) {}
+    Instruction() : opcode(Opcode::LoadConst), p1(0), p2(0), p3(0), p4(0) {}
+    Instruction(Opcode op, int32_t param1, int32_t param2, int32_t param3, int32_t param4 = 0)
+        : opcode(op), p1(param1), p2(param2), p3(param3), p4(param4) {}
 };

@@ -17,6 +17,9 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 #### `void turn_right(int speed)`
 - Rotate robot right
 
+#### `void set_motor_speed(int left_speed, int right_speed)`
+- Set motor speeds independently
+
 ### System
 #### `void wait(int milliseconds)`
 - Wait milliseconds
@@ -39,6 +42,29 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 
 #### `void read_line(int channel)`
 - Read line sensor (0=white, 1=dark)
+
+### Servo
+#### `void set_servo(int port, int angle)`
+- Set servo angle
+
+### Led
+#### `void set_3c_led(int port, int state)`
+- Set 3-color LED state
+
+#### `void set_light_sensor_led(int port, int state)`
+- Set light sensor LED state
+
+### Motor
+#### `void set_motor_straight_angle(int left_port, int right_port, int speed, int angle)`
+- Set motor straight angle
+
+### Line
+#### `void line_intersection_stop(int speed, int type)`
+- Stop at line intersection
+
+### Peripheral
+#### `void set_mp3_play(int index)`
+- Play MP3 track (adapted to active buzzer beep)
 
 
 ## Implementation

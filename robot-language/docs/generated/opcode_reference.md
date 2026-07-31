@@ -8,6 +8,7 @@ This is a complete list of all opcodes used by the Robot VM.
 | `Backward` | 3 | motion | Move robot backward |
 | `TurnLeft` | 4 | motion | Rotate robot left |
 | `TurnRight` | 5 | motion | Rotate robot right |
+| `SetMotorSpeed` | 35 | motion | Set motor speeds independently |
 | `Wait` | 7 | system | Wait milliseconds |
 | `Stop` | 6 | system | Stop robot |
 | `LoadConst` | 1 | internal | Load constant to variable |
@@ -36,6 +37,12 @@ This is a complete list of all opcodes used by the Robot VM.
 | `ReadLight` | 32 | sensor | Read light sensor raw value (0-1023) |
 | `ReadColor` | 33 | sensor | Read color sensor (placeholder) |
 | `ReadLine` | 34 | sensor | Read line sensor (0=white, 1=dark) |
+| `SetServo` | 36 | servo | Set servo angle |
+| `Set3CLed` | 37 | led | Set 3-color LED state |
+| `SetLightSensorLed` | 38 | led | Set light sensor LED state |
+| `SetMotorStraightAngle` | 39 | motor | Set motor straight angle |
+| `LineIntersectionStop` | 40 | line | Stop at line intersection |
+| `SetMp3Play` | 41 | peripheral | Play MP3 track (adapted to active buzzer beep) |
 
 ---
 **Note:** Internal opcodes (ID >= 8) are used by the compiler and VM internally, not exposed to users.

@@ -320,6 +320,46 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             mContext.mVariables[instruction.p2] = RobotAPI::ReadLine(mContext.mVariables[instruction.p1]);
             mContext.mProgramCounter++;
             break;
+        case Opcode::SetMotorSpeed:
+            RobotAPI::SetMotorSpeed(mContext.mVariables[instruction.p1],
+                                    mContext.mVariables[instruction.p2]);
+            mContext.mProgramCounter++;
+            break;
+        case Opcode::SetServo:
+            RobotAPI::SetServo(mContext.mVariables[instruction.p1],
+                               mContext.mVariables[instruction.p2]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Set3CLed:
+            RobotAPI::Set3CLed(mContext.mVariables[instruction.p1],
+                               mContext.mVariables[instruction.p2]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::SetLightSensorLed:
+            RobotAPI::SetLightSensorLed(mContext.mVariables[instruction.p1],
+                                        mContext.mVariables[instruction.p2]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::SetMotorStraightAngle:
+            RobotAPI::SetMotorStraightAngle(mContext.mVariables[instruction.p1],
+                                            mContext.mVariables[instruction.p2],
+                                            mContext.mVariables[instruction.p3],
+                                            mContext.mVariables[instruction.p4]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineIntersectionStop:
+            RobotAPI::LineIntersectionStop(mContext.mVariables[instruction.p1],
+                                           mContext.mVariables[instruction.p2]);
+            mContext.mProgramCounter++;
+            break;
+        case Opcode::SetMp3Play:
+            RobotAPI::SetMp3Play(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
         default:
             mContext.mRunning = false;
             mContext.mErrorCode = 1; // Invalid opcode

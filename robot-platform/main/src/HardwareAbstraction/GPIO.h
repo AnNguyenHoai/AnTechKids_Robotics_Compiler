@@ -29,7 +29,6 @@
 #define OUTPUT_BUZZER_PIN       ROBOT_PIN_19
 #define OUTPUT_LED_LEFT_PIN     ROBOT_PIN_32
 #define OUTPUT_LED_RIGHT_PIN    ROBOT_PIN_33
-
 // Cảm biến siêu âm HC-SR04
 #define SONIC_TRIG_PIN          ROBOT_PIN_23
 #define SONIC_ECHO_PIN          ROBOT_PIN_22

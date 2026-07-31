@@ -61,6 +61,13 @@ void TurnLeft(int16_t speed);
  *      Motor speed (-100 to 100).
  */
 void TurnRight(int16_t speed);
+/**
+ * SetMotorSpeed.
+ *
+ * @param speed
+ *      Motor speed (-100 to 100).
+ */
+void SetMotorSpeed(int left, int right);
 
 /**
  * Stop robot.
@@ -118,9 +125,21 @@ int16_t ReadLine(int channel);
  * @param ms
  *      Delay time.
  */
-void Wait(uint16_t ms);
+void Wait(uint32_t ms);
 
 
 void setMotorsDirect(int left, int right);
+void SetServo(int port, int angle);
+void Set3CLed(int port, int state);
+void SetLightSensorLed(int port, int state);
+void SetMotorStraightAngle(int leftPort, int rightPort, int speed, int angle);
+void LineIntersectionStop(int speed, int type);
+void SetMp3Play(int index);
+
+
+
+
+
 
 }
+

@@ -1,0 +1,9 @@
+{
+  "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\014_interface_dummy_commands\\014_interface_dummy_commands.rewrite.py",
+  "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\014_interface_dummy_commands\\program.h",
+  "compile_time_seconds": 0.006025791168212891,
+  "instruction_count": 17,
+  "variable_count": 12,
+  "temp_count": 12,
+  "function_count": 0
+}

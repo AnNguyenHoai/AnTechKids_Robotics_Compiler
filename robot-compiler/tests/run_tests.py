@@ -405,3 +405,28 @@ expect_program(program, [
     ("Backward", 5, 0, 0),
 ])
 print("Test sensor_if.py : PASS")
+
+def test_new_apis_compile():
+    source = """
+set_servo(1, 90)
+set_3c_led(2, 1)
+set_light_sensor_led(3, 0)
+set_motor_straight_angle(1, 2, 70, 360)
+line_intersection_stop(70, 17)
+"""
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        f.write(source)
+        path = Path(f.name)
+    compiler = RobotCompiler()
+    program = compiler.compile(path)
+    path.unlink()
+    # Kiểm tra có đủ số instruction (mỗi lệnh emit một instruction, ngoài LoadConst cho hằng số)
+    # Số lượng hằng số: 2+2+2+4+2 = 12 hằng số, mỗi hằng số 1 LoadConst + 1 lệnh gọi = 24 instructions
+    # Nhưng compiler có thể tối ưu? Trong trường hợp này, vì các hằng số được LoadConst trực tiếp vào biến tạm, nên có thể có 12 LoadConst + 5 lệnh gọi = 17 instructions.
+    # Thực tế, mỗi lệnh gọi sẽ resolve argument, và mỗi argument là hằng số sẽ được LoadConst vào biến tạm, sau đó truyền vào lệnh.
+    # Vậy số instruction = sum(arg_count) + 5 = 2+2+2+4+2 +5 = 17.
+    # Kiểm tra đơn giản là không lỗi.
+    print("PASS: New APIs compile")
+
+test_new_apis_compile()

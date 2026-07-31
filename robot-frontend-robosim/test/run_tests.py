@@ -48,6 +48,55 @@ def test_invalid_sensor_args():
         except SyntaxError as e:
             assert f"'{api_name}()' expects exactly {expected} argument(s)" in str(e)
             print(f"PASS: invalid {api_name} with {actual} args")
+
+def test_set_motor_speed():
+    source = """import rcu
+rcu.SetMoveSpeed(50, 80)
+rcu.SetMoveSpeed(-30, 40)
+"""
+    tree = ast.parse(source)
+    transformer = RoboSimTransformer()
+    tree = transformer.visit(tree)
+    # Check that calls become set_motor_speed
+    # (Simplified: we trust the transformer; we can also check ast.unparse)
+    output = ast.unparse(tree)
+    assert "set_motor_speed(50, 80)" in output
+    assert "set_motor_speed(-30, 40)" in output
+    print("PASS: SetMoveSpeed mapping")
+
+def test_set_wait_for_time_conversion():
+    source = """import rcu
+rcu.SetWaitForTime(2)
+rcu.SetWaitForTime(0.5)
+rcu.SetWaitForTime(120)
+"""
+    tree = ast.parse(source)
+    transformer = RoboSimTransformer()
+    tree = transformer.visit(tree)
+    output = ast.unparse(tree)
+    assert "wait(2000)" in output
+    assert "wait(500)" in output
+    assert "wait(120000)" in output
+    print("PASS: SetWaitForTime conversion (seconds to ms)")
+
+def test_new_apis():
+    source = """import rcu
+rcu.SetServo(1, 90)
+rcu.Set3CLed(2, 1)
+rcu.SetLightSensorLed(3, 0)
+rcu.SetMotorStraightAngle(1, 2, 70, 360)
+rcu.line_intersection_stop(70, 17)
+"""
+    tree = ast.parse(source)
+    transformer = RoboSimTransformer()
+    tree = transformer.visit(tree)
+    output = ast.unparse(tree)
+    assert "set_servo(1, 90)" in output
+    assert "set_3c_led(2, 1)" in output
+    assert "set_light_sensor_led(3, 0)" in output
+    assert "set_motor_straight_angle(1, 2, 70, 360)" in output
+    assert "line_intersection_stop(70, 17)" in output
+    print("PASS: New APIs rewrite correctly")
 def main():
     examples = ROOT / "examples"
     golden_dir = ROOT / "test" / "golden"
@@ -66,6 +115,9 @@ def main():
         else:
             print(f"SKIP: {py_file.name} (no golden)")
     test_invalid_sensor_args()
+    test_set_motor_speed()
+    test_set_wait_for_time_conversion()
+    test_new_apis()
     sys.exit(0 if all_passed else 1)            
 
 

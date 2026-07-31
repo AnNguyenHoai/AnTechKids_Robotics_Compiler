@@ -9,8 +9,8 @@ class Program:
         self.patches = []
         self.next_label_id = 0
 
-    def emit(self, opcode, p1=0, p2=0, p3=0):
-        self.instructions.append(Instruction(opcode, p1, p2, p3))
+    def emit(self, opcode, p1=0, p2=0, p3=0, p4=0):
+        self.instructions.append(Instruction(opcode, p1, p2, p3, p4))
 
     def new_label(self):
         label = Label(self.next_label_id)
