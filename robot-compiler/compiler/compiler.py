@@ -321,27 +321,23 @@ class RobotCompiler(ast.NodeVisitor):
             len(node.body) == 1 and isinstance(node.body[0], ast.Pass)):
             return
 
-        # Vòng lặp vô hạn có body
-        if isinstance(node.test, ast.Constant) and node.test.value in (True, 1):
-            begin_label = self.program.new_label()
-            self.loop_stack.append({"begin": begin_label, "end": None})
-            self.program.emit_label(begin_label)
-            for stmt in node.body:
-                self.visit(stmt)
-            self.program.emit_jump(Opcode.Jump.value, begin_label)
-            self.loop_stack.pop()
-            return
-
-        # Vòng lặp có điều kiện
         begin_label = self.program.new_label()
         end_label = self.program.new_label()
         self.loop_stack.append({"begin": begin_label, "end": end_label})
         self.program.emit_label(begin_label)
-        result = self.compile_expression(node.test)
-        self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, end_label)
+
+        # Nếu không phải vô hạn thì kiểm tra điều kiện
+        if not (isinstance(node.test, ast.Constant) and node.test.value in (True, 1)):
+            result = self.compile_expression(node.test)
+            self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, end_label)
+
+        # Thân vòng lặp
         for stmt in node.body:
             self.visit(stmt)
+
+        # Quay lại đầu vòng lặp
         self.program.emit_jump(Opcode.Jump.value, begin_label)
+
         self.loop_stack.pop()
         self.program.emit_label(end_label)
 

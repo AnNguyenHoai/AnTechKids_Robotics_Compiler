@@ -19,7 +19,9 @@
 #include "../../Devices/ColorSensor.h"
 #include "../../Devices/SensorConfig.h"
 #include "../../HardwareAbstraction/GPIO.h"
-
+#include "../../Sensor/SensorManager.h"
+#include "../../Sensor/TCRT5000.h"
+#include "../../HardwareAbstraction/GPIO.h"
 namespace RobotAPI {
 
 // Cấu hình PWM cho ESP32
@@ -38,7 +40,7 @@ static const int PWM_CH_R_IN4 = 3;
 static Ultrasonic ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN);
 static Touch touch0(ROBOT_PIN_5);     // ví dụ
 static Touch touch1(ROBOT_PIN_5);    // ví dụ
-static LineSensor lineSensor(SENSOR_TRCT5000_L_PIN, SENSOR_TRCT5000_C_PIN, SENSOR_TRCT5000_R_PIN);
+//static LineSensor lineSensor(SENSOR_TRCT5000_L_PIN, SENSOR_TRCT5000_C_PIN, SENSOR_TRCT5000_R_PIN);
 static LightSensor lightSensor(ROBOT_PIN_32); // ví dụ
 static ColorSensor colorSensor;
 
@@ -106,10 +108,14 @@ void Initialize() {
     ultrasonic.init();
     touch0.init();
     touch1.init();
-    lineSensor.init();
+    //lineSensor.init();
     lightSensor.init();
     colorSensor.init();
-
+    auto& mgr = SensorManager::instance();
+    mgr.registerSensor(new TCRT5000(SENSOR_TRCT5000_L_PIN, "line_left"));
+    mgr.registerSensor(new TCRT5000(SENSOR_TRCT5000_C_PIN, "line_center"));
+    mgr.registerSensor(new TCRT5000(SENSOR_TRCT5000_R_PIN, "line_right"));
+    mgr.initializeAll();
     // Load sensor config
     loadSensorConfigFromStorage();
     Serial.println("[RobotAPI] Sensors initialized with SensorConfig.");
@@ -176,13 +182,20 @@ int16_t ReadColor() {
 }
 
 int16_t ReadLine(int channel) {
-    bool val = false;
-    if (channel == 0) val = lineSensor.readLeft();
-    else if (channel == 1) val = lineSensor.readCenter();
-    else if (channel == 2) val = lineSensor.readRight();
-    if (g_sensorConfig.lineInverted) val = !val;
-    Serial.printf("[%lu] ReadLine ch %d: %d\n", millis(), channel, val);
-    return val ? 1 : 0;
+    const char* name = nullptr;
+    switch (channel) {
+        case 0: name = "line_left"; break;
+        case 1: name = "line_center"; break;
+        case 2: name = "line_right"; break;
+        default: return 0;
+    }
+    auto sensor = SensorManager::instance().getSensor(name);
+    if (sensor) {
+        sensor->update(); // ensure latest reading
+        // TCRT5000 returns HIGH when line is detected (black)
+        return (sensor->read() == HIGH) ? 1 : 0;
+    }
+    return 0;
 }
 
 /******************************************************************************
