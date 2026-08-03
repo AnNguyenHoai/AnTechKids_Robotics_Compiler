@@ -296,6 +296,33 @@
         "arguments": 1,
         "description": "Read line sensor (0=white, 1=dark)"
     },
+    "get_trace_value": {
+        "opcode": "GetTraceValue",
+        "opcode_id": 42,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 2,
+        "description": "Get trace sensor value (0/50/100 based on line detection)"
+    },
+    "get_trace_state": {
+        "opcode": "GetTraceState",
+        "opcode_id": 43,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 2,
+        "description": "Get trace sensor state (boolean)"
+    },
+    "get_trace_raw": {
+        "opcode": "GetTraceRaw",
+        "opcode_id": 44,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Get raw bitmask of all 3 trace sensors"
+    },
     "set_servo": {
         "opcode": "SetServo",
         "opcode_id": 36,
@@ -331,6 +358,33 @@
         "handler": "MotorHandler",
         "arguments": 4,
         "description": "Set motor straight angle"
+    },
+    "line_basis": {
+        "opcode": "LineBasis",
+        "opcode_id": 47,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 1,
+        "description": "Basic line following step (adjust motors based on sensor mask)"
+    },
+    "line_follow": {
+        "opcode": "LineFollow",
+        "opcode_id": 48,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 1,
+        "description": "Follow line continuously until lost"
+    },
+    "line_stop": {
+        "opcode": "LineStop",
+        "opcode_id": 49,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 0,
+        "description": "Stop line following (stop motors)"
     },
     "line_intersection_stop": {
         "opcode": "LineIntersectionStop",

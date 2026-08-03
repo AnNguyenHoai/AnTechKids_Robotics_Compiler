@@ -38,3 +38,28 @@ class SensorHandler:
         dest = compiler.allocate_temp()
         compiler.program.emit(Opcode.ReadLine.value, channel, dest, 0)
         return dest
+    @staticmethod
+    def get_trace_value(compiler, node):
+        compiler.validate_argument_count(node, "get_trace_value", 2)
+        port = compiler.resolve_argument(node.args[0])
+        channel = compiler.resolve_argument(node.args[1])
+        dest = compiler.allocate_temp()
+        compiler.program.emit(Opcode.GetTraceValue.value, port, channel, dest)
+        return dest
+
+    @staticmethod
+    def get_trace_state(compiler, node):
+        compiler.validate_argument_count(node, "get_trace_state", 2)
+        port = compiler.resolve_argument(node.args[0])
+        channel = compiler.resolve_argument(node.args[1])
+        dest = compiler.allocate_temp()
+        compiler.program.emit(Opcode.GetTraceState.value, port, channel, dest)
+        return dest
+
+    @staticmethod
+    def get_trace_raw(compiler, node):
+        compiler.validate_argument_count(node, "get_trace_raw", 1)
+        port = compiler.resolve_argument(node.args[0])
+        dest = compiler.allocate_temp()
+        compiler.program.emit(Opcode.GetTraceRaw.value, port, 0, dest)
+        return dest

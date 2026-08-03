@@ -136,8 +136,13 @@ void SetMotorStraightAngle(int leftPort, int rightPort, int speed, int angle);
 void LineIntersectionStop(int speed, int type);
 void SetMp3Play(int index);
 
+int16_t GetTraceValue(int port, int channel);
+bool GetTraceState(int port, int channel);
+int16_t GetTraceRaw(int port);
 
-
+void LineBasis(int speed);
+void LineFollow(int speed);
+void LineStop();
 
 
 

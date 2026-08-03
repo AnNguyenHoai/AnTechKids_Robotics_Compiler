@@ -228,7 +228,38 @@ categories:
           - name: channel
             type: int
         returns: int   
-   
+      - name: get_trace_value
+        opcode: GetTraceValue
+        opcode_id: 42
+        description: Get trace sensor value (0/50/100 based on line detection)
+        args:
+          - name: port
+            type: int
+          - name: channel
+            type: int
+        returns: int
+
+      - name: get_trace_state
+        opcode: GetTraceState
+        opcode_id: 43
+        description: Get trace sensor state (boolean)
+        args:
+          - name: port
+            type: int
+          - name: channel
+            type: int
+        returns: bool
+
+      - name: get_trace_raw
+        opcode: GetTraceRaw
+        opcode_id: 44
+        description: Get raw bitmask of all 3 trace sensors
+        args:
+          - name: port
+            type: int
+        returns: int
+
+
   servo:
     description: Servo control APIs
     module: servo_handler
@@ -293,6 +324,27 @@ categories:
     module: line_handler
     handler: LineHandler
     functions:
+      - name: line_basis
+        opcode: LineBasis
+        opcode_id: 47
+        description: Basic line following step (adjust motors based on sensor mask)
+        args:
+          - name: speed
+            type: int
+
+      - name: line_follow
+        opcode: LineFollow
+        opcode_id: 48
+        description: Follow line continuously until lost
+        args:
+          - name: speed
+            type: int
+
+      - name: line_stop
+        opcode: LineStop
+        opcode_id: 49
+        description: Stop line following (stop motors)
+        args: []
       - name: line_intersection_stop
         opcode: LineIntersectionStop
         opcode_id: 40
@@ -302,7 +354,6 @@ categories:
             type: int
           - name: type
             type: int
-
   peripheral:
     description: Peripheral control APIs (buzzer, etc.)
     module: peripheral_handler

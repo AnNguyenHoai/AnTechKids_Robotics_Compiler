@@ -3,33 +3,26 @@
 #include "../Services/Robot/RobotAPI.h"
 #include "../Devices/SensorConfig.h"
 #include "../Behavior/BehaviorScheduler.h"
+#include "../Diagnostics/DiagnosticsManager.h"
+#include "../Sensor/SensorManager.h"
+#include "../Sensor/TCRT5000.h"
 #include <string.h>
+#include "../Diagnostics/Console/DevelopmentConsole.h"
 
-// Sử dụng scheduler toàn cục từ main.ino
+
+
 extern BehaviorScheduler scheduler;
 extern bool useBehaviorEngine;
 
 void SerialCommandHandler::setup() {
     Serial.println("SerialCommandHandler ready. Type 'help' for commands.");
-    // Không khởi tạo scheduler ở đây (đã được khởi tạo trong main.ino)
 }
 
 void SerialCommandHandler::handle() {
-    // DEBUG: in ra mỗi khi hàm được gọi
-    static unsigned long lastPrint = 0;
-    if (millis() - lastPrint > 5000) {
-        Serial.println("[DEBUG] handle() called");
-        lastPrint = millis();
-    }
-
     if (!Serial.available()) return;
     String input = Serial.readStringUntil('\n');
     input.trim();
     if (input.length() == 0) return;
-
-    // DEBUG: in ra những gì nhận được
-    Serial.print("[DEBUG] Received: ");
-    Serial.println(input);
 
     if (input.startsWith("help")) {
         Serial.println("Commands:");
@@ -47,6 +40,12 @@ void SerialCommandHandler::handle() {
         Serial.println("  behavior status     - show scheduler status");
         Serial.println("  mode vm             - switch to VM execution mode");
         Serial.println("  mode behavior       - switch to Behavior Engine mode");
+        Serial.println("  diagnostics (diag)  - print sensor and runtime diagnostics");
+        Serial.println("  diag raw            - print raw sensor values and detected state");
+        Serial.println("  diag init           - print sensor initialization status");
+        Serial.println("  console on/off       - enable/disable realtime console");
+        Serial.println("  console rate <hz>    - set refresh rate (1-50 Hz)");
+        Serial.println("  console              - show console status");
     }
     // ---------- Motion Config ----------
     else if (input.startsWith("config show")) {
@@ -168,6 +167,70 @@ void SerialCommandHandler::handle() {
     else if (input.startsWith("mode behavior")) {
         useBehaviorEngine = true;
         Serial.println("Switched to Behavior Engine mode.");
+    }
+    // ---------- Diagnostics ----------
+    else if (input.startsWith("diagnostics") || input.startsWith("diag")) {
+        // Nếu có thêm từ khóa "raw" hoặc "init"
+        if (input.startsWith("diag raw")) {
+            auto& mgr = SensorManager::instance();
+            auto left = mgr.getSensor(SensorID::LineLeft);
+            auto center = mgr.getSensor(SensorID::LineCenter);
+            auto right = mgr.getSensor(SensorID::LineRight);
+
+            if (left) {
+                auto l = static_cast<TCRT5000*>(left);
+                l->update();
+                Serial.printf("[RAW] Left  : raw=%d, detected=%d\n", l->rawLevel(), l->isLineDetected() ? 1 : 0);
+            }
+            if (center) {
+                auto c = static_cast<TCRT5000*>(center);
+                c->update();
+                Serial.printf("[RAW] Center: raw=%d, detected=%d\n", c->rawLevel(), c->isLineDetected() ? 1 : 0);
+            }
+            if (right) {
+                auto r = static_cast<TCRT5000*>(right);
+                r->update();
+                Serial.printf("[RAW] Right : raw=%d, detected=%d\n", r->rawLevel(), r->isLineDetected() ? 1 : 0);
+            }
+        }
+        else if (input.startsWith("diag init")) {
+            // Kiểm tra trạng thái khởi tạo sensor
+            auto& mgr = SensorManager::instance();
+            auto left = mgr.getSensor(SensorID::LineLeft);
+            auto center = mgr.getSensor(SensorID::LineCenter);
+            auto right = mgr.getSensor(SensorID::LineRight);
+            Serial.println("[INIT] Sensor pointers:");
+            Serial.printf("  Left  : %s\n", left ? "OK" : "NULL");
+            Serial.printf("  Center: %s\n", center ? "OK" : "NULL");
+            Serial.printf("  Right : %s\n", right ? "OK" : "NULL");
+        }
+        // ---------- Development Console ----------
+        else if (input.startsWith("console on")) {
+            DevelopmentConsole::instance().setEnabled(true);
+            Serial.println("Console enabled.");
+        }
+        else if (input.startsWith("console off")) {
+            DevelopmentConsole::instance().setEnabled(false);
+            Serial.println("Console disabled.");
+        }
+        else if (input.startsWith("console rate ")) {
+            int rate = input.substring(13).toInt();
+            if (rate >= 1 && rate <= 50) {
+                DevelopmentConsole::instance().setRefreshRateHz(rate);
+                Serial.printf("Console rate set to %d Hz\n", rate);
+            } else {
+                Serial.println("Rate must be between 1 and 50 Hz.");
+            }
+        }
+        else if (input.startsWith("console")) {
+            bool en = DevelopmentConsole::instance().isEnabled();
+            uint8_t rate = DevelopmentConsole::instance().getRefreshRateHz();
+            Serial.printf("Console: %s, rate: %d Hz\n", en ? "ON" : "OFF", rate);
+        }
+        else {
+            // Mặc định in diagnostics
+            DiagnosticsManager::instance().printReport();
+        }
     }
     else {
         Serial.printf("Unknown command: %s\n", input.c_str());

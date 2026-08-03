@@ -61,7 +61,14 @@ line_set_initialize
 | Set3CLed | SAMPLE_OBSERVED | 10 | LED | `(port:int, state:int)` | NO | YES | YES | YES | YES | REAL  |
 | SetLizard | SAMPLE_OBSERVED | 3 | PERIPHERAL | `(state:int)` | NO | NO | NO | NO | NO | MISSING |
 | SetWaitForTime | SAMPLE_OBSERVED | 46 | SYSTEM | RoboSim `(second:float)` → canonical `wait(milliseconds:int)` | NO | YES | YES | YES | YES | REAL |
-| SetMp3Play  | SAMPLE_OBSERVED | 19 | BUZZER | `(port:int, state:int)` | NO | YES | YES | YES | YES | REAL  
+| SetMp3Play  | SAMPLE_OBSERVED | 19 | BUZZER | `(port:int, state:int)` | NO | YES | YES | YES | YES | REAL 
+| GetTraceV2I2C | ... | IMPLEMENTATION_STATE = REAL |
+| GetTraceV2I2CState | ... | IMPLEMENTATION_STATE = REAL |
+| GetTraceV2I2CData | ... | IMPLEMENTATION_STATE = REAL |
+| GetTraceV2I2CChxState | ... | IMPLEMENTATION_STATE = REAL | 
+| line_basis | ... | IMPLEMENTATION_STATE = REAL |
+| line_follow | ... | IMPLEMENTATION_STATE = REAL |
+| line_stop | ... | IMPLEMENTATION_STATE = REAL |
 ## Coverage baseline
 
 Current established end-to-end supported set:

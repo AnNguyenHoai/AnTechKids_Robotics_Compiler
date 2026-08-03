@@ -43,6 +43,15 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 #### `void read_line(int channel)`
 - Read line sensor (0=white, 1=dark)
 
+#### `void get_trace_value(int port, int channel)`
+- Get trace sensor value (0/50/100 based on line detection)
+
+#### `void get_trace_state(int port, int channel)`
+- Get trace sensor state (boolean)
+
+#### `void get_trace_raw(int port)`
+- Get raw bitmask of all 3 trace sensors
+
 ### Servo
 #### `void set_servo(int port, int angle)`
 - Set servo angle
@@ -59,6 +68,15 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 - Set motor straight angle
 
 ### Line
+#### `void line_basis(int speed)`
+- Basic line following step (adjust motors based on sensor mask)
+
+#### `void line_follow(int speed)`
+- Follow line continuously until lost
+
+#### `void line_stop()`
+- Stop line following (stop motors)
+
 #### `void line_intersection_stop(int speed, int type)`
 - Stop at line intersection
 

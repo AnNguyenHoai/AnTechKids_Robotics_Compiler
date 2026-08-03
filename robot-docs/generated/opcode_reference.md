@@ -37,10 +37,16 @@ This is a complete list of all opcodes used by the Robot VM.
 | `ReadLight` | 32 | sensor | Read light sensor raw value (0-1023) |
 | `ReadColor` | 33 | sensor | Read color sensor (placeholder) |
 | `ReadLine` | 34 | sensor | Read line sensor (0=white, 1=dark) |
+| `GetTraceValue` | 42 | sensor | Get trace sensor value (0/50/100 based on line detection) |
+| `GetTraceState` | 43 | sensor | Get trace sensor state (boolean) |
+| `GetTraceRaw` | 44 | sensor | Get raw bitmask of all 3 trace sensors |
 | `SetServo` | 36 | servo | Set servo angle |
 | `Set3CLed` | 37 | led | Set 3-color LED state |
 | `SetLightSensorLed` | 38 | led | Set light sensor LED state |
 | `SetMotorStraightAngle` | 39 | motor | Set motor straight angle |
+| `LineBasis` | 47 | line | Basic line following step (adjust motors based on sensor mask) |
+| `LineFollow` | 48 | line | Follow line continuously until lost |
+| `LineStop` | 49 | line | Stop line following (stop motors) |
 | `LineIntersectionStop` | 40 | line | Stop at line intersection |
 | `SetMp3Play` | 41 | peripheral | Play MP3 track (adapted to active buzzer beep) |
 

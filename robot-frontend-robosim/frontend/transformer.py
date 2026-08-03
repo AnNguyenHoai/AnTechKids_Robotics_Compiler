@@ -141,7 +141,28 @@ class RoboSimTransformer(ast.NodeTransformer):
                 and isinstance(node.value.func.value, ast.Name)
                 and node.value.func.value.id == "rcu"):
             return self._handle_simple_call(node.value, "set_mp3_play", 1)
-        
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "line_basis"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "line_basis", 1)
+
+        # Handle rcu.line_follow(speed) -> line_follow(speed)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "line_follow"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "line_follow", 1)
+
+        # Handle rcu.line_stop() -> line_stop()
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "line_stop"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "line_stop", 0)        
         return node
 
     def _handle_simple_call(self, call, target_name, expected_args):
@@ -174,6 +195,39 @@ class RoboSimTransformer(ast.NodeTransformer):
             mapping = SENSOR_API_MAPPING.get(attr)
             if mapping:
                 return self._transform_sensor_call(node, attr, mapping)
+
+        # ----- New mappings for trace APIs -----
+        if (isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == 'rcu'):
+            attr = node.func.attr
+            if attr == "GetTraceV2I2C":
+                # rcu.GetTraceV2I2C(port, channel) -> get_trace_value(port, channel)
+                if len(node.args) != 2:
+                    raise SyntaxError("GetTraceV2I2C() expects exactly 2 arguments")
+                return ast.Call(
+                    func=ast.Name(id="get_trace_value", ctx=ast.Load()),
+                    args=node.args,
+                    keywords=[]
+                )
+            elif attr == "GetTraceV2I2CState":
+                # rcu.GetTraceV2I2CState(port, channel) -> get_trace_state(port, channel)
+                if len(node.args) != 2:
+                    raise SyntaxError("GetTraceV2I2CState() expects exactly 2 arguments")
+                return ast.Call(
+                    func=ast.Name(id="get_trace_state", ctx=ast.Load()),
+                    args=node.args,
+                    keywords=[]
+                )
+            elif attr == "GetTraceV2I2CData":
+                # rcu.GetTraceV2I2CData(port) -> get_trace_raw(port)
+                if len(node.args) != 1:
+                    raise SyntaxError("GetTraceV2I2CData() expects exactly 1 argument")
+                return ast.Call(
+                    func=ast.Name(id="get_trace_raw", ctx=ast.Load()),
+                    args=node.args,
+                    keywords=[]
+                )
 
         return node
 

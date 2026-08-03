@@ -43,3 +43,32 @@ def read_line(channel: int) -> None:
     """
     pass
 
+def get_trace_value(port: int, channel: int) -> None:
+    """
+    Get trace sensor value (0/50/100 based on line detection)
+
+    Args:
+        port (int):
+        channel (int):
+    """
+    pass
+
+def get_trace_state(port: int, channel: int) -> None:
+    """
+    Get trace sensor state (boolean)
+
+    Args:
+        port (int):
+        channel (int):
+    """
+    pass
+
+def get_trace_raw(port: int) -> None:
+    """
+    Get raw bitmask of all 3 trace sensors
+
+    Args:
+        port (int):
+    """
+    pass
+

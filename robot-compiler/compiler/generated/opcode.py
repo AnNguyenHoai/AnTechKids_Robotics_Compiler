@@ -38,9 +38,15 @@ class Opcode(IntEnum):
     ReadLight = 32
     ReadColor = 33
     ReadLine = 34
+    GetTraceValue = 42
+    GetTraceState = 43
+    GetTraceRaw = 44
     SetServo = 36
     Set3CLed = 37
     SetLightSensorLed = 38
     SetMotorStraightAngle = 39
+    LineBasis = 47
+    LineFollow = 48
+    LineStop = 49
     LineIntersectionStop = 40
     SetMp3Play = 41

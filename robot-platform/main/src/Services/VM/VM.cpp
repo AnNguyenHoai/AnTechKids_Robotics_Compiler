@@ -360,6 +360,42 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             RobotAPI::SetMp3Play(mContext.mVariables[instruction.p1]);
             mContext.mProgramCounter++;
             break;
+        case Opcode::GetTraceValue:
+            mContext.mVariables[instruction.p3] = RobotAPI::GetTraceValue(
+                mContext.mVariables[instruction.p1],
+                mContext.mVariables[instruction.p2]
+            );
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::GetTraceState:
+            mContext.mVariables[instruction.p3] = RobotAPI::GetTraceState(
+                mContext.mVariables[instruction.p1],
+                mContext.mVariables[instruction.p2]
+            ) ? 1 : 0;
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::GetTraceRaw:
+            mContext.mVariables[instruction.p3] = RobotAPI::GetTraceRaw(
+                mContext.mVariables[instruction.p1]
+            );
+            mContext.mProgramCounter++;
+            break;
+        case Opcode::LineBasis:
+            RobotAPI::LineBasis(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineFollow:
+            RobotAPI::LineFollow(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineStop:
+            RobotAPI::LineStop();
+            mContext.mProgramCounter++;
+            break;
         default:
             mContext.mRunning = false;
             mContext.mErrorCode = 1; // Invalid opcode

@@ -263,6 +263,30 @@
         "module": "sensor_handler",
         "handler": "SensorHandler"
     },
+    "GetTraceValue": {
+        "id": 42,
+        "opcode": "GetTraceValue",
+        "function": "get_trace_value",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "GetTraceState": {
+        "id": 43,
+        "opcode": "GetTraceState",
+        "function": "get_trace_state",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "GetTraceRaw": {
+        "id": 44,
+        "opcode": "GetTraceRaw",
+        "function": "get_trace_raw",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
     "SetServo": {
         "id": 36,
         "opcode": "SetServo",
@@ -294,6 +318,30 @@
         "category": "motor",
         "module": "motor_handler",
         "handler": "MotorHandler"
+    },
+    "LineBasis": {
+        "id": 47,
+        "opcode": "LineBasis",
+        "function": "line_basis",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "LineFollow": {
+        "id": 48,
+        "opcode": "LineFollow",
+        "function": "line_follow",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "LineStop": {
+        "id": 49,
+        "opcode": "LineStop",
+        "function": "line_stop",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
     },
     "LineIntersectionStop": {
         "id": 40,

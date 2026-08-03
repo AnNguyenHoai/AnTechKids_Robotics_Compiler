@@ -96,6 +96,27 @@ FUNCTION_REGISTRY = {
         "category": "sensor",
         "description": "Read line sensor (0=white, 1=dark)"
     },
+    "get_trace_value": {
+        "handler": SensorHandler.get_trace_value,
+        "opcode": "GetTraceValue",
+        "arguments": 2,
+        "category": "sensor",
+        "description": "Get trace sensor value (0/50/100 based on line detection)"
+    },
+    "get_trace_state": {
+        "handler": SensorHandler.get_trace_state,
+        "opcode": "GetTraceState",
+        "arguments": 2,
+        "category": "sensor",
+        "description": "Get trace sensor state (boolean)"
+    },
+    "get_trace_raw": {
+        "handler": SensorHandler.get_trace_raw,
+        "opcode": "GetTraceRaw",
+        "arguments": 1,
+        "category": "sensor",
+        "description": "Get raw bitmask of all 3 trace sensors"
+    },
     "set_servo": {
         "handler": ServoHandler.set_servo,
         "opcode": "SetServo",
@@ -123,6 +144,27 @@ FUNCTION_REGISTRY = {
         "arguments": 4,
         "category": "motor",
         "description": "Set motor straight angle"
+    },
+    "line_basis": {
+        "handler": LineHandler.line_basis,
+        "opcode": "LineBasis",
+        "arguments": 1,
+        "category": "line",
+        "description": "Basic line following step (adjust motors based on sensor mask)"
+    },
+    "line_follow": {
+        "handler": LineHandler.line_follow,
+        "opcode": "LineFollow",
+        "arguments": 1,
+        "category": "line",
+        "description": "Follow line continuously until lost"
+    },
+    "line_stop": {
+        "handler": LineHandler.line_stop,
+        "opcode": "LineStop",
+        "arguments": 0,
+        "category": "line",
+        "description": "Stop line following (stop motors)"
     },
     "line_intersection_stop": {
         "handler": LineHandler.line_intersection_stop,

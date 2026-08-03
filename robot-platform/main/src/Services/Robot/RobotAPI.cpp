@@ -28,6 +28,10 @@
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/Ultrasonic.h"
 #include "../../Sensor/SensorID.h"
+#include "../Line/LinePerception.h"
+#include "../Line/LineDecisionEngine.h"
+#include "../Line/LineState.h"
+#include "../Line/LineContext.h"
 namespace RobotAPI {
 
 // Cấu hình PWM cho ESP32
@@ -89,6 +93,30 @@ void setMotorsDirect(int left, int right) {
 void SetMotorSpeed(int left, int right) {
     setMotorsDirect(left, right);
 }
+
+//Line execution
+
+// Helper: execute motor command based on mask and speed
+static void execute_line_command(uint8_t mask, int speed) {
+    LineState state = LinePerception::interpret(mask);
+    MotorCommand cmd = LineDecisionEngine::decide(state);
+    switch (cmd) {
+        case MotorCommand::FORWARD:
+            Forward(speed);
+            break;
+        case MotorCommand::TURN_LEFT:
+            TurnLeft(speed);
+            break;
+        case MotorCommand::TURN_RIGHT:
+            TurnRight(speed);
+            break;
+        case MotorCommand::STOP:
+        default:
+            Stop();
+            break;
+    }
+}
+
 /******************************************************************************
  * Initialization
  ******************************************************************************/
@@ -269,12 +297,26 @@ void SetServo(int port, int angle) {
 }
 
 void Set3CLed(int port, int state) {
-    // Odd port -> GPIO33, even port -> GPIO32
-    int pin = (port % 2 == 0) ? OUTPUT_LED_LEFT_PIN : OUTPUT_LED_RIGHT_PIN;
-    digitalWrite(pin, state ? HIGH : LOW);
-    Serial.printf("[LED] Set3CLed port=%d state=%d (GPIO %d)\n", port, state, pin);
-}
+    int pin;
 
+    // RoboSim port mapping:
+    // odd  port -> GPIO33
+    // even port -> GPIO32
+    if ((port % 2) == 0) {
+        pin = OUTPUT_LED_LEFT_PIN;   // GPIO32
+    } else {
+        pin = OUTPUT_LED_RIGHT_PIN;  // GPIO33
+    }
+
+    digitalWrite(pin, state ? HIGH : LOW);
+
+    Serial.printf(
+        "[LED] Set3CLed port=%d -> GPIO%d state=%d\n",
+        port,
+        pin,
+        state
+    );
+}
 void SetLightSensorLed(int port, int state) {
     Serial.printf(
         "[DUMMY][SetLightSensorLed] port=%d state=%d\n",
@@ -299,8 +341,80 @@ void SetMp3Play(int index) {
     delay(200);
     digitalWrite(OUTPUT_BUZZER_PIN, LOW);
 }
+int16_t GetTraceValue(int port, int channel) {
+    // Map channel 0,1,2 to left, center, right
+    SensorID id;
+    switch (channel) {
+        case 0: id = SensorID::LineLeft; break;
+        case 1: id = SensorID::LineCenter; break;
+        case 2: id = SensorID::LineRight; break;
+        default: return 0;
+    }
+    auto sensor = SensorManager::instance().getSensor(id);
+    if (sensor) {
+        auto lineSensor = static_cast<TCRT5000*>(sensor);
+        lineSensor->update();
+        // Return 100 if line detected, 0 otherwise
+        return lineSensor->isLineDetected() ? 100 : 0;
+    }
+    return 0;
+}
 
+bool GetTraceState(int port, int channel) {
+    SensorID id;
+    switch (channel) {
+        case 0: id = SensorID::LineLeft; break;
+        case 1: id = SensorID::LineCenter; break;
+        case 2: id = SensorID::LineRight; break;
+        default: return false;
+    }
+    auto sensor = SensorManager::instance().getSensor(id);
+    if (sensor) {
+        auto lineSensor = static_cast<TCRT5000*>(sensor);
+        lineSensor->update();
+        return lineSensor->isLineDetected();
+    }
+    return false;
+}
 
+int16_t GetTraceRaw(int port) {
+    int mask = 0;
+    auto left = SensorManager::instance().getSensor(SensorID::LineLeft);
+    auto center = SensorManager::instance().getSensor(SensorID::LineCenter);
+    auto right = SensorManager::instance().getSensor(SensorID::LineRight);
+    if (left) {
+        auto l = static_cast<TCRT5000*>(left);
+        l->update();
+        if (l->isLineDetected()) mask |= 4;   // ← sửa: bit 2
+    }
+    if (center) {
+        auto c = static_cast<TCRT5000*>(center);
+        c->update();
+        if (c->isLineDetected()) mask |= 2;   // ← giữ nguyên: bit 1
+    }
+    if (right) {
+        auto r = static_cast<TCRT5000*>(right);
+        r->update();
+        if (r->isLineDetected()) mask |= 1;   // ← sửa: bit 0
+    }
+    return mask;
+}
+void LineBasis(int speed) {
+    // Read sensor mask
+    uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
+    execute_line_command(mask, speed);
+}
+
+void LineFollow(int speed) {
+    // One tick: read sensor once, execute, return immediately
+    uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
+    execute_line_command(mask, speed);
+    // No loop, no delay, non-blocking
+}
+
+void LineStop() {
+    Stop();
+}
 
 } // namespace RobotAPI
 

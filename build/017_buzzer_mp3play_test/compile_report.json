@@ -1,9 +1,9 @@
 {
   "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\017_buzzer_mp3play_test\\017_buzzer_mp3play_test.rewrite.py",
   "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\017_buzzer_mp3play_test\\program.h",
-  "compile_time_seconds": 0.0019872188568115234,
-  "instruction_count": 10,
-  "variable_count": 5,
-  "temp_count": 5,
-  "function_count": 0
+  "compile_time_seconds": 0.002544879913330078,
+  "instruction_count": 15,
+  "variable_count": 8,
+  "temp_count": 8,
+  "function_count": 1
 }

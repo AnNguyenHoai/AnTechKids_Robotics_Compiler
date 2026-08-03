@@ -19,6 +19,10 @@
 #include "src/Behavior/LightTriggerBehavior.h"
 #include "src/Behavior/ColorDetectBehavior.h"
 
+// === Diagnostics ===
+#include "src/Diagnostics/DiagnosticsManager.h"
+#include "src/Sensor/SensorManager.h"   // để gọi updateAll()
+#include "src/Diagnostics/Console/DevelopmentConsole.h"
 // VM
 VM vm;
 Program program;
@@ -57,9 +61,10 @@ void setup() {
     SerialCommandHandler::setup();
     BootLogger::log("BOOT", "Serial Handler Ready");
 
+    DevelopmentConsole::instance().begin();
+    BootLogger::log("BOOT", "Development Console ready");
+
     // 5. Initialize Behavior Scheduler with default behaviors
-    // (có thể thêm bất kỳ behavior nào muốn chạy)
-    // Các behavior này sẽ được dùng với lệnh "behavior start" hoặc "behavior run"
     scheduler.addBehavior(new MoveForwardBehavior(50, 2000));
     scheduler.addBehavior(new TouchStopBehavior(0, 50));
     scheduler.addBehavior(new WaitBehavior(1000));
@@ -77,9 +82,18 @@ void setup() {
 }
 
 void loop() {
+    uint32_t start = micros();
+
     // Xử lý lệnh Serial
     SerialCommandHandler::handle();
 
+    // Cập nhật tất cả sensor (cho diagnostics và các lần đọc sau)
+    SensorManager::instance().updateAll();
+
+    // Cập nhật thống kê diagnostics
+    DiagnosticsManager::instance().updateSensors();
+
+    DevelopmentConsole::instance().update();
     if (useBehaviorEngine) {
         // === Chạy Behavior Engine ===
         scheduler.update();
@@ -106,14 +120,14 @@ void loop() {
                 vm.LoadProgram(&program);
             } else {
                 BootLogger::log("STABILITY", "VM stability test completed.");
-                // Sau khi hoàn thành test, có thể chuyển sang behavior mode nếu muốn
-                // Ví dụ: useBehaviorEngine = true;
-                // Hoặc để nguyên vòng lặp dừng.
                 while (1) {
-                        SerialCommandHandler::handle(); // vẫn xử lý Serial
-                        delay(30);
-                 }
+                    SerialCommandHandler::handle();
+                    delay(30);
+                }
             }
         }
     }
+
+    uint32_t elapsed = micros() - start;
+    DiagnosticsManager::instance().recordLoopTime(elapsed);
 }

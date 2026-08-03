@@ -3,10 +3,13 @@ import _thread
 
 def task():
     # Move forward for 2 seconds
-    rcu.SetMoveSpeed(100, 60)
+    rcu.SetMoveSpeed(80, 80)
     rcu.SetWaitForTime(2.0)
     rcu.SetMoveSpeed(0, 0)
 
+    rcu.SetMoveSpeed(-80, -80)
+    rcu.SetWaitForTime(2.0)
+    rcu.SetMoveSpeed(0, 0)
     # # Move backward for 1 second
     # rcu.SetMoveSpeed(-70, -70)
     # rcu.SetWaitForTime(1.0)

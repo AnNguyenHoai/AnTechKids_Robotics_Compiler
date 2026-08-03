@@ -46,6 +46,15 @@ The SDK is automatically installed as part of the `robot-language` build.
 #### `read_line(channel)`
 - Read line sensor (0=white, 1=dark)
 
+#### `get_trace_value(port, channel)`
+- Get trace sensor value (0/50/100 based on line detection)
+
+#### `get_trace_state(port, channel)`
+- Get trace sensor state (boolean)
+
+#### `get_trace_raw(port)`
+- Get raw bitmask of all 3 trace sensors
+
 ### Servo
 #### `set_servo(port, angle)`
 - Set servo angle
@@ -62,6 +71,15 @@ The SDK is automatically installed as part of the `robot-language` build.
 - Set motor straight angle
 
 ### Line
+#### `line_basis(speed)`
+- Basic line following step (adjust motors based on sensor mask)
+
+#### `line_follow(speed)`
+- Follow line continuously until lost
+
+#### `line_stop()`
+- Stop line following (stop motors)
+
 #### `line_intersection_stop(speed, type)`
 - Stop at line intersection
 
