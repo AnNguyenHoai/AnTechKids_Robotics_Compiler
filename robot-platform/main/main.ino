@@ -62,7 +62,8 @@ void setup() {
     BootLogger::log("BOOT", "Serial Handler Ready");
 
     DevelopmentConsole::instance().begin();
-    BootLogger::log("BOOT", "Development Console ready");
+    DevelopmentConsole::instance().setEnabled(false);   // <-- THÊM DÒNG NÀY
+    BootLogger::log("BOOT", "Development Console ready (disabled by default)");
 
     // 5. Initialize Behavior Scheduler with default behaviors
     scheduler.addBehavior(new MoveForwardBehavior(50, 2000));

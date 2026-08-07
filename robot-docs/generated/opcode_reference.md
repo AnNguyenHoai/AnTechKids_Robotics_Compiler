@@ -48,6 +48,8 @@ This is a complete list of all opcodes used by the Robot VM.
 | `LineFollow` | 48 | line | Follow line continuously until lost |
 | `LineStop` | 49 | line | Stop line following (stop motors) |
 | `LineIntersectionStop` | 40 | line | Stop at line intersection |
+| `LineTurnEncounterLine` | 50 | line | Turn until line encountered |
+| `LineForBmp` | 51 | line | Follow line for a given degree (time-based approximation) |
 | `SetMp3Play` | 41 | peripheral | Play MP3 track (adapted to active buzzer beep) |
 
 ---

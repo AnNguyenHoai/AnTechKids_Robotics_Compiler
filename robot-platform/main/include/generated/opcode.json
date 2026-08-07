@@ -351,6 +351,22 @@
         "module": "line_handler",
         "handler": "LineHandler"
     },
+    "LineTurnEncounterLine": {
+        "id": 50,
+        "opcode": "LineTurnEncounterLine",
+        "function": "line_turn_encounterline",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "LineForBmp": {
+        "id": 51,
+        "opcode": "LineForBmp",
+        "function": "line_for_bmp",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
     "SetMp3Play": {
         "id": 41,
         "opcode": "SetMp3Play",

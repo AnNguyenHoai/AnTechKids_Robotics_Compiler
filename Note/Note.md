@@ -5,3 +5,5 @@
            - Hiện tại đã hỗ trợ được motor, linesensor(cần test lại), ultra sensor(cần test lại) -> đủ để lắp mạch demo
 
 2/8: Xử lý xong vấn đề line sensor, tiếp theo cần xử lý vấn đề test cho sensor. Vô GPt để check plan tiếp
+
+7/8: vừa xử lý xong phần UI, GPT mới review, tiếp theo sẽ yêu cầu GPT tạo task tiếp

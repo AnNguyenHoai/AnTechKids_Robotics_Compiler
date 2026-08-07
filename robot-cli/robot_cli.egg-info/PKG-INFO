@@ -5,6 +5,7 @@ Summary: Robot Development Platform CLI
 Author: Robot Team
 Requires-Python: >=3.8
 Requires-Dist: click
+Requires-Dist: pyyaml
 Dynamic: author
 Dynamic: requires-dist
 Dynamic: requires-python

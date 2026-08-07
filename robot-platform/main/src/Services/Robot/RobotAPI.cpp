@@ -32,6 +32,7 @@
 #include "../Line/LineDecisionEngine.h"
 #include "../Line/LineState.h"
 #include "../Line/LineContext.h"
+#include "../Line/LineFollower.h"
 namespace RobotAPI {
 
 // Cấu hình PWM cho ESP32
@@ -329,9 +330,6 @@ void SetMotorStraightAngle(int leftPort, int rightPort, int speed, int angle) {
                   leftPort, rightPort, speed, angle);
 }
 
-void LineIntersectionStop(int speed, int type) {
-    Serial.printf("[DUMMY][LineIntersectionStop] speed=%d type=%d\n", speed, type);
-}
 
 //periparal
 
@@ -400,19 +398,64 @@ int16_t GetTraceRaw(int port) {
     return mask;
 }
 void LineBasis(int speed) {
-    // Read sensor mask
+    auto& follower = LineFollower::instance();
     uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
-    execute_line_command(mask, speed);
+    int left, right;
+    follower.update(mask, speed, left, right);
+    setMotorsDirect(left, right);
 }
 
 void LineFollow(int speed) {
-    // One tick: read sensor once, execute, return immediately
-    uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
-    execute_line_command(mask, speed);
-    // No loop, no delay, non-blocking
+    // One tick (non‑blocking)
+    LineBasis(speed);
 }
 
 void LineStop() {
+    auto& follower = LineFollower::instance();
+    follower.stop();
+    Stop();
+}
+
+void LineIntersectionStop(int speed, int type) {
+    Serial.printf("[Line] LineIntersectionStop speed=%d type=%d\n", speed, type);
+    auto& follower = LineFollower::instance();
+    follower.setSpeed(speed);
+    follower.stopAtIntersection();
+    while (!follower.isStopped()) {
+        uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
+        int left, right;
+        follower.update(mask, speed, left, right);
+        setMotorsDirect(left, right);
+        delay(20);
+    }
+}
+
+void LineTurnEncounterLine(int speed, int angle, int direction) {
+    Serial.printf("[Line] LineTurnEncounterLine speed=%d angle=%d dir=%d\n", speed, angle, direction);
+    auto& follower = LineFollower::instance();
+    follower.setSpeed(speed);
+    follower.turnEncounterLine(direction);
+    while (true) {
+        uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
+        int left, right;
+        follower.update(mask, speed, left, right);
+        setMotorsDirect(left, right);
+        if (mask != 0) break;
+        delay(20);
+    }
+}
+
+void LineForBmp(int speed, int degree) {
+    Serial.printf("[Line] LineForBmp speed=%d degree=%d\n", speed, degree);
+    auto& follower = LineFollower::instance();
+    follower.followForBmp(speed, degree);
+    while (follower.isBmpActive()) {
+        uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
+        int left, right;
+        follower.update(mask, speed, left, right);
+        setMotorsDirect(left, right);
+        delay(20);
+    }
     Stop();
 }
 

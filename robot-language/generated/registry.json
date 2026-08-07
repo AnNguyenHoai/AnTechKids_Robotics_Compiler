@@ -395,6 +395,24 @@
         "arguments": 2,
         "description": "Stop at line intersection"
     },
+    "line_turn_encounterline": {
+        "opcode": "LineTurnEncounterLine",
+        "opcode_id": 50,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 3,
+        "description": "Turn until line encountered"
+    },
+    "line_for_bmp": {
+        "opcode": "LineForBmp",
+        "opcode_id": 51,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 2,
+        "description": "Follow line for a given degree (time-based approximation)"
+    },
     "set_mp3_play": {
         "opcode": "SetMp3Play",
         "opcode_id": 41,

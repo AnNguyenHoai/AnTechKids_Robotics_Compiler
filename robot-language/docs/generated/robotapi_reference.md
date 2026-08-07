@@ -80,6 +80,12 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 #### `void line_intersection_stop(int speed, int type)`
 - Stop at line intersection
 
+#### `void line_turn_encounterline(int speed, int angle, int direction)`
+- Turn until line encountered
+
+#### `void line_for_bmp(int speed, int degree)`
+- Follow line for a given degree (time-based approximation)
+
 ### Peripheral
 #### `void set_mp3_play(int index)`
 - Play MP3 track (adapted to active buzzer beep)

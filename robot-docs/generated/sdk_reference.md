@@ -83,6 +83,12 @@ The SDK is automatically installed as part of the `robot-language` build.
 #### `line_intersection_stop(speed, type)`
 - Stop at line intersection
 
+#### `line_turn_encounterline(speed, angle, direction)`
+- Turn until line encountered
+
+#### `line_for_bmp(speed, degree)`
+- Follow line for a given degree (time-based approximation)
+
 ### Peripheral
 #### `set_mp3_play(index)`
 - Play MP3 track (adapted to active buzzer beep)

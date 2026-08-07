@@ -1,6 +1,7 @@
 import rcu
 
-while True:
+count = 0
+while count < 20:
     raw = rcu.GetTraceV2I2CData(1)
     
     # Test Left (mask == 4)
@@ -10,3 +11,4 @@ while True:
         rcu.Set3CLed(1, 0)
     
     rcu.SetWaitForTime(0.05)
+    count +=1

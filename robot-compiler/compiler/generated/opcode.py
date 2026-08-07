@@ -49,4 +49,6 @@ class Opcode(IntEnum):
     LineFollow = 48
     LineStop = 49
     LineIntersectionStop = 40
+    LineTurnEncounterLine = 50
+    LineForBmp = 51
     SetMp3Play = 41

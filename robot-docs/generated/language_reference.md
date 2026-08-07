@@ -40,6 +40,8 @@ Robot Language provides several built-in functions:
 | `line_follow(speed)` | 1 | Follow line continuously until lost |
 | `line_stop()` | 0 | Stop line following (stop motors) |
 | `line_intersection_stop(speed, type)` | 2 | Stop at line intersection |
+| `line_turn_encounterline(speed, angle, direction)` | 3 | Turn until line encountered |
+| `line_for_bmp(speed, degree)` | 2 | Follow line for a given degree (time-based approximation) |
 | `set_mp3_play(index)` | 1 | Play MP3 track (adapted to active buzzer beep) |
 
 ### User-Defined Functions

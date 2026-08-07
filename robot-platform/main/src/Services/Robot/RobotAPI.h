@@ -14,6 +14,7 @@
 #include "RobotAPI.h"
 #include <Arduino.h>
 #include "../../HardwareAbstraction/GPIO.h"
+
 namespace RobotAPI
 {
 
@@ -143,7 +144,8 @@ int16_t GetTraceRaw(int port);
 void LineBasis(int speed);
 void LineFollow(int speed);
 void LineStop();
-
+void LineTurnEncounterLine(int speed, int angle, int direction);
+void LineForBmp(int speed, int degree);
 
 
 }

@@ -10,10 +10,10 @@ from ..core import config, utils
 @click.option('--build-dir', help='Build directory')
 @click.option('--copy', is_flag=True, help='Copy header to robot-platform after build')
 def build(file, output, build_dir, copy):
-    click.echo(f"🔧 Building {file} ...")
+    click.echo(f"[BUILD] Building {file} ...")
     build_script = config.ROOT / "tools" / "build.py"
     if not build_script.exists():
-        click.echo("❌ tools/build.py not found.", err=True)
+        click.echo("ERROR: tools/build.py not found.", err=True)
         sys.exit(1)
 
     cmd = [sys.executable, str(build_script), "--input", str(Path(file).resolve())]
@@ -24,9 +24,7 @@ def build(file, output, build_dir, copy):
     if copy:
         cmd.append("--copy")
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    click.echo(result.stdout)
+    result = subprocess.run(cmd, capture_output=False, text=True)
     if result.returncode != 0:
-        click.echo(result.stderr, err=True)
         sys.exit(result.returncode)
-    click.echo("✅ Build completed.")
+    click.echo("[OK] Build completed.")

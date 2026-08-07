@@ -396,6 +396,22 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             RobotAPI::LineStop();
             mContext.mProgramCounter++;
             break;
+        case Opcode::LineTurnEncounterLine:
+            RobotAPI::LineTurnEncounterLine(
+                mContext.mVariables[instruction.p1],
+                mContext.mVariables[instruction.p2],
+                mContext.mVariables[instruction.p3]
+            );
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineForBmp:
+            RobotAPI::LineForBmp(
+                mContext.mVariables[instruction.p1],
+                mContext.mVariables[instruction.p2]
+            );
+            mContext.mProgramCounter++;
+            break;
         default:
             mContext.mRunning = false;
             mContext.mErrorCode = 1; // Invalid opcode

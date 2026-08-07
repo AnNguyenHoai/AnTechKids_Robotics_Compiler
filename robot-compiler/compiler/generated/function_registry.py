@@ -173,6 +173,20 @@ FUNCTION_REGISTRY = {
         "category": "line",
         "description": "Stop at line intersection"
     },
+    "line_turn_encounterline": {
+        "handler": LineHandler.line_turn_encounterline,
+        "opcode": "LineTurnEncounterLine",
+        "arguments": 3,
+        "category": "line",
+        "description": "Turn until line encountered"
+    },
+    "line_for_bmp": {
+        "handler": LineHandler.line_for_bmp,
+        "opcode": "LineForBmp",
+        "arguments": 2,
+        "category": "line",
+        "description": "Follow line for a given degree (time-based approximation)"
+    },
     "set_mp3_play": {
         "handler": PeripheralHandler.set_mp3_play,
         "opcode": "SetMp3Play",

@@ -37,3 +37,24 @@ def line_intersection_stop(speed: int, type: int) -> None:
     """
     pass
 
+def line_turn_encounterline(speed: int, angle: int, direction: int) -> None:
+    """
+    Turn until line encountered
+
+    Args:
+        speed (int):
+        angle (int):
+        direction (int):
+    """
+    pass
+
+def line_for_bmp(speed: int, degree: int) -> None:
+    """
+    Follow line for a given degree (time-based approximation)
+
+    Args:
+        speed (int):
+        degree (int):
+    """
+    pass
+

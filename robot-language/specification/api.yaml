@@ -354,6 +354,27 @@ categories:
             type: int
           - name: type
             type: int
+      - name: line_turn_encounterline
+        opcode: LineTurnEncounterLine
+        opcode_id: 50
+        description: Turn until line encountered
+        args:
+          - name: speed
+            type: int
+          - name: angle
+            type: int
+          - name: direction
+            type: int
+
+      - name: line_for_bmp
+        opcode: LineForBmp
+        opcode_id: 51
+        description: Follow line for a given degree (time-based approximation)
+        args:
+          - name: speed
+            type: int
+          - name: degree
+            type: int
   peripheral:
     description: Peripheral control APIs (buzzer, etc.)
     module: peripheral_handler

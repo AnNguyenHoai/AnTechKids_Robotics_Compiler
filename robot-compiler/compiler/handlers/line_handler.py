@@ -23,3 +23,17 @@ class LineHandler:
     def line_stop(compiler, node):
         compiler.validate_argument_count(node, "line_stop", 0)
         compiler.program.emit(Opcode.LineStop.value, 0, 0, 0)
+    @staticmethod
+    def line_turn_encounterline(compiler, node):
+        compiler.validate_argument_count(node, "line_turn_encounterline", 3)
+        speed = compiler.resolve_argument(node.args[0])
+        angle = compiler.resolve_argument(node.args[1])
+        direction = compiler.resolve_argument(node.args[2])
+        compiler.program.emit(Opcode.LineTurnEncounterLine.value, speed, angle, direction)
+
+    @staticmethod
+    def line_for_bmp(compiler, node):
+        compiler.validate_argument_count(node, "line_for_bmp", 2)
+        speed = compiler.resolve_argument(node.args[0])
+        degree = compiler.resolve_argument(node.args[1])
+        compiler.program.emit(Opcode.LineForBmp.value, speed, degree, 0)
