@@ -20,19 +20,13 @@
 #include "../../HardwareAbstraction/GPIO.h"
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/TCRT5000.h"
-#include "../../HardwareAbstraction/GPIO.h"
-#include "../../Sensor/SensorManager.h"
-#include "../../Sensor/TCRT5000.h"
 #include "../../Sensor/SensorID.h"
-#include "../../HardwareAbstraction/GPIO.h"
-#include "../../Sensor/SensorManager.h"
 #include "../../Sensor/Ultrasonic.h"
-#include "../../Sensor/SensorID.h"
-#include "../Line/LinePerception.h"
-#include "../Line/LineDecisionEngine.h"
-#include "../Line/LineState.h"
-#include "../Line/LineContext.h"
+// REMOVED: #include "../Line/LineDecisionEngine.h"
 #include "../Line/LineFollower.h"
+
+// Các include còn lại giữ nguyên
+
 namespace RobotAPI {
 
 // Cấu hình PWM cho ESP32
@@ -48,10 +42,9 @@ static const int PWM_CH_R_IN3 = 2;
 static const int PWM_CH_R_IN4 = 3;
 
 // Định nghĩa các đối tượng cảm biến (toàn cục trong namespace)
-static Touch touch0(ROBOT_PIN_5);     // ví dụ
-static Touch touch1(ROBOT_PIN_5);    // ví dụ
-//static LineSensor lineSensor(SENSOR_TRCT5000_L_PIN, SENSOR_TRCT5000_C_PIN, SENSOR_TRCT5000_R_PIN);
-static LightSensor lightSensor(ROBOT_PIN_5); // ví dụ
+static Touch touch0(ROBOT_PIN_5);
+static Touch touch1(ROBOT_PIN_5);
+static LightSensor lightSensor(ROBOT_PIN_5);
 static ColorSensor colorSensor;
 
 // Hàm nội bộ: điều khiển motor
@@ -95,28 +88,8 @@ void SetMotorSpeed(int left, int right) {
     setMotorsDirect(left, right);
 }
 
-//Line execution
-
-// Helper: execute motor command based on mask and speed
-static void execute_line_command(uint8_t mask, int speed) {
-    LineState state = LinePerception::interpret(mask);
-    MotorCommand cmd = LineDecisionEngine::decide(state);
-    switch (cmd) {
-        case MotorCommand::FORWARD:
-            Forward(speed);
-            break;
-        case MotorCommand::TURN_LEFT:
-            TurnLeft(speed);
-            break;
-        case MotorCommand::TURN_RIGHT:
-            TurnRight(speed);
-            break;
-        case MotorCommand::STOP:
-        default:
-            Stop();
-            break;
-    }
-}
+// REMOVED: execute_line_command() - no longer used in new architecture
+// Line execution is now handled by LineFollower with MotionController
 
 /******************************************************************************
  * Initialization
@@ -132,6 +105,11 @@ void Initialize() {
     pinMode(MOTOR_R_IN3_PIN, OUTPUT);
     pinMode(MOTOR_R_IN4_PIN, OUTPUT);
 
+    //disable motor
+    digitalWrite(MOTOR_L_IN1_PIN, LOW);
+    digitalWrite(MOTOR_L_IN2_PIN, LOW);
+    digitalWrite(MOTOR_R_IN3_PIN, LOW);
+    digitalWrite(MOTOR_R_IN4_PIN, LOW);
     // PWM setup
     ledcAttach(MOTOR_L_IN1_PIN, PWM_FREQ, PWM_RES);
     ledcAttach(MOTOR_L_IN2_PIN, PWM_FREQ, PWM_RES);
@@ -144,18 +122,19 @@ void Initialize() {
     // Khởi tạo cảm biến
     touch0.init();
     touch1.init();
-    //light and buzzer
+
     // LED pins
     pinMode(OUTPUT_LED_LEFT_PIN, OUTPUT);
     pinMode(OUTPUT_LED_RIGHT_PIN, OUTPUT);
     digitalWrite(OUTPUT_LED_LEFT_PIN, LOW);
     digitalWrite(OUTPUT_LED_RIGHT_PIN, LOW);
     Serial.println("[RobotAPI] LEDs initialized (OFF)");
-    //lineSensor.init();
+
     lightSensor.init();
     colorSensor.init();
-    // ---- Register line sensors using new framework ----
-    auto& mgr = SensorManager::instance();   // chỉ khai báo một lần
+
+    // Register line sensors using new framework
+    auto& mgr = SensorManager::instance();
     mgr.registerSensor(SensorID::LineLeft,
                        new TCRT5000(SENSOR_TRCT5000_L_PIN, "line_left"));
     mgr.registerSensor(SensorID::LineCenter,
@@ -165,10 +144,12 @@ void Initialize() {
     mgr.registerSensor(SensorID::Ultrasonic,
                        new Ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN, 30000, "ultrasonic"));
     mgr.initializeAll();
-    //khoi tao buzzer
+
+    // Buzzer
     pinMode(OUTPUT_BUZZER_PIN, OUTPUT);
     digitalWrite(OUTPUT_BUZZER_PIN, LOW);
     Serial.println("[RobotAPI] Buzzer initialized (OFF)");
+
     // Load sensor config
     loadSensorConfigFromStorage();
     Serial.println("[RobotAPI] Sensors initialized with SensorConfig.");
@@ -238,9 +219,8 @@ int16_t ReadLine(int channel) {
     }
     auto sensor = SensorManager::instance().getSensor(id);
     if (sensor) {
-        // Cast to TCRT5000* to use semantic API
         auto lineSensor = static_cast<TCRT5000*>(sensor);
-        lineSensor->update();   // ensure fresh reading
+        lineSensor->update();
         return lineSensor->isLineDetected() ? 1 : 0;
     }
     return 0;
@@ -299,30 +279,18 @@ void SetServo(int port, int angle) {
 
 void Set3CLed(int port, int state) {
     int pin;
-
-    // RoboSim port mapping:
-    // odd  port -> GPIO33
-    // even port -> GPIO32
+    // RoboSim port mapping: odd -> GPIO33, even -> GPIO32
     if ((port % 2) == 0) {
         pin = OUTPUT_LED_LEFT_PIN;   // GPIO32
     } else {
         pin = OUTPUT_LED_RIGHT_PIN;  // GPIO33
     }
-
     digitalWrite(pin, state ? HIGH : LOW);
-
-    Serial.printf(
-        "[LED] Set3CLed port=%d -> GPIO%d state=%d\n",
-        port,
-        pin,
-        state
-    );
+    Serial.printf("[LED] Set3CLed port=%d -> GPIO%d state=%d\n", port, pin, state);
 }
+
 void SetLightSensorLed(int port, int state) {
-    Serial.printf(
-        "[DUMMY][SetLightSensorLed] port=%d state=%d\n",
-        port, state
-    );
+    Serial.printf("[DUMMY][SetLightSensorLed] port=%d state=%d\n", port, state);
 }
 
 void SetMotorStraightAngle(int leftPort, int rightPort, int speed, int angle) {
@@ -330,17 +298,14 @@ void SetMotorStraightAngle(int leftPort, int rightPort, int speed, int angle) {
                   leftPort, rightPort, speed, angle);
 }
 
-
-//periparal
-
 void SetMp3Play(int index) {
     Serial.printf("[BUZZER] SetMp3Play index=%d -> fixed beep 200ms\n", index);
     digitalWrite(OUTPUT_BUZZER_PIN, HIGH);
     delay(200);
     digitalWrite(OUTPUT_BUZZER_PIN, LOW);
 }
+
 int16_t GetTraceValue(int port, int channel) {
-    // Map channel 0,1,2 to left, center, right
     SensorID id;
     switch (channel) {
         case 0: id = SensorID::LineLeft; break;
@@ -352,7 +317,6 @@ int16_t GetTraceValue(int port, int channel) {
     if (sensor) {
         auto lineSensor = static_cast<TCRT5000*>(sensor);
         lineSensor->update();
-        // Return 100 if line detected, 0 otherwise
         return lineSensor->isLineDetected() ? 100 : 0;
     }
     return 0;
@@ -383,20 +347,21 @@ int16_t GetTraceRaw(int port) {
     if (left) {
         auto l = static_cast<TCRT5000*>(left);
         l->update();
-        if (l->isLineDetected()) mask |= 4;   // ← sửa: bit 2
+        if (l->isLineDetected()) mask |= 4;
     }
     if (center) {
         auto c = static_cast<TCRT5000*>(center);
         c->update();
-        if (c->isLineDetected()) mask |= 2;   // ← giữ nguyên: bit 1
+        if (c->isLineDetected()) mask |= 2;
     }
     if (right) {
         auto r = static_cast<TCRT5000*>(right);
         r->update();
-        if (r->isLineDetected()) mask |= 1;   // ← sửa: bit 0
+        if (r->isLineDetected()) mask |= 1;
     }
     return mask;
 }
+
 void LineBasis(int speed) {
     auto& follower = LineFollower::instance();
     uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
@@ -460,4 +425,3 @@ void LineForBmp(int speed, int degree) {
 }
 
 } // namespace RobotAPI
-

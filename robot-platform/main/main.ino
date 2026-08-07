@@ -26,7 +26,7 @@
 // VM
 VM vm;
 Program program;
-const int STABILITY_ITERATIONS = 10;
+const int STABILITY_ITERATIONS = 1;
 int executionCounter = 0;
 
 // Behavior Engine

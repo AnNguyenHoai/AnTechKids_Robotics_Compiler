@@ -19,17 +19,17 @@ class Ui_MainWindow:
         menubar = QMenuBar(MainWindow)
         MainWindow.setMenuBar(menubar)
 
-        # File menu (placeholder, no actions yet)
-        file_menu = menubar.addMenu("&File")
+        # File menu
+        self.file_menu = menubar.addMenu("&File")
+        self.file_menu.setObjectName("menuFile")  # <-- ADDED
 
         # Examples menu
         self.examples_menu = menubar.addMenu("&Examples")
-        # We'll populate actions later in the main app
 
-        # Help menu (optional)
+        # Help menu
         help_menu = menubar.addMenu("&Help")
-        about_action = QAction("About", MainWindow)
-        help_menu.addAction(about_action)
+        self.about_action = QAction("About", MainWindow)
+        help_menu.addAction(self.about_action)
 
         # Central widget
         central_widget = QWidget(MainWindow)
@@ -88,5 +88,5 @@ class Ui_MainWindow:
         status_layout.addStretch()
         main_layout.addLayout(status_layout)
 
-        # Store references for later
-        self.about_action = about_action
+        # Store menubar reference for later
+        self.menubar = menubar

@@ -6,10 +6,10 @@ import sys
 import os
 from pathlib import Path
 from PySide6.QtWidgets import (
-    QMainWindow, QMessageBox, QFileDialog, QApplication
+    QMainWindow, QMessageBox, QFileDialog, QApplication, QMenu
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QCursor, QTextCursor
+from PySide6.QtGui import QCursor, QTextCursor, QAction
 
 from ui.main_window import Ui_MainWindow
 from services.build_service import BuildService
@@ -89,11 +89,51 @@ class RoboStudioApp(QMainWindow):
         self.ui.open_firmware_button.clicked.connect(self.on_open_firmware)
         self.ui.about_action.triggered.connect(self.on_about)
 
+        # Setup File menu
+        self._setup_file_menu()
+
         # Build Examples menu
         self._build_examples_menu()
 
         # Set initial status
         self.set_status("Ready", color="green")
+
+    def _setup_file_menu(self):
+        """Add Open action to File menu."""
+        # Find the File menu
+        file_menu = self.ui.menubar.findChild(QMenu, "menuFile")
+        if file_menu is None:
+            # Fallback: use the first menu
+            file_menu = self.ui.menubar.actions()[0].menu()
+
+        open_action = QAction("Open...", self)
+        open_action.setShortcut("Ctrl+O")
+        open_action.triggered.connect(self._open_file)
+        file_menu.addAction(open_action)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction("Exit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+    def _open_file(self):
+        """Open a .py file and load its content into the editor."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open RoboSim Code",
+            "",
+            "Python Files (*.py);;All Files (*.*)"
+        )
+        if file_path:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    code = f.read()
+                self.ui.code_editor.setPlainText(code)
+                self.set_status(f"Loaded: {Path(file_path).name}", color="green")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 
     def _check_firmware(self):
         """If firmware not found, ask user to select it."""
@@ -169,7 +209,7 @@ class RoboStudioApp(QMainWindow):
         self.ui.build_output.insertPlainText(text)
         # Auto-scroll to bottom
         cursor = self.ui.build_output.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.movePosition(QTextCursor.End)
         self.ui.build_output.setTextCursor(cursor)
 
     def _build_finished(self, success, summary):

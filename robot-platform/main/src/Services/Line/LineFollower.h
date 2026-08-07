@@ -41,6 +41,7 @@ private:
     IntersectionDetector _intersectionDetector;
     RecoveryStrategy _recovery;
     MotionController _motionController;
+    PIDController _pid; 
 
     int _speed;
     bool _stopped;
