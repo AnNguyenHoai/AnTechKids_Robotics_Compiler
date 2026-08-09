@@ -16,7 +16,7 @@ const Instruction generatedProgram[] =
     Instruction(Opcode::Stop, 0, 0, 0, 0),
     Instruction(Opcode::Jump, 0, 10, 0, 0),
     Instruction(Opcode::LoadConst, 4, 80, 0, 0),
-    Instruction(Opcode::LoadConst, 5, 92, 0, 0),
+    Instruction(Opcode::LoadConst, 5, 100, 0, 0),
     Instruction(Opcode::SetMotorSpeed, 4, 5, 0, 0),
     Instruction(Opcode::LoadConst, 6, 100, 0, 0),
     Instruction(Opcode::Wait, 6, 0, 0, 0),

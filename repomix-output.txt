@@ -457,6 +457,10 @@ robot-docs/
     opcode_reference.md
     robotapi_reference.md
     sdk_reference.md
+  hardware_power/
+    HARDWARE_PINOUT.md
+    POWER_ARCHITECTURE.md
+    WIRING_GUIDE.md
   language/
     ROBOSIM_API_SPEC.yaml
     ROBOSIM_LANGUAGE_SPEC.md
@@ -1781,6 +1785,1395 @@ Không phát triển GUI.
 Không phát triển BLE/WiFi.
 
 Chờ Architecture Review.
+
+================
+File: robot-docs/hardware_power/HARDWARE_PINOUT.md
+================
+# HARDWARE_PINOUT.md
+
+**Project:** Robotics Platform
+
+**Board:** ESP32 DevKit V1
+
+**Hardware Version:** v1.0
+
+**Status:** Architecture Freeze
+
+---
+
+# 1. Purpose
+
+Tài liệu này định nghĩa toàn bộ GPIO Mapping của Robotics Platform.
+
+Đây là **Single Source of Truth** cho:
+
+- Firmware
+- HAL
+- RobotAPI
+- Diagnostics
+- RoboStudio
+- Hardware Design
+
+Mọi thay đổi GPIO phải được cập nhật tài liệu này trước khi thay đổi source code.
+
+---
+
+# 2. Board Information
+
+MCU
+
+```
+ESP32 DevKit V1
+```
+
+Logic Level
+
+```
+3.3V
+```
+
+Main Supply
+
+```
+5V (từ LM2596)
+```
+
+---
+
+# 3. GPIO Assignment
+
+| GPIO | Module | Signal | Direction | Status |
+|------:|--------|--------|-----------|--------|
+| GPIO14 | Motor Driver | MOTOR_R_IN4 | Output | ✅ |
+| GPIO16 | Line Sensor | CENTER | Input | ✅ |
+| GPIO17 | Line Sensor | RIGHT | Input | ✅ |
+| GPIO18 | Line Sensor | LEFT | Input | ✅ |
+| GPIO19 | Active Buzzer | BUZZER | Output | ✅ |
+| GPIO22 | HC-SR04 | ECHO | Input | ✅ |
+| GPIO23 | HC-SR04 | TRIGGER | Output | ✅ |
+| GPIO25 | Motor Driver | MOTOR_L_IN1 | Output | ✅ |
+| GPIO26 | Motor Driver | MOTOR_L_IN2 | Output | ✅ |
+| GPIO27 | Motor Driver | MOTOR_R_IN3 | Output | ✅ |
+| GPIO32 | LED | RIGHT LED | Output | ✅ |
+| GPIO33 | LED | LEFT LED | Output | ✅ |
+
+---
+
+# 4. Module Mapping
+
+## 4.1 Line Sensor
+
+Module
+
+```
+TCRT5000
+
+3 Channels
+```
+
+GPIO Mapping
+
+| Sensor | GPIO |
+|---------|------|
+| Left | GPIO18 |
+| Center | GPIO16 |
+| Right | GPIO17 |
+
+---
+
+### Bit Convention
+
+```
+Bit2
+
+↓
+
+Left
+```
+
+```
+Bit1
+
+↓
+
+Center
+```
+
+```
+Bit0
+
+↓
+
+Right
+```
+
+Ví dụ
+
+| Bitmask | Meaning |
+|---------|---------|
+|100|Left Detect|
+|010|Center Detect|
+|001|Right Detect|
+|110|Left + Center|
+|011|Center + Right|
+|111|All Detect|
+
+Đây là Convention chính thức.
+
+---
+
+## 4.2 LED
+
+Robot có 2 LED trạng thái.
+
+| RoboSim Channel | GPIO | Position |
+|-----------------|------|----------|
+| 1 | GPIO33 | Left |
+| 2 | GPIO32 | Right |
+
+### Mapping Rule
+
+```
+SetLed(1)
+
+↓
+
+GPIO33
+```
+
+```
+SetLed(2)
+
+↓
+
+GPIO32
+```
+
+```
+SetLed(3...)
+
+↓
+
+Ignored
+```
+
+Các channel khác hiện chưa hỗ trợ.
+
+---
+
+## 4.3 Active Buzzer
+
+GPIO
+
+```
+GPIO19
+```
+
+Logic
+
+```
+HIGH
+
+↓
+
+Beep
+```
+
+Implementation hiện tại:
+
+- Digital Output
+- Không PWM
+- Không Melody
+- Chỉ phát tiếng beep
+
+RobotAPI
+
+```
+SetMp3Play(id)
+```
+
+---
+
+## 4.4 Ultrasonic
+
+Module
+
+```
+HC-SR04
+```
+
+| Signal | GPIO |
+|---------|------|
+| Trigger | GPIO23 |
+| Echo | GPIO22 |
+
+RobotAPI
+
+```
+GetUltrasonicDistance()
+```
+
+---
+
+## 4.5 Motor Driver
+
+Driver
+
+```
+TB6612FNG (HW-166)
+```
+
+### Left Motor
+
+| Signal | GPIO |
+|---------|------|
+| IN1 | GPIO25 |
+| IN2 | GPIO26 |
+
+### Right Motor
+
+| Signal | GPIO |
+|---------|------|
+| IN3 | GPIO27 |
+| IN4 | GPIO14 |
+
+---
+
+### Direction Table
+
+#### Left Motor
+
+| IN1 | IN2 | Action |
+|-----|-----|--------|
+|0|0|Stop|
+|1|0|Forward|
+|0|1|Backward|
+|1|1|Brake|
+
+#### Right Motor
+
+| IN3 | IN4 | Action |
+|-----|-----|--------|
+|0|0|Stop|
+|1|0|Forward|
+|0|1|Backward|
+|1|1|Brake|
+
+---
+
+# 5. RobotAPI Mapping
+
+| RobotAPI | Hardware |
+|-----------|----------|
+| SetLed() | GPIO32 / GPIO33 |
+| SetMp3Play() | GPIO19 |
+| Move() | TB6612FNG |
+| Stop() | TB6612FNG |
+| GetTraceV2I2CData() | GPIO18 / GPIO16 / GPIO17 |
+| GetUltrasonicDistance() | GPIO23 / GPIO22 |
+
+---
+
+# 6. Diagnostics Support
+
+Development Console hỗ trợ:
+
+- GPIO State
+- Line Sensor State
+- Line Bitmask
+- Sensor Stability
+- Transition Counter
+- Runtime Statistics
+
+Diagnostics chỉ đọc dữ liệu.
+
+Không điều khiển phần cứng.
+
+---
+
+# 7. Reserved GPIO
+
+| GPIO | Status |
+|------|--------|
+| GPIO4 | Reserved |
+| GPIO5 | Reserved |
+| GPIO12 | Reserved |
+| GPIO13 | Reserved |
+| GPIO15 | Reserved |
+| GPIO21 | Reserved |
+
+Không sử dụng nếu chưa cập nhật tài liệu.
+
+---
+
+# 8. Hardware Summary
+
+| Peripheral | GPIO | Status |
+|------------|------|--------|
+| Left Line Sensor | GPIO18 | ✅ |
+| Center Line Sensor | GPIO16 | ✅ |
+| Right Line Sensor | GPIO17 | ✅ |
+| Left LED | GPIO33 | ✅ |
+| Right LED | GPIO32 | ✅ |
+| Active Buzzer | GPIO19 | ✅ |
+| HC-SR04 Trigger | GPIO23 | ✅ |
+| HC-SR04 Echo | GPIO22 | ✅ |
+| Motor Left IN1 | GPIO25 | ✅ |
+| Motor Left IN2 | GPIO26 | ✅ |
+| Motor Right IN3 | GPIO27 | ✅ |
+| Motor Right IN4 | GPIO14 | ✅ |
+
+---
+
+# 9. HAL Access Rule
+
+Tất cả GPIO phải được truy cập theo kiến trúc sau:
+
+```
+Application
+        │
+        ▼
+RobotAPI
+        │
+        ▼
+HAL
+        │
+        ▼
+GPIO
+```
+
+Không được:
+
+```
+Application
+
+↓
+
+GPIO
+```
+
+Không được:
+
+```
+Behavior
+
+↓
+
+GPIO
+```
+
+HAL là tầng duy nhất được phép truy cập trực tiếp phần cứng.
+
+---
+
+# 10. Future Expansion
+
+Các module dự kiến:
+
+- Servo
+- OLED Display
+- Bluetooth
+- IMU
+- Encoder
+- RGB LED
+
+GPIO sẽ được bổ sung trong các phiên bản sau.
+
+---
+
+# 11. Version History
+
+## v1.0
+
+- ESP32 DevKit V1
+- TB6612FNG
+- 3-Channel TCRT5000
+- Active Buzzer
+- Dual Status LED
+- HC-SR04
+- GPIO Architecture Freeze
+
+================
+File: robot-docs/hardware_power/POWER_ARCHITECTURE.md
+================
+# POWER_ARCHITECTURE.md
+
+**Project:** Robotics Platform
+
+**Board:** ESP32 DevKit V1
+
+**Power Version:** v1.0
+
+---
+
+# 1. Purpose
+
+Tài liệu này mô tả toàn bộ kiến trúc cấp nguồn của Robotics Platform.
+
+Bao gồm:
+
+- Nguồn chính
+- Phân phối nguồn
+- Bộ chuyển đổi điện áp
+- Quy tắc nối mass (Common Ground)
+- Điện áp từng module
+- Quy tắc mở rộng phần cứng
+
+Đây là tài liệu chính thức cho toàn bộ Firmware và Hardware.
+
+---
+
+# 2. System Power Overview
+
+Robot sử dụng một nguồn pin duy nhất.
+
+```
+Battery Pack
+
+7.5V
+```
+
+Nguồn 7.5V được chia thành hai nhánh:
+
+```
+Battery 7.5V
+        │
+        ├──────────────► Motor Driver
+        │
+        └──────────────► LM2596
+                            │
+                            ▼
+                           5V
+                            │
+                            ▼
+                          ESP32
+```
+
+---
+
+# 3. Power Topology
+
+```
+                     +----------------------+
+                     |   Battery Pack       |
+                     |        7.5V          |
+                     +----------+-----------+
+                                |
+              +-----------------+-----------------+
+              |                                   |
+              |                                   |
+              ▼                                   ▼
+      +---------------+                  +----------------+
+      |   TB6612FNG   |                  |     LM2596     |
+      | Motor Supply  |                  | 7.5V → 5V Buck |
+      +-------+-------+                  +-------+--------+
+              |                                  |
+              |                                  |
+              ▼                                  ▼
+        DC Motors                          ESP32 DevKit
+                                                |
+                           +--------------------+--------------------+
+                           |         |           |                  |
+                           ▼         ▼           ▼                  ▼
+                        LEDs     Buzzer    Line Sensor      HC-SR04
+```
+
+---
+
+# 4. Main Power Source
+
+Battery
+
+```
+7.5V Rechargeable Battery Pack
+```
+
+Chức năng
+
+- Cấp nguồn cho Motor Driver
+- Cấp nguồn cho LM2596
+
+Không cấp trực tiếp vào ESP32.
+
+---
+
+# 5. LM2596 Buck Converter
+
+Module
+
+```
+LM2596 DC-DC Buck Converter
+```
+
+Input
+
+```
+7.5V
+```
+
+Output
+
+```
+5.0V
+```
+
+Điện áp đầu ra phải được chỉnh trước khi kết nối.
+
+Khuyến nghị
+
+```
+5.00V ± 0.05V
+```
+
+---
+
+# 6. ESP32 Power
+
+ESP32 được cấp nguồn thông qua chân:
+
+```
+VCC (5V)
+```
+
+Không sử dụng:
+
+```
+3V3
+```
+
+ESP32 sẽ tự tạo:
+
+```
+3.3V
+```
+
+để cấp cho toàn bộ GPIO.
+
+---
+
+# 7. Motor Power
+
+Motor Driver
+
+```
+TB6612FNG
+```
+
+Nguồn cấp
+
+```
+Battery 7.5V
+```
+
+Motor KHÔNG đi qua LM2596.
+
+Điều này giúp:
+
+- Không quá tải LM2596
+- Motor đủ công suất
+- ESP32 ổn định hơn
+
+---
+
+# 8. Peripheral Power
+
+## LED
+
+Nguồn
+
+```
+ESP32 GPIO
+```
+
+Điện áp
+
+```
+3.3V
+```
+
+---
+
+## Active Buzzer
+
+Nguồn
+
+```
+ESP32
+```
+
+GPIO
+
+```
+GPIO19
+```
+
+Điện áp
+
+```
+3.3V
+```
+
+---
+
+## Line Sensor
+
+Module
+
+```
+TCRT5000
+```
+
+Nguồn
+
+```
+ESP32
+```
+
+Logic
+
+```
+3.3V
+```
+
+---
+
+## HC-SR04
+
+Nguồn
+
+```
+5V
+```
+
+Trigger
+
+```
+GPIO23
+```
+
+Echo
+
+```
+GPIO22
+```
+
+Lưu ý:
+
+Nếu module HC-SR04 xuất Echo ở mức 5V, cần kiểm tra khả năng chịu điện áp của chân ESP32 hoặc bổ sung mạch chia áp (voltage divider) nếu cần.
+
+---
+
+# 9. Common Ground
+
+Toàn bộ hệ thống phải dùng chung mass.
+
+```
+Battery (-)
+        │
+        ▼
+ LM2596 GND
+        │
+        ▼
+ ESP32 GND
+        │
+        ▼
+ TB6612FNG GND
+        │
+        ▼
+ Sensors GND
+```
+
+Không được tách riêng GND.
+
+Nếu không dùng Common Ground:
+
+- PWM sai
+- Sensor đọc sai
+- UART lỗi
+- Robot hoạt động không ổn định
+
+---
+
+# 10. Current Distribution
+
+```
+Battery
+
+↓
+
+7.5V
+
+↓
+
+Motor Driver
+
+↓
+
+DC Motors
+```
+
+Song song
+
+```
+Battery
+
+↓
+
+LM2596
+
+↓
+
+5V
+
+↓
+
+ESP32
+
+↓
+
+3.3V Regulator
+
+↓
+
+GPIO
+
+↓
+
+LED
+
+↓
+
+Buzzer
+
+↓
+
+Line Sensor
+```
+
+---
+
+# 11. Estimated Power Consumers
+
+| Module | Voltage | Source |
+|----------|---------|---------|
+| ESP32 | 5V | LM2596 |
+| TB6612FNG | 7.5V | Battery |
+| DC Motors | 7.5V | TB6612FNG |
+| Line Sensor | 3.3V | ESP32 |
+| LEDs | 3.3V | ESP32 GPIO |
+| Active Buzzer | 3.3V | ESP32 GPIO |
+| HC-SR04 | 5V | ESP32 5V Rail |
+
+---
+
+# 12. Startup Sequence
+
+Khuyến nghị khi lắp ráp:
+
+1.
+
+Kiểm tra LM2596
+
+↓
+
+Output = 5.0V
+
+2.
+
+Kết nối ESP32
+
+↓
+
+Boot thành công
+
+3.
+
+Kiểm tra LED
+
+↓
+
+PASS
+
+4.
+
+Kiểm tra Buzzer
+
+↓
+
+PASS
+
+5.
+
+Kiểm tra Line Sensor
+
+↓
+
+PASS
+
+6.
+
+Kiểm tra Motor
+
+↓
+
+PASS
+
+---
+
+# 13. Troubleshooting
+
+## ESP32 Reset liên tục
+
+Kiểm tra
+
+- LM2596 Output
+- Battery Voltage
+- Common Ground
+
+---
+
+## Motor chạy nhưng ESP32 Reset
+
+Kiểm tra
+
+- Sụt áp Battery
+- LM2596 quá tải
+- Dây nguồn quá nhỏ
+
+---
+
+## Sensor đọc sai
+
+Kiểm tra
+
+- GND chung
+- GPIO Mapping
+- Điện áp 3.3V
+
+---
+
+## HC-SR04 không hoạt động
+
+Kiểm tra
+
+- Trigger GPIO23
+- Echo GPIO22
+- 5V cấp cho cảm biến
+- GND chung
+
+---
+
+# 14. Future Expansion
+
+Dự kiến bổ sung:
+
+- Servo
+- OLED Display
+- Bluetooth
+- Encoder
+- IMU
+
+Mọi module mới phải:
+
+- Khai báo điện áp hoạt động
+- Khai báo nguồn cấp
+- Cập nhật tài liệu này
+
+---
+
+# 15. Architecture Rules
+
+Application
+
+↓
+
+RobotAPI
+
+↓
+
+HAL
+
+↓
+
+GPIO
+
+↓
+
+Hardware
+
+Application tuyệt đối không truy cập trực tiếp:
+
+- GPIO
+- Nguồn
+- Peripheral
+
+Toàn bộ phần cứng phải được quản lý thông qua HAL.
+
+---
+
+# 16. Version History
+
+## v1.0
+
+- ESP32 DevKit V1
+- Battery 7.5V
+- LM2596 Buck Converter
+- TB6612FNG
+- Active Buzzer
+- Dual LED
+- 3-Channel Line Sensor
+- HC-SR04
+- Common Ground Architecture
+
+================
+File: robot-docs/hardware_power/WIRING_GUIDE.md
+================
+# WIRING_GUIDE.md
+
+**Project:** Robotics Platform
+
+**Board:** ESP32 DevKit V1
+
+**Hardware Version:** v1.0
+
+---
+
+# 1. Purpose
+
+Tài liệu này hướng dẫn đấu dây toàn bộ robot.
+
+Đây là tài liệu dành cho:
+
+- Giáo viên
+- Học sinh
+- Người lắp ráp robot
+
+Không mô tả Software.
+
+Không mô tả Firmware.
+
+Chỉ mô tả phần cứng.
+
+---
+
+# 2. Wiring Principle
+
+Robot sử dụng kiến trúc sau:
+
+```
+             Battery 7.5V
+                   │
+      ┌────────────┴────────────┐
+      │                         │
+      ▼                         ▼
+  TB6612FNG                 LM2596
+      │                         │
+      ▼                         ▼
+  DC Motors                 ESP32 5V
+                                   │
+                    ┌──────────────┼──────────────┐
+                    ▼              ▼              ▼
+                 LED            Buzzer      Sensors
+```
+
+---
+
+# 3. ESP32 Pin Summary
+
+| GPIO | Connected Device |
+|------|------------------|
+| GPIO18 | Line Sensor Left |
+| GPIO16 | Line Sensor Center |
+| GPIO17 | Line Sensor Right |
+| GPIO19 | Active Buzzer |
+| GPIO22 | HC-SR04 Echo |
+| GPIO23 | HC-SR04 Trigger |
+| GPIO25 | Motor Left IN1 |
+| GPIO26 | Motor Left IN2 |
+| GPIO27 | Motor Right IN3 |
+| GPIO14 | Motor Right IN4 |
+| GPIO32 | Right LED |
+| GPIO33 | Left LED |
+
+---
+
+# 4. LED Wiring
+
+Robot sử dụng hai LED báo trạng thái.
+
+## Left LED
+
+| LED | ESP32 |
+|------|--------|
+| + | GPIO33 |
+| – | GND |
+
+---
+
+## Right LED
+
+| LED | ESP32 |
+|------|--------|
+| + | GPIO32 |
+| – | GND |
+
+---
+
+Lưu ý
+
+LED phải có điện trở hạn dòng (220Ω–330Ω) nếu sử dụng LED rời.
+
+Nếu module LED đã tích hợp điện trở thì có thể nối trực tiếp.
+
+---
+
+# 5. Active Buzzer Wiring
+
+Module
+
+```
+Active Buzzer
+```
+
+| Buzzer | ESP32 |
+|----------|--------|
+| VCC | 3.3V |
+| GND | GND |
+| SIG | GPIO19 |
+
+RobotAPI
+
+```
+SetMp3Play(id)
+```
+
+↓
+
+GPIO19 HIGH
+
+↓
+
+Beep
+
+---
+
+# 6. Line Sensor Wiring
+
+Module
+
+```
+3-Channel TCRT5000
+```
+
+Power
+
+| Sensor | ESP32 |
+|---------|--------|
+| VCC | 3.3V |
+| GND | GND |
+
+Signal
+
+| Sensor | GPIO |
+|---------|------|
+| Left | GPIO18 |
+| Center | GPIO16 |
+| Right | GPIO17 |
+
+---
+
+# 7. HC-SR04 Wiring
+
+Power
+
+| HC-SR04 | ESP32 |
+|----------|--------|
+| VCC | 5V |
+| GND | GND |
+
+Signal
+
+| HC-SR04 | GPIO |
+|----------|------|
+| Trigger | GPIO23 |
+| Echo | GPIO22 |
+
+---
+
+**Lưu ý**
+
+Nếu module HC-SR04 xuất Echo ở mức 5V, cần sử dụng mạch chia áp hoặc level shifter để bảo vệ GPIO của ESP32 nếu cần.
+
+---
+
+# 8. Motor Driver Wiring
+
+Driver
+
+```
+TB6612FNG (HW-166)
+```
+
+## Logic Control
+
+| TB6612FNG | ESP32 |
+|------------|--------|
+| AIN1 | GPIO25 |
+| AIN2 | GPIO26 |
+| BIN1 | GPIO27 |
+| BIN2 | GPIO14 |
+
+---
+
+## Motor Output
+
+| TB6612FNG | Motor |
+|------------|--------|
+| AO1 | Left Motor |
+| AO2 | Left Motor |
+| BO1 | Right Motor |
+| BO2 | Right Motor |
+
+Nếu motor quay ngược chiều mong muốn:
+
+- Đảo AO1 ↔ AO2
+- Hoặc BO1 ↔ BO2
+
+Không sửa phần mềm nếu chỉ sai chiều quay.
+
+---
+
+## Power
+
+| TB6612FNG | Connection |
+|------------|------------|
+| VM | Battery 7.5V |
+| VCC | 3.3V |
+| GND | Common GND |
+| STBY | 3.3V (Enable) |
+
+---
+
+# 9. LM2596 Wiring
+
+Input
+
+| LM2596 | Battery |
+|---------|---------|
+| IN+ | Battery + |
+| IN- | Battery - |
+
+Output
+
+| LM2596 | ESP32 |
+|---------|--------|
+| OUT+ | 5V (VCC) |
+| OUT- | GND |
+
+Điều chỉnh LM2596 về **5.0V** trước khi kết nối ESP32.
+
+---
+
+# 10. Common Ground
+
+Toàn bộ hệ thống phải nối chung mass.
+
+```
+Battery -
+
+↓
+
+LM2596 GND
+
+↓
+
+ESP32 GND
+
+↓
+
+TB6612FNG GND
+
+↓
+
+HC-SR04 GND
+
+↓
+
+Line Sensor GND
+
+↓
+
+LED GND
+
+↓
+
+Buzzer GND
+```
+
+Không được tách riêng GND.
+
+---
+
+# 11. Power-On Checklist
+
+Trước khi cấp nguồn:
+
+- [ ] LM2596 Output = 5.0V
+- [ ] ESP32 chưa quá nóng
+- [ ] GND đã nối chung
+- [ ] Motor Driver đúng nguồn
+- [ ] HC-SR04 đúng VCC/GND
+- [ ] Line Sensor đúng GPIO
+- [ ] LED đúng cực
+- [ ] Buzzer đúng chân SIG
+
+---
+
+# 12. Functional Test
+
+Sau khi nạp firmware.
+
+Kiểm tra theo thứ tự:
+
+## LED
+
+```
+SetLed(1)
+```
+
+↓
+
+LED trái sáng
+
+```
+SetLed(2)
+```
+
+↓
+
+LED phải sáng
+
+---
+
+## Buzzer
+
+```
+SetMp3Play(1)
+```
+
+↓
+
+Beep
+
+---
+
+## Line Sensor
+
+Che từng mắt.
+
+↓
+
+Development Console hiển thị đúng Bitmask.
+
+---
+
+## HC-SR04
+
+Đưa vật cản.
+
+↓
+
+Khoảng cách thay đổi.
+
+---
+
+## Motor
+
+Forward
+
+↓
+
+Hai bánh tiến.
+
+Backward
+
+↓
+
+Hai bánh lùi.
+
+Turn Left
+
+↓
+
+Robot quay trái.
+
+Turn Right
+
+↓
+
+Robot quay phải.
+
+---
+
+# 13. Troubleshooting
+
+## ESP32 không khởi động
+
+- Kiểm tra LM2596 = 5V
+- Kiểm tra dây VCC
+- Kiểm tra GND
+
+---
+
+## Motor không quay
+
+- Kiểm tra VM = 7.5V
+- Kiểm tra STBY
+- Kiểm tra dây motor
+- Kiểm tra AIN/BIN
+
+---
+
+## Line Sensor không đọc
+
+- Kiểm tra GPIO18/16/17
+- Kiểm tra nguồn 3.3V
+- Kiểm tra GND
+
+---
+
+## HC-SR04 luôn trả 0
+
+- Kiểm tra Trigger
+- Kiểm tra Echo
+- Kiểm tra nguồn 5V
+
+---
+
+## Buzzer không kêu
+
+- Kiểm tra GPIO19
+- Kiểm tra Active Buzzer
+- Kiểm tra VCC 3.3V
+
+---
+
+# 14. Wiring Rules
+
+- Không cắm/rút module khi đang cấp nguồn.
+- Luôn kiểm tra điện áp LM2596 trước khi cấp vào ESP32.
+- Luôn sử dụng Common Ground.
+- Không nối trực tiếp 7.5V vào ESP32.
+- Không thay đổi GPIO nếu chưa cập nhật `HARDWARE_PINOUT.md`.
+
+---
+
+# 15. Document References
+
+- HARDWARE_PINOUT.md
+- POWER_ARCHITECTURE.md
+- BOARD_SPEC.md
+- BOM.md
 
 ================
 File: robot-docs/task/Sprint S3.3B — Query Transport Foundation (TCRT5000).md
@@ -5808,384 +7201,6 @@ class FirmwareService:
             subprocess.run(["open", str(ino_file)])
         else:
             subprocess.run(["xdg-open", str(ino_file)])
-
-================
-File: robostudio/ui/main_window.py
-================
-"""
-RoboStudio Main Window UI – coded manually with PySide6.
-"""
-
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit,
-    QPushButton, QTextEdit, QLabel, QFrame, QMenuBar, QMenu, QMessageBox, QFileDialog
-)
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QAction, QCursor
-
-
-class Ui_MainWindow:
-    def setupUi(self, MainWindow):
-        MainWindow.setWindowTitle("RoboStudio")
-        MainWindow.resize(850, 650)
-
-        # Menu Bar
-        menubar = QMenuBar(MainWindow)
-        MainWindow.setMenuBar(menubar)
-
-        # File menu
-        self.file_menu = menubar.addMenu("&File")
-        self.file_menu.setObjectName("menuFile")  # <-- ADDED
-
-        # Examples menu
-        self.examples_menu = menubar.addMenu("&Examples")
-
-        # Help menu
-        help_menu = menubar.addMenu("&Help")
-        self.about_action = QAction("About", MainWindow)
-        help_menu.addAction(self.about_action)
-
-        # Central widget
-        central_widget = QWidget(MainWindow)
-        MainWindow.setCentralWidget(central_widget)
-
-        # Main layout
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(10)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-
-        # Code Editor
-        self.code_editor = QPlainTextEdit()
-        self.code_editor.setPlaceholderText("Paste your RoboSim Python code here...")
-        font = QFont("Courier New", 11)
-        self.code_editor.setFont(font)
-        self.code_editor.setMinimumHeight(250)
-        main_layout.addWidget(self.code_editor)
-
-        # Button row
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
-
-        self.compile_button = QPushButton("Compile")
-        self.compile_button.setMinimumWidth(100)
-        self.compile_button.setEnabled(True)
-        button_layout.addWidget(self.compile_button)
-
-        self.open_firmware_button = QPushButton("Open Firmware")
-        self.open_firmware_button.setMinimumWidth(100)
-        button_layout.addWidget(self.open_firmware_button)
-
-        button_layout.addStretch()
-        main_layout.addLayout(button_layout)
-
-        # Separator
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        main_layout.addWidget(line)
-
-        # Build Output
-        self.build_output = QTextEdit()
-        self.build_output.setReadOnly(True)
-        self.build_output.setPlaceholderText("Build output will appear here...")
-        font_output = QFont("Courier New", 10)
-        self.build_output.setFont(font_output)
-        self.build_output.setMinimumHeight(150)
-        main_layout.addWidget(self.build_output)
-
-        # Status Bar
-        status_layout = QHBoxLayout()
-        status_layout.addWidget(QLabel("Status:"))
-        self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet("font-weight: bold; color: green;")
-        status_layout.addWidget(self.status_label)
-        status_layout.addStretch()
-        main_layout.addLayout(status_layout)
-
-        # Store menubar reference for later
-        self.menubar = menubar
-
-================
-File: robostudio/app.py
-================
-"""
-RoboStudio Application – main controller
-"""
-
-import sys
-import os
-from pathlib import Path
-from PySide6.QtWidgets import (
-    QMainWindow, QMessageBox, QFileDialog, QApplication, QMenu
-)
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QCursor, QTextCursor, QAction
-
-from ui.main_window import Ui_MainWindow
-from services.build_service import BuildService
-from services.firmware_service import FirmwareService
-from services.build_worker import BuildWorker
-
-
-# List of example programs (name -> code)
-EXAMPLES = {
-    "Motion (Forward)": """import rcu
-import _thread
-
-def task():
-    rcu.SetMoveRunSecond("forward", 80, 1)
-
-_thread.start_new_thread(task, ())
-while True:
-    pass
-""",
-    "LED Blink": """import rcu
-
-rcu.Set3CLed(1, 1)
-rcu.SetWaitForTime(0.5)
-rcu.Set3CLed(1, 0)
-""",
-    "Buzzer Beep": """import rcu
-
-rcu.SetMp3Play(1)
-""",
-    "Line Following (Basic)": """import rcu
-
-while True:
-    rcu.line_basis(60)
-    rcu.SetWaitForTime(0.02)
-""",
-    "Ultrasonic Obstacle": """import rcu
-
-while True:
-    dist = rcu.GetUltrasound(1)
-    if dist < 20:
-        rcu.SetMoveStop()
-    else:
-        rcu.SetMoveRun("forward", 50)
-    rcu.SetWaitForTime(0.1)
-""",
-    "Touch Stop": """import rcu
-
-while True:
-    if rcu.GetTouch(1):
-        rcu.SetMoveStop()
-    else:
-        rcu.SetMoveRun("forward", 50)
-    rcu.SetWaitForTime(0.05)
-"""
-}
-
-
-class RoboStudioApp(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.ui = Ui_MainWindow()
-        self.ui.setupUi(self)
-
-        # Services
-        self.build_service = BuildService()
-        self.firmware_service = FirmwareService()
-
-        # Build worker
-        self.worker = None
-        self.is_building = False
-
-        # Check firmware on startup
-        self._check_firmware()
-
-        # Connect signals
-        self.ui.compile_button.clicked.connect(self.on_compile)
-        self.ui.open_firmware_button.clicked.connect(self.on_open_firmware)
-        self.ui.about_action.triggered.connect(self.on_about)
-
-        # Setup File menu
-        self._setup_file_menu()
-
-        # Build Examples menu
-        self._build_examples_menu()
-
-        # Set initial status
-        self.set_status("Ready", color="green")
-
-    def _setup_file_menu(self):
-        """Add Open action to File menu."""
-        # Find the File menu
-        file_menu = self.ui.menubar.findChild(QMenu, "menuFile")
-        if file_menu is None:
-            # Fallback: use the first menu
-            file_menu = self.ui.menubar.actions()[0].menu()
-
-        open_action = QAction("Open...", self)
-        open_action.setShortcut("Ctrl+O")
-        open_action.triggered.connect(self._open_file)
-        file_menu.addAction(open_action)
-
-        file_menu.addSeparator()
-
-        exit_action = QAction("Exit", self)
-        exit_action.setShortcut("Ctrl+Q")
-        exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
-
-    def _open_file(self):
-        """Open a .py file and load its content into the editor."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open RoboSim Code",
-            "",
-            "Python Files (*.py);;All Files (*.*)"
-        )
-        if file_path:
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    code = f.read()
-                self.ui.code_editor.setPlainText(code)
-                self.set_status(f"Loaded: {Path(file_path).name}", color="green")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
-
-    def _check_firmware(self):
-        """If firmware not found, ask user to select it."""
-        fw_path = self.firmware_service.get_firmware_path()
-        if fw_path is None:
-            QMessageBox.information(
-                self,
-                "Firmware Not Found",
-                "Please select the main.ino (or RobotVM.ino) file for your robot."
-            )
-            self._browse_firmware()
-
-    def _browse_firmware(self):
-        """Open file dialog to select firmware .ino file."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Firmware Project (main.ino or RobotVM.ino)",
-            "",
-            "Arduino Files (*.ino);;All Files (*.*)"
-        )
-        if file_path:
-            self.firmware_service.set_firmware_path(Path(file_path))
-            self.set_status("Firmware configured", color="green")
-        else:
-            # User cancelled, but we'll allow them to continue
-            pass
-
-    def _build_examples_menu(self):
-        """Populate the Examples menu with actions."""
-        for name, code in EXAMPLES.items():
-            action = self.ui.examples_menu.addAction(name)
-            action.triggered.connect(lambda checked, c=code: self._load_example(c))
-
-    def _load_example(self, code):
-        """Load example code into the editor."""
-        self.ui.code_editor.setPlainText(code)
-
-    def on_compile(self):
-        """Handle Compile button click."""
-        if self.is_building:
-            return
-
-        code = self.ui.code_editor.toPlainText()
-        if not code.strip():
-            self.ui.build_output.setPlainText("Error: No code to compile.")
-            self.set_status("Failed", color="red")
-            return
-
-        # Clear output
-        self.ui.build_output.clear()
-        self.set_status("Building...", color="blue")
-        self.is_building = True
-        self.ui.compile_button.setEnabled(False)
-        self.ui.compile_button.setText("Building...")
-        QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
-
-        # Prepare command
-        try:
-            cmd, env, temp_file = self.build_service.get_command(code)
-        except Exception as e:
-            self._build_finished(success=False, summary=f"Error preparing build: {e}")
-            return
-
-        # Create and start worker
-        self.worker = BuildWorker(cmd, env, temp_file)
-        self.worker.output_received.connect(self._on_output)
-        self.worker.build_finished.connect(self._build_finished)
-        self.worker.error_occurred.connect(self._build_error)
-        self.worker.start()
-
-    def _on_output(self, text):
-        """Append real‑time output to build log."""
-        self.ui.build_output.insertPlainText(text)
-        # Auto-scroll to bottom
-        cursor = self.ui.build_output.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        self.ui.build_output.setTextCursor(cursor)
-
-    def _build_finished(self, success, summary):
-        """Handle build completion."""
-        self.is_building = False
-        self.ui.compile_button.setEnabled(True)
-        self.ui.compile_button.setText("Compile")
-        QApplication.restoreOverrideCursor()
-
-        if success:
-            self.set_status("Success", color="green")
-            # Append summary
-            self.ui.build_output.append("\n" + "="*40)
-            self.ui.build_output.append(summary)
-            self.ui.build_output.append("Arduino Ready – you can now upload.")
-        else:
-            self.set_status("Failed", color="red")
-            self.ui.build_output.append("\n" + "="*40)
-            self.ui.build_output.append(summary)
-            self.ui.build_output.append("\nCheck the log above for details.")
-
-    def _build_error(self, error_msg):
-        """Handle critical worker errors."""
-        self.is_building = False
-        self.ui.compile_button.setEnabled(True)
-        self.ui.compile_button.setText("Compile")
-        QApplication.restoreOverrideCursor()
-        self.set_status("Error", color="red")
-        self.ui.build_output.append(f"\nError: {error_msg}")
-
-    def on_open_firmware(self):
-        """Open the firmware project."""
-        try:
-            self.firmware_service.open_firmware()
-        except FileNotFoundError as e:
-            # Show prompt to select firmware
-            ret = QMessageBox.question(
-                self,
-                "Firmware Not Found",
-                str(e) + "\n\nWould you like to locate the firmware file?",
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if ret == QMessageBox.Yes:
-                self._browse_firmware()
-                # Retry after selection
-                try:
-                    self.firmware_service.open_firmware()
-                except Exception as e2:
-                    QMessageBox.critical(self, "Error", f"Still unable to open: {e2}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to open firmware:\n{str(e)}")
-
-    def on_about(self):
-        QMessageBox.about(
-            self,
-            "About RoboStudio",
-            "RoboStudio MVP\n\n"
-            "A simple launcher for Robot Compiler.\n"
-            "Version: M4.2\n"
-            "License: MIT"
-        )
-
-    def set_status(self, text, color="black"):
-        """Update status label with color (green/red/blue/black)."""
-        self.ui.status_label.setText(text)
-        self.ui.status_label.setStyleSheet(f"font-weight: bold; color: {color};")
 
 ================
 File: robostudio/main.py
@@ -33297,67 +34312,6 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
 }
 
 ================
-File: robot-platform/main/src/Services/Line/LineFollower.h
-================
-#ifndef LINE_FOLLOWER_H
-#define LINE_FOLLOWER_H
-
-#include <stdint.h>
-#include "PIDController.h"
-#include "FollowerStateMachine.h"
-#include "IntersectionDetector.h"
-#include "RecoveryStrategy.h"
-#include "LineErrorEstimator.h"
-#include "MotorMixer.h"
-#include "MotionController.h"
-
-class LineFollower {
-public:
-    static LineFollower& instance();
-
-    // Main tick: processes mask, updates state, computes motor speeds
-    bool update(uint8_t mask, int speed, int &leftMotor, int &rightMotor);
-
-    // Commands
-    void setSpeed(int speed) { _speed = speed; }
-    void turnEncounterLine(int direction);
-    void stopAtIntersection();
-    void followForBmp(int speed, int degree);
-    void stop();
-    bool isStopped() const { return _stopped; }
-    bool isBmpActive() const { return _bmpActive; }
-
-    // Tuning
-    void setPIDGains(float kp, float ki, float kd);
-    void setPIDLimits(float min, float max);
-
-    // Reset
-    void reset();
-
-private:
-    LineFollower();
-
-    // Components
-    FollowerStateMachine _stateMachine;
-    IntersectionDetector _intersectionDetector;
-    RecoveryStrategy _recovery;
-    MotionController _motionController;
-
-    int _speed;
-    bool _stopped;
-    bool _turnRequested;
-    int _turnDirection;
-    bool _stopAtIntersectionRequested;
-
-    // BMP
-    bool _bmpActive;
-    uint32_t _bmpStart;
-    int _bmpDuration;
-};
-
-#endif
-
-================
 File: robot-platform/main/src/Services/Line/LinePerception.cpp
 ================
 #include "LinePerception.h"
@@ -35376,6 +36330,384 @@ while count < 20:
     
     rcu.SetWaitForTime(0.05)
     count +=1
+
+================
+File: robostudio/ui/main_window.py
+================
+"""
+RoboStudio Main Window UI – coded manually with PySide6.
+"""
+
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit,
+    QPushButton, QTextEdit, QLabel, QFrame, QMenuBar, QMenu, QMessageBox, QFileDialog
+)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QAction, QCursor
+
+
+class Ui_MainWindow:
+    def setupUi(self, MainWindow):
+        MainWindow.setWindowTitle("RoboStudio")
+        MainWindow.resize(850, 650)
+
+        # Menu Bar
+        menubar = QMenuBar(MainWindow)
+        MainWindow.setMenuBar(menubar)
+
+        # File menu
+        self.file_menu = menubar.addMenu("&File")
+        self.file_menu.setObjectName("menuFile")  # <-- ADDED
+
+        # Examples menu
+        self.examples_menu = menubar.addMenu("&Examples")
+
+        # Help menu
+        help_menu = menubar.addMenu("&Help")
+        self.about_action = QAction("About", MainWindow)
+        help_menu.addAction(self.about_action)
+
+        # Central widget
+        central_widget = QWidget(MainWindow)
+        MainWindow.setCentralWidget(central_widget)
+
+        # Main layout
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+
+        # Code Editor
+        self.code_editor = QPlainTextEdit()
+        self.code_editor.setPlaceholderText("Paste your RoboSim Python code here...")
+        font = QFont("Courier New", 11)
+        self.code_editor.setFont(font)
+        self.code_editor.setMinimumHeight(250)
+        main_layout.addWidget(self.code_editor)
+
+        # Button row
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+
+        self.compile_button = QPushButton("Compile")
+        self.compile_button.setMinimumWidth(100)
+        self.compile_button.setEnabled(True)
+        button_layout.addWidget(self.compile_button)
+
+        self.open_firmware_button = QPushButton("Open Firmware")
+        self.open_firmware_button.setMinimumWidth(100)
+        button_layout.addWidget(self.open_firmware_button)
+
+        button_layout.addStretch()
+        main_layout.addLayout(button_layout)
+
+        # Separator
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        main_layout.addWidget(line)
+
+        # Build Output
+        self.build_output = QTextEdit()
+        self.build_output.setReadOnly(True)
+        self.build_output.setPlaceholderText("Build output will appear here...")
+        font_output = QFont("Courier New", 10)
+        self.build_output.setFont(font_output)
+        self.build_output.setMinimumHeight(150)
+        main_layout.addWidget(self.build_output)
+
+        # Status Bar
+        status_layout = QHBoxLayout()
+        status_layout.addWidget(QLabel("Status:"))
+        self.status_label = QLabel("Ready")
+        self.status_label.setStyleSheet("font-weight: bold; color: green;")
+        status_layout.addWidget(self.status_label)
+        status_layout.addStretch()
+        main_layout.addLayout(status_layout)
+
+        # Store menubar reference for later
+        self.menubar = menubar
+
+================
+File: robostudio/app.py
+================
+"""
+RoboStudio Application – main controller
+"""
+
+import sys
+import os
+from pathlib import Path
+from PySide6.QtWidgets import (
+    QMainWindow, QMessageBox, QFileDialog, QApplication, QMenu
+)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QCursor, QTextCursor, QAction
+
+from ui.main_window import Ui_MainWindow
+from services.build_service import BuildService
+from services.firmware_service import FirmwareService
+from services.build_worker import BuildWorker
+
+
+# List of example programs (name -> code)
+EXAMPLES = {
+    "Motion (Forward)": """import rcu
+import _thread
+
+def task():
+    rcu.SetMoveRunSecond("forward", 80, 1)
+
+_thread.start_new_thread(task, ())
+while True:
+    pass
+""",
+    "LED Blink": """import rcu
+
+rcu.Set3CLed(1, 1)
+rcu.SetWaitForTime(0.5)
+rcu.Set3CLed(1, 0)
+""",
+    "Buzzer Beep": """import rcu
+
+rcu.SetMp3Play(1)
+""",
+    "Line Following (Basic)": """import rcu
+
+while True:
+    rcu.line_basis(60)
+    rcu.SetWaitForTime(0.02)
+""",
+    "Ultrasonic Obstacle": """import rcu
+
+while True:
+    dist = rcu.GetUltrasound(1)
+    if dist < 20:
+        rcu.SetMoveStop()
+    else:
+        rcu.SetMoveRun("forward", 50)
+    rcu.SetWaitForTime(0.1)
+""",
+    "Touch Stop": """import rcu
+
+while True:
+    if rcu.GetTouch(1):
+        rcu.SetMoveStop()
+    else:
+        rcu.SetMoveRun("forward", 50)
+    rcu.SetWaitForTime(0.05)
+"""
+}
+
+
+class RoboStudioApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.ui = Ui_MainWindow()
+        self.ui.setupUi(self)
+
+        # Services
+        self.build_service = BuildService()
+        self.firmware_service = FirmwareService()
+
+        # Build worker
+        self.worker = None
+        self.is_building = False
+
+        # Check firmware on startup
+        self._check_firmware()
+
+        # Connect signals
+        self.ui.compile_button.clicked.connect(self.on_compile)
+        self.ui.open_firmware_button.clicked.connect(self.on_open_firmware)
+        self.ui.about_action.triggered.connect(self.on_about)
+
+        # Setup File menu
+        self._setup_file_menu()
+
+        # Build Examples menu
+        self._build_examples_menu()
+
+        # Set initial status
+        self.set_status("Ready", color="green")
+
+    def _setup_file_menu(self):
+        """Add Open action to File menu."""
+        # Find the File menu
+        file_menu = self.ui.menubar.findChild(QMenu, "menuFile")
+        if file_menu is None:
+            # Fallback: use the first menu
+            file_menu = self.ui.menubar.actions()[0].menu()
+
+        open_action = QAction("Open...", self)
+        open_action.setShortcut("Ctrl+O")
+        open_action.triggered.connect(self._open_file)
+        file_menu.addAction(open_action)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction("Exit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+    def _open_file(self):
+        """Open a .py file and load its content into the editor."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open RoboSim Code",
+            "",
+            "Python Files (*.py);;All Files (*.*)"
+        )
+        if file_path:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    code = f.read()
+                self.ui.code_editor.setPlainText(code)
+                self.set_status(f"Loaded: {Path(file_path).name}", color="green")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
+
+    def _check_firmware(self):
+        """If firmware not found, ask user to select it."""
+        fw_path = self.firmware_service.get_firmware_path()
+        if fw_path is None:
+            QMessageBox.information(
+                self,
+                "Firmware Not Found",
+                "Please select the main.ino (or RobotVM.ino) file for your robot."
+            )
+            self._browse_firmware()
+
+    def _browse_firmware(self):
+        """Open file dialog to select firmware .ino file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Firmware Project (main.ino or RobotVM.ino)",
+            "",
+            "Arduino Files (*.ino);;All Files (*.*)"
+        )
+        if file_path:
+            self.firmware_service.set_firmware_path(Path(file_path))
+            self.set_status("Firmware configured", color="green")
+        else:
+            # User cancelled, but we'll allow them to continue
+            pass
+
+    def _build_examples_menu(self):
+        """Populate the Examples menu with actions."""
+        for name, code in EXAMPLES.items():
+            action = self.ui.examples_menu.addAction(name)
+            action.triggered.connect(lambda checked, c=code: self._load_example(c))
+
+    def _load_example(self, code):
+        """Load example code into the editor."""
+        self.ui.code_editor.setPlainText(code)
+
+    def on_compile(self):
+        """Handle Compile button click."""
+        if self.is_building:
+            return
+
+        code = self.ui.code_editor.toPlainText()
+        if not code.strip():
+            self.ui.build_output.setPlainText("Error: No code to compile.")
+            self.set_status("Failed", color="red")
+            return
+
+        # Clear output
+        self.ui.build_output.clear()
+        self.set_status("Building...", color="blue")
+        self.is_building = True
+        self.ui.compile_button.setEnabled(False)
+        self.ui.compile_button.setText("Building...")
+        QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+
+        # Prepare command
+        try:
+            cmd, env, temp_file = self.build_service.get_command(code)
+        except Exception as e:
+            self._build_finished(success=False, summary=f"Error preparing build: {e}")
+            return
+
+        # Create and start worker
+        self.worker = BuildWorker(cmd, env, temp_file)
+        self.worker.output_received.connect(self._on_output)
+        self.worker.build_finished.connect(self._build_finished)
+        self.worker.error_occurred.connect(self._build_error)
+        self.worker.start()
+
+    def _on_output(self, text):
+        """Append real‑time output to build log."""
+        self.ui.build_output.insertPlainText(text)
+        # Auto-scroll to bottom
+        cursor = self.ui.build_output.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        self.ui.build_output.setTextCursor(cursor)
+
+    def _build_finished(self, success, summary):
+        """Handle build completion."""
+        self.is_building = False
+        self.ui.compile_button.setEnabled(True)
+        self.ui.compile_button.setText("Compile")
+        QApplication.restoreOverrideCursor()
+
+        if success:
+            self.set_status("Success", color="green")
+            # Append summary
+            self.ui.build_output.append("\n" + "="*40)
+            self.ui.build_output.append(summary)
+            self.ui.build_output.append("Arduino Ready – you can now upload.")
+        else:
+            self.set_status("Failed", color="red")
+            self.ui.build_output.append("\n" + "="*40)
+            self.ui.build_output.append(summary)
+            self.ui.build_output.append("\nCheck the log above for details.")
+
+    def _build_error(self, error_msg):
+        """Handle critical worker errors."""
+        self.is_building = False
+        self.ui.compile_button.setEnabled(True)
+        self.ui.compile_button.setText("Compile")
+        QApplication.restoreOverrideCursor()
+        self.set_status("Error", color="red")
+        self.ui.build_output.append(f"\nError: {error_msg}")
+
+    def on_open_firmware(self):
+        """Open the firmware project."""
+        try:
+            self.firmware_service.open_firmware()
+        except FileNotFoundError as e:
+            # Show prompt to select firmware
+            ret = QMessageBox.question(
+                self,
+                "Firmware Not Found",
+                str(e) + "\n\nWould you like to locate the firmware file?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if ret == QMessageBox.Yes:
+                self._browse_firmware()
+                # Retry after selection
+                try:
+                    self.firmware_service.open_firmware()
+                except Exception as e2:
+                    QMessageBox.critical(self, "Error", f"Still unable to open: {e2}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open firmware:\n{str(e)}")
+
+    def on_about(self):
+        QMessageBox.about(
+            self,
+            "About RoboStudio",
+            "RoboStudio MVP\n\n"
+            "A simple launcher for Robot Compiler.\n"
+            "Version: M4.2\n"
+            "License: MIT"
+        )
+
+    def set_status(self, text, color="black"):
+        """Update status label with color (green/red/blue/black)."""
+        self.ui.status_label.setText(text)
+        self.ui.status_label.setStyleSheet(f"font-weight: bold; color: {color};")
 
 ================
 File: robot-cli/robot_cli.egg-info/PKG-INFO
@@ -39482,6 +40814,68 @@ float Ultrasonic::maxRangeCm() const {
 const char* Ultrasonic::unit() const {
     return "cm";
 }
+
+================
+File: robot-platform/main/src/Services/Line/LineFollower.h
+================
+#ifndef LINE_FOLLOWER_H
+#define LINE_FOLLOWER_H
+
+#include <stdint.h>
+#include "PIDController.h"
+#include "FollowerStateMachine.h"
+#include "IntersectionDetector.h"
+#include "RecoveryStrategy.h"
+#include "LineErrorEstimator.h"
+#include "MotorMixer.h"
+#include "MotionController.h"
+
+class LineFollower {
+public:
+    static LineFollower& instance();
+
+    // Main tick: processes mask, updates state, computes motor speeds
+    bool update(uint8_t mask, int speed, int &leftMotor, int &rightMotor);
+
+    // Commands
+    void setSpeed(int speed) { _speed = speed; }
+    void turnEncounterLine(int direction);
+    void stopAtIntersection();
+    void followForBmp(int speed, int degree);
+    void stop();
+    bool isStopped() const { return _stopped; }
+    bool isBmpActive() const { return _bmpActive; }
+
+    // Tuning
+    void setPIDGains(float kp, float ki, float kd);
+    void setPIDLimits(float min, float max);
+
+    // Reset
+    void reset();
+
+private:
+    LineFollower();
+
+    // Components
+    FollowerStateMachine _stateMachine;
+    IntersectionDetector _intersectionDetector;
+    RecoveryStrategy _recovery;
+    MotionController _motionController;
+    PIDController _pid; 
+
+    int _speed;
+    bool _stopped;
+    bool _turnRequested;
+    int _turnDirection;
+    bool _stopAtIntersectionRequested;
+
+    // BMP
+    bool _bmpActive;
+    uint32_t _bmpStart;
+    int _bmpDuration;
+};
+
+#endif
 
 ================
 File: robot-platform/main/src/Services/VM/ProgramLoader.h
@@ -45777,14 +47171,22 @@ File: robot-platform/main/src/Application/generated_program.h
 
 const Instruction generatedProgram[] =
 {
-    Instruction(Opcode::LoadConst, 0, 90, 0, 0),
-    Instruction(Opcode::Forward, 0, 0, 0, 0),
-    Instruction(Opcode::LoadConst, 1, 1000, 0, 0),
-    Instruction(Opcode::Wait, 1, 0, 0, 0),
+    Instruction(Opcode::ReadUltrasonic, 1, 0, 0, 0),
+    Instruction(Opcode::Store, 1, 0, 0, 0),
+    Instruction(Opcode::LoadConst, 2, 30, 0, 0),
+    Instruction(Opcode::CompareLT, 0, 2, 3, 0),
+    Instruction(Opcode::JumpIfFalse, 3, 7, 0, 0),
     Instruction(Opcode::Stop, 0, 0, 0, 0),
+    Instruction(Opcode::Jump, 0, 10, 0, 0),
+    Instruction(Opcode::LoadConst, 4, 80, 0, 0),
+    Instruction(Opcode::LoadConst, 5, 92, 0, 0),
+    Instruction(Opcode::SetMotorSpeed, 4, 5, 0, 0),
+    Instruction(Opcode::LoadConst, 6, 100, 0, 0),
+    Instruction(Opcode::Wait, 6, 0, 0, 0),
+    Instruction(Opcode::Jump, 0, 0, 0, 0),
 };
 
-const uint16_t generatedProgramSize = 5;
+const uint16_t generatedProgramSize = 13;
 
 ================
 File: robot-platform/main/src/Services/Robot/RobotAPI.cpp
@@ -45896,6 +47298,11 @@ void Initialize() {
     pinMode(MOTOR_R_IN3_PIN, OUTPUT);
     pinMode(MOTOR_R_IN4_PIN, OUTPUT);
 
+    //disable motor
+    digitalWrite(MOTOR_L_IN1_PIN, LOW);
+    digitalWrite(MOTOR_L_IN2_PIN, LOW);
+    digitalWrite(MOTOR_R_IN3_PIN, LOW);
+    digitalWrite(MOTOR_R_IN4_PIN, LOW);
     // PWM setup
     ledcAttach(MOTOR_L_IN1_PIN, PWM_FREQ, PWM_RES);
     ledcAttach(MOTOR_L_IN2_PIN, PWM_FREQ, PWM_RES);
@@ -46211,144 +47618,6 @@ void LineForBmp(int speed, int degree) {
 }
 
 } // namespace RobotAPI
-
-================
-File: robot-platform/main/main.ino
-================
-#include "src/Services/VM/ProgramLoader.h"
-#include "src/Services/VM/VM.h"
-#include "src/Services/Robot/RobotAPI.h"
-#include "src/Logger/BootLogger.h"
-#include "src/Diagnostic/Diagnostic.h"
-#include "src/Communication/SerialCommandHandler.h"
-
-// === Behavior Engine ===
-#include "src/Behavior/BehaviorScheduler.h"
-#include "src/Behavior/MoveForwardBehavior.h"
-#include "src/Behavior/MoveBackwardBehavior.h"
-#include "src/Behavior/TurnLeftBehavior.h"
-#include "src/Behavior/TurnRightBehavior.h"
-#include "src/Behavior/StopBehavior.h"
-#include "src/Behavior/WaitBehavior.h"
-#include "src/Behavior/TouchStopBehavior.h"
-#include "src/Behavior/ObstacleStopBehavior.h"
-#include "src/Behavior/LineDetectBehavior.h"
-#include "src/Behavior/LightTriggerBehavior.h"
-#include "src/Behavior/ColorDetectBehavior.h"
-
-// === Diagnostics ===
-#include "src/Diagnostics/DiagnosticsManager.h"
-#include "src/Sensor/SensorManager.h"   // để gọi updateAll()
-#include "src/Diagnostics/Console/DevelopmentConsole.h"
-// VM
-VM vm;
-Program program;
-const int STABILITY_ITERATIONS = 10;
-int executionCounter = 0;
-
-// Behavior Engine
-BehaviorScheduler scheduler;
-bool useBehaviorEngine = false;  // Mặc định chạy VM
-
-void setup() {
-    Serial.begin(115200);
-    while (!Serial) { }
-
-    BootLogger::log("BOOT", "Power On");
-
-    // 1. Hardware Initialization
-    RobotAPI::Initialize();
-    BootLogger::log("BOOT", "Hardware Ready");
-
-    // 2. Diagnostics
-    Diagnostic::runAll();
-    BootLogger::log("BOOT", "Diagnostics Complete");
-
-    // 3. Load Program for VM
-    if (!ProgramLoader::LoadFromGenerated(program)) {
-        BootLogger::log("ERROR", "Failed to load program. Halted.");
-        while (1) { }
-    }
-    BootLogger::log("BOOT", "Binary Loaded");
-
-    vm.LoadProgram(&program);
-    BootLogger::log("BOOT", "VM Ready");
-
-    // 4. Serial Command Handler
-    SerialCommandHandler::setup();
-    BootLogger::log("BOOT", "Serial Handler Ready");
-
-    DevelopmentConsole::instance().begin();
-    DevelopmentConsole::instance().setEnabled(false);   // <-- THÊM DÒNG NÀY
-    BootLogger::log("BOOT", "Development Console ready (disabled by default)");
-
-    // 5. Initialize Behavior Scheduler with default behaviors
-    scheduler.addBehavior(new MoveForwardBehavior(50, 2000));
-    scheduler.addBehavior(new TouchStopBehavior(0, 50));
-    scheduler.addBehavior(new WaitBehavior(1000));
-    scheduler.addBehavior(new TurnLeftBehavior(50, 500));
-    scheduler.addBehavior(new StopBehavior());
-    scheduler.addBehavior(new ObstacleStopBehavior(50, 20));
-    scheduler.addBehavior(new LineDetectBehavior(0, 50));
-    scheduler.addBehavior(new LightTriggerBehavior(0, 500, 50));
-    scheduler.addBehavior(new ColorDetectBehavior(0, 50));
-    
-    BootLogger::log("BOOT", "Behavior Scheduler initialized with 9 behaviors");
-
-    BootLogger::log("EXEC", "System Ready. Type 'help' for commands.");
-    BootLogger::log("INFO", "Default mode: VM. Type 'mode behavior' to switch.");
-}
-
-void loop() {
-    uint32_t start = micros();
-
-    // Xử lý lệnh Serial
-    SerialCommandHandler::handle();
-
-    // Cập nhật tất cả sensor (cho diagnostics và các lần đọc sau)
-    SensorManager::instance().updateAll();
-
-    // Cập nhật thống kê diagnostics
-    DiagnosticsManager::instance().updateSensors();
-
-    DevelopmentConsole::instance().update();
-    if (useBehaviorEngine) {
-        // === Chạy Behavior Engine ===
-        scheduler.update();
-        if (!scheduler.isRunning()) {
-            // Nếu scheduler kết thúc, có thể ở trạng thái idle
-            // Không làm gì thêm
-        }
-    } else {
-        // === Chạy VM ===
-        if (vm.IsRunning()) {
-            vm.Step();
-        } else {
-            uint8_t err = vm.GetErrorCode();
-            if (err != 0) {
-                BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
-                while (1) { }
-            }
-            executionCounter++;
-            BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
-
-            if (executionCounter < STABILITY_ITERATIONS) {
-                BootLogger::log("STABILITY", "Restarting VM...");
-                vm.Reset();
-                vm.LoadProgram(&program);
-            } else {
-                BootLogger::log("STABILITY", "VM stability test completed.");
-                while (1) {
-                    SerialCommandHandler::handle();
-                    delay(30);
-                }
-            }
-        }
-    }
-
-    uint32_t elapsed = micros() - start;
-    DiagnosticsManager::instance().recordLoopTime(elapsed);
-}
 
 ================
 File: robot-platform/main/src/Services/VM/VM.cpp
@@ -46772,6 +48041,144 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             mContext.mErrorCode = 1; // Invalid opcode
             break;
     }
+}
+
+================
+File: robot-platform/main/main.ino
+================
+#include "src/Services/VM/ProgramLoader.h"
+#include "src/Services/VM/VM.h"
+#include "src/Services/Robot/RobotAPI.h"
+#include "src/Logger/BootLogger.h"
+#include "src/Diagnostic/Diagnostic.h"
+#include "src/Communication/SerialCommandHandler.h"
+
+// === Behavior Engine ===
+#include "src/Behavior/BehaviorScheduler.h"
+#include "src/Behavior/MoveForwardBehavior.h"
+#include "src/Behavior/MoveBackwardBehavior.h"
+#include "src/Behavior/TurnLeftBehavior.h"
+#include "src/Behavior/TurnRightBehavior.h"
+#include "src/Behavior/StopBehavior.h"
+#include "src/Behavior/WaitBehavior.h"
+#include "src/Behavior/TouchStopBehavior.h"
+#include "src/Behavior/ObstacleStopBehavior.h"
+#include "src/Behavior/LineDetectBehavior.h"
+#include "src/Behavior/LightTriggerBehavior.h"
+#include "src/Behavior/ColorDetectBehavior.h"
+
+// === Diagnostics ===
+#include "src/Diagnostics/DiagnosticsManager.h"
+#include "src/Sensor/SensorManager.h"   // để gọi updateAll()
+#include "src/Diagnostics/Console/DevelopmentConsole.h"
+// VM
+VM vm;
+Program program;
+const int STABILITY_ITERATIONS = 1;
+int executionCounter = 0;
+
+// Behavior Engine
+BehaviorScheduler scheduler;
+bool useBehaviorEngine = false;  // Mặc định chạy VM
+
+void setup() {
+    Serial.begin(115200);
+    while (!Serial) { }
+
+    BootLogger::log("BOOT", "Power On");
+
+    // 1. Hardware Initialization
+    RobotAPI::Initialize();
+    BootLogger::log("BOOT", "Hardware Ready");
+
+    // 2. Diagnostics
+    Diagnostic::runAll();
+    BootLogger::log("BOOT", "Diagnostics Complete");
+
+    // 3. Load Program for VM
+    if (!ProgramLoader::LoadFromGenerated(program)) {
+        BootLogger::log("ERROR", "Failed to load program. Halted.");
+        while (1) { }
+    }
+    BootLogger::log("BOOT", "Binary Loaded");
+
+    vm.LoadProgram(&program);
+    BootLogger::log("BOOT", "VM Ready");
+
+    // 4. Serial Command Handler
+    SerialCommandHandler::setup();
+    BootLogger::log("BOOT", "Serial Handler Ready");
+
+    DevelopmentConsole::instance().begin();
+    DevelopmentConsole::instance().setEnabled(false);   // <-- THÊM DÒNG NÀY
+    BootLogger::log("BOOT", "Development Console ready (disabled by default)");
+
+    // 5. Initialize Behavior Scheduler with default behaviors
+    scheduler.addBehavior(new MoveForwardBehavior(50, 2000));
+    scheduler.addBehavior(new TouchStopBehavior(0, 50));
+    scheduler.addBehavior(new WaitBehavior(1000));
+    scheduler.addBehavior(new TurnLeftBehavior(50, 500));
+    scheduler.addBehavior(new StopBehavior());
+    scheduler.addBehavior(new ObstacleStopBehavior(50, 20));
+    scheduler.addBehavior(new LineDetectBehavior(0, 50));
+    scheduler.addBehavior(new LightTriggerBehavior(0, 500, 50));
+    scheduler.addBehavior(new ColorDetectBehavior(0, 50));
+    
+    BootLogger::log("BOOT", "Behavior Scheduler initialized with 9 behaviors");
+
+    BootLogger::log("EXEC", "System Ready. Type 'help' for commands.");
+    BootLogger::log("INFO", "Default mode: VM. Type 'mode behavior' to switch.");
+}
+
+void loop() {
+    uint32_t start = micros();
+
+    // Xử lý lệnh Serial
+    SerialCommandHandler::handle();
+
+    // Cập nhật tất cả sensor (cho diagnostics và các lần đọc sau)
+    SensorManager::instance().updateAll();
+
+    // Cập nhật thống kê diagnostics
+    DiagnosticsManager::instance().updateSensors();
+
+    DevelopmentConsole::instance().update();
+    if (useBehaviorEngine) {
+        // === Chạy Behavior Engine ===
+        scheduler.update();
+        if (!scheduler.isRunning()) {
+            // Nếu scheduler kết thúc, có thể ở trạng thái idle
+            // Không làm gì thêm
+        }
+    } else {
+        // === Chạy VM ===
+        if (vm.IsRunning()) {
+            vm.Step();
+        } else {
+            uint8_t err = vm.GetErrorCode();
+            if (err != 0) {
+                BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
+                while (1) { }
+            }
+            executionCounter++;
+            BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
+
+            if (executionCounter < STABILITY_ITERATIONS) {
+                BootLogger::log("STABILITY", "Restarting VM...");
+                vm.Reset();
+                vm.LoadProgram(&program);
+            } else {
+                BootLogger::log("STABILITY", "VM stability test completed.");
+                while (1) {
+                    SerialCommandHandler::handle();
+                    delay(30);
+                }
+            }
+        }
+    }
+
+    uint32_t elapsed = micros() - start;
+    DiagnosticsManager::instance().recordLoopTime(elapsed);
 }
 
 
