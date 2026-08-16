@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from language import RobotLanguage, LanguageQuery, LanguageLoader
 from language.exceptions import SpecificationError
 
@@ -17,7 +16,7 @@ class BuildContext:
 
     @property
     def sdk_dir(self):
-        return self.root / "sdk"
+        return self.root / "robot"
 
     @property
     def generated_dir(self):
@@ -26,3 +25,7 @@ class BuildContext:
     @property
     def docs_dir(self):
         return self.root / "docs"
+
+    @property
+    def compatibility_dir(self):
+        return self.root.parent / "robot-docs" / "compatibility"

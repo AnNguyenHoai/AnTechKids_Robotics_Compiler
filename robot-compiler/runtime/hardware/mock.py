@@ -9,9 +9,11 @@ class MockHardware(IHardware):
         self.motor_left = 0
         self.motor_right = 0
         self.log = []
-        self._ultrasonic_value = 50  # default distance
-        self._line_values = {0: 512, 1: 512, 2: 512}  # default middle value
-        self._touch_values = {0: False, 1: False}  # default touch states
+        self._ultrasonic_value = 50
+        self._line_values = {0: 512, 1: 512, 2: 512}
+        self._touch_values = {0: False, 1: False}
+        self._light_value = 512
+        self._color_value = 0
 
     def set_motor(self, left: int, right: int) -> None:
         self.motor_left = max(-100, min(100, left))
@@ -41,8 +43,17 @@ class MockHardware(IHardware):
         print(f"[MockHardware] Read Touch port {port}: {val}")
         return val
 
-    # ---- Helper for tests ----
+    def read_light(self, channel: int) -> int:
+        self.log.append(("read_light", channel))
+        print(f"[MockHardware] Read Light channel {channel}: {self._light_value}")
+        return self._light_value
 
+    def read_color(self) -> int:
+        self.log.append(("read_color",))
+        print(f"[MockHardware] Read Color: {self._color_value}")
+        return self._color_value
+
+    # ---- Test helpers ----
     def set_ultrasonic_value(self, value: int):
         self._ultrasonic_value = value
 
@@ -51,6 +62,12 @@ class MockHardware(IHardware):
 
     def set_touch_value(self, port: int, value: bool):
         self._touch_values[port] = value
+
+    def set_light_value(self, value: int):
+        self._light_value = value
+
+    def set_color_value(self, value: int):
+        self._color_value = value
 
     def get_log(self):
         return self.log

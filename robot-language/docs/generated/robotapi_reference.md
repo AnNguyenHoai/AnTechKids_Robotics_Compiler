@@ -20,6 +20,12 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 #### `void set_motor_speed(int left_speed, int right_speed)`
 - Set motor speeds independently
 
+#### `void set_move_initialize(int left_motor, int right_motor, string reverse)`
+- Configure drive motors (left/right ports and reverse mode)
+
+#### `void set_move_run_angle(string direction, int speed, int angle)`
+- Move for a specified angle (wheel rotation or chassis turn)
+
 ### System
 #### `void wait(int milliseconds)`
 - Wait milliseconds
@@ -52,9 +58,8 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 #### `void get_trace_raw(int port)`
 - Get raw bitmask of all 3 trace sensors
 
-### Servo
-#### `void set_servo(int port, int angle)`
-- Set servo angle
+#### `void get_light_sensor_data(int port)`
+- Read light sensor digital state (0/1)
 
 ### Led
 #### `void set_3c_led(int port, int state)`
@@ -63,9 +68,25 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 #### `void set_light_sensor_led(int port, int state)`
 - Set light sensor LED state
 
+### Servo
+#### `void set_servo(int port, int angle)`
+- Set servo angle
+
+#### `void set_seering_engine(int port, int angle)`
+- Set steering engine angle
+
+#### `void set_seering_engine_time(int port, int angle, int millisecond)`
+- Set steering engine angle and hold for time
+
 ### Motor
+#### `void set_motor(int port, int speed)`
+- Set speed of a DC motor on given port
+
+#### `void set_motor_servo(int port, int speed, int angle)`
+- Set motor+servo combination
+
 #### `void set_motor_straight_angle(int left_port, int right_port, int speed, int angle)`
-- Set motor straight angle
+- Move both motors for a given angle
 
 ### Line
 #### `void line_basis(int speed)`
@@ -77,18 +98,34 @@ The RobotAPI is the hardware abstraction layer. All robot hardware access goes t
 #### `void line_stop()`
 - Stop line following (stop motors)
 
+#### `void line_millisecond(int speed, int millisecond)`
+- Line follow for a specified time (ms), blocking
+
 #### `void line_intersection_stop(int speed, int type)`
-- Stop at line intersection
+- Follow line until intersection, then stop
 
 #### `void line_turn_encounterline(int speed, int angle, int direction)`
-- Turn until line encountered
+- Turn until a line is encountered
 
 #### `void line_for_bmp(int speed, int degree)`
-- Follow line for a given degree (time-based approximation)
+- Follow line for a given degree (time-based)
+
+#### `void line_set_initialize(int port, string color, string chassis_type)`
+- Initialize line sensor parameters
 
 ### Peripheral
 #### `void set_mp3_play(int index)`
 - Play MP3 track (adapted to active buzzer beep)
+
+#### `void set_lizard(int state)`
+- Control peripheral lizard (unknown)
+
+### Gui
+#### `void update_var(string name, any value)`
+- Update variable display in GUI
+
+#### `void display_variable(string name)`
+- Display variable value in GUI
 
 
 ## Implementation

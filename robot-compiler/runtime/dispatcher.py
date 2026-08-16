@@ -8,6 +8,8 @@ from .handlers import (
     move_handler, wait_handler, jump_handler, call_handler,
     comparison_handler, arithmetic_handler
 )
+# Import các handler mới
+from .handlers import sensor_handler, led_handler, motor_handler
 
 class Dispatcher:
     def __init__(self):
@@ -38,6 +40,16 @@ class Dispatcher:
             Opcode.Neg: arithmetic_handler.handle_arithmetic,
             Opcode.LoadConst: arithmetic_handler.handle_load_const,
             Opcode.Store: arithmetic_handler.handle_store,
+            # Thêm các handler mới
+            Opcode.ReadUltrasonic: sensor_handler.handle_read_ultrasonic,
+            Opcode.ReadTouch: sensor_handler.handle_read_touch,
+            Opcode.ReadLight: sensor_handler.handle_read_light,
+            Opcode.ReadLine: sensor_handler.handle_read_line,
+            Opcode.ReadColor: sensor_handler.handle_read_color,
+            Opcode.Set3CLed: led_handler.handle_set_3c_led,
+            Opcode.SetLightSensorLed: led_handler.handle_set_light_sensor_led,
+            Opcode.SetMp3Play: led_handler.handle_set_mp3_play,
+            Opcode.SetMotorSpeed: motor_handler.handle_set_motor_speed,
         }
 
     def dispatch(self, instruction: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot):

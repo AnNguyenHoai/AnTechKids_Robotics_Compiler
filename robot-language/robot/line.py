@@ -27,9 +27,19 @@ def line_stop() -> None:
     """
     pass
 
+def line_millisecond(speed: int, millisecond: int) -> None:
+    """
+    Line follow for a specified time (ms), blocking
+
+    Args:
+        speed (int):
+        millisecond (int):
+    """
+    pass
+
 def line_intersection_stop(speed: int, type: int) -> None:
     """
-    Stop at line intersection
+    Follow line until intersection, then stop
 
     Args:
         speed (int):
@@ -39,7 +49,7 @@ def line_intersection_stop(speed: int, type: int) -> None:
 
 def line_turn_encounterline(speed: int, angle: int, direction: int) -> None:
     """
-    Turn until line encountered
+    Turn until a line is encountered
 
     Args:
         speed (int):
@@ -50,11 +60,22 @@ def line_turn_encounterline(speed: int, angle: int, direction: int) -> None:
 
 def line_for_bmp(speed: int, degree: int) -> None:
     """
-    Follow line for a given degree (time-based approximation)
+    Follow line for a given degree (time-based)
 
     Args:
         speed (int):
         degree (int):
+    """
+    pass
+
+def line_set_initialize(port: int, color: string, chassis_type: string) -> None:
+    """
+    Initialize line sensor parameters
+
+    Args:
+        port (int):
+        color (string):
+        chassis_type (string):
     """
     pass
 

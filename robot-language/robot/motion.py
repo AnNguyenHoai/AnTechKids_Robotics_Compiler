@@ -48,3 +48,25 @@ def set_motor_speed(left_speed: int, right_speed: int) -> None:
     """
     pass
 
+def set_move_initialize(left_motor: int, right_motor: int, reverse: string) -> None:
+    """
+    Configure drive motors (left/right ports and reverse mode)
+
+    Args:
+        left_motor (int):
+        right_motor (int):
+        reverse (string):
+    """
+    pass
+
+def set_move_run_angle(direction: string, speed: int, angle: int) -> None:
+    """
+    Move for a specified angle (wheel rotation or chassis turn)
+
+    Args:
+        direction (string):
+        speed (int):
+        angle (int):
+    """
+    pass
+

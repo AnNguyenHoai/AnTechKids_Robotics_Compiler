@@ -1,14 +1,7 @@
 # runtime/robot/runtime.py
 from .interface import IRobot
 from .motion import MotionController
-from ..sensors.sensor_manager import SensorManager
-from ..sensors.line_sensor import LineSensor
-from ..sensors.ultrasonic_sensor import UltrasonicSensor
-from ..sensors.touch_sensor import TouchSensor
-from ..sensors.light_sensor import LightSensor
-from ..sensors.color_sensor import ColorSensor
 from ..hardware.interface import IHardware
-from typing import Dict, Any
 
 class RobotRuntime(IRobot):
     """Main robot runtime that orchestrates motion and sensors."""
@@ -16,25 +9,6 @@ class RobotRuntime(IRobot):
     def __init__(self, hardware: IHardware):
         self.hardware = hardware
         self.motion = MotionController(hardware)
-        # Initialize sensor manager and register sensors
-        self.sensor_manager = SensorManager()
-        self._register_sensors()
-
-    def _register_sensors(self):
-        # Register line sensors (3 channels)
-        for ch in range(3):
-            sensor = LineSensor(self.hardware, ch, f"line_{ch}")
-            self.sensor_manager.register(sensor)
-        # Register ultrasonic
-        self.sensor_manager.register(UltrasonicSensor(self.hardware, "ultrasonic"))
-        # Register touch sensors (2 ports)
-        for port in range(2):
-            sensor = TouchSensor(self.hardware, port, f"touch_{port}")
-            self.sensor_manager.register(sensor)
-        # Register light sensor (use channel 0 for demo)
-        self.sensor_manager.register(LightSensor(self.hardware, 0, "light"))
-        # Register color sensor (placeholder)
-        self.sensor_manager.register(ColorSensor(self.hardware, "color"))
 
     # ---- Motion APIs ----
     def forward(self, speed: int) -> None:
@@ -58,25 +32,41 @@ class RobotRuntime(IRobot):
     def set_motor(self, left: int, right: int) -> None:
         self.hardware.set_motor(left, right)
 
-    # ---- Sensor APIs ----
-    def read_line_sensor(self, channel: int) -> int:
-        # For backward compatibility, read raw value
-        val = self.sensor_manager.read(f"line_{channel}")
-        if val:
-            return val.raw
-        return 0
+    # ---- Additional motor API for handlers ----
+    def set_motor_speed(self, left: int, right: int) -> None:
+        """Set left and right motor speeds directly."""
+        self.hardware.set_motor(left, right)
 
+    # ---- Output APIs ----
+    def set_led(self, port: int, state: int) -> None:
+        """Set LED state (mock logging)."""
+        print(f"[RobotRuntime] set_led(port={port}, state={state})")
+        # Optionally call hardware if it supports LED
+        # self.hardware.set_led(port, state)
+
+    def set_mp3_play(self, index: int) -> None:
+        """Play beep (mock logging)."""
+        print(f"[RobotRuntime] set_mp3_play(index={index})")
+
+    # ---- Sensor APIs (call hardware directly for logging) ----
     def read_ultrasonic(self) -> int:
-        val = self.sensor_manager.read("ultrasonic")
-        if val:
-            return val.raw
-        return 0
+        return self.hardware.read_ultrasonic()
 
-    def read_touch(self, port: int) -> bool:
-        val = self.sensor_manager.read(f"touch_{port}")
-        if val:
-            return val.raw
-        return False
+    def read_touch(self, port: int) -> int:
+        return 1 if self.hardware.read_touch(port) else 0
+
+    def read_light(self, channel: int) -> int:
+        return self.hardware.read_light(channel)
+
+    def read_line(self, channel: int) -> int:
+        return self.hardware.read_line_sensor(channel)
+
+    def read_color(self) -> int:
+        return self.hardware.read_color()
+
+    # ---- Legacy sensor method (for backward compatibility) ----
+    def read_line_sensor(self, channel: int) -> int:
+        return self.read_line(channel)
 
     # ---- State & Events ----
     def get_state(self):
@@ -87,7 +77,3 @@ class RobotRuntime(IRobot):
 
     def clear_events(self):
         self.motion.clear_events()
-
-    def update_sensors(self):
-        """Update all sensors (should be called periodically)."""
-        self.sensor_manager.update_all()

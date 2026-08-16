@@ -27,6 +27,10 @@ public:
     float maxRangeCm() const override;
     const char* unit() const override;
 
+    // === Diagnostic getters ===
+    uint8_t getConsecutiveTimeouts() const { return _consecutiveTimeouts; }
+    float getLastDistance() const { return _lastDistance; }
+
 private:
     int _trigPin;
     int _echoPin;
@@ -36,7 +40,6 @@ private:
     bool _healthy;
     bool _initialized;
 
-    // Health model: count consecutive timeouts
     static constexpr uint8_t MAX_CONSECUTIVE_TIMEOUTS = 3;
     uint8_t _consecutiveTimeouts;
 };

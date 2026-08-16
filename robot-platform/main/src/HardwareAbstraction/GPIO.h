@@ -17,6 +17,9 @@
 #define ROBOT_PIN_27    27
 #define ROBOT_PIN_32    32
 #define ROBOT_PIN_33    33
+#define ROBOT_PIN_13    13
+#define ROBOT_PIN_21    21
+
 
 // --- ĐẶT ALIAS (TÊN GỢI NHỚ) THEO CHỨC NĂNG PHẦN CỨNG ---
 
@@ -39,4 +42,7 @@
 #define MOTOR_R_IN3_PIN         ROBOT_PIN_27
 #define MOTOR_R_IN4_PIN         ROBOT_PIN_14
 
+// Cảm biến góc
+#define MPU6050_SDA_PIN ROBOT_PIN_21
+#define MPU6050_SCL_PIN ROBOT_PIN_13
 #endif

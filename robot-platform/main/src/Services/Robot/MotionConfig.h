@@ -42,3 +42,7 @@ void loadMotionConfigFromStorage();
 void saveMotionConfigToStorage();
 
 } // namespace RobotAPI
+
+// Safe limits for motor scales (outside namespace for easy use in SerialCommandHandler)
+constexpr float MIN_MOTOR_SCALE = 0.50f;
+constexpr float MAX_MOTOR_SCALE = 1.50f;

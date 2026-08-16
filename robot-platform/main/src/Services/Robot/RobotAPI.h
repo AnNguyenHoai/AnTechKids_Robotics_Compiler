@@ -62,6 +62,7 @@ void TurnLeft(int16_t speed);
  *      Motor speed (-100 to 100).
  */
 void TurnRight(int16_t speed);
+
 /**
  * SetMotorSpeed.
  *
@@ -85,30 +86,35 @@ void Stop();
  * @return Distance (cm)
  */
 int16_t ReadUltrasonic();
+
 /**
  * Read ultrasonic sensor.
  *
  * @return distanceFront (cm)
  */
 float distanceFront();
+
 /**
  * Read ultrasonic sensor.
  *
  * @return port (bool)
  */
 int16_t ReadTouch(int port);
+
 /**
  * Read ultrasonic sensor.
  *
  * @return Distance (cm)
  */
 int16_t ReadLight(int channel);
+
 /**
  * Read ultrasonic sensor.
  *
  * @return Distance (cm)
  */
 int16_t ReadColor();
+
 /**
  * Read ultrasonic sensor.
  *
@@ -128,7 +134,6 @@ int16_t ReadLine(int channel);
  */
 void Wait(uint32_t ms);
 
-
 void setMotorsDirect(int left, int right);
 void SetServo(int port, int angle);
 void Set3CLed(int port, int state);
@@ -147,6 +152,73 @@ void LineStop();
 void LineTurnEncounterLine(int speed, int angle, int direction);
 void LineForBmp(int speed, int degree);
 
+// --- Heading Hold Controller ---
 
-}
+/**
+ * Update motion with heading hold (call in main loop).
+ */
+void updateMotion();
 
+/**
+ * Check if heading hold is active.
+ */
+bool isHeadingHoldActive();
+
+/**
+ * Check if heading hold is enabled.
+ */
+bool isHeadingHoldEnabled();
+
+/**
+ * Enable/disable heading hold.
+ */
+void setHeadingHoldEnabled(bool enabled);
+
+/**
+ * Set PID gains for heading hold.
+ */
+void setHeadingHoldGains(float kp, float ki, float kd, float maxCorrection);
+
+/**
+ * Reset HeadingController (for calibration lifecycle).
+ */
+void resetHeadingController();
+
+/**
+ * Get heading control status (for diagnostics).
+ */
+float getHeadingTarget();
+float getHeadingError();
+float getHeadingCorrection();
+float getHeadingKp();
+float getHeadingKi();
+float getHeadingKd();
+float getHeadingMaxCorrection();
+
+/**
+ * Get effective motor speeds (for diagnostics).
+ */
+int getEffectiveLeft();
+int getEffectiveRight();
+int getCurrentBaseSpeed();
+int getCurrentDirection();
+
+/**
+ * Get robot ready state.
+ */
+bool isRobotReady();
+
+// ================================================================
+// ULTRASONIC DIAGNOSTIC GETTERS
+// ================================================================
+/**
+ * Get total number of ultrasonic read attempts.
+ */
+uint32_t getUltraReadCount();
+
+/**
+ * Get number of failed ultrasonic reads (timeouts).
+ */
+uint32_t getUltraFailCount();
+
+} // namespace RobotAPI

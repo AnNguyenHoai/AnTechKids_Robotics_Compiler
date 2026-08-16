@@ -5,6 +5,9 @@ language:
 
 categories:
 
+  # ============================================================
+  # MOTION
+  # ============================================================
   motion:
     description: Motion control APIs
     module: motion_handler
@@ -14,6 +17,8 @@ categories:
       - name: forward
         opcode: Forward
         opcode_id: 2
+        semantic: Native
+        priority: P0
         description: Move robot forward
         args:
           - name: speed
@@ -22,6 +27,8 @@ categories:
       - name: backward
         opcode: Backward
         opcode_id: 3
+        semantic: Native
+        priority: P0
         description: Move robot backward
         args:
           - name: speed
@@ -30,6 +37,8 @@ categories:
       - name: turn_left
         opcode: TurnLeft
         opcode_id: 4
+        semantic: Native
+        priority: P0
         description: Rotate robot left
         args:
           - name: speed
@@ -38,19 +47,56 @@ categories:
       - name: turn_right
         opcode: TurnRight
         opcode_id: 5
+        semantic: Native
+        priority: P0
         description: Rotate robot right
         args:
           - name: speed
             type: int
+
       - name: set_motor_speed
         opcode: SetMotorSpeed
         opcode_id: 35
+        semantic: Native
+        priority: P0
         description: Set motor speeds independently
         args:
           - name: left_speed
             type: int
           - name: right_speed
-            type: int   
+            type: int
+
+      - name: set_move_initialize
+        opcode: MoveInitialize
+        opcode_id: 52
+        semantic: Stub
+        priority: P1
+        description: Configure drive motors (left/right ports and reverse mode)
+        args:
+          - name: left_motor
+            type: int
+          - name: right_motor
+            type: int
+          - name: reverse
+            type: string
+
+      - name: set_move_run_angle
+        opcode: MoveRunAngle
+        opcode_id: 53
+        semantic: Approximation
+        priority: P1
+        description: Move for a specified angle (wheel rotation or chassis turn)
+        args:
+          - name: direction
+            type: string
+          - name: speed
+            type: int
+          - name: angle
+            type: int
+
+  # ============================================================
+  # SYSTEM / UTILITY
+  # ============================================================
   system:
     module: system_handler
     handler: SystemHandler
@@ -59,6 +105,8 @@ categories:
       - name: wait
         opcode: Wait
         opcode_id: 7
+        semantic: Native
+        priority: P0
         description: Wait milliseconds
         args:
           - name: milliseconds
@@ -67,9 +115,414 @@ categories:
       - name: stop
         opcode: Stop
         opcode_id: 6
+        semantic: Native
+        priority: P0
         description: Stop robot
         args: []
 
+  # ============================================================
+  # SENSOR
+  # ============================================================
+  sensor:
+    description: Sensor APIs
+    module: sensor_handler
+    handler: SensorHandler
+
+    functions:
+      - name: read_ultrasonic
+        opcode: ReadUltrasonic
+        opcode_id: 30
+        semantic: Native
+        priority: P0
+        description: Read ultrasonic distance in cm
+        args: []
+        returns: int
+
+      - name: read_touch
+        opcode: ReadTouch
+        opcode_id: 31
+        semantic: Native
+        priority: P0
+        description: Read touch sensor state (0/1)
+        args:
+          - name: port
+            type: int
+        returns: int
+
+      - name: read_light
+        opcode: ReadLight
+        opcode_id: 32
+        semantic: Native
+        priority: P0
+        description: Read light sensor raw value (0-1023)
+        args:
+          - name: channel
+            type: int
+        returns: int
+
+      - name: read_color
+        opcode: ReadColor
+        opcode_id: 33
+        semantic: Native
+        priority: P2
+        description: Read color sensor (placeholder)
+        args: []
+        returns: int
+
+      - name: read_line
+        opcode: ReadLine
+        opcode_id: 34
+        semantic: Native
+        priority: P0
+        description: Read line sensor (0=white, 1=dark)
+        args:
+          - name: channel
+            type: int
+        returns: int
+
+      - name: get_trace_value
+        opcode: GetTraceValue
+        opcode_id: 42
+        semantic: Dummy
+        priority: P1
+        description: Get trace sensor value (0/50/100 based on line detection)
+        args:
+          - name: port
+            type: int
+          - name: channel
+            type: int
+        returns: int
+
+      - name: get_trace_state
+        opcode: GetTraceState
+        opcode_id: 43
+        semantic: Native
+        priority: P0
+        description: Get trace sensor state (boolean)
+        args:
+          - name: port
+            type: int
+          - name: channel
+            type: int
+        returns: bool
+
+      - name: get_trace_raw
+        opcode: GetTraceRaw
+        opcode_id: 44
+        semantic: Native
+        priority: P0
+        description: Get raw bitmask of all 3 trace sensors
+        args:
+          - name: port
+            type: int
+        returns: int
+
+      - name: get_light_sensor_data
+        opcode: GetLightSensorData
+        opcode_id: 54
+        semantic: Dummy
+        priority: P2
+        description: Read light sensor digital state (0/1)
+        args:
+          - name: port
+            type: int
+        returns: int
+
+  # ============================================================
+  # LED
+  # ============================================================
+  led:
+    description: LED control APIs
+    module: led_handler
+    handler: LedHandler
+
+    functions:
+      - name: set_3c_led
+        opcode: Set3CLed
+        opcode_id: 37
+        semantic: Native
+        priority: P0
+        description: Set 3-color LED state
+        args:
+          - name: port
+            type: int
+          - name: state
+            type: int
+
+      - name: set_light_sensor_led
+        opcode: SetLightSensorLed
+        opcode_id: 38
+        semantic: Native
+        priority: P0
+        description: Set light sensor LED state
+        args:
+          - name: port
+            type: int
+          - name: state
+            type: int
+
+  # ============================================================
+  # SERVO / STEERING
+  # ============================================================
+  servo:
+    description: Servo and steering control APIs
+    module: servo_handler
+    handler: ServoHandler
+
+    functions:
+      - name: set_servo
+        opcode: SetServo
+        opcode_id: 36
+        semantic: Stub
+        priority: P2
+        description: Set servo angle
+        args:
+          - name: port
+            type: int
+          - name: angle
+            type: int
+
+      - name: set_seering_engine
+        opcode: SetSeeringEngine
+        opcode_id: 55
+        semantic: Stub
+        priority: P2
+        description: Set steering engine angle
+        args:
+          - name: port
+            type: int
+          - name: angle
+            type: int
+
+      - name: set_seering_engine_time
+        opcode: SetSeeringEngineTime
+        opcode_id: 56
+        semantic: Stub
+        priority: P2
+        description: Set steering engine angle and hold for time
+        args:
+          - name: port
+            type: int
+          - name: angle
+            type: int
+          - name: millisecond
+            type: int
+
+  # ============================================================
+  # MOTOR (DC)
+  # ============================================================
+  motor:
+    description: Motor control APIs (beyond basic motion)
+    module: motor_handler
+    handler: MotorHandler
+
+    functions:
+      - name: set_motor
+        opcode: SetMotor
+        opcode_id: 57
+        semantic: Stub
+        priority: P2
+        description: Set speed of a DC motor on given port
+        args:
+          - name: port
+            type: int
+          - name: speed
+            type: int
+
+      - name: set_motor_servo
+        opcode: SetMotorServo
+        opcode_id: 58
+        semantic: Stub
+        priority: P2
+        description: Set motor+servo combination
+        args:
+          - name: port
+            type: int
+          - name: speed
+            type: int
+          - name: angle
+            type: int
+
+      - name: set_motor_straight_angle
+        opcode: SetMotorStraightAngle
+        opcode_id: 39
+        semantic: Stub
+        priority: P1
+        description: Move both motors for a given angle
+        args:
+          - name: left_port
+            type: int
+          - name: right_port
+            type: int
+          - name: speed
+            type: int
+          - name: angle
+            type: int
+
+  # ============================================================
+  # LINE FOLLOWING (BEHAVIORS)
+  # ============================================================
+  line:
+    description: Line following behavior APIs
+    module: line_handler
+    handler: LineHandler
+
+    functions:
+      - name: line_basis
+        opcode: LineBasis
+        opcode_id: 47
+        semantic: Native
+        priority: P1
+        description: Basic line following step (adjust motors based on sensor mask)
+        args:
+          - name: speed
+            type: int
+
+      - name: line_follow
+        opcode: LineFollow
+        opcode_id: 48
+        semantic: Native
+        priority: P1
+        description: Follow line continuously until lost
+        args:
+          - name: speed
+            type: int
+
+      - name: line_stop
+        opcode: LineStop
+        opcode_id: 49
+        semantic: Native
+        priority: P1
+        description: Stop line following (stop motors)
+        args: []
+
+      - name: line_millisecond
+        opcode: LineMillisecond
+        opcode_id: 59
+        semantic: Approximation
+        priority: P1
+        description: Line follow for a specified time (ms), blocking
+        args:
+          - name: speed
+            type: int
+          - name: millisecond
+            type: int
+
+      - name: line_intersection_stop
+        opcode: LineIntersectionStop
+        opcode_id: 40
+        semantic: Stub
+        priority: P1
+        description: Follow line until intersection, then stop
+        args:
+          - name: speed
+            type: int
+          - name: type
+            type: int
+
+      - name: line_turn_encounterline
+        opcode: LineTurnEncounterLine
+        opcode_id: 50
+        semantic: Native
+        priority: P1
+        description: Turn until a line is encountered
+        args:
+          - name: speed
+            type: int
+          - name: angle
+            type: int
+          - name: direction
+            type: int
+
+      - name: line_for_bmp
+        opcode: LineForBmp
+        opcode_id: 51
+        semantic: Approximation
+        priority: P2
+        description: Follow line for a given degree (time-based)
+        args:
+          - name: speed
+            type: int
+          - name: degree
+            type: int
+
+      - name: line_set_initialize
+        opcode: LineSetInitialize
+        opcode_id: 60
+        semantic: Stub
+        priority: P2
+        description: Initialize line sensor parameters
+        args:
+          - name: port
+            type: int
+          - name: color
+            type: string
+          - name: chassis_type
+            type: string
+
+  # ============================================================
+  # PERIPHERAL
+  # ============================================================
+  peripheral:
+    description: Peripheral control APIs
+    module: peripheral_handler
+    handler: PeripheralHandler
+
+    functions:
+      - name: set_mp3_play
+        opcode: SetMp3Play
+        opcode_id: 41
+        semantic: Approximation
+        priority: P0
+        description: Play MP3 track (adapted to active buzzer beep)
+        args:
+          - name: index
+            type: int
+
+      - name: set_lizard
+        opcode: SetLizard
+        opcode_id: 61
+        semantic: Stub
+        priority: P3
+        description: Control peripheral lizard (unknown)
+        args:
+          - name: state
+            type: int
+
+  # ============================================================
+  # GUI-ONLY APIS
+  # ============================================================
+  gui:
+    description: GUI-only APIs (no hardware counterpart)
+    module: gui_handler
+    handler: GuiHandler
+
+    functions:
+      - name: update_var
+        opcode: UpdateVar
+        opcode_id: 62
+        semantic: NOP
+        priority: P3
+        description: Update variable display in GUI
+        args:
+          - name: name
+            type: string
+          - name: value
+            type: any
+
+      - name: display_variable
+        opcode: DisplayVariable
+        opcode_id: 63
+        semantic: NOP
+        priority: P3
+        description: Display variable value in GUI
+        args:
+          - name: name
+            type: string
+
+  # ============================================================
+  # INTERNAL OPS (UNCHANGED)
+  # ============================================================
   internal:
     description: Internal opcodes (do not expose to users)
     module: internal
@@ -131,7 +584,6 @@ categories:
         opcode_id: 17
         description: Label placeholder
         args: []
-      # --- Arithmetic opcodes ---
       - name: Add
         opcode: Add
         opcode_id: 20
@@ -181,209 +633,9 @@ categories:
         opcode: Store
         opcode_id: 29
         description: Store value from source to destination variable
-        args: []   
-  sensor:
-    description: Sensor APIs
-    module: sensor_handler
-    handler: SensorHandler
-
-    functions:
-      - name: read_ultrasonic
-        opcode: ReadUltrasonic
-        opcode_id: 30
-        description: Read ultrasonic distance in cm
         args: []
-        returns: int
-
-      - name: read_touch
-        opcode: ReadTouch
-        opcode_id: 31
-        description: Read touch sensor state (0/1)
-        args:
-          - name: port
-            type: int
-        returns: int
-
-      - name: read_light
-        opcode: ReadLight
-        opcode_id: 32
-        description: Read light sensor raw value (0-1023)
-        args:
-          - name: channel
-            type: int
-        returns: int
-
-      - name: read_color
-        opcode: ReadColor
-        opcode_id: 33
-        description: Read color sensor (placeholder)
+      - name: Nop
+        opcode: Nop
+        opcode_id: 64
+        description: No operation (placeholder)
         args: []
-        returns: int
-
-      - name: read_line
-        opcode: ReadLine
-        opcode_id: 34
-        description: Read line sensor (0=white, 1=dark)
-        args:
-          - name: channel
-            type: int
-        returns: int   
-      - name: get_trace_value
-        opcode: GetTraceValue
-        opcode_id: 42
-        description: Get trace sensor value (0/50/100 based on line detection)
-        args:
-          - name: port
-            type: int
-          - name: channel
-            type: int
-        returns: int
-
-      - name: get_trace_state
-        opcode: GetTraceState
-        opcode_id: 43
-        description: Get trace sensor state (boolean)
-        args:
-          - name: port
-            type: int
-          - name: channel
-            type: int
-        returns: bool
-
-      - name: get_trace_raw
-        opcode: GetTraceRaw
-        opcode_id: 44
-        description: Get raw bitmask of all 3 trace sensors
-        args:
-          - name: port
-            type: int
-        returns: int
-
-
-  servo:
-    description: Servo control APIs
-    module: servo_handler
-    handler: ServoHandler
-    functions:
-      - name: set_servo
-        opcode: SetServo
-        opcode_id: 36
-        description: Set servo angle
-        args:
-          - name: port
-            type: int
-          - name: angle
-            type: int
-
-  led:
-    description: LED control APIs
-    module: led_handler
-    handler: LedHandler
-    functions:
-      - name: set_3c_led
-        opcode: Set3CLed
-        opcode_id: 37
-        description: Set 3-color LED state
-        args:
-          - name: port
-            type: int
-          - name: state
-            type: int
-
-      - name: set_light_sensor_led
-        opcode: SetLightSensorLed
-        opcode_id: 38
-        description: Set light sensor LED state
-        args:
-          - name: port
-            type: int
-          - name: state
-            type: int
-
-  motor:
-    description: Motor control APIs (beyond basic motion)
-    module: motor_handler
-    handler: MotorHandler
-    functions:
-      - name: set_motor_straight_angle
-        opcode: SetMotorStraightAngle
-        opcode_id: 39
-        description: Set motor straight angle
-        args:
-          - name: left_port
-            type: int
-          - name: right_port
-            type: int
-          - name: speed
-            type: int
-          - name: angle
-            type: int
-
-  line:
-    description: Line following behavior APIs
-    module: line_handler
-    handler: LineHandler
-    functions:
-      - name: line_basis
-        opcode: LineBasis
-        opcode_id: 47
-        description: Basic line following step (adjust motors based on sensor mask)
-        args:
-          - name: speed
-            type: int
-
-      - name: line_follow
-        opcode: LineFollow
-        opcode_id: 48
-        description: Follow line continuously until lost
-        args:
-          - name: speed
-            type: int
-
-      - name: line_stop
-        opcode: LineStop
-        opcode_id: 49
-        description: Stop line following (stop motors)
-        args: []
-      - name: line_intersection_stop
-        opcode: LineIntersectionStop
-        opcode_id: 40
-        description: Stop at line intersection
-        args:
-          - name: speed
-            type: int
-          - name: type
-            type: int
-      - name: line_turn_encounterline
-        opcode: LineTurnEncounterLine
-        opcode_id: 50
-        description: Turn until line encountered
-        args:
-          - name: speed
-            type: int
-          - name: angle
-            type: int
-          - name: direction
-            type: int
-
-      - name: line_for_bmp
-        opcode: LineForBmp
-        opcode_id: 51
-        description: Follow line for a given degree (time-based approximation)
-        args:
-          - name: speed
-            type: int
-          - name: degree
-            type: int
-  peripheral:
-    description: Peripheral control APIs (buzzer, etc.)
-    module: peripheral_handler
-    handler: PeripheralHandler
-    functions:
-      - name: set_mp3_play
-        opcode: SetMp3Play
-        opcode_id: 41
-        description: Play MP3 track (adapted to active buzzer beep)
-        args:
-          - name: index
-            type: int

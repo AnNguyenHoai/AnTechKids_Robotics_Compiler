@@ -44,6 +44,24 @@
         "arguments": 2,
         "description": "Set motor speeds independently"
     },
+    "set_move_initialize": {
+        "opcode": "MoveInitialize",
+        "opcode_id": 52,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 3,
+        "description": "Configure drive motors (left/right ports and reverse mode)"
+    },
+    "set_move_run_angle": {
+        "opcode": "MoveRunAngle",
+        "opcode_id": 53,
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler",
+        "arguments": 3,
+        "description": "Move for a specified angle (wheel rotation or chassis turn)"
+    },
     "wait": {
         "opcode": "Wait",
         "opcode_id": 7,
@@ -61,6 +79,267 @@
         "handler": "SystemHandler",
         "arguments": 0,
         "description": "Stop robot"
+    },
+    "read_ultrasonic": {
+        "opcode": "ReadUltrasonic",
+        "opcode_id": 30,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 0,
+        "description": "Read ultrasonic distance in cm"
+    },
+    "read_touch": {
+        "opcode": "ReadTouch",
+        "opcode_id": 31,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Read touch sensor state (0/1)"
+    },
+    "read_light": {
+        "opcode": "ReadLight",
+        "opcode_id": 32,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Read light sensor raw value (0-1023)"
+    },
+    "read_color": {
+        "opcode": "ReadColor",
+        "opcode_id": 33,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 0,
+        "description": "Read color sensor (placeholder)"
+    },
+    "read_line": {
+        "opcode": "ReadLine",
+        "opcode_id": 34,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Read line sensor (0=white, 1=dark)"
+    },
+    "get_trace_value": {
+        "opcode": "GetTraceValue",
+        "opcode_id": 42,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 2,
+        "description": "Get trace sensor value (0/50/100 based on line detection)"
+    },
+    "get_trace_state": {
+        "opcode": "GetTraceState",
+        "opcode_id": 43,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 2,
+        "description": "Get trace sensor state (boolean)"
+    },
+    "get_trace_raw": {
+        "opcode": "GetTraceRaw",
+        "opcode_id": 44,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Get raw bitmask of all 3 trace sensors"
+    },
+    "get_light_sensor_data": {
+        "opcode": "GetLightSensorData",
+        "opcode_id": 54,
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler",
+        "arguments": 1,
+        "description": "Read light sensor digital state (0/1)"
+    },
+    "set_3c_led": {
+        "opcode": "Set3CLed",
+        "opcode_id": 37,
+        "category": "led",
+        "module": "led_handler",
+        "handler": "LedHandler",
+        "arguments": 2,
+        "description": "Set 3-color LED state"
+    },
+    "set_light_sensor_led": {
+        "opcode": "SetLightSensorLed",
+        "opcode_id": 38,
+        "category": "led",
+        "module": "led_handler",
+        "handler": "LedHandler",
+        "arguments": 2,
+        "description": "Set light sensor LED state"
+    },
+    "set_servo": {
+        "opcode": "SetServo",
+        "opcode_id": 36,
+        "category": "servo",
+        "module": "servo_handler",
+        "handler": "ServoHandler",
+        "arguments": 2,
+        "description": "Set servo angle"
+    },
+    "set_seering_engine": {
+        "opcode": "SetSeeringEngine",
+        "opcode_id": 55,
+        "category": "servo",
+        "module": "servo_handler",
+        "handler": "ServoHandler",
+        "arguments": 2,
+        "description": "Set steering engine angle"
+    },
+    "set_seering_engine_time": {
+        "opcode": "SetSeeringEngineTime",
+        "opcode_id": 56,
+        "category": "servo",
+        "module": "servo_handler",
+        "handler": "ServoHandler",
+        "arguments": 3,
+        "description": "Set steering engine angle and hold for time"
+    },
+    "set_motor": {
+        "opcode": "SetMotor",
+        "opcode_id": 57,
+        "category": "motor",
+        "module": "motor_handler",
+        "handler": "MotorHandler",
+        "arguments": 2,
+        "description": "Set speed of a DC motor on given port"
+    },
+    "set_motor_servo": {
+        "opcode": "SetMotorServo",
+        "opcode_id": 58,
+        "category": "motor",
+        "module": "motor_handler",
+        "handler": "MotorHandler",
+        "arguments": 3,
+        "description": "Set motor+servo combination"
+    },
+    "set_motor_straight_angle": {
+        "opcode": "SetMotorStraightAngle",
+        "opcode_id": 39,
+        "category": "motor",
+        "module": "motor_handler",
+        "handler": "MotorHandler",
+        "arguments": 4,
+        "description": "Move both motors for a given angle"
+    },
+    "line_basis": {
+        "opcode": "LineBasis",
+        "opcode_id": 47,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 1,
+        "description": "Basic line following step (adjust motors based on sensor mask)"
+    },
+    "line_follow": {
+        "opcode": "LineFollow",
+        "opcode_id": 48,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 1,
+        "description": "Follow line continuously until lost"
+    },
+    "line_stop": {
+        "opcode": "LineStop",
+        "opcode_id": 49,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 0,
+        "description": "Stop line following (stop motors)"
+    },
+    "line_millisecond": {
+        "opcode": "LineMillisecond",
+        "opcode_id": 59,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 2,
+        "description": "Line follow for a specified time (ms), blocking"
+    },
+    "line_intersection_stop": {
+        "opcode": "LineIntersectionStop",
+        "opcode_id": 40,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 2,
+        "description": "Follow line until intersection, then stop"
+    },
+    "line_turn_encounterline": {
+        "opcode": "LineTurnEncounterLine",
+        "opcode_id": 50,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 3,
+        "description": "Turn until a line is encountered"
+    },
+    "line_for_bmp": {
+        "opcode": "LineForBmp",
+        "opcode_id": 51,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 2,
+        "description": "Follow line for a given degree (time-based)"
+    },
+    "line_set_initialize": {
+        "opcode": "LineSetInitialize",
+        "opcode_id": 60,
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler",
+        "arguments": 3,
+        "description": "Initialize line sensor parameters"
+    },
+    "set_mp3_play": {
+        "opcode": "SetMp3Play",
+        "opcode_id": 41,
+        "category": "peripheral",
+        "module": "peripheral_handler",
+        "handler": "PeripheralHandler",
+        "arguments": 1,
+        "description": "Play MP3 track (adapted to active buzzer beep)"
+    },
+    "set_lizard": {
+        "opcode": "SetLizard",
+        "opcode_id": 61,
+        "category": "peripheral",
+        "module": "peripheral_handler",
+        "handler": "PeripheralHandler",
+        "arguments": 1,
+        "description": "Control peripheral lizard (unknown)"
+    },
+    "update_var": {
+        "opcode": "UpdateVar",
+        "opcode_id": 62,
+        "category": "gui",
+        "module": "gui_handler",
+        "handler": "GuiHandler",
+        "arguments": 2,
+        "description": "Update variable display in GUI"
+    },
+    "display_variable": {
+        "opcode": "DisplayVariable",
+        "opcode_id": 63,
+        "category": "gui",
+        "module": "gui_handler",
+        "handler": "GuiHandler",
+        "arguments": 1,
+        "description": "Display variable value in GUI"
     },
     "LoadConst": {
         "opcode": "LoadConst",
@@ -251,175 +530,13 @@
         "arguments": 0,
         "description": "Store value from source to destination variable"
     },
-    "read_ultrasonic": {
-        "opcode": "ReadUltrasonic",
-        "opcode_id": 30,
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler",
+    "Nop": {
+        "opcode": "Nop",
+        "opcode_id": 64,
+        "category": "internal",
+        "module": "internal",
+        "handler": "None",
         "arguments": 0,
-        "description": "Read ultrasonic distance in cm"
-    },
-    "read_touch": {
-        "opcode": "ReadTouch",
-        "opcode_id": 31,
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler",
-        "arguments": 1,
-        "description": "Read touch sensor state (0/1)"
-    },
-    "read_light": {
-        "opcode": "ReadLight",
-        "opcode_id": 32,
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler",
-        "arguments": 1,
-        "description": "Read light sensor raw value (0-1023)"
-    },
-    "read_color": {
-        "opcode": "ReadColor",
-        "opcode_id": 33,
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler",
-        "arguments": 0,
-        "description": "Read color sensor (placeholder)"
-    },
-    "read_line": {
-        "opcode": "ReadLine",
-        "opcode_id": 34,
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler",
-        "arguments": 1,
-        "description": "Read line sensor (0=white, 1=dark)"
-    },
-    "get_trace_value": {
-        "opcode": "GetTraceValue",
-        "opcode_id": 42,
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler",
-        "arguments": 2,
-        "description": "Get trace sensor value (0/50/100 based on line detection)"
-    },
-    "get_trace_state": {
-        "opcode": "GetTraceState",
-        "opcode_id": 43,
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler",
-        "arguments": 2,
-        "description": "Get trace sensor state (boolean)"
-    },
-    "get_trace_raw": {
-        "opcode": "GetTraceRaw",
-        "opcode_id": 44,
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler",
-        "arguments": 1,
-        "description": "Get raw bitmask of all 3 trace sensors"
-    },
-    "set_servo": {
-        "opcode": "SetServo",
-        "opcode_id": 36,
-        "category": "servo",
-        "module": "servo_handler",
-        "handler": "ServoHandler",
-        "arguments": 2,
-        "description": "Set servo angle"
-    },
-    "set_3c_led": {
-        "opcode": "Set3CLed",
-        "opcode_id": 37,
-        "category": "led",
-        "module": "led_handler",
-        "handler": "LedHandler",
-        "arguments": 2,
-        "description": "Set 3-color LED state"
-    },
-    "set_light_sensor_led": {
-        "opcode": "SetLightSensorLed",
-        "opcode_id": 38,
-        "category": "led",
-        "module": "led_handler",
-        "handler": "LedHandler",
-        "arguments": 2,
-        "description": "Set light sensor LED state"
-    },
-    "set_motor_straight_angle": {
-        "opcode": "SetMotorStraightAngle",
-        "opcode_id": 39,
-        "category": "motor",
-        "module": "motor_handler",
-        "handler": "MotorHandler",
-        "arguments": 4,
-        "description": "Set motor straight angle"
-    },
-    "line_basis": {
-        "opcode": "LineBasis",
-        "opcode_id": 47,
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler",
-        "arguments": 1,
-        "description": "Basic line following step (adjust motors based on sensor mask)"
-    },
-    "line_follow": {
-        "opcode": "LineFollow",
-        "opcode_id": 48,
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler",
-        "arguments": 1,
-        "description": "Follow line continuously until lost"
-    },
-    "line_stop": {
-        "opcode": "LineStop",
-        "opcode_id": 49,
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler",
-        "arguments": 0,
-        "description": "Stop line following (stop motors)"
-    },
-    "line_intersection_stop": {
-        "opcode": "LineIntersectionStop",
-        "opcode_id": 40,
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler",
-        "arguments": 2,
-        "description": "Stop at line intersection"
-    },
-    "line_turn_encounterline": {
-        "opcode": "LineTurnEncounterLine",
-        "opcode_id": 50,
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler",
-        "arguments": 3,
-        "description": "Turn until line encountered"
-    },
-    "line_for_bmp": {
-        "opcode": "LineForBmp",
-        "opcode_id": 51,
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler",
-        "arguments": 2,
-        "description": "Follow line for a given degree (time-based approximation)"
-    },
-    "set_mp3_play": {
-        "opcode": "SetMp3Play",
-        "opcode_id": 41,
-        "category": "peripheral",
-        "module": "peripheral_handler",
-        "handler": "PeripheralHandler",
-        "arguments": 1,
-        "description": "Play MP3 track (adapted to active buzzer beep)"
+        "description": "No operation (placeholder)"
     }
 }

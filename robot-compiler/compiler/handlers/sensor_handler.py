@@ -38,6 +38,7 @@ class SensorHandler:
         dest = compiler.allocate_temp()
         compiler.program.emit(Opcode.ReadLine.value, channel, dest, 0)
         return dest
+
     @staticmethod
     def get_trace_value(compiler, node):
         compiler.validate_argument_count(node, "get_trace_value", 2)
@@ -62,4 +63,12 @@ class SensorHandler:
         port = compiler.resolve_argument(node.args[0])
         dest = compiler.allocate_temp()
         compiler.program.emit(Opcode.GetTraceRaw.value, port, 0, dest)
+        return dest
+
+    @staticmethod
+    def get_light_sensor_data(compiler, node):
+        compiler.validate_argument_count(node, "get_light_sensor_data", 1)
+        dest = compiler.allocate_temp()
+        # Dummy: always return 0
+        compiler.program.emit(Opcode.LoadConst.value, dest, 0)
         return dest

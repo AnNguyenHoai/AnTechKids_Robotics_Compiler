@@ -17,9 +17,10 @@ struct MotorOutput {
  * MotorMixer
  * 
  * Responsibility: Convert base speed and PID correction to left/right motor speeds.
+ * Used by LineFollower for line-following control.
  * 
- * This is the SINGLE SOURCE OF TRUTH for motor mixing.
- * No other module should compute left/right speeds from correction.
+ * Note: This mixer is NOT used by Heading Hold Controller, which has its own
+ * direction-aware mixing logic in RobotAPI.
  * 
  * Mixing rule:
  *   left  = baseSpeed - correction * scaleFactor

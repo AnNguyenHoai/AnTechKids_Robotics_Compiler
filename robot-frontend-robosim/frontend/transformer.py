@@ -94,6 +94,22 @@ class RoboSimTransformer(ast.NodeTransformer):
                 and node.value.func.value.id == "rcu"):
             return self._handle_move_speed(node.value)
 
+        # Handle rcu.SetMoveInitialize(left, right, reverse) -> set_move_initialize(...)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetMoveInitialize"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_move_initialize", 3)
+
+        # Handle rcu.SetMoveRunAngle(direction, speed, angle) -> set_move_run_angle(...)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetMoveRunAngle"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_move_run_angle", 3)
+
         # Handle rcu.SetServo(port, angle) -> set_servo(port, angle)
         if (isinstance(node.value, ast.Call)
                 and isinstance(node.value.func, ast.Attribute)
@@ -126,21 +142,47 @@ class RoboSimTransformer(ast.NodeTransformer):
                 and node.value.func.value.id == "rcu"):
             return self._handle_simple_call(node.value, "set_motor_straight_angle", 4)
 
-        # Handle rcu.line_intersection_stop(speed, type) -> line_intersection_stop(speed, type)
+        # Handle rcu.SetMotor(port, speed) -> set_motor(port, speed)
         if (isinstance(node.value, ast.Call)
                 and isinstance(node.value.func, ast.Attribute)
-                and node.value.func.attr == "line_intersection_stop"
+                and node.value.func.attr == "SetMotor"
                 and isinstance(node.value.func.value, ast.Name)
                 and node.value.func.value.id == "rcu"):
-            return self._handle_simple_call(node.value, "line_intersection_stop", 2)
+            return self._handle_simple_call(node.value, "set_motor", 2)
 
-        # Handle rcu.SetMp3Play(index) -> set_mp3_play(index)
+        # Handle rcu.SetMotorServo(port, speed, angle) -> set_motor_servo(port, speed, angle)
         if (isinstance(node.value, ast.Call)
                 and isinstance(node.value.func, ast.Attribute)
-                and node.value.func.attr == "SetMp3Play"
+                and node.value.func.attr == "SetMotorServo"
                 and isinstance(node.value.func.value, ast.Name)
                 and node.value.func.value.id == "rcu"):
-            return self._handle_simple_call(node.value, "set_mp3_play", 1)
+            return self._handle_simple_call(node.value, "set_motor_servo", 3)
+
+        # Handle rcu.SetSeeringEngine(port, angle) -> set_seering_engine(port, angle)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetSeeringEngine"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_seering_engine", 2)
+
+        # Handle rcu.SetSeeringEngineTime(port, angle, ms) -> set_seering_engine_time(...)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetSeeringEngineTime"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_seering_engine_time", 3)
+
+        # Handle rcu.SetLizard(state) -> set_lizard(state)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetLizard"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_lizard", 1)
+
+        # Handle rcu.line_basis(speed) -> line_basis(speed)
         if (isinstance(node.value, ast.Call)
                 and isinstance(node.value.func, ast.Attribute)
                 and node.value.func.attr == "line_basis"
@@ -162,7 +204,68 @@ class RoboSimTransformer(ast.NodeTransformer):
                 and node.value.func.attr == "line_stop"
                 and isinstance(node.value.func.value, ast.Name)
                 and node.value.func.value.id == "rcu"):
-            return self._handle_simple_call(node.value, "line_stop", 0)        
+            return self._handle_simple_call(node.value, "line_stop", 0)
+
+        # Handle rcu.line_millisecond(speed, ms) -> line_millisecond(speed, ms)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "line_millisecond"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "line_millisecond", 2)
+
+        # Handle rcu.line_intersection_stop(speed, type) -> line_intersection_stop(speed, type)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "line_intersection_stop"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "line_intersection_stop", 2)
+
+        # Handle rcu.line_turn_encounterline(speed, angle, direction) -> line_turn_encounterline(...)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "line_turn_encounterline"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "line_turn_encounterline", 3)
+
+        # Handle rcu.line_for_bmp(speed, degree) -> line_for_bmp(speed, degree)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "line_for_bmp"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "line_for_bmp", 2)
+
+        # Handle rcu.line_set_initialize(port, color, chassis) -> line_set_initialize(...)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "line_set_initialize"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "line_set_initialize", 3)
+
+        # Handle rcu.SetMp3Play(index) -> set_mp3_play(index)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Attribute)
+                and node.value.func.attr == "SetMp3Play"
+                and isinstance(node.value.func.value, ast.Name)
+                and node.value.func.value.id == "rcu"):
+            return self._handle_simple_call(node.value, "set_mp3_play", 1)
+
+        # Handle UpdateVar(name, value) -> update_var(name, value)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "UpdateVar"):
+            return self._handle_simple_call(node.value, "update_var", 2)
+
+        # Handle DisplayVariable(name) -> display_variable(name)
+        if (isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "DisplayVariable"):
+            return self._handle_simple_call(node.value, "display_variable", 1)
+
         return node
 
     def _handle_simple_call(self, call, target_name, expected_args):
@@ -176,15 +279,12 @@ class RoboSimTransformer(ast.NodeTransformer):
                 keywords=[]
             )
         )
-    
-        return node
 
     # ----------------------------------------------------------------------
     # Transform all calls, including nested ones
     # ----------------------------------------------------------------------
 
     def visit_Call(self, node):
-        # First, visit child nodes to transform any nested RoboSim calls
         node = self.generic_visit(node)
 
         # Check if this is a RoboSim sensor API call
@@ -196,13 +296,12 @@ class RoboSimTransformer(ast.NodeTransformer):
             if mapping:
                 return self._transform_sensor_call(node, attr, mapping)
 
-        # ----- New mappings for trace APIs -----
+        # Trace API mappings
         if (isinstance(node.func, ast.Attribute)
                 and isinstance(node.func.value, ast.Name)
                 and node.func.value.id == 'rcu'):
             attr = node.func.attr
             if attr == "GetTraceV2I2C":
-                # rcu.GetTraceV2I2C(port, channel) -> get_trace_value(port, channel)
                 if len(node.args) != 2:
                     raise SyntaxError("GetTraceV2I2C() expects exactly 2 arguments")
                 return ast.Call(
@@ -211,7 +310,6 @@ class RoboSimTransformer(ast.NodeTransformer):
                     keywords=[]
                 )
             elif attr == "GetTraceV2I2CState":
-                # rcu.GetTraceV2I2CState(port, channel) -> get_trace_state(port, channel)
                 if len(node.args) != 2:
                     raise SyntaxError("GetTraceV2I2CState() expects exactly 2 arguments")
                 return ast.Call(
@@ -220,11 +318,18 @@ class RoboSimTransformer(ast.NodeTransformer):
                     keywords=[]
                 )
             elif attr == "GetTraceV2I2CData":
-                # rcu.GetTraceV2I2CData(port) -> get_trace_raw(port)
                 if len(node.args) != 1:
                     raise SyntaxError("GetTraceV2I2CData() expects exactly 1 argument")
                 return ast.Call(
                     func=ast.Name(id="get_trace_raw", ctx=ast.Load()),
+                    args=node.args,
+                    keywords=[]
+                )
+            elif attr == "GetLightSensorData":
+                if len(node.args) != 1:
+                    raise SyntaxError("GetLightSensorData() expects exactly 1 argument")
+                return ast.Call(
+                    func=ast.Name(id="get_light_sensor_data", ctx=ast.Load()),
                     args=node.args,
                     keywords=[]
                 )
@@ -240,6 +345,15 @@ class RoboSimTransformer(ast.NodeTransformer):
         speed = call.args[1]
         seconds = call.args[2]
 
+        # Normalize direction
+        direction = direction.lower()
+        if direction in ("turnleft", "left"):
+            dir_name = "turn_left"
+        elif direction in ("turnright", "right"):
+            dir_name = "turn_right"
+        else:
+            dir_name = ROBOSIM_API.get(direction, direction)
+
         if isinstance(seconds, ast.Constant) and isinstance(seconds.value, (int, float)):
             ms = int(seconds.value * 1000)
             wait_arg = ast.Constant(value=ms)
@@ -247,7 +361,7 @@ class RoboSimTransformer(ast.NodeTransformer):
             wait_arg = ast.BinOp(left=seconds, op=ast.Mult(), right=ast.Constant(value=1000))
 
         forward_call = ast.Call(
-            func=ast.Name(id=ROBOSIM_API.get(direction, direction), ctx=ast.Load()),
+            func=ast.Name(id=dir_name, ctx=ast.Load()),
             args=[speed],
             keywords=[]
         )
@@ -271,7 +385,13 @@ class RoboSimTransformer(ast.NodeTransformer):
     def _handle_move_run(self, call):
         direction = call.args[0].value
         speed = call.args[1]
-        func_name = ROBOSIM_API.get(direction, direction)
+        direction = direction.lower()
+        if direction in ("turnleft", "left"):
+            func_name = "turn_left"
+        elif direction in ("turnright", "right"):
+            func_name = "turn_right"
+        else:
+            func_name = ROBOSIM_API.get(direction, direction)
         return ast.Expr(
             ast.Call(
                 func=ast.Name(id=func_name, ctx=ast.Load()),
@@ -291,23 +411,21 @@ class RoboSimTransformer(ast.NodeTransformer):
         )
 
     def _transform_sensor_call(self, node, attr, mapping):
-        """Transform a RoboSim sensor call based on mapping."""
         expected = mapping["expected_args"]
         actual = len(node.args)
         if actual != expected:
             raise SyntaxError(
                 f"RoboSim API '{attr}()' expects exactly {expected} argument(s), got {actual}"
             )
-
         target_name = mapping["target"]
         arg_indices = mapping["arg_indices"]
         args = [node.args[i] for i in arg_indices if i < len(node.args)]
-
         return ast.Call(
             func=ast.Name(id=target_name, ctx=ast.Load()),
             args=args,
             keywords=[]
         )
+
     def _handle_move_speed(self, call):
         if len(call.args) != 2:
             raise SyntaxError("SetMoveSpeed expects exactly 2 arguments")

@@ -23,6 +23,12 @@ The SDK is automatically installed as part of the `robot-language` build.
 #### `set_motor_speed(left_speed, right_speed)`
 - Set motor speeds independently
 
+#### `set_move_initialize(left_motor, right_motor, reverse)`
+- Configure drive motors (left/right ports and reverse mode)
+
+#### `set_move_run_angle(direction, speed, angle)`
+- Move for a specified angle (wheel rotation or chassis turn)
+
 ### System
 #### `wait(milliseconds)`
 - Wait milliseconds
@@ -55,9 +61,8 @@ The SDK is automatically installed as part of the `robot-language` build.
 #### `get_trace_raw(port)`
 - Get raw bitmask of all 3 trace sensors
 
-### Servo
-#### `set_servo(port, angle)`
-- Set servo angle
+#### `get_light_sensor_data(port)`
+- Read light sensor digital state (0/1)
 
 ### Led
 #### `set_3c_led(port, state)`
@@ -66,9 +71,25 @@ The SDK is automatically installed as part of the `robot-language` build.
 #### `set_light_sensor_led(port, state)`
 - Set light sensor LED state
 
+### Servo
+#### `set_servo(port, angle)`
+- Set servo angle
+
+#### `set_seering_engine(port, angle)`
+- Set steering engine angle
+
+#### `set_seering_engine_time(port, angle, millisecond)`
+- Set steering engine angle and hold for time
+
 ### Motor
+#### `set_motor(port, speed)`
+- Set speed of a DC motor on given port
+
+#### `set_motor_servo(port, speed, angle)`
+- Set motor+servo combination
+
 #### `set_motor_straight_angle(left_port, right_port, speed, angle)`
-- Set motor straight angle
+- Move both motors for a given angle
 
 ### Line
 #### `line_basis(speed)`
@@ -80,15 +101,31 @@ The SDK is automatically installed as part of the `robot-language` build.
 #### `line_stop()`
 - Stop line following (stop motors)
 
+#### `line_millisecond(speed, millisecond)`
+- Line follow for a specified time (ms), blocking
+
 #### `line_intersection_stop(speed, type)`
-- Stop at line intersection
+- Follow line until intersection, then stop
 
 #### `line_turn_encounterline(speed, angle, direction)`
-- Turn until line encountered
+- Turn until a line is encountered
 
 #### `line_for_bmp(speed, degree)`
-- Follow line for a given degree (time-based approximation)
+- Follow line for a given degree (time-based)
+
+#### `line_set_initialize(port, color, chassis_type)`
+- Initialize line sensor parameters
 
 ### Peripheral
 #### `set_mp3_play(index)`
 - Play MP3 track (adapted to active buzzer beep)
+
+#### `set_lizard(state)`
+- Control peripheral lizard (unknown)
+
+### Gui
+#### `update_var(name, value)`
+- Update variable display in GUI
+
+#### `display_variable(name)`
+- Display variable value in GUI

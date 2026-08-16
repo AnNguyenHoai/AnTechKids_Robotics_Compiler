@@ -29,4 +29,13 @@ class IHardware(ABC):
         """Read touch sensor state."""
         pass
 
-    # Future: pwm, gpio, adc, uart, spi, i2c
+    # New sensor methods
+    @abstractmethod
+    def read_light(self, channel: int) -> int:
+        """Read light sensor value (0-1023)."""
+        pass
+
+    @abstractmethod
+    def read_color(self) -> int:
+        """Read color sensor (placeholder)."""
+        pass

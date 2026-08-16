@@ -39,6 +39,22 @@
         "module": "motion_handler",
         "handler": "MotionHandler"
     },
+    "MoveInitialize": {
+        "id": 52,
+        "opcode": "MoveInitialize",
+        "function": "set_move_initialize",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
+    "MoveRunAngle": {
+        "id": 53,
+        "opcode": "MoveRunAngle",
+        "function": "set_move_run_angle",
+        "category": "motion",
+        "module": "motion_handler",
+        "handler": "MotionHandler"
+    },
     "Wait": {
         "id": 7,
         "opcode": "Wait",
@@ -54,6 +70,238 @@
         "category": "system",
         "module": "system_handler",
         "handler": "SystemHandler"
+    },
+    "ReadUltrasonic": {
+        "id": 30,
+        "opcode": "ReadUltrasonic",
+        "function": "read_ultrasonic",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadTouch": {
+        "id": 31,
+        "opcode": "ReadTouch",
+        "function": "read_touch",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadLight": {
+        "id": 32,
+        "opcode": "ReadLight",
+        "function": "read_light",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadColor": {
+        "id": 33,
+        "opcode": "ReadColor",
+        "function": "read_color",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "ReadLine": {
+        "id": 34,
+        "opcode": "ReadLine",
+        "function": "read_line",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "GetTraceValue": {
+        "id": 42,
+        "opcode": "GetTraceValue",
+        "function": "get_trace_value",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "GetTraceState": {
+        "id": 43,
+        "opcode": "GetTraceState",
+        "function": "get_trace_state",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "GetTraceRaw": {
+        "id": 44,
+        "opcode": "GetTraceRaw",
+        "function": "get_trace_raw",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "GetLightSensorData": {
+        "id": 54,
+        "opcode": "GetLightSensorData",
+        "function": "get_light_sensor_data",
+        "category": "sensor",
+        "module": "sensor_handler",
+        "handler": "SensorHandler"
+    },
+    "Set3CLed": {
+        "id": 37,
+        "opcode": "Set3CLed",
+        "function": "set_3c_led",
+        "category": "led",
+        "module": "led_handler",
+        "handler": "LedHandler"
+    },
+    "SetLightSensorLed": {
+        "id": 38,
+        "opcode": "SetLightSensorLed",
+        "function": "set_light_sensor_led",
+        "category": "led",
+        "module": "led_handler",
+        "handler": "LedHandler"
+    },
+    "SetServo": {
+        "id": 36,
+        "opcode": "SetServo",
+        "function": "set_servo",
+        "category": "servo",
+        "module": "servo_handler",
+        "handler": "ServoHandler"
+    },
+    "SetSeeringEngine": {
+        "id": 55,
+        "opcode": "SetSeeringEngine",
+        "function": "set_seering_engine",
+        "category": "servo",
+        "module": "servo_handler",
+        "handler": "ServoHandler"
+    },
+    "SetSeeringEngineTime": {
+        "id": 56,
+        "opcode": "SetSeeringEngineTime",
+        "function": "set_seering_engine_time",
+        "category": "servo",
+        "module": "servo_handler",
+        "handler": "ServoHandler"
+    },
+    "SetMotor": {
+        "id": 57,
+        "opcode": "SetMotor",
+        "function": "set_motor",
+        "category": "motor",
+        "module": "motor_handler",
+        "handler": "MotorHandler"
+    },
+    "SetMotorServo": {
+        "id": 58,
+        "opcode": "SetMotorServo",
+        "function": "set_motor_servo",
+        "category": "motor",
+        "module": "motor_handler",
+        "handler": "MotorHandler"
+    },
+    "SetMotorStraightAngle": {
+        "id": 39,
+        "opcode": "SetMotorStraightAngle",
+        "function": "set_motor_straight_angle",
+        "category": "motor",
+        "module": "motor_handler",
+        "handler": "MotorHandler"
+    },
+    "LineBasis": {
+        "id": 47,
+        "opcode": "LineBasis",
+        "function": "line_basis",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "LineFollow": {
+        "id": 48,
+        "opcode": "LineFollow",
+        "function": "line_follow",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "LineStop": {
+        "id": 49,
+        "opcode": "LineStop",
+        "function": "line_stop",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "LineMillisecond": {
+        "id": 59,
+        "opcode": "LineMillisecond",
+        "function": "line_millisecond",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "LineIntersectionStop": {
+        "id": 40,
+        "opcode": "LineIntersectionStop",
+        "function": "line_intersection_stop",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "LineTurnEncounterLine": {
+        "id": 50,
+        "opcode": "LineTurnEncounterLine",
+        "function": "line_turn_encounterline",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "LineForBmp": {
+        "id": 51,
+        "opcode": "LineForBmp",
+        "function": "line_for_bmp",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "LineSetInitialize": {
+        "id": 60,
+        "opcode": "LineSetInitialize",
+        "function": "line_set_initialize",
+        "category": "line",
+        "module": "line_handler",
+        "handler": "LineHandler"
+    },
+    "SetMp3Play": {
+        "id": 41,
+        "opcode": "SetMp3Play",
+        "function": "set_mp3_play",
+        "category": "peripheral",
+        "module": "peripheral_handler",
+        "handler": "PeripheralHandler"
+    },
+    "SetLizard": {
+        "id": 61,
+        "opcode": "SetLizard",
+        "function": "set_lizard",
+        "category": "peripheral",
+        "module": "peripheral_handler",
+        "handler": "PeripheralHandler"
+    },
+    "UpdateVar": {
+        "id": 62,
+        "opcode": "UpdateVar",
+        "function": "update_var",
+        "category": "gui",
+        "module": "gui_handler",
+        "handler": "GuiHandler"
+    },
+    "DisplayVariable": {
+        "id": 63,
+        "opcode": "DisplayVariable",
+        "function": "display_variable",
+        "category": "gui",
+        "module": "gui_handler",
+        "handler": "GuiHandler"
     },
     "LoadConst": {
         "id": 1,
@@ -223,156 +471,12 @@
         "module": "internal",
         "handler": "None"
     },
-    "ReadUltrasonic": {
-        "id": 30,
-        "opcode": "ReadUltrasonic",
-        "function": "read_ultrasonic",
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler"
-    },
-    "ReadTouch": {
-        "id": 31,
-        "opcode": "ReadTouch",
-        "function": "read_touch",
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler"
-    },
-    "ReadLight": {
-        "id": 32,
-        "opcode": "ReadLight",
-        "function": "read_light",
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler"
-    },
-    "ReadColor": {
-        "id": 33,
-        "opcode": "ReadColor",
-        "function": "read_color",
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler"
-    },
-    "ReadLine": {
-        "id": 34,
-        "opcode": "ReadLine",
-        "function": "read_line",
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler"
-    },
-    "GetTraceValue": {
-        "id": 42,
-        "opcode": "GetTraceValue",
-        "function": "get_trace_value",
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler"
-    },
-    "GetTraceState": {
-        "id": 43,
-        "opcode": "GetTraceState",
-        "function": "get_trace_state",
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler"
-    },
-    "GetTraceRaw": {
-        "id": 44,
-        "opcode": "GetTraceRaw",
-        "function": "get_trace_raw",
-        "category": "sensor",
-        "module": "sensor_handler",
-        "handler": "SensorHandler"
-    },
-    "SetServo": {
-        "id": 36,
-        "opcode": "SetServo",
-        "function": "set_servo",
-        "category": "servo",
-        "module": "servo_handler",
-        "handler": "ServoHandler"
-    },
-    "Set3CLed": {
-        "id": 37,
-        "opcode": "Set3CLed",
-        "function": "set_3c_led",
-        "category": "led",
-        "module": "led_handler",
-        "handler": "LedHandler"
-    },
-    "SetLightSensorLed": {
-        "id": 38,
-        "opcode": "SetLightSensorLed",
-        "function": "set_light_sensor_led",
-        "category": "led",
-        "module": "led_handler",
-        "handler": "LedHandler"
-    },
-    "SetMotorStraightAngle": {
-        "id": 39,
-        "opcode": "SetMotorStraightAngle",
-        "function": "set_motor_straight_angle",
-        "category": "motor",
-        "module": "motor_handler",
-        "handler": "MotorHandler"
-    },
-    "LineBasis": {
-        "id": 47,
-        "opcode": "LineBasis",
-        "function": "line_basis",
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler"
-    },
-    "LineFollow": {
-        "id": 48,
-        "opcode": "LineFollow",
-        "function": "line_follow",
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler"
-    },
-    "LineStop": {
-        "id": 49,
-        "opcode": "LineStop",
-        "function": "line_stop",
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler"
-    },
-    "LineIntersectionStop": {
-        "id": 40,
-        "opcode": "LineIntersectionStop",
-        "function": "line_intersection_stop",
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler"
-    },
-    "LineTurnEncounterLine": {
-        "id": 50,
-        "opcode": "LineTurnEncounterLine",
-        "function": "line_turn_encounterline",
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler"
-    },
-    "LineForBmp": {
-        "id": 51,
-        "opcode": "LineForBmp",
-        "function": "line_for_bmp",
-        "category": "line",
-        "module": "line_handler",
-        "handler": "LineHandler"
-    },
-    "SetMp3Play": {
-        "id": 41,
-        "opcode": "SetMp3Play",
-        "function": "set_mp3_play",
-        "category": "peripheral",
-        "module": "peripheral_handler",
-        "handler": "PeripheralHandler"
+    "Nop": {
+        "id": 64,
+        "opcode": "Nop",
+        "function": "Nop",
+        "category": "internal",
+        "module": "internal",
+        "handler": "None"
     }
 }

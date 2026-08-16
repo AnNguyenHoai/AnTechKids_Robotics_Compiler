@@ -72,3 +72,12 @@ def get_trace_raw(port: int) -> None:
     """
     pass
 
+def get_light_sensor_data(port: int) -> None:
+    """
+    Read light sensor digital state (0/1)
+
+    Args:
+        port (int):
+    """
+    pass
+

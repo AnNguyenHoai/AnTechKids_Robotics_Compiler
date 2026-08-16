@@ -11,3 +11,12 @@ def set_mp3_play(index: int) -> None:
     """
     pass
 
+def set_lizard(state: int) -> None:
+    """
+    Control peripheral lizard (unknown)
+
+    Args:
+        state (int):
+    """
+    pass
+

@@ -21,8 +21,15 @@
 
 // === Diagnostics ===
 #include "src/Diagnostics/DiagnosticsManager.h"
-#include "src/Sensor/SensorManager.h"   // để gọi updateAll()
+#include "src/Sensor/SensorManager.h"
 #include "src/Diagnostics/Console/DevelopmentConsole.h"
+
+// === IMU & Heading ===
+#include "src/Sensor/IMUSensor.h"
+#include "src/Sensor/SensorID.h"
+#include "src/Services/Motion/HeadingEstimator.h"
+#include "src/Services/Motion/HeadingController.h"
+
 // VM
 VM vm;
 Program program;
@@ -31,7 +38,13 @@ int executionCounter = 0;
 
 // Behavior Engine
 BehaviorScheduler scheduler;
-bool useBehaviorEngine = false;  // Mặc định chạy VM
+bool useBehaviorEngine = false;
+
+// Heading Estimator (global instance)
+HeadingEstimator g_headingEstimator;
+
+// === Robot Ready State ===
+bool g_robotReady = false;
 
 void setup() {
     Serial.begin(115200);
@@ -62,7 +75,7 @@ void setup() {
     BootLogger::log("BOOT", "Serial Handler Ready");
 
     DevelopmentConsole::instance().begin();
-    DevelopmentConsole::instance().setEnabled(false);   // <-- THÊM DÒNG NÀY
+    DevelopmentConsole::instance().setEnabled(false);
     BootLogger::log("BOOT", "Development Console ready (disabled by default)");
 
     // 5. Initialize Behavior Scheduler with default behaviors
@@ -77,6 +90,59 @@ void setup() {
     scheduler.addBehavior(new ColorDetectBehavior(0, 50));
     
     BootLogger::log("BOOT", "Behavior Scheduler initialized with 9 behaviors");
+
+    // 6. Reset Heading Estimator
+    g_headingEstimator.reset();
+    BootLogger::log("BOOT", "Heading Estimator reset");
+
+    // ============================================================
+    // 7. AUTOMATIC IMU CALIBRATION (blocking)
+    // ============================================================
+    BootLogger::log("IMU", "Starting automatic gyro calibration...");
+    BootLogger::log("IMU", "Keep robot completely still!");
+
+    // Ensure motors are stopped
+    RobotAPI::Stop();
+
+    // Get IMU sensor
+    auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
+    if (imu && imu->isReady()) {
+        int result = imu->calibrateGyro(500);
+        if (result == 0) {
+            MPU6050Bias bias = imu->getBias();
+            BootLogger::logFormat("IMU", "Calibration SUCCESS. Bias X=%.3f Y=%.3f Z=%.3f deg/s",
+                                  bias.bx, bias.by, bias.bz);
+            // Reset heading estimator
+            g_headingEstimator.reset();
+            BootLogger::log("Heading", "Estimator reset to 0 deg");
+            // Reset heading controller
+            RobotAPI::resetHeadingController();
+            BootLogger::log("Heading", "Controller reset");
+            g_robotReady = true;
+            BootLogger::log("Robot", "READY");
+        } else if (result == 1) {
+            BootLogger::log("IMU", "Calibration FAILED: UNSTABLE (robot moved too much)");
+            BootLogger::log("Robot", "NOT READY - Motors disabled");
+            g_robotReady = false;
+        } else {
+            BootLogger::log("IMU", "Calibration FAILED: communication error");
+            BootLogger::log("Robot", "NOT READY - Motors disabled");
+            g_robotReady = false;
+        }
+    } else {
+        BootLogger::log("IMU", "Sensor not available - calibration FAILED");
+        BootLogger::log("Robot", "NOT READY - Motors disabled");
+        g_robotReady = false;
+    }
+
+    // If calibration failed, stay in error state
+    if (!g_robotReady) {
+        BootLogger::log("ERROR", "System halted due to IMU calibration failure");
+        while (1) {
+            delay(1000);
+            Serial.println("[ERROR] IMU calibration failed. Please reset or use 'imu calibrate' manually.");
+        }
+    }
 
     BootLogger::log("EXEC", "System Ready. Type 'help' for commands.");
     BootLogger::log("INFO", "Default mode: VM. Type 'mode behavior' to switch.");
@@ -94,14 +160,27 @@ void loop() {
     // Cập nhật thống kê diagnostics
     DiagnosticsManager::instance().updateSensors();
 
+    // ---- Cập nhật Heading từ IMU (chỉ khi robot ready) ----
+    if (g_robotReady) {
+        auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
+        if (imu && imu->isReady() && imu->isCalibrated()) {
+            IMUSample sample;
+            if (imu->getLatestSample(sample)) {
+                g_headingEstimator.update(sample);
+            }
+        }
+        // Cập nhật Heading Hold Controller
+        RobotAPI::updateMotion();
+    } else {
+        // Ensure motors stay stopped if not ready
+        RobotAPI::Stop();
+    }
+
     DevelopmentConsole::instance().update();
+
     if (useBehaviorEngine) {
         // === Chạy Behavior Engine ===
         scheduler.update();
-        if (!scheduler.isRunning()) {
-            // Nếu scheduler kết thúc, có thể ở trạng thái idle
-            // Không làm gì thêm
-        }
     } else {
         // === Chạy VM ===
         if (vm.IsRunning()) {

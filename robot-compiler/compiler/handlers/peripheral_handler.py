@@ -6,3 +6,8 @@ class PeripheralHandler:
         compiler.validate_argument_count(node, "set_mp3_play", 1)
         index = compiler.resolve_argument(node.args[0])
         compiler.program.emit(Opcode.SetMp3Play.value, index, 0, 0)
+
+    @staticmethod
+    def set_lizard(compiler, node):
+        compiler.validate_argument_count(node, "set_lizard", 1)
+        compiler.program.emit(Opcode.Nop.value, 0, 0, 0)
