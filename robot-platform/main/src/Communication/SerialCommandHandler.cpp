@@ -1,4 +1,5 @@
 #include "SerialCommandHandler.h"
+#define DIAGNOSTIC_MANUAL_START 
 #include "../Services/Robot/MotionConfig.h"
 #include "../Services/Robot/RobotAPI.h"
 #include "../Devices/SensorConfig.h"
@@ -11,13 +12,16 @@
 #include "../Diagnostics/Console/DevelopmentConsole.h"
 #include "../Services/Motion/HeadingEstimator.h"
 #include "../Services/Motion/HeadingController.h"
-#include "../Sensor/Ultrasonic.h"   // thêm include cho Ultrasonic
+#include "../Sensor/Ultrasonic.h"
+#include "../Services/VM/VM.h"
 
 #include <string.h>
 
 extern BehaviorScheduler scheduler;
 extern bool useBehaviorEngine;
 extern HeadingEstimator g_headingEstimator;
+extern VM vm;
+extern bool g_vmStarted;
 
 void SerialCommandHandler::setup() {
     Serial.println("SerialCommandHandler ready. Type 'help' for commands.");
@@ -49,22 +53,30 @@ void SerialCommandHandler::handle() {
         Serial.println("  diagnostics (diag)  - print sensor and runtime diagnostics");
         Serial.println("  diag raw            - print raw sensor values and detected state");
         Serial.println("  diag init           - print sensor initialization status");
-        Serial.println("  console on/off       - enable/disable realtime console");
-        Serial.println("  console rate <hz>    - set refresh rate (1-50 Hz)");
-        Serial.println("  console              - show console status");
-        Serial.println("  motor calib show               - show calibration values and example");
-        Serial.println("  motor calib set left <val>     - set left motor scale (0.50-1.50)");
-        Serial.println("  motor calib set right <val>    - set right motor scale (0.50-1.50)");
-        Serial.println("  motor calib reset              - reset both scales to 1.0");
-        Serial.println("  motor calib test <speed>       - run motors at effective speed and display");
+        Serial.println("  console on/off      - enable/disable realtime console");
+        Serial.println("  console rate <hz>   - set refresh rate (1-50 Hz)");
+        Serial.println("  console             - show console status");
+        Serial.println("  motor calib show    - show calibration values and example");
+        Serial.println("  motor calib set left <val>  - set left motor scale (0.50-1.50)");
+        Serial.println("  motor calib set right <val> - set right motor scale (0.50-1.50)");
+        Serial.println("  motor calib reset   - reset both scales to 1.0");
+        Serial.println("  motor calib test <speed>    - run motors at effective speed and display");
         Serial.println("  imu status          - show IMU status and configuration");
         Serial.println("  imu read            - read and display current IMU data");
         Serial.println("  imu calibrate       - perform gyroscope bias calibration (robot must be still)");
-        Serial.println("  heading status      - show current relative heading and gyro info");
+        Serial.println("  heading status      - show current relative heading and gyro info + diagnostic state");
         Serial.println("  heading control     - show heading hold controller status");
         Serial.println("  robot status        - show robot ready state and IMU status");
         Serial.println("  ultra diag          - show ultrasonic diagnostic statistics");
+        // ---- Diagnostic commands (new) ----
+        Serial.println("  heading on/off      - enable/disable heading control (diagnostic)");
+        Serial.println("  heading status      - also shows diagnostic state");
+#ifdef DIAGNOSTIC_MANUAL_START
+        Serial.println("  run                 - start VM execution (manual-start mode)");
+#endif
+        return;
     }
+
     // ---------- Motion Config ----------
     else if (input.startsWith("config show")) {
         auto& cfg = RobotAPI::g_motionConfig;
@@ -135,6 +147,7 @@ void SerialCommandHandler::handle() {
         int right = rest.substring(space + 1).toInt();
         RobotAPI::setMotorsDirect(left, right);
     }
+
     // ---------- Sensor Config ----------
     else if (input.startsWith("sensor show")) {
         auto& cfg = g_sensorConfig;
@@ -168,6 +181,7 @@ void SerialCommandHandler::handle() {
         }
         Serial.printf("Set %s to %.3f\n", key.c_str(), value);
     }
+
     // ---------- Behavior ----------
     else if (input.startsWith("behavior list")) {
         auto& behaviors = scheduler.getBehaviors();
@@ -195,6 +209,7 @@ void SerialCommandHandler::handle() {
         int idx = input.substring(13).toInt();
         scheduler.runSingle(idx);
     }
+
     // ---------- Mode Switching ----------
     else if (input.startsWith("mode vm")) {
         useBehaviorEngine = false;
@@ -204,6 +219,7 @@ void SerialCommandHandler::handle() {
         useBehaviorEngine = true;
         Serial.println("Switched to Behavior Engine mode.");
     }
+
     // ---------- Diagnostics ----------
     else if (input.startsWith("diagnostics") || input.startsWith("diag")) {
         if (input.startsWith("diag raw")) {
@@ -264,6 +280,7 @@ void SerialCommandHandler::handle() {
             DiagnosticsManager::instance().printReport();
         }
     }
+
     // ---------- Motor Calibration ----------
     else if (input.startsWith("motor calib show")) {
         auto& cfg = RobotAPI::g_motionConfig;
@@ -316,6 +333,7 @@ void SerialCommandHandler::handle() {
             Serial.println("Motors running at effective speeds. Use 'speed 0 0' to stop.");
         }
     }
+
     // ---------- IMU ----------
     else if (input.startsWith("imu status")) {
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
@@ -373,8 +391,10 @@ void SerialCommandHandler::handle() {
             Serial.println("Calibration FAILED: communication error");
         }
     }
+
     // ---------- Heading ----------
     else if (input.startsWith("heading status")) {
+        // Show estimator info + diagnostic state
         Serial.println("--- Heading Status ---");
         Serial.printf("Initialized : %s\n", g_headingEstimator.isInitialized() ? "YES" : "NO");
         Serial.printf("Heading     : %.2f deg\n", g_headingEstimator.getHeadingDeg());
@@ -385,6 +405,9 @@ void SerialCommandHandler::handle() {
         if (imu) {
             Serial.printf("IMU Calibrated: %s\n", imu->isCalibrated() ? "YES" : "NO");
         }
+        // Diagnostic state
+        Serial.printf("[HEADING-DIAG] Controller: %s\n",
+                      RobotAPI::isHeadingDiagnosticEnabled() ? "ON" : "OFF");
         Serial.println("---");
     }
     else if (input.startsWith("heading control")) {
@@ -408,6 +431,15 @@ void SerialCommandHandler::handle() {
         Serial.printf("Effective R   : %d\n", RobotAPI::getEffectiveRight());
         Serial.println("-----------------------");
     }
+
+    // ---------- Heading diagnostic ON/OFF ----------
+    else if (input.startsWith("heading on")) {
+        RobotAPI::setHeadingDiagnosticEnabled(true);
+    }
+    else if (input.startsWith("heading off")) {
+        RobotAPI::setHeadingDiagnosticEnabled(false);
+    }
+
     // ---------- Robot Status ----------
     else if (input.startsWith("robot status")) {
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
@@ -425,7 +457,8 @@ void SerialCommandHandler::handle() {
         Serial.printf("Heading Hold : %s\n", RobotAPI::isHeadingHoldActive() ? "ACTIVE" : "INACTIVE");
         Serial.println("-------------------");
     }
-    // Phần lệnh ultra diag (thay thế đoạn cũ)
+
+    // ---------- Ultrasonic Diagnostics ----------
     else if (input.startsWith("ultra diag")) {
         Serial.println("--- Ultrasonic Diagnostics ---");
         auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
@@ -447,6 +480,22 @@ void SerialCommandHandler::handle() {
         Serial.printf("Direction     : %d\n", RobotAPI::getCurrentDirection());
         Serial.println("-----------------------------");
     }
+
+    // ---------- Manual start (diagnostic) ----------
+#ifdef DIAGNOSTIC_MANUAL_START
+    else if (input.startsWith("run")) {
+        if (!vm.IsRunning() && !g_vmStarted) {
+            vm.Start();
+            g_vmStarted = true;
+            Serial.println("[VM-DIAG] Manual execution started");
+        } else if (vm.IsRunning()) {
+            Serial.println("[VM-DIAG] VM already running");
+        } else {
+            Serial.println("[VM-DIAG] Cannot start VM (program not loaded or invalid state)");
+        }
+    }
+#endif
+
     else {
         Serial.printf("Unknown command: %s\n", input.c_str());
     }

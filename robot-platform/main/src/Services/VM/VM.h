@@ -54,6 +54,17 @@ public:
      */
     uint8_t GetErrorCode() const;
 
+    // ---- DIAGNOSTIC: manual control ----
+    /**
+     * Set running state (diagnostic use only).
+     */
+    void SetRunning(bool running);
+
+    /**
+     * Start execution from PC=0 (diagnostic use only).
+     */
+    void Start();
+
 private:
 
     /**

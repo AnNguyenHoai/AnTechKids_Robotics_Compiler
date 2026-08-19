@@ -12,3 +12,9 @@
       - GPT vừa review xong phần intergration test(VM), tiếp theo sẽ là yêu cầu GPT giao task và tiếp tục làm, tuy nhiên cần hardware nên sẽ sắp xếp làm ở lab
 
 14/8: điều chỉnh factor rồi nạp code test, sau đó sẽ tiếp tục verify lại soft hiện tại
+
+- Quay lại thì tiếp tục làm test 3. Em muốn làm một test rất quan trọng tiếp theo
+
+Không cần sửa code.
+
+TEST 12 — Forward → STOP → Ultra

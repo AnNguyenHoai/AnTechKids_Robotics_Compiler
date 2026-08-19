@@ -220,5 +220,7 @@ uint32_t getUltraReadCount();
  * Get number of failed ultrasonic reads (timeouts).
  */
 uint32_t getUltraFailCount();
-
+// In RobotAPI.h:
+void setHeadingDiagnosticEnabled(bool enabled);
+bool isHeadingDiagnosticEnabled();
 } // namespace RobotAPI

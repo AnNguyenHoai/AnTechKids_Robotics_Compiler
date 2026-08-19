@@ -30,6 +30,11 @@
 #include "src/Services/Motion/HeadingEstimator.h"
 #include "src/Services/Motion/HeadingController.h"
 
+// ============================================================
+// DIAGNOSTIC: Uncomment the line below to enable manual-start mode
+// ============================================================
+#define DIAGNOSTIC_MANUAL_START   // <--- BẬT MACRO
+
 // VM
 VM vm;
 Program program;
@@ -45,6 +50,10 @@ HeadingEstimator g_headingEstimator;
 
 // === Robot Ready State ===
 bool g_robotReady = false;
+
+// === Diagnostic manual-start control (always defined) ===
+bool g_manualStartEnabled = false;
+bool g_vmStarted = true;
 
 void setup() {
     Serial.begin(115200);
@@ -68,7 +77,16 @@ void setup() {
     BootLogger::log("BOOT", "Binary Loaded");
 
     vm.LoadProgram(&program);
+
+#ifdef DIAGNOSTIC_MANUAL_START
+    // In manual-start mode, VM is loaded but not running
+    g_manualStartEnabled = true;
+    g_vmStarted = false;
+    vm.SetRunning(false);
+    BootLogger::log("VM-DIAG", "Waiting for manual execution (type 'run')");
+#else
     BootLogger::log("BOOT", "VM Ready");
+#endif
 
     // 4. Serial Command Handler
     SerialCommandHandler::setup();
@@ -112,30 +130,24 @@ void setup() {
             MPU6050Bias bias = imu->getBias();
             BootLogger::logFormat("IMU", "Calibration SUCCESS. Bias X=%.3f Y=%.3f Z=%.3f deg/s",
                                   bias.bx, bias.by, bias.bz);
-            // Reset heading estimator
             g_headingEstimator.reset();
             BootLogger::log("Heading", "Estimator reset to 0 deg");
-            // Reset heading controller
             RobotAPI::resetHeadingController();
             BootLogger::log("Heading", "Controller reset");
             g_robotReady = true;
             BootLogger::log("Robot", "READY");
         } else if (result == 1) {
-            BootLogger::log("IMU", "Calibration FAILED: UNSTABLE (robot moved too much)");
-            BootLogger::log("Robot", "NOT READY - Motors disabled");
+            BootLogger::log("IMU", "Calibration FAILED: UNSTABLE");
             g_robotReady = false;
         } else {
             BootLogger::log("IMU", "Calibration FAILED: communication error");
-            BootLogger::log("Robot", "NOT READY - Motors disabled");
             g_robotReady = false;
         }
     } else {
         BootLogger::log("IMU", "Sensor not available - calibration FAILED");
-        BootLogger::log("Robot", "NOT READY - Motors disabled");
         g_robotReady = false;
     }
 
-    // If calibration failed, stay in error state
     if (!g_robotReady) {
         BootLogger::log("ERROR", "System halted due to IMU calibration failure");
         while (1) {
@@ -151,16 +163,11 @@ void setup() {
 void loop() {
     uint32_t start = micros();
 
-    // Xử lý lệnh Serial
     SerialCommandHandler::handle();
 
-    // Cập nhật tất cả sensor (cho diagnostics và các lần đọc sau)
     SensorManager::instance().updateAll();
-
-    // Cập nhật thống kê diagnostics
     DiagnosticsManager::instance().updateSensors();
 
-    // ---- Cập nhật Heading từ IMU (chỉ khi robot ready) ----
     if (g_robotReady) {
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (imu && imu->isReady() && imu->isCalibrated()) {
@@ -169,40 +176,56 @@ void loop() {
                 g_headingEstimator.update(sample);
             }
         }
-        // Cập nhật Heading Hold Controller
         RobotAPI::updateMotion();
     } else {
-        // Ensure motors stay stopped if not ready
         RobotAPI::Stop();
     }
 
     DevelopmentConsole::instance().update();
 
     if (useBehaviorEngine) {
-        // === Chạy Behavior Engine ===
         scheduler.update();
     } else {
         // === Chạy VM ===
+#ifdef DIAGNOSTIC_MANUAL_START
+        if (g_vmStarted && vm.IsRunning()) {
+            vm.Step();
+        }
+#else
         if (vm.IsRunning()) {
             vm.Step();
-        } else {
-            uint8_t err = vm.GetErrorCode();
-            if (err != 0) {
-                BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
-                while (1) { }
-            }
-            executionCounter++;
-            BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
+        }
+#endif
 
-            if (executionCounter < STABILITY_ITERATIONS) {
-                BootLogger::log("STABILITY", "Restarting VM...");
-                vm.Reset();
-                vm.LoadProgram(&program);
-            } else {
-                BootLogger::log("STABILITY", "VM stability test completed.");
-                while (1) {
-                    SerialCommandHandler::handle();
-                    delay(30);
+        if (!vm.IsRunning()) {
+#ifdef DIAGNOSTIC_MANUAL_START
+            if (g_vmStarted) {
+#else
+            if (true) {
+#endif
+                uint8_t err = vm.GetErrorCode();
+                if (err != 0) {
+                    BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
+                    while (1) { }
+                }
+                executionCounter++;
+                BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
+
+                if (executionCounter < STABILITY_ITERATIONS) {
+                    BootLogger::log("STABILITY", "Restarting VM...");
+                    vm.Reset();
+                    vm.LoadProgram(&program);
+#ifdef DIAGNOSTIC_MANUAL_START
+                    vm.SetRunning(false);
+                    g_vmStarted = false;
+                    BootLogger::log("VM-DIAG", "Waiting for manual execution again");
+#endif
+                } else {
+                    BootLogger::log("STABILITY", "VM stability test completed.");
+                    while (1) {
+                        SerialCommandHandler::handle();
+                        delay(30);
+                    }
                 }
             }
         }

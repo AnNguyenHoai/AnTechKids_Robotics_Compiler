@@ -2,6 +2,7 @@
 #include "../Robot/RobotAPI.h"
 #include "../../../include/generated/opcode.h"
 #include <Arduino.h> 
+
 // Bật trace để debug (có thể comment để tắt)
 #define VM_TRACE_ENABLED 1
 
@@ -35,6 +36,19 @@ uint8_t VM::GetErrorCode() const
     return mContext.mErrorCode;
 }
 
+// ---- DIAGNOSTIC: manual control ----
+void VM::SetRunning(bool running) {
+    mContext.mRunning = running;
+}
+
+void VM::Start() {
+    mContext.mRunning = true;
+    mContext.mProgramCounter = 0;
+    mContext.mErrorCode = 0;
+    // Do not reset variables; they are already loaded
+    // But we can reset any other state if needed
+}
+
 void VM::Step()
 {
     if (!IsRunning()) return;
@@ -43,7 +57,7 @@ void VM::Step()
     if (mContext.mProgramCounter >= mProgram->mInstructionCount)
     {
         mContext.mRunning = false;
-        mContext.mErrorCode = 0;   // <-- không báo lỗi
+        mContext.mErrorCode = 0;
         return;
     }
 

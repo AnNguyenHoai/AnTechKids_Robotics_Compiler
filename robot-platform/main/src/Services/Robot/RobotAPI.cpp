@@ -38,7 +38,8 @@
 extern HeadingEstimator g_headingEstimator;
 extern bool g_robotReady;
 extern VM vm;
-
+// In RobotAPI.cpp, near other static variables:
+static bool g_headingDiagnosticEnabled = true;   // ON by default
 namespace RobotAPI {
 
 // Cấu hình PWM cho ESP32
@@ -69,7 +70,16 @@ enum StopReason {
     STOP_REASON_WATCHDOG,
     STOP_REASON_PROGRAM_END,
 };
+// In RobotAPI.cpp:
+void setHeadingDiagnosticEnabled(bool enabled) {
+    g_headingDiagnosticEnabled = enabled;
+    Serial.printf("[HEADING-DIAG] Heading controller: %s\n",
+                  enabled ? "ON" : "OFF");
+}
 
+bool isHeadingDiagnosticEnabled() {
+    return g_headingDiagnosticEnabled;
+}
 static const char* stopReasonToString(StopReason reason) {
     switch (reason) {
         case STOP_REASON_COMMAND_STOP:   return "COMMAND_STOP";
@@ -167,7 +177,27 @@ static void _applyMotion() {
     int baseSpeed = g_currentBaseSpeed;
     int direction = g_currentDirection;
     float correction = 0.0f;
+    // --- DIAGNOSTIC GATE ---
+    if (g_headingDiagnosticEnabled && g_headingHoldEnabled && g_headingController.isActive()) {
+        auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
+        if (imu && imu->isReady() && imu->isCalibrated()) {
+            float currentHeading = g_headingEstimator.getHeadingDeg();
+            uint32_t now = millis();
+            correction = g_headingController.update(currentHeading, now);
 
+            // Safety check remains active even when diagnostic is ON
+            float error = g_headingController.getLastError();
+            if (fabs(error) > 45.0f) {
+                Serial.printf("[SAFETY] Heading error exceeded 45 degrees (error=%.2f), stopping robot\n", error);
+                _stopMotion(STOP_REASON_HEADING_SAFETY);
+                return;
+            }
+        } else {
+            Serial.println("[SAFETY] IMU became invalid during motion, stopping robot");
+            _stopMotion(STOP_REASON_IMU_FAILURE);
+            return;
+        }
+    }
     int baseLeft = (int)(baseSpeed * g_motionConfig.speedScale * g_motionConfig.leftMotorScale);
     int baseRight = (int)(baseSpeed * g_motionConfig.speedScale * g_motionConfig.rightMotorScale);
 
@@ -696,7 +726,7 @@ void Initialize() {
     mgr.registerSensor(SensorID::LineRight,
                        new TCRT5000(SENSOR_TRCT5000_R_PIN, "line_right"));
     mgr.registerSensor(SensorID::Ultrasonic,
-                       new Ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN, 30000, "ultrasonic"));
+                       new Ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN, 50000, "ultrasonic"));
 
     IMUSensor* imu = new IMUSensor();
     mgr.registerSensor(SensorID::IMU, imu);
