@@ -12,7 +12,7 @@ bool IMUSensor::initialize() {
     config.gyroRange = 250;
     config.accelRange = 2;
     config.sampleRate = 1000;
-    config.digitalFilter = 0x03;  // DLPF 42Hz
+    config.digitalFilter = 0x03;
 
     if (!_driver.begin(config)) {
         _healthy = false;
@@ -27,13 +27,22 @@ bool IMUSensor::initialize() {
 }
 
 void IMUSensor::update() {
+    // ---- DEBUG-H3-001: IMU Runtime Gate ----
+    if (!g_imuRuntimeEnabled) {
+        // When IMU runtime is disabled, do not read hardware.
+        // Mark sensor as unhealthy so HeadingEstimator won't use old data.
+        _healthy = false;
+        _latestSample.valid = false;
+        return;
+    }
+    // ---- END DIAGNOSTIC GATE ----
+
     if (!_initialized) {
         _healthy = false;
         _latestSample.valid = false;
         return;
     }
 
-    // Đọc một mẫu đồng bộ
     IMUSample sample;
     sample.timestamp = millis();
     bool okAccel = _driver.readAccel(sample.accel);

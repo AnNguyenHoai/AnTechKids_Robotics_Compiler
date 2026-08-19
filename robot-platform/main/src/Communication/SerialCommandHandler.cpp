@@ -22,7 +22,7 @@ extern bool useBehaviorEngine;
 extern HeadingEstimator g_headingEstimator;
 extern VM vm;
 extern bool g_vmStarted;
-
+extern bool g_imuRuntimeEnabled;
 void SerialCommandHandler::setup() {
     Serial.println("SerialCommandHandler ready. Type 'help' for commands.");
 }
@@ -71,6 +71,14 @@ void SerialCommandHandler::handle() {
         // ---- Diagnostic commands (new) ----
         Serial.println("  heading on/off      - enable/disable heading control (diagnostic)");
         Serial.println("  heading status      - also shows diagnostic state");
+        Serial.println("  heading startup on/off  - enable/disable heading startup initialization (diagnostic)");
+        Serial.println("  heading startup status  - show heading startup diagnostic state");
+        Serial.println("  motion output on/off   - enable/disable motion-output processing (diagnostic)");
+        Serial.println("  motion output status   - show motion-output diagnostic state");
+        Serial.println("  imu on/off             - enable/disable IMU runtime (diagnostic)");
+        Serial.println("  imu status             - show IMU runtime diagnostic state");
+        Serial.println("  motor pwm on/off        - enable/disable low-level motor PWM output (diagnostic)");
+        Serial.println("  motor pwm status        - show motor PWM diagnostic state");
 #ifdef DIAGNOSTIC_MANUAL_START
         Serial.println("  run                 - start VM execution (manual-start mode)");
 #endif
@@ -480,7 +488,52 @@ void SerialCommandHandler::handle() {
         Serial.printf("Direction     : %d\n", RobotAPI::getCurrentDirection());
         Serial.println("-----------------------------");
     }
-
+    // ---------- Heading Startup Diagnostic (DEBUG-H1-001) ----------
+    else if (input.startsWith("heading startup on")) {
+        RobotAPI::setHeadingStartupDiagnosticEnabled(true);
+    }
+    else if (input.startsWith("heading startup off")) {
+        RobotAPI::setHeadingStartupDiagnosticEnabled(false);
+    }
+    else if (input.startsWith("heading startup status")) {
+        Serial.printf("[HEADING-STARTUP-DIAG] Heading startup: %s\n",
+                      RobotAPI::isHeadingStartupDiagnosticEnabled() ? "ON" : "OFF");
+    }
+    // ---------- Motion Output Diagnostic (DEBUG-H2-001) ----------
+    else if (input.startsWith("motion output on")) {
+        RobotAPI::setMotionOutputDiagnosticEnabled(true);
+    }
+    else if (input.startsWith("motion output off")) {
+        RobotAPI::setMotionOutputDiagnosticEnabled(false);
+    }
+    else if (input.startsWith("motion output status")) {
+        Serial.printf("[MOTION-DIAG] Motion output: %s\n",
+                      RobotAPI::isMotionOutputDiagnosticEnabled() ? "ON" : "OFF");
+    }
+    // ---------- IMU Runtime Diagnostic (DEBUG-H3-001) ----------
+    else if (input.startsWith("imu on")) {
+        g_imuRuntimeEnabled = true;
+        Serial.println("[IMU-DIAG] IMU runtime: ON");
+    }
+    else if (input.startsWith("imu off")) {
+        g_imuRuntimeEnabled = false;
+        Serial.println("[IMU-DIAG] IMU runtime: OFF");
+    }
+    else if (input.startsWith("imu status")) {
+        Serial.printf("[IMU-DIAG] IMU runtime: %s\n",
+                      g_imuRuntimeEnabled ? "ON" : "OFF");
+    }
+    // ---------- Motor PWM Diagnostic (DEBUG-H4-001) ----------
+    else if (input.startsWith("motor pwm on")) {
+        RobotAPI::setMotorPwmDiagnosticEnabled(true);
+    }
+    else if (input.startsWith("motor pwm off")) {
+        RobotAPI::setMotorPwmDiagnosticEnabled(false);
+    }
+    else if (input.startsWith("motor pwm status")) {
+        Serial.printf("[PWM-DIAG] Motor PWM: %s\n",
+                      RobotAPI::isMotorPwmDiagnosticEnabled() ? "ON" : "OFF");
+    }
     // ---------- Manual start (diagnostic) ----------
 #ifdef DIAGNOSTIC_MANUAL_START
     else if (input.startsWith("run")) {

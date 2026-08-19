@@ -12,7 +12,8 @@ struct IMUSample {
     float temperature;            // °C
     bool valid;
 };
-
+// ---- DEBUG-H3-001: IMU Runtime Diagnostic ----
+extern bool g_imuRuntimeEnabled;
 class IMUSensor : public ISensor {
 public:
     IMUSensor();

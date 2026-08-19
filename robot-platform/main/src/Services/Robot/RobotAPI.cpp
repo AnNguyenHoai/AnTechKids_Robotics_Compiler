@@ -57,7 +57,8 @@ static Touch touch0(ROBOT_PIN_5);
 static Touch touch1(ROBOT_PIN_5);
 static LightSensor lightSensor(ROBOT_PIN_5);
 static ColorSensor colorSensor;
-
+static bool g_headingStartupDiagnosticEnabled = true; 
+static bool g_motorPwmDiagnosticEnabled = true;
 // ---- STOP Reason Diagnostics ----
 enum StopReason {
     STOP_REASON_UNKNOWN = 0,
@@ -93,22 +94,61 @@ static const char* stopReasonToString(StopReason reason) {
         default:                         return "UNKNOWN";
     }
 }
+// ---- Motor PWM Diagnostic Functions ----
+void setMotorPwmDiagnosticEnabled(bool enabled) {
+    g_motorPwmDiagnosticEnabled = enabled;
+    Serial.printf("[PWM-DIAG] Motor PWM: %s\n",
+                  enabled ? "ON" : "OFF");
+}
 
+bool isMotorPwmDiagnosticEnabled() {
+    return g_motorPwmDiagnosticEnabled;
+}
 // ---- Forward declarations ----
 static void _stopMotion(StopReason reason = STOP_REASON_COMMAND_STOP);
 static void _applyMotion();
 
 // ---- Motor control internal ----
+// ---- Heading Startup Diagnostic Functions ----
+void setHeadingStartupDiagnosticEnabled(bool enabled) {
+    g_headingStartupDiagnosticEnabled = enabled;
+    Serial.printf("[HEADING-STARTUP-DIAG] Heading startup: %s\n",
+                  enabled ? "ON" : "OFF");
+}
 
+bool isHeadingStartupDiagnosticEnabled() {
+    return g_headingStartupDiagnosticEnabled;
+}
+// ---- Modified _setMotorsRaw() ----
 static void _setMotorsRaw(int leftSpeed, int rightSpeed) {
     leftSpeed = constrain(leftSpeed, -100, 100);
     rightSpeed = constrain(rightSpeed, -100, 100);
 
+    // Calculate PWM values (always keep calculation for diagnostics)
     int leftPWM = abs(leftSpeed) * g_motionConfig.pwmPerSpeed;
     int rightPWM = abs(rightSpeed) * g_motionConfig.pwmPerSpeed;
     leftPWM = constrain(leftPWM, 0, 255);
     rightPWM = constrain(rightPWM, 0, 255);
 
+    // ---- DIAGNOSTIC: Bypass hardware PWM writes ----
+    if (!g_motorPwmDiagnosticEnabled) {
+        // Log once per motion session to avoid spam
+        static bool loggedOnce = false;
+        if (!loggedOnce) {
+            Serial.printf("[PWM-DIAG] requested L=%d R=%d, hardware PWM BYPASSED\n",
+                          leftSpeed, rightSpeed);
+            loggedOnce = true;
+        }
+        // Set all motor pins to LOW to ensure no PWM output and safe state
+        digitalWrite(MOTOR_L_IN1_PIN, LOW);
+        digitalWrite(MOTOR_L_IN2_PIN, LOW);
+        digitalWrite(MOTOR_R_IN3_PIN, LOW);
+        digitalWrite(MOTOR_R_IN4_PIN, LOW);
+        return;
+    }
+    // ---- END DIAGNOSTIC ----
+
+    // ---- NORMAL PWM OUTPUT (existing code) ----
     if (leftSpeed >= 0) {
         ledcWrite(MOTOR_L_IN1_PIN, leftPWM);
         ledcWrite(MOTOR_L_IN2_PIN, 0);
@@ -140,7 +180,8 @@ static int g_currentBaseSpeed = 0;
 static int g_currentDirection = 0;
 static int g_effectiveLeft = 0;
 static int g_effectiveRight = 0;
-
+// ---- DEBUG-H2-001: Motion Output Diagnostic Flag ----
+static bool g_motionOutputDiagnosticEnabled = true; 
 // ---- Ultrasonic Diagnostic Counters ----
 static uint32_t ultraReadCount = 0;
 static uint32_t ultraFailCount = 0;
@@ -164,8 +205,17 @@ static void _stopMotion(StopReason reason) {
     g_effectiveLeft = 0;
     g_effectiveRight = 0;
 }
+// ---- Motion Output Diagnostic Functions ----
+void setMotionOutputDiagnosticEnabled(bool enabled) {
+    g_motionOutputDiagnosticEnabled = enabled;
+    Serial.printf("[MOTION-DIAG] Motion output: %s\n",
+                  enabled ? "ON" : "OFF");
+}
 
-// ---- Apply Motion ----
+bool isMotionOutputDiagnosticEnabled() {
+    return g_motionOutputDiagnosticEnabled;
+}
+// ---- Modified _applyMotion() ----
 static void _applyMotion() {
     if (!g_isMoving) {
         _setMotorsRaw(0, 0);
@@ -176,8 +226,31 @@ static void _applyMotion() {
 
     int baseSpeed = g_currentBaseSpeed;
     int direction = g_currentDirection;
+
+    // ---- DIAGNOSTIC: Motion Output Bypass ----
+    if (!g_motionOutputDiagnosticEnabled) {
+        // Direct base output: bypass all correction, mixing, calibration
+        int left = (direction > 0) ? baseSpeed : -baseSpeed;
+        int right = (direction > 0) ? baseSpeed : -baseSpeed;
+        _setMotorsRaw(left, right);
+        g_effectiveLeft = left;
+        g_effectiveRight = right;
+
+        // Optional: log once per motion session
+        static bool loggedOnce = false;
+        if (!loggedOnce) {
+            Serial.printf("[MOTION-DIAG] Direct base output: direction=%d speed=%d → L=%d R=%d\n",
+                          direction, baseSpeed, left, right);
+            loggedOnce = true;
+        }
+        return;
+    }
+    // ---- END DIAGNOSTIC ----
+
+    // ---- NORMAL PATH (existing code) ----
     float correction = 0.0f;
-    // --- DIAGNOSTIC GATE ---
+
+    // Existing heading correction logic (unchanged)
     if (g_headingDiagnosticEnabled && g_headingHoldEnabled && g_headingController.isActive()) {
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (imu && imu->isReady() && imu->isCalibrated()) {
@@ -185,7 +258,6 @@ static void _applyMotion() {
             uint32_t now = millis();
             correction = g_headingController.update(currentHeading, now);
 
-            // Safety check remains active even when diagnostic is ON
             float error = g_headingController.getLastError();
             if (fabs(error) > 45.0f) {
                 Serial.printf("[SAFETY] Heading error exceeded 45 degrees (error=%.2f), stopping robot\n", error);
@@ -198,28 +270,10 @@ static void _applyMotion() {
             return;
         }
     }
+
+    // Apply motor calibration
     int baseLeft = (int)(baseSpeed * g_motionConfig.speedScale * g_motionConfig.leftMotorScale);
     int baseRight = (int)(baseSpeed * g_motionConfig.speedScale * g_motionConfig.rightMotorScale);
-
-    if (g_headingHoldEnabled && g_headingController.isActive()) {
-        auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
-        if (imu && imu->isReady() && imu->isCalibrated()) {
-            float currentHeading = g_headingEstimator.getHeadingDeg();
-            uint32_t now = millis();
-            correction = g_headingController.update(currentHeading, now);
-
-            float error = g_headingController.getLastError();
-            if (fabs(error) > 45.0f) {
-                Serial.printf("[SAFETY] Heading error exceeded 45 degrees (error=%.2f), stopping robot\n", error);
-                _stopMotion(STOP_REASON_HEADING_SAFETY);
-                return;
-            }
-        } else {
-            Serial.println("[SAFETY] IMU became invalid during motion, stopping robot");
-            _stopMotion(STOP_REASON_IMU_FAILURE);
-            return;
-        }
-    }
 
     int leftEff, rightEff;
     if (direction < 0) {
@@ -238,6 +292,7 @@ static void _applyMotion() {
 
     _setMotorsRaw(leftEff, rightEff);
 
+    // Optional heading diagnostic log (unchanged)
     if (g_isMoving && g_headingController.isActive()) {
         static uint32_t lastHeadingDiag = 0;
         uint32_t now = millis();
@@ -275,7 +330,7 @@ void resetHeadingController() {
     Serial.println("[RobotAPI] Heading controller reset");
 }
 
-// ---- Bắt đầu di chuyển ----
+// ---- Modified _startMotion() ----
 static void _startMotion(int speed, int direction) {
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Motion blocked: Robot not ready (calibrating IMU)");
@@ -296,22 +351,36 @@ static void _startMotion(int speed, int direction) {
     g_isMoving = true;
 
     if (newSession) {
-        g_headingController.reset();
+        Serial.printf("[HEADING-STARTUP-DIAG] StartMotion direction=%d speed=%d\n",
+                      direction, speed);
 
-        if (g_headingHoldEnabled) {
-            auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
-            if (imu && imu->isReady() && imu->isCalibrated()) {
-                float currentHeading = g_headingEstimator.getHeadingDeg();
-                g_headingController.start(currentHeading);
-                Serial.printf("[Heading] HOLD START target=%.2f deg\n", currentHeading);
+        if (g_headingStartupDiagnosticEnabled) {
+            // ---- NORMAL PATH: Heading initialization enabled ----
+            Serial.println("[HEADING-STARTUP-DIAG] Heading startup: ENABLED");
+            g_headingController.reset();
+
+            if (g_headingHoldEnabled) {
+                auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
+                if (imu && imu->isReady() && imu->isCalibrated()) {
+                    float currentHeading = g_headingEstimator.getHeadingDeg();
+                    g_headingController.start(currentHeading);
+                    Serial.printf("[Heading] HOLD START target=%.2f deg\n", currentHeading);
+                } else {
+                    g_headingController.stop();
+                    Serial.println("[Heading] Heading hold unavailable (IMU not calibrated)");
+                }
             } else {
                 g_headingController.stop();
-                Serial.println("[Heading] Heading hold unavailable (IMU not calibrated)");
             }
         } else {
+            // ---- DIAGNOSTIC PATH: Heading startup BYPASSED ----
+            Serial.println("[HEADING-STARTUP-DIAG] Heading startup: BYPASSED");
+            // Do NOT reset or start HeadingController.
+            // Ensure controller is stopped to avoid any residual correction.
             g_headingController.stop();
         }
     } else {
+        // Motion continues from previous session; maintain heading hold if already active
         if (g_headingHoldEnabled && !g_headingController.isActive()) {
             auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
             if (imu && imu->isReady() && imu->isCalibrated()) {
@@ -324,6 +393,7 @@ static void _startMotion(int speed, int direction) {
 
     _applyMotion();
 }
+
 
 // ===== Public API =====
 

@@ -18,3 +18,6 @@
 Không cần sửa code.
 
 TEST 12 — Forward → STOP → Ultra
+
+19/8/2026:
+- Đã merge code H1, cần nạp code hardware để test - test case đã cung cấp ở GPT, hãy làm theo hướng dẫn

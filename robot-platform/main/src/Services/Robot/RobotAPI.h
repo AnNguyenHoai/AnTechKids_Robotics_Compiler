@@ -21,7 +21,12 @@ namespace RobotAPI
 /******************************************************************************
  * Initialization
  ******************************************************************************/
-
+// ---- Motion Output Diagnostic (DEBUG-H2-001) ----
+void setMotionOutputDiagnosticEnabled(bool enabled);
+bool isMotionOutputDiagnosticEnabled();
+// ---- Motor PWM Diagnostic (DEBUG-H4-001) ----
+void setMotorPwmDiagnosticEnabled(bool enabled);
+bool isMotorPwmDiagnosticEnabled();
 /**
  * Initialize hardware (motor pins, PWM, etc.)
  */
@@ -223,4 +228,7 @@ uint32_t getUltraFailCount();
 // In RobotAPI.h:
 void setHeadingDiagnosticEnabled(bool enabled);
 bool isHeadingDiagnosticEnabled();
+// ---- Heading Startup Diagnostic (DEBUG-H1-001) ----
+void setHeadingStartupDiagnosticEnabled(bool enabled);
+bool isHeadingStartupDiagnosticEnabled();
 } // namespace RobotAPI

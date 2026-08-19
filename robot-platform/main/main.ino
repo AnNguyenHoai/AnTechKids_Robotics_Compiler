@@ -54,7 +54,8 @@ bool g_robotReady = false;
 // === Diagnostic manual-start control (always defined) ===
 bool g_manualStartEnabled = false;
 bool g_vmStarted = true;
-
+// ---- DEBUG-H3-001: IMU Runtime Diagnostic ----
+bool g_imuRuntimeEnabled = true; 
 void setup() {
     Serial.begin(115200);
     while (!Serial) { }
