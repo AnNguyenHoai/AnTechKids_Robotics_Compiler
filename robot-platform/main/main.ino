@@ -33,7 +33,7 @@
 // ============================================================
 // DIAGNOSTIC: Uncomment the line below to enable manual-start mode
 // ============================================================
-#define DIAGNOSTIC_MANUAL_START   // <--- BẬT MACRO
+//#define DIAGNOSTIC_MANUAL_START   // <--- BẬT MACRO
 
 // VM
 VM vm;

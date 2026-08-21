@@ -412,6 +412,14 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             mContext.mProgramCounter++;
             break;
 
+        case Opcode::LineMillisecond:
+            RobotAPI::LineMillisecond(
+                mContext.mVariables[instruction.p1],
+                mContext.mVariables[instruction.p2]
+            );
+            mContext.mProgramCounter++;
+            break;
+
         case Opcode::LineStop:
             RobotAPI::LineStop();
             mContext.mProgramCounter++;

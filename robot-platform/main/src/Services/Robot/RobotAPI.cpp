@@ -180,6 +180,9 @@ static int g_currentBaseSpeed = 0;
 static int g_currentDirection = 0;
 static int g_effectiveLeft = 0;
 static int g_effectiveRight = 0;
+// ---- H15: Motion/Ultrasonic correlation diagnostics ----
+static uint32_t g_motionSessionId = 0;
+static uint32_t g_motionStartMs = 0;
 // ---- DEBUG-H2-001: Motion Output Diagnostic Flag ----
 static bool g_motionOutputDiagnosticEnabled = true; 
 // ---- Ultrasonic Diagnostic Counters ----
@@ -189,6 +192,11 @@ static uint32_t ultraFailCount = 0;
 // ---- Stop Motion (with reason) ----
 static void _stopMotion(StopReason reason) {
     if (g_isMoving) {
+        Serial.printf("[MOTION-ULTRA-CORR] STOP session=%lu t=%lu age=%lu reason=%s\n",
+                      (unsigned long)g_motionSessionId,
+                      (unsigned long)millis(),
+                      (unsigned long)(millis() - g_motionStartMs),
+                      stopReasonToString(reason));
         Serial.printf("[STOP] reason=%s\n", stopReasonToString(reason));
         Serial.printf("[STOP] heading=%.2f target=%.2f error=%.2f correction=%.2f\n",
                       g_headingEstimator.getHeadingDeg(),
@@ -352,6 +360,13 @@ static void _startMotion(int speed, int direction) {
     g_isMoving = true;
 
     if (newSession) {
+        ++g_motionSessionId;
+        g_motionStartMs = millis();
+        Serial.printf("[MOTION-ULTRA-CORR] START session=%lu t=%lu direction=%d speed=%d\n",
+                      (unsigned long)g_motionSessionId,
+                      (unsigned long)g_motionStartMs,
+                      direction,
+                      speed);
         Serial.printf("[HEADING-STARTUP-DIAG] StartMotion direction=%d speed=%d\n",
                       direction, speed);
 
@@ -395,6 +410,18 @@ static void _startMotion(int speed, int direction) {
     }
 
     _applyMotion();
+
+    if (newSession) {
+        Serial.printf("[MOTION-ULTRA-CORR] ACTIVE session=%lu t=%lu age=%lu moving=%d effL=%d effR=%d pwm=%d output=%d\n",
+                      (unsigned long)g_motionSessionId,
+                      (unsigned long)millis(),
+                      (unsigned long)(millis() - g_motionStartMs),
+                      g_isMoving ? 1 : 0,
+                      g_effectiveLeft,
+                      g_effectiveRight,
+                      g_motorPwmDiagnosticEnabled ? 1 : 0,
+                      g_motionOutputDiagnosticEnabled ? 1 : 0);
+    }
 }
 
 
@@ -547,13 +574,33 @@ int16_t ReadLine(int channel) {
 int16_t ReadUltrasonic() {
     ultraReadCount++;
 
+    const uint32_t readSeq = ultraReadCount;
+    const uint32_t readStartMs = millis();
+    const uint32_t sessionAtStart = g_motionSessionId;
+    const bool movingAtStart = g_isMoving;
+    const uint32_t motionAgeAtStart = movingAtStart ? (readStartMs - g_motionStartMs) : 0;
+
+    Serial.printf(
+        "[MOTION-ULTRA-CORR] READ-BEGIN seq=%lu t=%lu session=%lu age=%lu "
+        "moving=%d speed=%d dir=%d effL=%d effR=%d\n",
+        (unsigned long)readSeq,
+        (unsigned long)readStartMs,
+        (unsigned long)sessionAtStart,
+        (unsigned long)motionAgeAtStart,
+        movingAtStart ? 1 : 0,
+        g_currentBaseSpeed,
+        g_currentDirection,
+        g_effectiveLeft,
+        g_effectiveRight
+    );
+
     auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
     if (!sensor) {
         ultraFailCount++;
         Serial.printf(
             "[ULTRA-DIAG] t=%lu seq=%lu result=-1 sensor=NULL speed=%d dir=%d fails=%lu\n",
             millis(),
-            (unsigned long)ultraReadCount,
+            (unsigned long)readSeq,
             g_currentBaseSpeed,
             g_currentDirection,
             (unsigned long)ultraFailCount
@@ -567,13 +614,35 @@ int16_t ReadUltrasonic() {
     us->update();
     float dist = us->distanceCm();
 
+    const uint32_t readEndMs = millis();
+    const uint32_t readElapsedMs = readEndMs - readStartMs;
+    const uint32_t sessionAtEnd = g_motionSessionId;
+    const bool movingAtEnd = g_isMoving;
+    const uint32_t motionAgeAtEnd = movingAtEnd ? (readEndMs - g_motionStartMs) : 0;
+
+    Serial.printf(
+        "[MOTION-ULTRA-CORR] READ-END seq=%lu t=%lu elapsed=%lu "
+        "session=%lu sessionChanged=%d age=%lu moving=%d speed=%d dir=%d effL=%d effR=%d\n",
+        (unsigned long)readSeq,
+        (unsigned long)readEndMs,
+        (unsigned long)readElapsedMs,
+        (unsigned long)sessionAtEnd,
+        sessionAtEnd != sessionAtStart ? 1 : 0,
+        (unsigned long)motionAgeAtEnd,
+        movingAtEnd ? 1 : 0,
+        g_currentBaseSpeed,
+        g_currentDirection,
+        g_effectiveLeft,
+        g_effectiveRight
+    );
+
     if (dist < 0) {
         ultraFailCount++;
         Serial.printf(
             "[ULTRA-DIAG] t=%lu seq=%lu result=-1 status=TIMEOUT "
             "speed=%d dir=%d consecutiveTimeouts=%d failCount=%lu failRate=%.1f%% healthy=%s\n",
-            millis(),
-            (unsigned long)ultraReadCount,
+            readEndMs,
+            (unsigned long)readSeq,
             g_currentBaseSpeed,
             g_currentDirection,
             us->getConsecutiveTimeouts(),
@@ -587,8 +656,8 @@ int16_t ReadUltrasonic() {
     Serial.printf(
         "[ULTRA-DIAG] t=%lu seq=%lu result=%.1fcm status=OK "
         "speed=%d dir=%d consecutiveTimeouts=%d healthy=%s\n",
-        millis(),
-        (unsigned long)ultraReadCount,
+        readEndMs,
+        (unsigned long)readSeq,
         dist,
         g_currentBaseSpeed,
         g_currentDirection,
@@ -598,6 +667,7 @@ int16_t ReadUltrasonic() {
 
     return (int16_t)dist;
 }
+
 float distanceFront() {
     auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
     if (sensor) {
@@ -629,6 +699,40 @@ void LineBasis(int speed) {
 
 void LineFollow(int speed) {
     LineBasis(speed);
+}
+
+void LineMillisecond(int speed, int millisecond) {
+    if (!g_robotReady) {
+        Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
+        return;
+    }
+
+    if (millisecond <= 0) {
+        Stop();
+        return;
+    }
+
+    Serial.printf("[Line] LineMillisecond speed=%d duration=%dms\\n",
+                  speed, millisecond);
+
+    auto& follower = LineFollower::instance();
+    const uint32_t start = millis();
+
+    follower.setSpeed(speed);
+    follower.reset();
+
+    while ((uint32_t)(millis() - start) < (uint32_t)millisecond) {
+        uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
+        int left = 0;
+        int right = 0;
+
+        follower.update(mask, speed, left, right);
+        setMotorsDirect(left, right);
+        delay(20);
+    }
+
+    follower.stop();
+    Stop();
 }
 
 void LineStop() {

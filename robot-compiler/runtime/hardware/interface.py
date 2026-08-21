@@ -39,3 +39,6 @@ class IHardware(ABC):
     def read_color(self) -> int:
         """Read color sensor (placeholder)."""
         pass
+    def set_led(self, port: int, state: int) -> None:
+        """Set an LED output. Optional for hardware implementations."""
+        pass

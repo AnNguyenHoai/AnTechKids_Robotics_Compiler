@@ -43,3 +43,31 @@ def handle_read_color(ins: RuntimeInstruction, engine: ExecutionEngine, api: Moc
     engine.set_variable_by_index(dest_idx, IntegerValue(val))
     engine.context.program_counter += 1
     engine.iterator.seek(engine.context.program_counter)
+
+def handle_get_trace_value(ins, engine, api):
+    port = engine.get_variable_by_index(ins.operands[0]).as_int()
+    channel = engine.get_variable_by_index(ins.operands[1]).as_int()
+    dest = ins.operands[2]
+    val = api.get_trace_value(port, channel)
+    engine.set_variable_by_index(dest, IntegerValue(val))
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+
+def handle_get_trace_state(ins, engine, api):
+    port = engine.get_variable_by_index(ins.operands[0]).as_int()
+    channel = engine.get_variable_by_index(ins.operands[1]).as_int()
+    dest = ins.operands[2]
+    val = api.get_trace_state(port, channel)
+    engine.set_variable_by_index(dest, IntegerValue(val))
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)
+
+
+def handle_get_trace_raw(ins, engine, api):
+    port = engine.get_variable_by_index(ins.operands[0]).as_int()
+    dest = ins.operands[2]
+    val = api.get_trace_raw(port)
+    engine.set_variable_by_index(dest, IntegerValue(val))
+    engine.context.program_counter += 1
+    engine.iterator.seek(engine.context.program_counter)

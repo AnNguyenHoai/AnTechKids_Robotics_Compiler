@@ -1,5 +1,5 @@
 #include "SerialCommandHandler.h"
-#define DIAGNOSTIC_MANUAL_START
+//#define DIAGNOSTIC_MANUAL_START
 
 #include "../Services/Robot/MotionConfig.h"
 #include "../Services/Robot/RobotAPI.h"

@@ -153,6 +153,7 @@ int16_t GetTraceRaw(int port);
 
 void LineBasis(int speed);
 void LineFollow(int speed);
+void LineMillisecond(int speed, int millisecond);
 void LineStop();
 void LineTurnEncounterLine(int speed, int angle, int direction);
 void LineForBmp(int speed, int degree);
