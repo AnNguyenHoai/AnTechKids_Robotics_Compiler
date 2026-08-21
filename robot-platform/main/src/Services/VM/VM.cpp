@@ -310,10 +310,16 @@ void VM::ExecuteInstruction(const Instruction& instruction)
                 mContext.mErrorCode = 5; // Return without call
             }
             break;
-        case Opcode::ReadUltrasonic:
-            mContext.mVariables[instruction.p1] = RobotAPI::ReadUltrasonic();
+        case Opcode::ReadUltrasonic: {
+            int16_t value = RobotAPI::ReadUltrasonic();
+            mContext.mVariables[instruction.p1] = value;
+            Serial.printf("[VM-ULTRA-DIAG] PC=%u p1=%d value=%d\\n",
+                          mContext.mProgramCounter,
+                          instruction.p1,
+                          value);
             mContext.mProgramCounter++;
             break;
+        }
 
         case Opcode::ReadTouch:
             mContext.mVariables[instruction.p2] = RobotAPI::ReadTouch(mContext.mVariables[instruction.p1]);

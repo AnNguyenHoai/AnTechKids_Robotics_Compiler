@@ -56,6 +56,12 @@ bool g_manualStartEnabled = false;
 bool g_vmStarted = true;
 // ---- DEBUG-H3-001: IMU Runtime Diagnostic ----
 bool g_imuRuntimeEnabled = true; 
+bool g_imuSensorRuntimeEnabled = true;   // ON by default
+// ---- DEBUG-IMU-002: MPU6050 I2C Diagnostic ----
+bool g_imuI2cEnabled = true;
+bool g_imuAccelDiagnosticEnabled = true;
+bool g_imuGyroDiagnosticEnabled = true;
+bool g_imuTempDiagnosticEnabled = true;
 void setup() {
     Serial.begin(115200);
     while (!Serial) { }

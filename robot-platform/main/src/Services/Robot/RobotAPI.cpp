@@ -227,20 +227,21 @@ static void _applyMotion() {
     int baseSpeed = g_currentBaseSpeed;
     int direction = g_currentDirection;
 
-    // ---- DIAGNOSTIC: Motion Output Bypass ----
+    // ---- DIAGNOSTIC: Motion Output Gate ----
+    // When OFF, keep motion state/heading processing active but block all
+    // physical motor output. This is intentionally different from the
+    // low-level "motor pwm" diagnostic, which gates _setMotorsRaw() itself.
     if (!g_motionOutputDiagnosticEnabled) {
-        // Direct base output: bypass all correction, mixing, calibration
         int left = (direction > 0) ? baseSpeed : -baseSpeed;
         int right = (direction > 0) ? baseSpeed : -baseSpeed;
-        _setMotorsRaw(left, right);
+
         g_effectiveLeft = left;
         g_effectiveRight = right;
 
-        // Optional: log once per motion session
         static bool loggedOnce = false;
         if (!loggedOnce) {
-            Serial.printf("[MOTION-DIAG] Direct base output: direction=%d speed=%d → L=%d R=%d\n",
-                          direction, baseSpeed, left, right);
+            Serial.printf("[MOTION-DIAG] Physical motor output BLOCKED: requested L=%d R=%d\n",
+                          left, right);
             loggedOnce = true;
         }
         return;
@@ -354,7 +355,9 @@ static void _startMotion(int speed, int direction) {
         Serial.printf("[HEADING-STARTUP-DIAG] StartMotion direction=%d speed=%d\n",
                       direction, speed);
 
-        if (g_headingStartupDiagnosticEnabled) {
+        // Heading startup must honor the public heading diagnostic switch.
+        // If "heading off" is active, do not initialize or start the controller.
+        if (g_headingDiagnosticEnabled && g_headingStartupDiagnosticEnabled) {
             // ---- NORMAL PATH: Heading initialization enabled ----
             Serial.println("[HEADING-STARTUP-DIAG] Heading startup: ENABLED");
             g_headingController.reset();
@@ -381,7 +384,7 @@ static void _startMotion(int speed, int direction) {
         }
     } else {
         // Motion continues from previous session; maintain heading hold if already active
-        if (g_headingHoldEnabled && !g_headingController.isActive()) {
+        if (g_headingDiagnosticEnabled && g_headingHoldEnabled && !g_headingController.isActive()) {
             auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
             if (imu && imu->isReady() && imu->isCalibrated()) {
                 g_headingController.start(g_headingController.getTargetHeading());
@@ -543,28 +546,58 @@ int16_t ReadLine(int channel) {
 // ================================================================
 int16_t ReadUltrasonic() {
     ultraReadCount++;
-    auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
-    if (sensor) {
-        auto us = static_cast<Ultrasonic*>(sensor);
-        us->update();
-        float dist = us->distanceCm();
-        
-        if (dist < 0) {
-            ultraFailCount++;
-            if (ultraFailCount % 10 == 0 || (ultraReadCount > 0 && ultraFailCount * 100 / ultraReadCount > 20)) {
-                Serial.printf("[ULTRA] FAIL #%lu (rate=%.1f%%) speed=%d dir=%d consecutiveTimeouts=%d\n",
-                              ultraFailCount,
-                              100.0f * ultraFailCount / ultraReadCount,
-                              g_currentBaseSpeed,
-                              g_currentDirection,
-                              us->getConsecutiveTimeouts());
-            }
-        }
-        return (dist < 0) ? -1 : (int16_t)dist;
-    }
-    return -1;
-}
 
+    auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
+    if (!sensor) {
+        ultraFailCount++;
+        Serial.printf(
+            "[ULTRA-DIAG] t=%lu seq=%lu result=-1 sensor=NULL speed=%d dir=%d fails=%lu\n",
+            millis(),
+            (unsigned long)ultraReadCount,
+            g_currentBaseSpeed,
+            g_currentDirection,
+            (unsigned long)ultraFailCount
+        );
+        return -1;
+    }
+
+    auto us = static_cast<Ultrasonic*>(sensor);
+
+    // Keep the existing sensor read path unchanged.
+    us->update();
+    float dist = us->distanceCm();
+
+    if (dist < 0) {
+        ultraFailCount++;
+        Serial.printf(
+            "[ULTRA-DIAG] t=%lu seq=%lu result=-1 status=TIMEOUT "
+            "speed=%d dir=%d consecutiveTimeouts=%d failCount=%lu failRate=%.1f%% healthy=%s\n",
+            millis(),
+            (unsigned long)ultraReadCount,
+            g_currentBaseSpeed,
+            g_currentDirection,
+            us->getConsecutiveTimeouts(),
+            (unsigned long)ultraFailCount,
+            100.0f * ultraFailCount / ultraReadCount,
+            us->healthy() ? "YES" : "NO"
+        );
+        return -1;
+    }
+
+    Serial.printf(
+        "[ULTRA-DIAG] t=%lu seq=%lu result=%.1fcm status=OK "
+        "speed=%d dir=%d consecutiveTimeouts=%d healthy=%s\n",
+        millis(),
+        (unsigned long)ultraReadCount,
+        dist,
+        g_currentBaseSpeed,
+        g_currentDirection,
+        us->getConsecutiveTimeouts(),
+        us->healthy() ? "YES" : "NO"
+    );
+
+    return (int16_t)dist;
+}
 float distanceFront() {
     auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
     if (sensor) {
