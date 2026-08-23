@@ -26,6 +26,8 @@ def main():
         ROOT / "robot-compiler" / "tests" / "run_tests.py",
         ROOT / "robot-frontend-robosim" / "test" / "run_tests.py",
         ROOT / "robot-compiler" / "integration" / "end_to_end" / "run_integration_tests.py",
+        ROOT / "tests" / "c4" / "test_language_semantics.py",
+        ROOT / "tests" / "c5" / "test_c5_pipeline.py",
     ]
     all_passed = True
     for test in tests:

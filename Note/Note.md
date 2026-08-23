@@ -23,3 +23,5 @@ TEST 12 — Forward → STOP → Ultra
 - Đã merge code H1, cần nạp code hardware để test - test case đã cung cấp ở GPT, hãy làm theo hướng dẫn
 
 - Đã yêu cầu GPT tạo task, tiếp theo cần download task và yêu cầu deepseek làm
+
+22/8: Hiện đang làm C5, cần verify các chương trình robosim để đảm bảo chạy được thông suốt

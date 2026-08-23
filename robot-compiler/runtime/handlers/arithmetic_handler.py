@@ -50,7 +50,10 @@ def handle_arithmetic(ins: RuntimeInstruction, engine: ExecutionEngine, api: Moc
 def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: MockRobotAPI):
     var_idx = ins.operands[0]
     const_val = ins.operands[1]
-    if isinstance(const_val, int):
+    if isinstance(const_val, bool):
+        from ..value import BooleanValue
+        val = BooleanValue(const_val)
+    elif isinstance(const_val, int):
         from ..value import IntegerValue
         val = IntegerValue(const_val)
     elif isinstance(const_val, float):
@@ -59,9 +62,6 @@ def handle_load_const(ins: RuntimeInstruction, engine: ExecutionEngine, api: Moc
     elif isinstance(const_val, str):
         from ..value import StringValue
         val = StringValue(const_val)
-    elif isinstance(const_val, bool):
-        from ..value import BooleanValue
-        val = BooleanValue(const_val)
     else:
         raise TypeError(f"Unsupported constant type: {type(const_val)}")
     print(f"[LoadConst] var_idx={var_idx}, value={val}")

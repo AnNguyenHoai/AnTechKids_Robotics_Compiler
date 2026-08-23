@@ -174,6 +174,14 @@ static void _setMotors(int leftSpeed, int rightSpeed) {
 
 // ---- Heading Hold Controller ----
 static HeadingController g_headingController;
+
+enum class MotionControlMode : uint8_t {
+    None = 0,
+    Heading,
+    Line,
+};
+
+static MotionControlMode g_motionControlMode = MotionControlMode::None;
 static bool g_headingHoldEnabled = true;
 static bool g_isMoving = false;
 static int g_currentBaseSpeed = 0;
@@ -208,11 +216,30 @@ static void _stopMotion(StopReason reason) {
         Serial.printf("[STOP] vmState=%s\n", vm.IsRunning() ? "RUNNING" : "STOPPED");
     }
     g_isMoving = false;
+    g_motionControlMode = MotionControlMode::None;
     g_headingController.stop();
     _setMotorsRaw(0, 0);
     g_effectiveLeft = 0;
     g_effectiveRight = 0;
 }
+// ---- Motion Control Ownership ----
+// Line following owns steering exclusively through the line sensors.  IMU may
+// continue updating in the background, but HeadingController must not be
+// allowed to write motor corrections while LINE mode is active.
+static void _enterLineControlMode() {
+    if (g_motionControlMode != MotionControlMode::Line) {
+        Serial.println("[MOTION-MODE] LINE: heading control disabled, line sensors own motor steering");
+    }
+
+    g_isMoving = false;
+    g_headingController.stop();
+    g_currentBaseSpeed = 0;
+    g_currentDirection = 0;
+    g_effectiveLeft = 0;
+    g_effectiveRight = 0;
+    g_motionControlMode = MotionControlMode::Line;
+}
+
 // ---- Motion Output Diagnostic Functions ----
 void setMotionOutputDiagnosticEnabled(bool enabled) {
     g_motionOutputDiagnosticEnabled = enabled;
@@ -225,7 +252,8 @@ bool isMotionOutputDiagnosticEnabled() {
 }
 // ---- Modified _applyMotion() ----
 static void _applyMotion() {
-    if (!g_isMoving) {
+    // Only HEADING mode is allowed to run the IMU/heading motor loop.
+    if (g_motionControlMode != MotionControlMode::Heading || !g_isMoving) {
         _setMotorsRaw(0, 0);
         g_effectiveLeft = 0;
         g_effectiveRight = 0;
@@ -331,6 +359,7 @@ void resetHeadingController() {
     g_headingController.reset();
     g_headingController.stop();
     g_isMoving = false;
+    g_motionControlMode = MotionControlMode::None;
     g_currentBaseSpeed = 0;
     g_currentDirection = 0;
     g_effectiveLeft = 0;
@@ -355,6 +384,9 @@ static void _startMotion(int speed, int direction) {
 
     bool newSession = !g_isMoving;
 
+    // Explicit ownership transition: normal forward/backward motion is
+    // controlled by the heading controller, not by any previous line mode.
+    g_motionControlMode = MotionControlMode::Heading;
     g_currentBaseSpeed = speed;
     g_currentDirection = direction;
     g_isMoving = true;
@@ -478,7 +510,7 @@ void Stop() {
 }
 
 void updateMotion() {
-    if (g_isMoving && g_robotReady) {
+    if (g_motionControlMode == MotionControlMode::Heading && g_isMoving && g_robotReady) {
         _applyMotion();
     }
 }
@@ -690,6 +722,7 @@ void LineBasis(int speed) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
     }
+    _enterLineControlMode();
     auto& follower = LineFollower::instance();
     uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
     int left, right;
@@ -706,6 +739,8 @@ void LineMillisecond(int speed, int millisecond) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
     }
+
+    _enterLineControlMode();
 
     if (millisecond <= 0) {
         Stop();
@@ -746,6 +781,8 @@ void LineIntersectionStop(int speed, int type) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
     }
+
+    _enterLineControlMode();
     Serial.printf("[Line] LineIntersectionStop speed=%d type=%d\n", speed, type);
     auto& follower = LineFollower::instance();
     follower.setSpeed(speed);
@@ -764,6 +801,8 @@ void LineTurnEncounterLine(int speed, int angle, int direction) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
     }
+
+    _enterLineControlMode();
     Serial.printf("[Line] LineTurnEncounterLine speed=%d angle=%d dir=%d\n", speed, angle, direction);
     auto& follower = LineFollower::instance();
     follower.setSpeed(speed);
@@ -783,6 +822,8 @@ void LineForBmp(int speed, int degree) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
     }
+
+    _enterLineControlMode();
     Serial.printf("[Line] LineForBmp speed=%d degree=%d\n", speed, degree);
     auto& follower = LineFollower::instance();
     follower.followForBmp(speed, degree);
