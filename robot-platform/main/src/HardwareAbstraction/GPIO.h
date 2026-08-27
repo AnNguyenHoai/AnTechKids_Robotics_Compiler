@@ -17,6 +17,10 @@
 #define ROBOT_PIN_27    27
 #define ROBOT_PIN_32    32
 #define ROBOT_PIN_33    33
+#define ROBOT_PIN_34    34
+#define ROBOT_PIN_35    35
+#define ROBOT_PIN_36    36
+#define ROBOT_PIN_39    39
 #define ROBOT_PIN_13    13
 #define ROBOT_PIN_21    21
 
@@ -41,6 +45,12 @@
 #define MOTOR_L_IN2_PIN         ROBOT_PIN_26
 #define MOTOR_R_IN3_PIN         ROBOT_PIN_27
 #define MOTOR_R_IN4_PIN         ROBOT_PIN_14
+
+// Encoder quadrature (ESP32 input-only pins)
+#define ENCODER_LEFT_A_PIN  ROBOT_PIN_34
+#define ENCODER_LEFT_B_PIN  ROBOT_PIN_35
+#define ENCODER_RIGHT_A_PIN ROBOT_PIN_36
+#define ENCODER_RIGHT_B_PIN ROBOT_PIN_39
 
 // Cảm biến góc
 #define MPU6050_SDA_PIN ROBOT_PIN_21

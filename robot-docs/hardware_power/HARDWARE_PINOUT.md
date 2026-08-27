@@ -401,3 +401,13 @@ GPIO sẽ được bổ sung trong các phiên bản sau.
 - Dual Status LED
 - HC-SR04
 - GPIO Architecture Freeze
+## H24-B0 / H24-C Hardware V2 encoder contract
+
+| GPIO | Function | Direction | Status |
+|---|---|---|---|
+| GPIO34 | ENCODER_LEFT_A | Input-only | Frozen |
+| GPIO35 | ENCODER_LEFT_B | Input-only | Frozen |
+| GPIO36 | ENCODER_RIGHT_A | Input-only | Frozen |
+| GPIO39 | ENCODER_RIGHT_B | Input-only | Frozen |
+
+TB6612 static wiring remains frozen as: `PWMA=3.3V`, `PWMB=3.3V`, `STBY=3.3V`. Motor direction/PWM remains on the existing four ESP32 motor control GPIOs.
