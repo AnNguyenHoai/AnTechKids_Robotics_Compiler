@@ -5,16 +5,18 @@
 
 class RecoveryStrategy {
 public:
-    RecoveryStrategy();
+    enum Direction { DIR_UNKNOWN = 0, DIR_LEFT = -1, DIR_RIGHT = 1 };
 
+    RecoveryStrategy();
     void update(uint8_t mask, int &left, int &right);
     void reset();
+    void setLastDirection(Direction direction);
 
 private:
-    enum Phase { SEARCH_LEFT, SEARCH_RIGHT, SEARCH_SPIRAL };
+    enum Phase { SOFT_SEARCH, DEEP_SEARCH, SWEEP };
     Phase _phase;
     uint32_t _phaseStart;
-    int _speed;
+    Direction _lastDirection;
 };
 
 #endif

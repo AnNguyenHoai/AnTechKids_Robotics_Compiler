@@ -53,6 +53,12 @@ private:
     bool _bmpActive;
     uint32_t _bmpStart;
     int _bmpDuration;
+
+    // Last visible side is used to recover toward the line instead of always
+    // starting the search in the same direction.
+    RecoveryStrategy::Direction _lastLineDirection;
+    uint32_t _lastControlUpdate;
+    bool _wasRecovering;
 };
 
 #endif

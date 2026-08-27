@@ -27,6 +27,12 @@ bool isMotionOutputDiagnosticEnabled();
 // ---- Motor PWM Diagnostic (DEBUG-H4-001) ----
 void setMotorPwmDiagnosticEnabled(bool enabled);
 bool isMotorPwmDiagnosticEnabled();
+// ---- Motor Mapping Diagnostic (H23-C) ----
+void setMotorMappingDiagnosticEnabled(bool enabled);
+bool isMotorMappingDiagnosticEnabled();
+// ---- Line Response Latency Diagnostic (H23-D) ----
+void setLineResponseDiagnosticEnabled(bool enabled);
+bool isLineResponseDiagnosticEnabled();
 /**
  * Initialize hardware (motor pins, PWM, etc.)
  */

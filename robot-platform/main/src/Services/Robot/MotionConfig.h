@@ -19,7 +19,7 @@ struct MotionConfig {
     float rightMotorScale = 1.0f;
 
     // Limits
-    int minSpeed = 0;
+    int minSpeed = 65;  // H23-B minimum physical drive; 0 remains true stop
     int maxSpeed = 100;
 
     // Turn compensation (multiplier for turning speeds)

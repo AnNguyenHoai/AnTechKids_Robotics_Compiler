@@ -1,6 +1,8 @@
 #include "LineFollower.h"
 #include "LinePerception.h"        // for LinePerception::interpret
 #include <Arduino.h>
+#include "../Robot/MotionConfig.h"
+#include <math.h>
 
 LineFollower& LineFollower::instance() {
     static LineFollower follower;
@@ -15,7 +17,10 @@ LineFollower::LineFollower()
       _turnDirection(0),
       _stopAtIntersectionRequested(false),
       _bmpActive(false),
-      _bmpDuration(0) {
+      _bmpDuration(0),
+      _lastLineDirection(RecoveryStrategy::DIR_UNKNOWN),
+      _lastControlUpdate(0),
+      _wasRecovering(false) {
     _pid.setLimits(-100, 100);
 }
 
@@ -34,6 +39,10 @@ void LineFollower::reset() {
     _bmpActive = false;
     _turnRequested = false;
     _stopAtIntersectionRequested = false;
+    _lastLineDirection = RecoveryStrategy::DIR_UNKNOWN;
+    _lastControlUpdate = 0;
+    _wasRecovering = false;
+    _recovery.reset();
 }
 
 void LineFollower::turnEncounterLine(int direction) {
@@ -63,96 +72,120 @@ void LineFollower::stop() {
 }
 
 bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMotor) {
-    if (_stopped) {
-        leftMotor = rightMotor = 0;
-        return false;
+    if (_stopped) { leftMotor = rightMotor = 0; return false; }
+
+    if (_bmpActive && millis() - _bmpStart >= _bmpDuration) {
+        _bmpActive = false; _stopped = true; leftMotor = rightMotor = 0; return false;
     }
 
-    // BMP timed follow
-    if (_bmpActive) {
-        if (millis() - _bmpStart < _bmpDuration) {
-            // continue normal following
-        } else {
-            _bmpActive = false;
-            _stopped = true;
-            leftMotor = rightMotor = 0;
-            return false;
-        }
-    }
-
-    // ============================================================
-    // CONTROL PIPELINE (SINGLE SOURCE OF TRUTH)
-    // ============================================================
-
-    // 1. Perception: mask → LineState
     LineState state = LinePerception::interpret(mask);
 
-    // 2. Error Estimation: LineState → error
-    float error = LineErrorEstimator::estimate(state);
-
-    // 3. PID: error → correction
-    float correction = _pid.update(error);
-
-    // 4. Motor Mixing: correction + speed → left/right
-    MotorOutput output = MotorMixer::mix(speed, correction);
-
-    leftMotor = output.left;
-    rightMotor = output.right;
-
-    // ============================================================
-    // STATE MACHINE OVERRIDES
-    // ============================================================
+    // Remember the last side that actually saw the line.
+    if (state == LineState::LEFT || state == LineState::LEFT_CENTER) {
+        _lastLineDirection = RecoveryStrategy::DIR_LEFT;
+        _recovery.setLastDirection(_lastLineDirection);
+    } else if (state == LineState::RIGHT || state == LineState::CENTER_RIGHT) {
+        _lastLineDirection = RecoveryStrategy::DIR_RIGHT;
+        _recovery.setLastDirection(_lastLineDirection);
+    }
 
     bool intersection = _intersectionDetector.update(mask);
     _stateMachine.update(mask, intersection, _turnRequested, _stopAtIntersectionRequested);
-
     FollowerState fs = _stateMachine.getState();
+    bool recovering = (fs == FollowerState::LOST || fs == FollowerState::SEARCHING);
+
+    // Reacquiring a line exits recovery in the same control cycle. Reset the
+    // PID transient so the old search state cannot cause a derivative kick.
+    if (_wasRecovering && mask != 0) {
+        _pid.reset();
+        _recovery.reset();
+    }
+    _wasRecovering = recovering;
 
     switch (fs) {
         case FollowerState::LOST:
-            leftMotor = rightMotor = 0;
-            break;
+            // Start a gentle directed recovery immediately instead of stopping
+            // for 500 ms and then spinning aggressively.
+            _recovery.update(mask, leftMotor, rightMotor);
+            return true;
 
         case FollowerState::SEARCHING:
             _recovery.update(mask, leftMotor, rightMotor);
-            break;
+            return true;
 
         case FollowerState::INTERSECTION:
-            leftMotor = rightMotor = 0;
-            if (!_stopAtIntersectionRequested) {
+            if (_stopAtIntersectionRequested) {
+                leftMotor = rightMotor = 0;
+            } else {
+                leftMotor = rightMotor = speed;
                 _stateMachine.reset();
             }
             break;
 
-        case FollowerState::TURNING: {
-            if (_turnDirection == 1) { // left
-                leftMotor = -speed;
-                rightMotor = speed;
-            } else if (_turnDirection == 2) { // right
-                leftMotor = speed;
-                rightMotor = -speed;
+        case FollowerState::TURNING:
+            if (_turnDirection == 1) { leftMotor = -speed; rightMotor = speed; }
+            else if (_turnDirection == 2) { leftMotor = speed; rightMotor = -speed; }
+            else leftMotor = rightMotor = 0;
+            break;
+
+        default: {
+            // H22: command-domain steering with one global calibration owner.
+            //
+            // LineFollower must output the normal motor command domain only.
+            // RobotAPI::_setMotors() is the sole owner of motor calibration.
+            // Do not invert or pre-apply left/right calibration here.
+            //
+            // Keep a little headroom so line tracking can slow one wheel while
+            // the other remains at the requested speed. At full requested speed
+            // there is no need to push either wheel above the caller's command.
+            const int baseSpeed = constrain(speed, 0, 100);
+            int steering = 0;
+
+            // Discrete three-sensor steering. Values are intentionally moderate:
+            // calibration already compensates straight-line motor mismatch.
+            const int softSteering = max(8, (int)roundf(baseSpeed * 0.10f));
+            const int hardSteering = max(15, (int)roundf(baseSpeed * 0.22f));
+
+            switch (state) {
+                case LineState::LEFT:
+                    steering = hardSteering;
+                    break;
+                case LineState::LEFT_CENTER:
+                    steering = softSteering;
+                    break;
+                case LineState::RIGHT:
+                    steering = -hardSteering;
+                    break;
+                case LineState::CENTER_RIGHT:
+                    steering = -softSteering;
+                    break;
+                case LineState::CENTER:
+                default:
+                    steering = 0;
+                    break;
+            }
+
+            // Positive steering turns left: left wheel slows, right wheel keeps
+            // the requested base command. Negative steering is symmetric.
+            if (steering > 0) {
+                leftMotor = max(0, baseSpeed - steering);
+                rightMotor = baseSpeed;
+            } else if (steering < 0) {
+                leftMotor = baseSpeed;
+                rightMotor = max(0, baseSpeed + steering);
             } else {
-                leftMotor = rightMotor = 0;
+                // Preserve the exact calibrated straight command supplied by
+                // the caller. RobotAPI applies calibration exactly once.
+                leftMotor = baseSpeed;
+                rightMotor = baseSpeed;
             }
             break;
         }
-
-        default: // FOLLOWING and others: use the mixed output
-            break;
     }
 
-    // Intersection stop override
     if (_stopAtIntersectionRequested && intersection) {
-        _stopAtIntersectionRequested = false;
-        _stopped = true;
-        leftMotor = rightMotor = 0;
-        return false;
+        _stopAtIntersectionRequested = false; _stopped = true; leftMotor = rightMotor = 0; return false;
     }
-
-    // Turn request cleared when line found
-    if (_turnRequested && (mask != 0)) {
-        _turnRequested = false;
-    }
-
+    if (_turnRequested && mask != 0) _turnRequested = false;
     return true;
 }

@@ -3,6 +3,7 @@
 
 #include "../Services/Robot/MotionConfig.h"
 #include "../Services/Robot/RobotAPI.h"
+#include "../Services/Robot/MotorOutputMapper.h"
 #include "../Devices/SensorConfig.h"
 #include "../Behavior/BehaviorScheduler.h"
 #include "../Diagnostics/DiagnosticsManager.h"
@@ -63,7 +64,9 @@ void SerialCommandHandler::handle() {
         Serial.println("  motor calib set left <val>  - set left motor scale (0.50-1.50)");
         Serial.println("  motor calib set right <val> - set right motor scale (0.50-1.50)");
         Serial.println("  motor calib reset   - reset both scales to 1.0");
-        Serial.println("  motor calib test <speed>    - run motors at effective speed and display");
+        Serial.println("  motor calib test <speed>    - run motors through logical motor pipeline once");
+        Serial.println("  motor diag on/off/status    - motor mapping diagnostic (change-triggered)");
+        Serial.println("  line diag on/off/status     - line sensor-to-motor latency diagnostic");
         Serial.println("  imu status          - show IMU status and configuration");
         Serial.println("  imu read            - read and display current IMU data");
         Serial.println("  imu calibrate       - perform gyroscope bias calibration (robot must be still)");
@@ -103,11 +106,9 @@ void SerialCommandHandler::handle() {
         Serial.printf("turnCompensation: %.3f\n", cfg.turnCompensation);
         Serial.printf("pwmPerSpeed: %.3f\n", cfg.pwmPerSpeed);
         int cmd = 50;
-        int leftEff = cmd * cfg.speedScale * cfg.leftMotorScale;
-        int rightEff = cmd * cfg.speedScale * cfg.rightMotorScale;
-        leftEff = constrain(leftEff, -100, 100);
-        rightEff = constrain(rightEff, -100, 100);
-        Serial.printf("Example command %d -> effective L=%d, R=%d\n", cmd, leftEff, rightEff);
+        int leftMapped = RobotAPI::MotorOutputMapper::map(cmd, cfg.speedScale, cfg.leftMotorScale, cfg.minSpeed);
+        int rightMapped = RobotAPI::MotorOutputMapper::map(cmd, cfg.speedScale, cfg.rightMotorScale, cfg.minSpeed);
+        Serial.printf("Example logical command %d -> mapped L=%d, R=%d (minDrive=%d)\n", cmd, leftMapped, rightMapped, cfg.minSpeed);
     }
     else if (input.startsWith("config set ")) {
         String rest = input.substring(11);
@@ -302,11 +303,9 @@ void SerialCommandHandler::handle() {
         Serial.printf("rightMotorScale : %.3f\n", cfg.rightMotorScale);
         Serial.printf("speedScale      : %.3f\n", cfg.speedScale);
         int cmd = 50;
-        int leftEff = cmd * cfg.speedScale * cfg.leftMotorScale;
-        int rightEff = cmd * cfg.speedScale * cfg.rightMotorScale;
-        leftEff = constrain(leftEff, -100, 100);
-        rightEff = constrain(rightEff, -100, 100);
-        Serial.printf("Example command %d -> effective L=%d, R=%d\n", cmd, leftEff, rightEff);
+        int leftMapped = RobotAPI::MotorOutputMapper::map(cmd, cfg.speedScale, cfg.leftMotorScale, cfg.minSpeed);
+        int rightMapped = RobotAPI::MotorOutputMapper::map(cmd, cfg.speedScale, cfg.rightMotorScale, cfg.minSpeed);
+        Serial.printf("Example logical command %d -> mapped L=%d, R=%d (minDrive=%d)\n", cmd, leftMapped, rightMapped, cfg.minSpeed);
     }
     else if (input.startsWith("motor calib set left ")) {
         float val = input.substring(21).toFloat();
@@ -314,7 +313,8 @@ void SerialCommandHandler::handle() {
             Serial.printf("Error: leftMotorScale must be between %.2f and %.2f\n", MIN_MOTOR_SCALE, MAX_MOTOR_SCALE);
         } else {
             RobotAPI::g_motionConfig.leftMotorScale = val;
-            Serial.printf("leftMotorScale set to %.3f\n", val);
+            RobotAPI::saveMotionConfigToStorage();
+            Serial.printf("leftMotorScale set to %.3f and saved\n", val);
         }
     }
     else if (input.startsWith("motor calib set right ")) {
@@ -323,13 +323,15 @@ void SerialCommandHandler::handle() {
             Serial.printf("Error: rightMotorScale must be between %.2f and %.2f\n", MIN_MOTOR_SCALE, MAX_MOTOR_SCALE);
         } else {
             RobotAPI::g_motionConfig.rightMotorScale = val;
-            Serial.printf("rightMotorScale set to %.3f\n", val);
+            RobotAPI::saveMotionConfigToStorage();
+            Serial.printf("rightMotorScale set to %.3f and saved\n", val);
         }
     }
     else if (input.startsWith("motor calib reset")) {
         RobotAPI::g_motionConfig.leftMotorScale = 1.0f;
         RobotAPI::g_motionConfig.rightMotorScale = 1.0f;
-        Serial.println("Motor calibration reset to 1.0");
+        RobotAPI::saveMotionConfigToStorage();
+        Serial.println("Motor calibration reset to 1.0 and saved");
     }
     else if (input.startsWith("motor calib test ")) {
         int speed = input.substring(17).toInt();
@@ -337,15 +339,38 @@ void SerialCommandHandler::handle() {
             Serial.println("Error: speed must be between -100 and 100");
         } else {
             auto& cfg = RobotAPI::g_motionConfig;
-            int leftEff = speed * cfg.speedScale * cfg.leftMotorScale;
-            int rightEff = speed * cfg.speedScale * cfg.rightMotorScale;
-            leftEff = constrain(leftEff, -100, 100);
-            rightEff = constrain(rightEff, -100, 100);
-            Serial.printf("Command: %d, effective left: %d, right: %d\n", speed, leftEff, rightEff);
-            RobotAPI::setMotorsDirect(leftEff, rightEff);
-            Serial.println("Motors running at effective speeds. Use 'speed 0 0' to stop.");
+            const int leftMapped = RobotAPI::MotorOutputMapper::map(speed, cfg.speedScale, cfg.leftMotorScale, cfg.minSpeed);
+            const int rightMapped = RobotAPI::MotorOutputMapper::map(speed, cfg.speedScale, cfg.rightMotorScale, cfg.minSpeed);
+            Serial.printf("Logical command: %d -> mapped left: %d, right: %d\n", speed, leftMapped, rightMapped);
+            // H23-C: do not pre-apply calibration. The RobotAPI pipeline owns it once.
+            RobotAPI::setMotorsDirect(speed, speed);
+            Serial.println("Motors running through single-calibration pipeline. Use 'speed 0 0' to stop.");
         }
     }
+
+    // ---------- Motor Mapping Diagnostic (H23-C) ----------
+    else if (input == "motor diag on") {
+        RobotAPI::setMotorMappingDiagnosticEnabled(true);
+    }
+    else if (input == "motor diag off") {
+        RobotAPI::setMotorMappingDiagnosticEnabled(false);
+    }
+    else if (input == "motor diag status") {
+        Serial.printf("[MOTOR-DIAG] Mapping diagnostic: %s\n",
+                      RobotAPI::isMotorMappingDiagnosticEnabled() ? "ON" : "OFF");
+    }
+    // ---------- Line Response Latency Diagnostic (H23-D) ----------
+    else if (input == "line diag on") {
+        RobotAPI::setLineResponseDiagnosticEnabled(true);
+    }
+    else if (input == "line diag off") {
+        RobotAPI::setLineResponseDiagnosticEnabled(false);
+    }
+    else if (input == "line diag status") {
+        Serial.printf("[LINE-RESPONSE] Diagnostic: %s\n",
+                      RobotAPI::isLineResponseDiagnosticEnabled() ? "ON" : "OFF");
+    }
+
 
     // ---------- IMU ----------
     else if (input.startsWith("imu status")) {

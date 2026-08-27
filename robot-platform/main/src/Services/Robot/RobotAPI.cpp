@@ -8,6 +8,8 @@
 
 #include "RobotAPI.h"
 #include "MotionConfig.h"
+#include "MotorControlContract.h"
+#include "MotorOutputMapper.h"
 #include <Arduino.h>
 #include <esp32-hal-ledc.h>
 
@@ -59,6 +61,11 @@ static LightSensor lightSensor(ROBOT_PIN_5);
 static ColorSensor colorSensor;
 static bool g_headingStartupDiagnosticEnabled = true; 
 static bool g_motorPwmDiagnosticEnabled = true;
+static bool g_motorMappingDiagnosticEnabled = false;
+static int g_lastMotorDiagLogicalLeft = 1000;
+static int g_lastMotorDiagLogicalRight = 1000;
+static int g_lastMotorDiagMappedLeft = 1000;
+static int g_lastMotorDiagMappedRight = 1000;
 // ---- STOP Reason Diagnostics ----
 enum StopReason {
     STOP_REASON_UNKNOWN = 0,
@@ -103,6 +110,35 @@ void setMotorPwmDiagnosticEnabled(bool enabled) {
 
 bool isMotorPwmDiagnosticEnabled() {
     return g_motorPwmDiagnosticEnabled;
+}
+
+void setMotorMappingDiagnosticEnabled(bool enabled) {
+    g_motorMappingDiagnosticEnabled = enabled;
+    g_lastMotorDiagLogicalLeft = 1000;
+    g_lastMotorDiagLogicalRight = 1000;
+    g_lastMotorDiagMappedLeft = 1000;
+    g_lastMotorDiagMappedRight = 1000;
+    Serial.printf("[MOTOR-DIAG] Mapping diagnostic: %s\n", enabled ? "ON" : "OFF");
+}
+
+bool isMotorMappingDiagnosticEnabled() {
+    return g_motorMappingDiagnosticEnabled;
+}
+
+// ---- Line Response Latency Diagnostic (H23-D) ----
+static bool g_lineResponseDiagnosticEnabled = false;
+static uint8_t g_lastLineTraceMask = 0xFF;
+static uint32_t g_lastLineBasisUs = 0;
+
+void setLineResponseDiagnosticEnabled(bool enabled) {
+    g_lineResponseDiagnosticEnabled = enabled;
+    g_lastLineTraceMask = 0xFF;
+    g_lastLineBasisUs = 0;
+    Serial.printf("[LINE-RESPONSE] Diagnostic: %s\n", enabled ? "ON" : "OFF");
+}
+
+bool isLineResponseDiagnosticEnabled() {
+    return g_lineResponseDiagnosticEnabled;
 }
 // ---- Forward declarations ----
 static void _stopMotion(StopReason reason = STOP_REASON_COMMAND_STOP);
@@ -166,10 +202,51 @@ static void _setMotorsRaw(int leftSpeed, int rightSpeed) {
     }
 }
 
+// H23-A ownership boundary:
+// All public motion callers provide LOGICAL commands in [-100, 100].
+// This function is the single owner of speedScale and per-motor calibration.
+// Callers must never pre-apply calibration before reaching this boundary.
 static void _setMotors(int leftSpeed, int rightSpeed) {
-    leftSpeed = (int)(leftSpeed * g_motionConfig.speedScale * g_motionConfig.leftMotorScale);
-    rightSpeed = (int)(rightSpeed * g_motionConfig.speedScale * g_motionConfig.rightMotorScale);
-    _setMotorsRaw(leftSpeed, rightSpeed);
+    const int logicalLeft = clampLogicalMotorCommand(leftSpeed);
+    const int logicalRight = clampLogicalMotorCommand(rightSpeed);
+
+    const int mappedLeft = MotorOutputMapper::map(
+        logicalLeft,
+        g_motionConfig.speedScale,
+        g_motionConfig.leftMotorScale,
+        g_motionConfig.minSpeed
+    );
+    const int mappedRight = MotorOutputMapper::map(
+        logicalRight,
+        g_motionConfig.speedScale,
+        g_motionConfig.rightMotorScale,
+        g_motionConfig.minSpeed
+    );
+
+    if (g_motorMappingDiagnosticEnabled &&
+        (logicalLeft != g_lastMotorDiagLogicalLeft ||
+         logicalRight != g_lastMotorDiagLogicalRight ||
+         mappedLeft != g_lastMotorDiagMappedLeft ||
+         mappedRight != g_lastMotorDiagMappedRight)) {
+        const int pwmLeft = (int)(abs(mappedLeft) * g_motionConfig.pwmPerSpeed);
+        const int pwmRight = (int)(abs(mappedRight) * g_motionConfig.pwmPerSpeed);
+        Serial.printf(
+            "[MOTOR-DIAG] logical L=%d R=%d | scale global=%.3f L=%.3f R=%.3f | minDrive=%d | mapped L=%d R=%d | pwm L=%d R=%d\n",
+            logicalLeft, logicalRight,
+            g_motionConfig.speedScale,
+            g_motionConfig.leftMotorScale,
+            g_motionConfig.rightMotorScale,
+            g_motionConfig.minSpeed,
+            mappedLeft, mappedRight,
+            pwmLeft, pwmRight
+        );
+        g_lastMotorDiagLogicalLeft = logicalLeft;
+        g_lastMotorDiagLogicalRight = logicalRight;
+        g_lastMotorDiagMappedLeft = mappedLeft;
+        g_lastMotorDiagMappedRight = mappedRight;
+    }
+
+    _setMotorsRaw(mappedLeft, mappedRight);
 }
 
 // ---- Heading Hold Controller ----
@@ -308,26 +385,24 @@ static void _applyMotion() {
         }
     }
 
-    // Apply motor calibration
-    int baseLeft = (int)(baseSpeed * g_motionConfig.speedScale * g_motionConfig.leftMotorScale);
-    int baseRight = (int)(baseSpeed * g_motionConfig.speedScale * g_motionConfig.rightMotorScale);
-
-    int leftEff, rightEff;
+    // H23-B: heading control produces logical commands only. Calibration,
+    // minimum-drive mapping and PWM conversion are owned by _setMotors().
+    int leftCommand, rightCommand;
     if (direction < 0) {
-        leftEff = -baseLeft - (int)correction;
-        rightEff = -baseRight + (int)correction;
+        leftCommand = -baseSpeed - (int)correction;
+        rightCommand = -baseSpeed + (int)correction;
     } else {
-        leftEff = baseLeft - (int)correction;
-        rightEff = baseRight + (int)correction;
+        leftCommand = baseSpeed - (int)correction;
+        rightCommand = baseSpeed + (int)correction;
     }
 
-    leftEff = constrain(leftEff, -100, 100);
-    rightEff = constrain(rightEff, -100, 100);
+    leftCommand = clampLogicalMotorCommand(leftCommand);
+    rightCommand = clampLogicalMotorCommand(rightCommand);
 
-    g_effectiveLeft = leftEff;
-    g_effectiveRight = rightEff;
+    g_effectiveLeft = leftCommand;
+    g_effectiveRight = rightCommand;
 
-    _setMotorsRaw(leftEff, rightEff);
+    _setMotors(leftCommand, rightCommand);
 
     // Optional heading diagnostic log (unchanged)
     if (g_isMoving && g_headingController.isActive()) {
@@ -722,12 +797,45 @@ void LineBasis(int speed) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
     }
+
+    const uint32_t t0 = micros();
+    const uint32_t loopDtUs = (g_lastLineBasisUs == 0) ? 0 : (uint32_t)(t0 - g_lastLineBasisUs);
+    g_lastLineBasisUs = t0;
+
     _enterLineControlMode();
     auto& follower = LineFollower::instance();
+
+    const uint32_t sensorStartUs = micros();
     uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
-    int left, right;
+    const uint32_t sensorDoneUs = micros();
+
+    int left = 0;
+    int right = 0;
     follower.update(mask, speed, left, right);
+    const uint32_t controlDoneUs = micros();
+
     setMotorsDirect(left, right);
+    const uint32_t outputDoneUs = micros();
+
+    // Change-triggered: logs the exact synchronous software path for a new line state.
+    // totalUs measures sensor sampling -> follower decision -> motor API/PWM submission.
+    if (g_lineResponseDiagnosticEnabled && mask != g_lastLineTraceMask) {
+        const uint8_t previous = g_lastLineTraceMask;
+        Serial.printf(
+            "[LINE-RESPONSE] t=%luus mask=%03u prev=%s loop=%luus | sensor=%luus control=%luus output=%luus total=%luus | cmd L=%d R=%d\n",
+            (unsigned long)t0,
+            (unsigned)mask,
+            (previous == 0xFF) ? "---" : String(previous).c_str(),
+            (unsigned long)loopDtUs,
+            (unsigned long)(sensorDoneUs - sensorStartUs),
+            (unsigned long)(controlDoneUs - sensorDoneUs),
+            (unsigned long)(outputDoneUs - controlDoneUs),
+            (unsigned long)(outputDoneUs - sensorStartUs),
+            left,
+            right
+        );
+        g_lastLineTraceMask = mask;
+    }
 }
 
 void LineFollow(int speed) {

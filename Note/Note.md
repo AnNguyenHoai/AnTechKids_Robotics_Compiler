@@ -25,3 +25,7 @@ TEST 12 — Forward → STOP → Ultra
 - Đã yêu cầu GPT tạo task, tiếp theo cần download task và yêu cầu deepseek làm
 
 22/8: Hiện đang làm C5, cần verify các chương trình robosim để đảm bảo chạy được thông suốt
+
+23/8: đã làm việc với GPT H21, làm tiếp để sửa line
+
+25/8: Đã làm H23-C, tiếp sẽ flash và test rồi feedback

@@ -38,7 +38,7 @@ public:
      * @param scaleFactor   Scaling factor for correction (default 0.8)
      * @return              MotorOutput with clamped speeds
      */
-    static MotorOutput mix(int baseSpeed, float correction, float scaleFactor = 0.8f);
+    static MotorOutput mix(int baseSpeed, float correction, float scaleFactor = 15.0f);
 };
 
 #endif // MOTOR_MIXER_H
