@@ -1,6 +1,6 @@
 #include "MoveBackwardBehavior.h"
 
-MoveBackwardBehavior::MoveBackwardBehavior(int spd, uint32_t  dur)
+MoveBackwardBehavior::MoveBackwardBehavior(int spd, uint16_t dur)
     : speed(spd), durationMs(dur), startTime(0), isRunning(false) {
     name = "MoveBackward";
 }

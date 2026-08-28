@@ -19,49 +19,16 @@
 #include "src/Behavior/LightTriggerBehavior.h"
 #include "src/Behavior/ColorDetectBehavior.h"
 
-// === Diagnostics ===
-#include "src/Diagnostics/DiagnosticsManager.h"
-#include "src/Sensor/SensorManager.h"
-#include "src/Diagnostics/Console/DevelopmentConsole.h"
-
-// === IMU & Heading ===
-#include "src/Sensor/IMUSensor.h"
-#include "src/Sensor/SensorID.h"
-#include "src/Services/Motion/HeadingEstimator.h"
-#include "src/Services/Motion/HeadingController.h"
-
-// ============================================================
-// DIAGNOSTIC: Uncomment the line below to enable manual-start mode
-// ============================================================
-//#define DIAGNOSTIC_MANUAL_START   // <--- BẬT MACRO
-
 // VM
 VM vm;
 Program program;
-const int STABILITY_ITERATIONS = 1;
+const int STABILITY_ITERATIONS = 3;
 int executionCounter = 0;
 
 // Behavior Engine
 BehaviorScheduler scheduler;
-bool useBehaviorEngine = false;
+bool useBehaviorEngine = false;  // Mặc định chạy VM
 
-// Heading Estimator (global instance)
-HeadingEstimator g_headingEstimator;
-
-// === Robot Ready State ===
-bool g_robotReady = false;
-
-// === Diagnostic manual-start control (always defined) ===
-bool g_manualStartEnabled = false;
-bool g_vmStarted = true;
-// ---- DEBUG-H3-001: IMU Runtime Diagnostic ----
-bool g_imuRuntimeEnabled = true; 
-bool g_imuSensorRuntimeEnabled = true;   // ON by default
-// ---- DEBUG-IMU-002: MPU6050 I2C Diagnostic ----
-bool g_imuI2cEnabled = true;
-bool g_imuAccelDiagnosticEnabled = true;
-bool g_imuGyroDiagnosticEnabled = true;
-bool g_imuTempDiagnosticEnabled = true;
 void setup() {
     Serial.begin(115200);
     while (!Serial) { }
@@ -84,26 +51,15 @@ void setup() {
     BootLogger::log("BOOT", "Binary Loaded");
 
     vm.LoadProgram(&program);
-
-#ifdef DIAGNOSTIC_MANUAL_START
-    // In manual-start mode, VM is loaded but not running
-    g_manualStartEnabled = true;
-    g_vmStarted = false;
-    vm.SetRunning(false);
-    BootLogger::log("VM-DIAG", "Waiting for manual execution (type 'run')");
-#else
     BootLogger::log("BOOT", "VM Ready");
-#endif
 
     // 4. Serial Command Handler
     SerialCommandHandler::setup();
     BootLogger::log("BOOT", "Serial Handler Ready");
 
-    DevelopmentConsole::instance().begin();
-    DevelopmentConsole::instance().setEnabled(false);
-    BootLogger::log("BOOT", "Development Console ready (disabled by default)");
-
     // 5. Initialize Behavior Scheduler with default behaviors
+    // (có thể thêm bất kỳ behavior nào muốn chạy)
+    // Các behavior này sẽ được dùng với lệnh "behavior start" hoặc "behavior run"
     scheduler.addBehavior(new MoveForwardBehavior(50, 2000));
     scheduler.addBehavior(new TouchStopBehavior(0, 50));
     scheduler.addBehavior(new WaitBehavior(1000));
@@ -116,128 +72,48 @@ void setup() {
     
     BootLogger::log("BOOT", "Behavior Scheduler initialized with 9 behaviors");
 
-    // 6. Reset Heading Estimator
-    g_headingEstimator.reset();
-    BootLogger::log("BOOT", "Heading Estimator reset");
-
-    // ============================================================
-    // 7. AUTOMATIC IMU CALIBRATION (blocking)
-    // ============================================================
-    BootLogger::log("IMU", "Starting automatic gyro calibration...");
-    BootLogger::log("IMU", "Keep robot completely still!");
-
-    // Ensure motors are stopped
-    RobotAPI::Stop();
-
-    // Get IMU sensor
-    auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
-    if (imu && imu->isReady()) {
-        int result = imu->calibrateGyro(500);
-        if (result == 0) {
-            MPU6050Bias bias = imu->getBias();
-            BootLogger::logFormat("IMU", "Calibration SUCCESS. Bias X=%.3f Y=%.3f Z=%.3f deg/s",
-                                  bias.bx, bias.by, bias.bz);
-            g_headingEstimator.reset();
-            BootLogger::log("Heading", "Estimator reset to 0 deg");
-            RobotAPI::resetHeadingController();
-            BootLogger::log("Heading", "Controller reset");
-            g_robotReady = true;
-            BootLogger::log("Robot", "READY");
-        } else if (result == 1) {
-            BootLogger::log("IMU", "Calibration FAILED: UNSTABLE");
-            g_robotReady = false;
-        } else {
-            BootLogger::log("IMU", "Calibration FAILED: communication error");
-            g_robotReady = false;
-        }
-    } else {
-        BootLogger::log("IMU", "Sensor not available - calibration FAILED");
-        g_robotReady = false;
-    }
-
-    if (!g_robotReady) {
-        BootLogger::log("ERROR", "System halted due to IMU calibration failure");
-        while (1) {
-            delay(1000);
-            Serial.println("[ERROR] IMU calibration failed. Please reset or use 'imu calibrate' manually.");
-        }
-    }
-
     BootLogger::log("EXEC", "System Ready. Type 'help' for commands.");
     BootLogger::log("INFO", "Default mode: VM. Type 'mode behavior' to switch.");
 }
 
 void loop() {
-    uint32_t start = micros();
-
+    // Xử lý lệnh Serial
     SerialCommandHandler::handle();
 
-    SensorManager::instance().updateAll();
-    DiagnosticsManager::instance().updateSensors();
-
-    if (g_robotReady) {
-        auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
-        if (imu && imu->isReady() && imu->isCalibrated()) {
-            IMUSample sample;
-            if (imu->getLatestSample(sample)) {
-                g_headingEstimator.update(sample);
-            }
-        }
-        RobotAPI::updateMotion();
-    } else {
-        RobotAPI::Stop();
-    }
-
-    DevelopmentConsole::instance().update();
-
     if (useBehaviorEngine) {
+        // === Chạy Behavior Engine ===
         scheduler.update();
+        if (!scheduler.isRunning()) {
+            // Nếu scheduler kết thúc, có thể ở trạng thái idle
+            // Không làm gì thêm
+        }
     } else {
         // === Chạy VM ===
-#ifdef DIAGNOSTIC_MANUAL_START
-        if (g_vmStarted && vm.IsRunning()) {
-            vm.Step();
-        }
-#else
         if (vm.IsRunning()) {
             vm.Step();
-        }
-#endif
+        } else {
+            uint8_t err = vm.GetErrorCode();
+            if (err != 0) {
+                BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
+                while (1) { }
+            }
+            executionCounter++;
+            BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
 
-        if (!vm.IsRunning()) {
-#ifdef DIAGNOSTIC_MANUAL_START
-            if (g_vmStarted) {
-#else
-            if (true) {
-#endif
-                uint8_t err = vm.GetErrorCode();
-                if (err != 0) {
-                    BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
-                    while (1) { }
-                }
-                executionCounter++;
-                BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
-
-                if (executionCounter < STABILITY_ITERATIONS) {
-                    BootLogger::log("STABILITY", "Restarting VM...");
-                    vm.Reset();
-                    vm.LoadProgram(&program);
-#ifdef DIAGNOSTIC_MANUAL_START
-                    vm.SetRunning(false);
-                    g_vmStarted = false;
-                    BootLogger::log("VM-DIAG", "Waiting for manual execution again");
-#endif
-                } else {
-                    BootLogger::log("STABILITY", "VM stability test completed.");
-                    while (1) {
-                        SerialCommandHandler::handle();
+            if (executionCounter < STABILITY_ITERATIONS) {
+                BootLogger::log("STABILITY", "Restarting VM...");
+                vm.Reset();
+                vm.LoadProgram(&program);
+            } else {
+                BootLogger::log("STABILITY", "VM stability test completed.");
+                // Sau khi hoàn thành test, có thể chuyển sang behavior mode nếu muốn
+                // Ví dụ: useBehaviorEngine = true;
+                // Hoặc để nguyên vòng lặp dừng.
+                while (1) {
+                        SerialCommandHandler::handle(); // vẫn xử lý Serial
                         delay(30);
-                    }
-                }
+                 }
             }
         }
     }
-
-    uint32_t elapsed = micros() - start;
-    DiagnosticsManager::instance().recordLoopTime(elapsed);
 }

@@ -1,6 +1,6 @@
 #include "WaitBehavior.h"
 
-WaitBehavior::WaitBehavior(uint32_t  dur)
+WaitBehavior::WaitBehavior(uint16_t dur)
     : durationMs(dur), startTime(0), isRunning(false) {
     name = "Wait";
 }

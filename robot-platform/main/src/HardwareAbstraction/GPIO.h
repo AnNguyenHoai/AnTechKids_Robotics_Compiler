@@ -21,9 +21,6 @@
 #define ROBOT_PIN_35    35
 #define ROBOT_PIN_36    36
 #define ROBOT_PIN_39    39
-#define ROBOT_PIN_13    13
-#define ROBOT_PIN_21    21
-
 
 // --- ĐẶT ALIAS (TÊN GỢI NHỚ) THEO CHỨC NĂNG PHẦN CỨNG ---
 
@@ -36,9 +33,16 @@
 #define OUTPUT_BUZZER_PIN       ROBOT_PIN_19
 #define OUTPUT_LED_LEFT_PIN     ROBOT_PIN_32
 #define OUTPUT_LED_RIGHT_PIN    ROBOT_PIN_33
+
 // Cảm biến siêu âm HC-SR04
 #define SONIC_TRIG_PIN          ROBOT_PIN_23
 #define SONIC_ECHO_PIN          ROBOT_PIN_22
+
+// Encoder quadrature inputs (ESP32 input-only pins)
+#define ENCODER_LEFT_A_PIN      ROBOT_PIN_34
+#define ENCODER_LEFT_B_PIN      ROBOT_PIN_35
+#define ENCODER_RIGHT_A_PIN     ROBOT_PIN_36
+#define ENCODER_RIGHT_B_PIN     ROBOT_PIN_39
 
 // Mạch cầu H điều khiển 4 động cơ
 #define MOTOR_L_IN1_PIN         ROBOT_PIN_25
@@ -46,13 +50,4 @@
 #define MOTOR_R_IN3_PIN         ROBOT_PIN_27
 #define MOTOR_R_IN4_PIN         ROBOT_PIN_14
 
-// Encoder quadrature (ESP32 input-only pins)
-#define ENCODER_LEFT_A_PIN  ROBOT_PIN_34
-#define ENCODER_LEFT_B_PIN  ROBOT_PIN_35
-#define ENCODER_RIGHT_A_PIN ROBOT_PIN_36
-#define ENCODER_RIGHT_B_PIN ROBOT_PIN_39
-
-// Cảm biến góc
-#define MPU6050_SDA_PIN ROBOT_PIN_21
-#define MPU6050_SCL_PIN ROBOT_PIN_13
 #endif

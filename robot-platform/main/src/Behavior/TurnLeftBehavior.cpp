@@ -1,6 +1,6 @@
 #include "TurnLeftBehavior.h"
 
-TurnLeftBehavior::TurnLeftBehavior(int spd, uint32_t  dur)
+TurnLeftBehavior::TurnLeftBehavior(int spd, uint16_t dur)
     : speed(spd), durationMs(dur), startTime(0), isRunning(false) {
     name = "TurnLeft";
 }

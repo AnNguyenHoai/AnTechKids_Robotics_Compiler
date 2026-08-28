@@ -1,6 +1,6 @@
 #include "MoveForwardBehavior.h"
 
-MoveForwardBehavior::MoveForwardBehavior(int spd, uint32_t  dur) 
+MoveForwardBehavior::MoveForwardBehavior(int spd, uint16_t dur) 
     : speed(spd), durationMs(dur), startTime(0), isRunning(false) {
     name = "MoveForward";
 }

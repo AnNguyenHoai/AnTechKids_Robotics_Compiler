@@ -19,7 +19,7 @@ struct MotionConfig {
     float rightMotorScale = 1.0f;
 
     // Limits
-    int minSpeed = 65;  // H23-B minimum physical drive; 0 remains true stop
+    int minSpeed = 0;
     int maxSpeed = 100;
 
     // Turn compensation (multiplier for turning speeds)
@@ -42,7 +42,3 @@ void loadMotionConfigFromStorage();
 void saveMotionConfigToStorage();
 
 } // namespace RobotAPI
-
-// Safe limits for motor scales (outside namespace for easy use in SerialCommandHandler)
-constexpr float MIN_MOTOR_SCALE = 0.50f;
-constexpr float MAX_MOTOR_SCALE = 1.50f;

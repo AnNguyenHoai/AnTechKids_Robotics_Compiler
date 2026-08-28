@@ -5,7 +5,7 @@
 
 class WaitBehavior : public Behavior {
 public:
-    WaitBehavior(uint32_t durationMs);
+    WaitBehavior(uint16_t durationMs);
     virtual void init(BehaviorContext& context) override;
     virtual void start(BehaviorContext& context) override;
     virtual void update(BehaviorContext& context) override;
@@ -15,7 +15,7 @@ public:
     virtual void reset() override;
 
 private:
-    uint32_t durationMs;
+    uint16_t durationMs;
     uint32_t startTime;
     bool isRunning;
 };
