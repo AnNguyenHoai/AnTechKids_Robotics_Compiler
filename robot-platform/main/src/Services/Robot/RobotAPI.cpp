@@ -25,6 +25,7 @@
 #include "../../Sensor/SensorID.h"
 #include "../../Sensor/Ultrasonic.h"
 #include "../../Sensor/IMUSensor.h"
+#include "../../Sensor/Encoder.h"
 
 // Line Follower
 #include "../../Services/Line/LineFollower.h"
@@ -1086,6 +1087,16 @@ void Initialize() {
 
     IMUSensor* imu = new IMUSensor();
     mgr.registerSensor(SensorID::IMU, imu);
+
+    // H24-C: encoder pins are frozen by the Hardware V2 contract.
+    // Counts/revolution remains configurable because the exact JGA25 encoder
+    // resolution will be calibrated on physical hardware in H24-D.
+    mgr.registerSensor(SensorID::EncoderLeft,
+                       new Encoder(ENCODER_LEFT_A_PIN, ENCODER_LEFT_B_PIN,
+                                   "encoder_left", 1.0f));
+    mgr.registerSensor(SensorID::EncoderRight,
+                       new Encoder(ENCODER_RIGHT_A_PIN, ENCODER_RIGHT_B_PIN,
+                                   "encoder_right", 1.0f));
 
     if (!mgr.initializeAll()) {
         Serial.println("[RobotAPI] Some sensors failed to initialize.");
