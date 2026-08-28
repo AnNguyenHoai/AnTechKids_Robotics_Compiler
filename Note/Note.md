@@ -29,3 +29,5 @@ TEST 12 — Forward → STOP → Ultra
 23/8: đã làm việc với GPT H21, làm tiếp để sửa line
 
 25/8: Đã làm H23-C, tiếp sẽ flash và test rồi feedback
+
+27/8: với branch motion_debug đã fix được làm robot có thể follow line, tuy nhiên độ ổn định chưa cao cần thay thế motor trái để có torque lớn hơn rồi tối ưu hóa tiêp code

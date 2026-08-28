@@ -29,6 +29,8 @@ public:
     // Tuning
     void setPIDGains(float kp, float ki, float kd);
     void setPIDLimits(float min, float max);
+    void setScaleFactor(float scale) { _scaleFactor = scale; }
+    float getScaleFactor() const { return _scaleFactor; }
 
     // Reset
     void reset();
@@ -59,6 +61,9 @@ private:
     RecoveryStrategy::Direction _lastLineDirection;
     uint32_t _lastControlUpdate;
     bool _wasRecovering;
+
+    // Scale factor for MotorMixer
+    float _scaleFactor;
 };
 
 #endif

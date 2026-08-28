@@ -16,8 +16,7 @@ void RecoveryStrategy::setLastDirection(Direction direction) {
 }
 
 void RecoveryStrategy::update(uint8_t mask, int &left, int &right) {
-    // A visible line must immediately leave recovery.  Do not output one more
-    // search command after reacquisition.
+    // If line is found, exit recovery immediately
     if (mask != 0) {
         reset();
         left = right = 0;
@@ -32,27 +31,51 @@ void RecoveryStrategy::update(uint8_t mask, int &left, int &right) {
     // applied once later by RobotAPI. Avoid low commands that can hum/stall after
     // motor scaling.
     constexpr int RECOVERY_BASE_SPEED = 100;
-    constexpr int RECOVERY_SOFT_DELTA = 12;
-    constexpr int RECOVERY_DEEP_DELTA = 22;
 
-    if (elapsed < 700) {
+    if (elapsed < 1000) {
+        // Phase 1: Gentle search - turn slowly in the last known direction
         _phase = SOFT_SEARCH;
-        if (direction == DIR_LEFT) { left = RECOVERY_BASE_SPEED - RECOVERY_SOFT_DELTA; right = RECOVERY_BASE_SPEED; }
-        else                       { left = RECOVERY_BASE_SPEED; right = RECOVERY_BASE_SPEED - RECOVERY_SOFT_DELTA; }
+        if (direction == DIR_LEFT) {
+            left = -RECOVERY_BASE_SPEED;
+            right = RECOVERY_BASE_SPEED;
+        } else {
+            left = RECOVERY_BASE_SPEED;
+            right = -RECOVERY_BASE_SPEED;
+        }
         return;
     }
 
-    if (elapsed < 1800) {
+    if (elapsed < 2500) {
+        // Phase 2: Aggressive search - faster rotation in last known direction
         _phase = DEEP_SEARCH;
-        if (direction == DIR_LEFT) { left = RECOVERY_BASE_SPEED - RECOVERY_DEEP_DELTA; right = RECOVERY_BASE_SPEED; }
-        else                       { left = RECOVERY_BASE_SPEED; right = RECOVERY_BASE_SPEED - RECOVERY_DEEP_DELTA; }
+        if (direction == DIR_LEFT) {
+            left = -RECOVERY_BASE_SPEED;
+            right = RECOVERY_BASE_SPEED;
+        } else {
+            left = RECOVERY_BASE_SPEED;
+            right = -RECOVERY_BASE_SPEED;
+        }
+        // Add a slight forward motion to help find the line if it's just ahead
+        // but still maintain rotation
+        if (direction == DIR_LEFT) {
+            left = -RECOVERY_BASE_SPEED;
+            right = RECOVERY_BASE_SPEED;
+        } else {
+            left = RECOVERY_BASE_SPEED;
+            right = -RECOVERY_BASE_SPEED;
+        }
         return;
     }
 
+    // Phase 3: Sweep - alternate directions to cover more area
     _phase = SWEEP;
-    // Slow alternating sweep.  Direction changes only after sustained loss.
-    bool reverse = ((elapsed - 1800) / 800) % 2;
+    bool reverse = ((elapsed - 2500) / 800) % 2;
     Direction sweepDir = reverse ? (direction == DIR_LEFT ? DIR_RIGHT : DIR_LEFT) : direction;
-    if (sweepDir == DIR_LEFT) { left = -70; right = 70; }
-    else                      { left = 70; right = -70; }
+    if (sweepDir == DIR_LEFT) {
+        left = -RECOVERY_BASE_SPEED;
+        right = RECOVERY_BASE_SPEED;
+    } else {
+        left = RECOVERY_BASE_SPEED;
+        right = -RECOVERY_BASE_SPEED;
+    }
 }

@@ -16,6 +16,7 @@
 #include "../Services/Motion/HeadingController.h"
 #include "../Sensor/Ultrasonic.h"
 #include "../Services/VM/VM.h"
+#include "../Services/Line/LineFollower.h"   // <--- THÊM DÒNG NÀY
 
 #include <string.h>
 
@@ -25,7 +26,7 @@ extern HeadingEstimator g_headingEstimator;
 extern VM vm;
 extern bool g_vmStarted;
 extern bool g_imuSensorRuntimeEnabled;
-extern bool g_imuI2cEnabled;   // <-- THÊM DÒNG NÀY
+extern bool g_imuI2cEnabled;
 
 void SerialCommandHandler::setup() {
     Serial.println("SerialCommandHandler ready. Type 'help' for commands.");
@@ -67,6 +68,8 @@ void SerialCommandHandler::handle() {
         Serial.println("  motor calib test <speed>    - run motors through logical motor pipeline once");
         Serial.println("  motor diag on/off/status    - motor mapping diagnostic (change-triggered)");
         Serial.println("  line diag on/off/status     - line sensor-to-motor latency diagnostic");
+        Serial.println("  line pid kp ki kd           - set line following PID gains");
+        Serial.println("  line scale <value>          - set line scale factor for motor mixer");
         Serial.println("  imu status          - show IMU status and configuration");
         Serial.println("  imu read            - read and display current IMU data");
         Serial.println("  imu calibrate       - perform gyroscope bias calibration (robot must be still)");
@@ -342,7 +345,6 @@ void SerialCommandHandler::handle() {
             const int leftMapped = RobotAPI::MotorOutputMapper::map(speed, cfg.speedScale, cfg.leftMotorScale, cfg.minSpeed);
             const int rightMapped = RobotAPI::MotorOutputMapper::map(speed, cfg.speedScale, cfg.rightMotorScale, cfg.minSpeed);
             Serial.printf("Logical command: %d -> mapped left: %d, right: %d\n", speed, leftMapped, rightMapped);
-            // H23-C: do not pre-apply calibration. The RobotAPI pipeline owns it once.
             RobotAPI::setMotorsDirect(speed, speed);
             Serial.println("Motors running through single-calibration pipeline. Use 'speed 0 0' to stop.");
         }
@@ -371,6 +373,30 @@ void SerialCommandHandler::handle() {
                       RobotAPI::isLineResponseDiagnosticEnabled() ? "ON" : "OFF");
     }
 
+    // ===== Line PID Tuning =====
+    else if (input.startsWith("line pid ")) {
+        String rest = input.substring(8);
+        int space1 = rest.indexOf(' ');
+        int space2 = rest.indexOf(' ', space1 + 1);
+        if (space1 == -1 || space2 == -1) {
+            Serial.println("Usage: line pid kp ki kd");
+            return;
+        }
+        float kp = rest.substring(0, space1).toFloat();
+        float ki = rest.substring(space1 + 1, space2).toFloat();
+        float kd = rest.substring(space2 + 1).toFloat();
+        LineFollower::instance().setPIDGains(kp, ki, kd);
+        Serial.printf("Line PID set to Kp=%.3f Ki=%.3f Kd=%.3f\n", kp, ki, kd);
+    }
+    else if (input.startsWith("line scale ")) {
+        float scale = input.substring(11).toFloat();
+        if (scale < 0.1f || scale > 50.0f) {
+            Serial.println("Scale factor should be between 0.1 and 50.0");
+        } else {
+            LineFollower::instance().setScaleFactor(scale);
+            Serial.printf("Line scale factor set to %.2f\n", scale);
+        }
+    }
 
     // ---------- IMU ----------
     else if (input.startsWith("imu status")) {
@@ -538,6 +564,53 @@ void SerialCommandHandler::handle() {
                       g_imuI2cEnabled ? "ON" : "OFF");
     }
 
+    // ---------- IMU Accel/Gyro/Temp Diagnostic ----------
+    else if (input.startsWith("imu accel on")) {
+        g_imuAccelDiagnosticEnabled = true;
+        Serial.println("[IMU-ACCEL-DIAG] Accel read: ON");
+    }
+    else if (input.startsWith("imu accel off")) {
+        g_imuAccelDiagnosticEnabled = false;
+        Serial.println("[IMU-ACCEL-DIAG] Accel read: OFF");
+    }
+    else if (input.startsWith("imu accel status")) {
+        Serial.printf("[IMU-ACCEL-DIAG] Accel read: %s\n",
+                      g_imuAccelDiagnosticEnabled ? "ON" : "OFF");
+    }
+    else if (input.startsWith("imu gyro on")) {
+        g_imuGyroDiagnosticEnabled = true;
+        Serial.println("[IMU-GYRO-DIAG] Gyro read: ON");
+    }
+    else if (input.startsWith("imu gyro off")) {
+        g_imuGyroDiagnosticEnabled = false;
+        Serial.println("[IMU-GYRO-DIAG] Gyro read: OFF");
+    }
+    else if (input.startsWith("imu gyro status")) {
+        Serial.printf("[IMU-GYRO-DIAG] Gyro read: %s\n",
+                      g_imuGyroDiagnosticEnabled ? "ON" : "OFF");
+    }
+    else if (input.startsWith("imu temp on")) {
+        g_imuTempDiagnosticEnabled = true;
+        Serial.println("[IMU-TEMP-DIAG] Temperature read: ON");
+    }
+    else if (input.startsWith("imu temp off")) {
+        g_imuTempDiagnosticEnabled = false;
+        Serial.println("[IMU-TEMP-DIAG] Temperature read: OFF");
+    }
+    else if (input.startsWith("imu temp status")) {
+        Serial.printf("[IMU-TEMP-DIAG] Temperature read: %s\n",
+                      g_imuTempDiagnosticEnabled ? "ON" : "OFF");
+    }
+    // ---------- IMU Timing Statistics ----------
+    else if (input.startsWith("imu timing")) {
+        auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
+        if (imu) {
+            IMUSensor::printTimingStats();
+        } else {
+            Serial.println("IMU sensor not available.");
+        }
+    }
+
     // ---------- Manual start (diagnostic) ----------
 #ifdef DIAGNOSTIC_MANUAL_START
     else if (input.startsWith("run")) {
@@ -592,56 +665,6 @@ void SerialCommandHandler::handle() {
         Serial.printf("Current Speed : %d\n", RobotAPI::getCurrentBaseSpeed());
         Serial.printf("Direction     : %d\n", RobotAPI::getCurrentDirection());
         Serial.println("-----------------------------");
-    }
-    // ---------- Accel Diagnostic ----------
-    else if (input.startsWith("imu accel on")) {
-        g_imuAccelDiagnosticEnabled = true;
-        Serial.println("[IMU-ACCEL-DIAG] Accel read: ON");
-    }
-    else if (input.startsWith("imu accel off")) {
-        g_imuAccelDiagnosticEnabled = false;
-        Serial.println("[IMU-ACCEL-DIAG] Accel read: OFF");
-    }
-    else if (input.startsWith("imu accel status")) {
-        Serial.printf("[IMU-ACCEL-DIAG] Accel read: %s\n",
-                    g_imuAccelDiagnosticEnabled ? "ON" : "OFF");
-    }
-
-    // ---------- Gyro Diagnostic ----------
-    else if (input.startsWith("imu gyro on")) {
-        g_imuGyroDiagnosticEnabled = true;
-        Serial.println("[IMU-GYRO-DIAG] Gyro read: ON");
-    }
-    else if (input.startsWith("imu gyro off")) {
-        g_imuGyroDiagnosticEnabled = false;
-        Serial.println("[IMU-GYRO-DIAG] Gyro read: OFF");
-    }
-    else if (input.startsWith("imu gyro status")) {
-        Serial.printf("[IMU-GYRO-DIAG] Gyro read: %s\n",
-                    g_imuGyroDiagnosticEnabled ? "ON" : "OFF");
-    }
-
-    // ---------- Temperature Diagnostic ----------
-    else if (input.startsWith("imu temp on")) {
-        g_imuTempDiagnosticEnabled = true;
-        Serial.println("[IMU-TEMP-DIAG] Temperature read: ON");
-    }
-    else if (input.startsWith("imu temp off")) {
-        g_imuTempDiagnosticEnabled = false;
-        Serial.println("[IMU-TEMP-DIAG] Temperature read: OFF");
-    }
-    else if (input.startsWith("imu temp status")) {
-        Serial.printf("[IMU-TEMP-DIAG] Temperature read: %s\n",
-                    g_imuTempDiagnosticEnabled ? "ON" : "OFF");
-    }
-    // ---------- IMU Timing Statistics ----------
-    else if (input.startsWith("imu timing")) {
-        auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
-        if (imu) {
-            IMUSensor::printTimingStats();
-        } else {
-            Serial.println("IMU sensor not available.");
-        }
     }
     else {
         Serial.printf("Unknown command: %s\n", input.c_str());
