@@ -2,6 +2,7 @@
 #include "../Robot/RobotAPI.h"
 #include "../../../include/generated/opcode.h"
 #include <Arduino.h> 
+
 // Bật trace để debug (có thể comment để tắt)
 #define VM_TRACE_ENABLED 1
 
@@ -35,6 +36,19 @@ uint8_t VM::GetErrorCode() const
     return mContext.mErrorCode;
 }
 
+// ---- DIAGNOSTIC: manual control ----
+void VM::SetRunning(bool running) {
+    mContext.mRunning = running;
+}
+
+void VM::Start() {
+    mContext.mRunning = true;
+    mContext.mProgramCounter = 0;
+    mContext.mErrorCode = 0;
+    // Do not reset variables; they are already loaded
+    // But we can reset any other state if needed
+}
+
 void VM::Step()
 {
     if (!IsRunning()) return;
@@ -43,7 +57,7 @@ void VM::Step()
     if (mContext.mProgramCounter >= mProgram->mInstructionCount)
     {
         mContext.mRunning = false;
-        mContext.mErrorCode = 0;   // <-- không báo lỗi
+        mContext.mErrorCode = 0;
         return;
     }
 
@@ -97,21 +111,6 @@ void VM::ExecuteInstruction(const Instruction& instruction)
 
         case Opcode::Wait:
             RobotAPI::Wait(mContext.mVariables[instruction.p1]);
-            mContext.mProgramCounter++;
-            break;
-
-        case Opcode::LineBasis:
-            RobotAPI::LineBasis(mContext.mVariables[instruction.p1]);
-            mContext.mProgramCounter++;
-            break;
-
-        case Opcode::LineFollow:
-            RobotAPI::LineFollow(mContext.mVariables[instruction.p1]);
-            mContext.mProgramCounter++;
-            break;
-
-        case Opcode::LineStop:
-            RobotAPI::LineStop();
             mContext.mProgramCounter++;
             break;
 
@@ -311,10 +310,16 @@ void VM::ExecuteInstruction(const Instruction& instruction)
                 mContext.mErrorCode = 5; // Return without call
             }
             break;
-        case Opcode::ReadUltrasonic:
-            mContext.mVariables[instruction.p1] = RobotAPI::ReadUltrasonic();
+        case Opcode::ReadUltrasonic: {
+            int16_t value = RobotAPI::ReadUltrasonic();
+            mContext.mVariables[instruction.p1] = value;
+            Serial.printf("[VM-ULTRA-DIAG] PC=%u p1=%d value=%d\\n",
+                          mContext.mProgramCounter,
+                          instruction.p1,
+                          value);
             mContext.mProgramCounter++;
             break;
+        }
 
         case Opcode::ReadTouch:
             mContext.mVariables[instruction.p2] = RobotAPI::ReadTouch(mContext.mVariables[instruction.p1]);
@@ -333,6 +338,106 @@ void VM::ExecuteInstruction(const Instruction& instruction)
 
         case Opcode::ReadLine:
             mContext.mVariables[instruction.p2] = RobotAPI::ReadLine(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+        case Opcode::SetMotorSpeed:
+            RobotAPI::SetMotorSpeed(mContext.mVariables[instruction.p1],
+                                    mContext.mVariables[instruction.p2]);
+            mContext.mProgramCounter++;
+            break;
+        case Opcode::SetServo:
+            RobotAPI::SetServo(mContext.mVariables[instruction.p1],
+                               mContext.mVariables[instruction.p2]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::Set3CLed:
+            RobotAPI::Set3CLed(mContext.mVariables[instruction.p1],
+                               mContext.mVariables[instruction.p2]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::SetLightSensorLed:
+            RobotAPI::SetLightSensorLed(mContext.mVariables[instruction.p1],
+                                        mContext.mVariables[instruction.p2]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::SetMotorStraightAngle:
+            RobotAPI::SetMotorStraightAngle(mContext.mVariables[instruction.p1],
+                                            mContext.mVariables[instruction.p2],
+                                            mContext.mVariables[instruction.p3],
+                                            mContext.mVariables[instruction.p4]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineIntersectionStop:
+            RobotAPI::LineIntersectionStop(mContext.mVariables[instruction.p1],
+                                           mContext.mVariables[instruction.p2]);
+            mContext.mProgramCounter++;
+            break;
+        case Opcode::SetMp3Play:
+            RobotAPI::SetMp3Play(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+        case Opcode::GetTraceValue:
+            mContext.mVariables[instruction.p3] = RobotAPI::GetTraceValue(
+                mContext.mVariables[instruction.p1],
+                mContext.mVariables[instruction.p2]
+            );
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::GetTraceState:
+            mContext.mVariables[instruction.p3] = RobotAPI::GetTraceState(
+                mContext.mVariables[instruction.p1],
+                mContext.mVariables[instruction.p2]
+            ) ? 1 : 0;
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::GetTraceRaw:
+            mContext.mVariables[instruction.p3] = RobotAPI::GetTraceRaw(
+                mContext.mVariables[instruction.p1]
+            );
+            mContext.mProgramCounter++;
+            break;
+        case Opcode::LineBasis:
+            RobotAPI::LineBasis(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineFollow:
+            RobotAPI::LineFollow(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineMillisecond:
+            RobotAPI::LineMillisecond(
+                mContext.mVariables[instruction.p1],
+                mContext.mVariables[instruction.p2]
+            );
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineStop:
+            RobotAPI::LineStop();
+            mContext.mProgramCounter++;
+            break;
+        case Opcode::LineTurnEncounterLine:
+            RobotAPI::LineTurnEncounterLine(
+                mContext.mVariables[instruction.p1],
+                mContext.mVariables[instruction.p2],
+                mContext.mVariables[instruction.p3]
+            );
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineForBmp:
+            RobotAPI::LineForBmp(
+                mContext.mVariables[instruction.p1],
+                mContext.mVariables[instruction.p2]
+            );
             mContext.mProgramCounter++;
             break;
         default:

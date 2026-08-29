@@ -5,7 +5,7 @@
 
 class TurnLeftBehavior : public Behavior {
 public:
-    TurnLeftBehavior(int speed, uint16_t durationMs = 0);
+    TurnLeftBehavior(int speed, uint32_t  durationMs = 0);
     virtual void init(BehaviorContext& context) override;
     virtual void start(BehaviorContext& context) override;
     virtual void update(BehaviorContext& context) override;
@@ -16,7 +16,7 @@ public:
 
 private:
     int speed;
-    uint16_t durationMs;
+    uint32_t durationMs;
     uint32_t startTime;
     bool isRunning;
 };

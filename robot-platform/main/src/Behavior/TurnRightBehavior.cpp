@@ -1,6 +1,6 @@
 #include "TurnRightBehavior.h"
 
-TurnRightBehavior::TurnRightBehavior(int spd, uint16_t dur)
+TurnRightBehavior::TurnRightBehavior(int spd, uint32_t  dur)
     : speed(spd), durationMs(dur), startTime(0), isRunning(false) {
     name = "TurnRight";
 }
