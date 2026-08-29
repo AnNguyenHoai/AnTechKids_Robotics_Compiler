@@ -10,6 +10,7 @@
 #include "MotionConfig.h"
 #include "MotorControlContract.h"
 #include "MotorOutputMapper.h"
+#include "../../../include/generated/generated_device_config.h"
 #include <Arduino.h>
 #include <esp32-hal-ledc.h>
 
@@ -24,7 +25,9 @@
 #include "../../Sensor/TCRT5000.h"
 #include "../../Sensor/SensorID.h"
 #include "../../Sensor/Ultrasonic.h"
+#if ROBOT_FEATURE_IMU
 #include "../../Sensor/IMUSensor.h"
+#endif
 
 // Line Follower
 #include "../../Services/Line/LineFollower.h"
@@ -35,7 +38,9 @@
 
 // VM (for diagnostics)
 #include "../../Services/VM/VM.h"
+#if ROBOT_FEATURE_ENCODER
 #include "../../Devices/Encoder.h"
+#endif
 
 // Khai báo HeadingEstimator toàn cục (được định nghĩa trong main.ino)
 extern HeadingEstimator g_headingEstimator;
@@ -44,8 +49,10 @@ extern VM vm;
 // In RobotAPI.cpp, near other static variables:
 static bool g_headingDiagnosticEnabled = true;   // ON by default
 
+#if ROBOT_FEATURE_ENCODER
 static Encoder leftEncoder(ENCODER_LEFT_A_PIN, ENCODER_LEFT_B_PIN, 1.0f);
 static Encoder rightEncoder(ENCODER_RIGHT_A_PIN, ENCODER_RIGHT_B_PIN, 1.0f);
+#endif
 
 namespace RobotAPI {
 
@@ -370,6 +377,7 @@ static void _applyMotion() {
     float correction = 0.0f;
 
     // Existing heading correction logic (unchanged)
+#if ROBOT_FEATURE_IMU
     if (g_headingDiagnosticEnabled && g_headingHoldEnabled && g_headingController.isActive()) {
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (imu && imu->isReady() && imu->isCalibrated()) {
@@ -389,6 +397,7 @@ static void _applyMotion() {
             return;
         }
     }
+#endif
 
     // H23-B: heading control produces logical commands only. Calibration,
     // minimum-drive mapping and PWM conversion are owned by _setMotors().
@@ -489,6 +498,7 @@ static void _startMotion(int speed, int direction) {
             Serial.println("[HEADING-STARTUP-DIAG] Heading startup: ENABLED");
             g_headingController.reset();
 
+#if ROBOT_FEATURE_IMU
             if (g_headingHoldEnabled) {
                 auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
                 if (imu && imu->isReady() && imu->isCalibrated()) {
@@ -502,6 +512,10 @@ static void _startMotion(int speed, int direction) {
             } else {
                 g_headingController.stop();
             }
+#else
+            g_headingController.stop();
+            Serial.println("[Heading] Heading hold unavailable (ROBOT_FEATURE_IMU=0)");
+#endif
         } else {
             // ---- DIAGNOSTIC PATH: Heading startup BYPASSED ----
             Serial.println("[HEADING-STARTUP-DIAG] Heading startup: BYPASSED");
@@ -511,6 +525,7 @@ static void _startMotion(int speed, int direction) {
         }
     } else {
         // Motion continues from previous session; maintain heading hold if already active
+#if ROBOT_FEATURE_IMU
         if (g_headingDiagnosticEnabled && g_headingHoldEnabled && !g_headingController.isActive()) {
             auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
             if (imu && imu->isReady() && imu->isCalibrated()) {
@@ -519,6 +534,7 @@ static void _startMotion(int speed, int direction) {
                               g_headingController.getTargetHeading());
             }
         }
+#endif
     }
 
     _applyMotion();
@@ -1047,6 +1063,7 @@ int16_t GetTraceRaw(int port) {
 // ===== Initialization =====
 
 
+#if ROBOT_FEATURE_ENCODER
 void UpdateEncoders() { leftEncoder.update(); rightEncoder.update(); }
 static Encoder& encoderBySide(int side) { return side == 0 ? leftEncoder : rightEncoder; }
 int64_t GetEncoderCount(int side) { return encoderBySide(side).getCount(); }
@@ -1057,11 +1074,26 @@ void SetEncoderCountsPerRevolution(int side, float value) { encoderBySide(side).
 float GetEncoderCountsPerRevolution(int side) { return encoderBySide(side).getCountsPerRevolution(); }
 void SetEncoderInverted(int side, bool inverted) { encoderBySide(side).setInverted(inverted); }
 bool GetEncoderInverted(int side) { return encoderBySide(side).isInverted(); }
+#else
+void UpdateEncoders() {}
+int64_t GetEncoderCount(int side) { (void)side; return 0; }
+float GetEncoderCountsPerSecond(int side) { (void)side; return 0.0f; }
+float GetEncoderRPM(int side) { (void)side; return 0.0f; }
+void ResetEncoderCount(int side, int64_t value) { (void)side; (void)value; }
+void SetEncoderCountsPerRevolution(int side, float value) { (void)side; (void)value; }
+float GetEncoderCountsPerRevolution(int side) { (void)side; return 0.0f; }
+void SetEncoderInverted(int side, bool inverted) { (void)side; (void)inverted; }
+bool GetEncoderInverted(int side) { (void)side; return false; }
+#endif
 
 void Initialize() {
+#if ROBOT_FEATURE_ENCODER
     leftEncoder.begin();
     rightEncoder.begin();
-    Serial.println("[RobotAPI] H24-D encoders initialized (GPIO34/35 left, GPIO36/39 right).");
+    Serial.println("[RobotAPI] Encoders enabled and initialized.");
+#else
+    Serial.println("[RobotAPI] Encoders disabled by hardware configuration.");
+#endif
 
     loadMotionConfigFromStorage();
 
@@ -1105,8 +1137,10 @@ void Initialize() {
     mgr.registerSensor(SensorID::Ultrasonic,
                        new Ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN, 50000, "ultrasonic"));
 
+#if ROBOT_FEATURE_IMU
     IMUSensor* imu = new IMUSensor();
     mgr.registerSensor(SensorID::IMU, imu);
+#endif
 
     if (!mgr.initializeAll()) {
         Serial.println("[RobotAPI] Some sensors failed to initialize.");
@@ -1119,6 +1153,7 @@ void Initialize() {
     loadSensorConfigFromStorage();
     Serial.println("[RobotAPI] Sensors initialized with SensorConfig.");
 
+#if ROBOT_FEATURE_IMU
     _initHeadingController();
 
     IMUSensor* imuCheck = static_cast<IMUSensor*>(mgr.getSensor(SensorID::IMU));
@@ -1127,6 +1162,11 @@ void Initialize() {
     } else {
         Serial.println("[RobotAPI] IMU sensor is NOT ready.");
     }
+#else
+    g_headingController.stop();
+    g_headingHoldEnabled = false;
+    Serial.println("[RobotAPI] IMU disabled by hardware configuration; heading hold is unavailable.");
+#endif
 
     // Khởi tạo ultrasonic diagnostic counters
     ultraReadCount = 0;

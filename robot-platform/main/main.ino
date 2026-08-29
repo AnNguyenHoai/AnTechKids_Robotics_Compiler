@@ -1,3 +1,5 @@
+#include "include/generated/generated_device_config.h"
+
 #include "src/Services/VM/ProgramLoader.h"
 #include "src/Services/VM/VM.h"
 #include "src/Services/Robot/RobotAPI.h"
@@ -25,8 +27,10 @@
 #include "src/Diagnostics/Console/DevelopmentConsole.h"
 
 // === IMU & Heading ===
+#if ROBOT_FEATURE_IMU
 #include "src/Sensor/IMUSensor.h"
 #include "src/Sensor/SensorID.h"
+#endif
 #include "src/Services/Motion/HeadingEstimator.h"
 #include "src/Services/Motion/HeadingController.h"
 
@@ -108,20 +112,16 @@ void setup() {
     
     BootLogger::log("BOOT", "Behavior Scheduler initialized with 9 behaviors");
 
-    // 6. Reset Heading Estimator
+    // 6. Heading / IMU startup
+#if ROBOT_FEATURE_IMU
     g_headingEstimator.reset();
     BootLogger::log("BOOT", "Heading Estimator reset");
 
-    // ============================================================
     // 7. AUTOMATIC IMU CALIBRATION (blocking)
-    // ============================================================
     BootLogger::log("IMU", "Starting automatic gyro calibration...");
     BootLogger::log("IMU", "Keep robot completely still!");
-
-    // Ensure motors are stopped
     RobotAPI::Stop();
 
-    // Get IMU sensor
     auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
     if (imu && imu->isReady()) {
         int result = imu->calibrateGyro(500);
@@ -154,6 +154,11 @@ void setup() {
             Serial.println("[ERROR] IMU calibration failed. Please reset or use 'imu calibrate' manually.");
         }
     }
+#else
+    g_robotReady = true;
+    BootLogger::log("IMU", "Disabled by hardware configuration");
+    BootLogger::log("Robot", "READY (no IMU / no heading hold)");
+#endif
 
     BootLogger::log("EXEC", "System Ready. Type 'help' for commands.");
     BootLogger::log("INFO", "Default mode: VM. Type 'mode behavior' to switch.");
@@ -168,6 +173,7 @@ void loop() {
     DiagnosticsManager::instance().updateSensors();
 
     if (g_robotReady) {
+#if ROBOT_FEATURE_IMU
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (imu && imu->isReady() && imu->isCalibrated()) {
             IMUSample sample;
@@ -175,6 +181,7 @@ void loop() {
                 g_headingEstimator.update(sample);
             }
         }
+#endif
         RobotAPI::updateMotion();
     } else {
         RobotAPI::Stop();
