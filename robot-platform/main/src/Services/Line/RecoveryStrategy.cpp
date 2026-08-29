@@ -30,7 +30,7 @@ void RecoveryStrategy::update(uint8_t mask, int &left, int &right) {
     // H22: recovery commands stay in the normal command domain. Calibration is
     // applied once later by RobotAPI. Avoid low commands that can hum/stall after
     // motor scaling.
-    constexpr int RECOVERY_BASE_SPEED = 100;
+    constexpr int RECOVERY_BASE_SPEED = 80;
 
     if (elapsed < 1000) {
         // Phase 1: Gentle search - turn slowly in the last known direction

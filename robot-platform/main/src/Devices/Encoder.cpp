@@ -24,10 +24,10 @@ bool Encoder::begin() {
     return true;
 }
 
-void Encoder::IRAM_ATTR isrA(void* arg) { static_cast<Encoder*>(arg)->handleEdge(); }
-void Encoder::IRAM_ATTR isrB(void* arg) { static_cast<Encoder*>(arg)->handleEdge(); }
+void IRAM_ATTR Encoder::isrA(void* arg) { static_cast<Encoder*>(arg)->handleEdge(); }
+void IRAM_ATTR Encoder::isrB(void* arg) { static_cast<Encoder*>(arg)->handleEdge(); }
 
-void Encoder::IRAM_ATTR handleEdge() {
+void IRAM_ATTR Encoder::handleEdge() {
     const uint8_t current = (digitalRead(_pinA) ? 2 : 0) | (digitalRead(_pinB) ? 1 : 0);
     const uint8_t index = (_state << 2) | current;
     int8_t delta = TRANSITION_TABLE[index & 0x0F];

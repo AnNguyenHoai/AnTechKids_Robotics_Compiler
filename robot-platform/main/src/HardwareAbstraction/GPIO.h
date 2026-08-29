@@ -5,6 +5,8 @@
 
 // --- ĐỊNH NGHĨA TIỀN TỐ CHÂN CHO ROBOT (Dập tắt hoàn toàn nguy cơ trùng tên hệ thống) ---
 #define ROBOT_PIN_5     5
+#define ROBOT_PIN_13    13
+#define ROBOT_PIN_21    21
 #define ROBOT_PIN_14    14
 #define ROBOT_PIN_16    16
 #define ROBOT_PIN_17    17
@@ -23,6 +25,10 @@
 #define ROBOT_PIN_39    39
 
 // --- ĐẶT ALIAS (TÊN GỢI NHỚ) THEO CHỨC NĂNG PHẦN CỨNG ---
+
+// MPU6050 (I2C)
+#define MPU6050_SDA_PIN          ROBOT_PIN_21
+#define MPU6050_SCL_PIN          ROBOT_PIN_13
 
 // Cảm biến vạch đường TCRT5000 3CH
 #define SENSOR_TRCT5000_L_PIN   ROBOT_PIN_18  

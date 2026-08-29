@@ -20,6 +20,7 @@
 #include "../../Devices/Encoder.h"
 #include "../../Devices/SensorConfig.h"
 #include "../../HardwareAbstraction/GPIO.h"
+#include "../Line/LineFollower.h"
 
 namespace RobotAPI {
 
@@ -165,6 +166,34 @@ void TurnRight(int16_t speed) {
 
 void Stop() {
     Serial.printf("[%lu] Stop\n", millis());
+    _setMotors(0, 0);
+}
+
+/******************************************************************************
+ * Line Following
+ ******************************************************************************/
+static uint8_t readLineMask() {
+    // LinePerception contract: bit2=Left, bit1=Center, bit0=Right.
+    // ReadLine() applies the persisted lineInverted calibration.
+    uint8_t mask = 0;
+    if (ReadLine(0)) mask |= 0b100;
+    if (ReadLine(1)) mask |= 0b010;
+    if (ReadLine(2)) mask |= 0b001;
+    return mask;
+}
+
+static void lineControlStep(int16_t speed) {
+    int leftMotor = 0;
+    int rightMotor = 0;
+    const uint8_t mask = readLineMask();
+    LineFollower::instance().update(mask, speed, leftMotor, rightMotor);
+    _setMotors(leftMotor, rightMotor);
+}
+
+void LineBasis(int16_t speed) { lineControlStep(speed); }
+void LineFollow(int16_t speed) { lineControlStep(speed); }
+void LineStop() {
+    LineFollower::instance().stop();
     _setMotors(0, 0);
 }
 

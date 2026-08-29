@@ -100,6 +100,21 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             mContext.mProgramCounter++;
             break;
 
+        case Opcode::LineBasis:
+            RobotAPI::LineBasis(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineFollow:
+            RobotAPI::LineFollow(mContext.mVariables[instruction.p1]);
+            mContext.mProgramCounter++;
+            break;
+
+        case Opcode::LineStop:
+            RobotAPI::LineStop();
+            mContext.mProgramCounter++;
+            break;
+
         case Opcode::CompareEQ:
             mContext.mVariables[instruction.p3] =
                 (mContext.mVariables[instruction.p1] == mContext.mVariables[instruction.p2]) ? 1 : 0;
