@@ -25,8 +25,6 @@ extern bool useBehaviorEngine;
 extern HeadingEstimator g_headingEstimator;
 extern VM vm;
 extern bool g_vmStarted;
-extern bool g_imuSensorRuntimeEnabled;
-extern bool g_imuI2cEnabled;
 
 void SerialCommandHandler::setup() {
     Serial.println("SerialCommandHandler ready. Type 'help' for commands.");
@@ -427,14 +425,11 @@ void SerialCommandHandler::handle() {
             Serial.println("IMU sensor not ready.");
             return;
         }
-        MPU6050AccelData accel;
-        MPU6050GyroData gyro;
-        float temp = 0.0f;
-        if (imu->readAccel(accel) && imu->readGyro(gyro)) {
-            temp = imu->readTemperature();
-            Serial.printf("Accel  X=%.3f g  Y=%.3f g  Z=%.3f g\n", accel.ax, accel.ay, accel.az);
-            Serial.printf("Gyro   X=%.3f deg/s  Y=%.3f deg/s  Z=%.3f deg/s\n", gyro.gx, gyro.gy, gyro.gz);
-            Serial.printf("Temp   %.2f °C\n", temp);
+        IMUSample sample;
+        if (imu->readSample(sample)) {
+            Serial.printf("Accel  X=%.3f g  Y=%.3f g  Z=%.3f g\n", sample.accel.ax, sample.accel.ay, sample.accel.az);
+            Serial.printf("Gyro   X=%.3f deg/s  Y=%.3f deg/s  Z=%.3f deg/s\n", sample.gyro.gx, sample.gyro.gy, sample.gyro.gz);
+            Serial.printf("Temp   %.2f °C\n", sample.temperature);
         } else {
             Serial.println("Failed to read IMU data.");
         }
@@ -541,71 +536,6 @@ void SerialCommandHandler::handle() {
                       RobotAPI::isMotorPwmDiagnosticEnabled() ? "ON" : "OFF");
     }
 
-    // ---------- IMU Sensor Runtime Diagnostic (DEBUG-IMU-001) ----------
-    else if (input.startsWith("imu sensor on")) {
-        g_imuSensorRuntimeEnabled = true;
-        Serial.println("[IMU-SENSOR-DIAG] Runtime update: ON");
-    }
-    else if (input.startsWith("imu sensor off")) {
-        g_imuSensorRuntimeEnabled = false;
-        Serial.println("[IMU-SENSOR-DIAG] Runtime update: OFF");
-    }
-    else if (input.startsWith("imu sensor status")) {
-        Serial.printf("[IMU-SENSOR-DIAG] Runtime update: %s\n",
-                      g_imuSensorRuntimeEnabled ? "ON" : "OFF");
-    }
-
-    // ---------- IMU I2C Diagnostic (DEBUG-IMU-002) ----------
-    else if (input.startsWith("imu i2c on")) {
-        g_imuI2cEnabled = true;
-        Serial.println("[IMU-I2C-DIAG] I2C reads: ON");
-    }
-    else if (input.startsWith("imu i2c off")) {
-        g_imuI2cEnabled = false;
-        Serial.println("[IMU-I2C-DIAG] I2C reads: OFF");
-    }
-    else if (input.startsWith("imu i2c status")) {
-        Serial.printf("[IMU-I2C-DIAG] I2C reads: %s\n",
-                      g_imuI2cEnabled ? "ON" : "OFF");
-    }
-
-    // ---------- IMU Accel/Gyro/Temp Diagnostic ----------
-    else if (input.startsWith("imu accel on")) {
-        g_imuAccelDiagnosticEnabled = true;
-        Serial.println("[IMU-ACCEL-DIAG] Accel read: ON");
-    }
-    else if (input.startsWith("imu accel off")) {
-        g_imuAccelDiagnosticEnabled = false;
-        Serial.println("[IMU-ACCEL-DIAG] Accel read: OFF");
-    }
-    else if (input.startsWith("imu accel status")) {
-        Serial.printf("[IMU-ACCEL-DIAG] Accel read: %s\n",
-                      g_imuAccelDiagnosticEnabled ? "ON" : "OFF");
-    }
-    else if (input.startsWith("imu gyro on")) {
-        g_imuGyroDiagnosticEnabled = true;
-        Serial.println("[IMU-GYRO-DIAG] Gyro read: ON");
-    }
-    else if (input.startsWith("imu gyro off")) {
-        g_imuGyroDiagnosticEnabled = false;
-        Serial.println("[IMU-GYRO-DIAG] Gyro read: OFF");
-    }
-    else if (input.startsWith("imu gyro status")) {
-        Serial.printf("[IMU-GYRO-DIAG] Gyro read: %s\n",
-                      g_imuGyroDiagnosticEnabled ? "ON" : "OFF");
-    }
-    else if (input.startsWith("imu temp on")) {
-        g_imuTempDiagnosticEnabled = true;
-        Serial.println("[IMU-TEMP-DIAG] Temperature read: ON");
-    }
-    else if (input.startsWith("imu temp off")) {
-        g_imuTempDiagnosticEnabled = false;
-        Serial.println("[IMU-TEMP-DIAG] Temperature read: OFF");
-    }
-    else if (input.startsWith("imu temp status")) {
-        Serial.printf("[IMU-TEMP-DIAG] Temperature read: %s\n",
-                      g_imuTempDiagnosticEnabled ? "ON" : "OFF");
-    }
     // ---------- IMU Timing Statistics ----------
     else if (input.startsWith("imu timing")) {
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));

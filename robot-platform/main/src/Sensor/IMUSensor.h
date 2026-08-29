@@ -5,14 +5,6 @@
 #include "../Drivers/MPU6050/MPU6050.h"
 #include <stdint.h>
 
-// ---- DEBUG-IMU-001: IMU Sensor Runtime Diagnostic ----
-extern bool g_imuSensorRuntimeEnabled;
-
-// ---- DEBUG-IMU-002: MPU6050 I2C Diagnostic ----
-extern bool g_imuI2cEnabled;
-extern bool g_imuAccelDiagnosticEnabled;
-extern bool g_imuGyroDiagnosticEnabled;
-extern bool g_imuTempDiagnosticEnabled;
 struct IMUSample {
     uint32_t timestamp;           // milliseconds (millis())
     MPU6050AccelData accel;
@@ -20,14 +12,13 @@ struct IMUSample {
     float temperature;            // °C
     bool valid;
 };
-static void printTimingStats();
 class IMUSensor : public ISensor {
 public:
     IMUSensor();
     ~IMUSensor() = default;
     /**
-     * Print timing statistics for I2C reads.
-     * This is a diagnostic function that does not affect normal operation.
+     * Print timing statistics for production IMU burst reads.
+     * This is diagnostic-only and does not alter sensor behavior.
      */
     static void printTimingStats();
 
@@ -45,7 +36,10 @@ public:
     // Lấy mẫu mới nhất (đã được cập nhật bởi update())
     bool getLatestSample(IMUSample& sample) const;
 
-    // Đọc trực tiếp (không cache)
+    // Đọc trực tiếp một sample coherent (không cache).
+    bool readSample(IMUSample& sample);
+
+    // Compatibility accessors. Prefer readSample() for coherent data.
     bool readAccel(MPU6050AccelData& accel);
     bool readGyro(MPU6050GyroData& gyro);
     float readTemperature();

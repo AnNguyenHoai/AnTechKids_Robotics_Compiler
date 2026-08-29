@@ -1,7 +1,7 @@
 from pathlib import Path
 import shutil
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 SOURCE = ROOT / "robot-language" / "generated"
 
 # Destination for compiler
