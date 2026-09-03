@@ -797,9 +797,13 @@ int16_t ReadUltrasonic() {
     );
 
     return (int16_t)dist;
+#endif // ROBOT_FEATURE_ULTRASONIC
 }
 
 float distanceFront() {
+#if !ROBOT_FEATURE_ULTRASONIC
+    return -1.0f;
+#else
     auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
     if (sensor) {
         auto us = static_cast<Ultrasonic*>(sensor);
@@ -807,9 +811,8 @@ float distanceFront() {
         return us->distanceCm();
     }
     return -1.0f;
-}
-
 #endif // ROBOT_FEATURE_ULTRASONIC
+}
 
 void Wait(uint32_t ms) {
     Serial.printf("[%lu] Wait : %lu ms\n", millis(), ms);
