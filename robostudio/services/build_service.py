@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from typing import Optional, List, Tuple, Dict
 import json
 
+from domain.hardware_config_service import HardwareConfigService
+from domain.hardware_requirement_validator import HardwareRequirementValidator
+
 
 @dataclass
 class BuildResult:
@@ -37,12 +40,22 @@ class BuildService:
                 "firmware_project": ""
             }
 
+    def validate_hardware(self, code: str) -> Optional[str]:
+        """Validate program capabilities against the active Hardware configuration."""
+        config_path = Path(__file__).parent.parent / "config" / "hardware.json"
+        config = HardwareConfigService(config_path).load()
+        result = HardwareRequirementValidator.validate(code, config)
+        return None if result.valid else result.format_errors()
+
     def get_command(self, code: str) -> Tuple[List[str], Dict[str, str], str]:
         """
         Generate the command list, environment, and temporary file path.
-        Returns (cmd_list, env_dict, temp_file_path).
-        The caller is responsible for deleting the temp file.
+        Raises ValueError when the selected hardware cannot support the program.
         """
+        hardware_error = self.validate_hardware(code)
+        if hardware_error:
+            raise ValueError(hardware_error)
+
         # Write code to temp file
         temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8")
         temp_file.write(code)
@@ -63,6 +76,10 @@ class BuildService:
         """
         Sync build (blocking) – kept for backward compatibility.
         """
+        hardware_error = self.validate_hardware(code)
+        if hardware_error:
+            return BuildResult(success=False, output=hardware_error, error=hardware_error)
+
         # Use the same logic as before
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
             f.write(code)

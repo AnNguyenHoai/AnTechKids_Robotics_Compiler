@@ -700,6 +700,9 @@ int16_t ReadLine(int channel) {
 // === ULTRASONIC DIAGNOSTIC (ReadUltrasonic) ===
 // ================================================================
 int16_t ReadUltrasonic() {
+#if !ROBOT_FEATURE_ULTRASONIC
+    return -1;
+#else
     ultraReadCount++;
 
     const uint32_t readSeq = ultraReadCount;
@@ -806,6 +809,8 @@ float distanceFront() {
     return -1.0f;
 }
 
+#endif // ROBOT_FEATURE_ULTRASONIC
+
 void Wait(uint32_t ms) {
     Serial.printf("[%lu] Wait : %lu ms\n", millis(), ms);
     delay(ms);
@@ -814,6 +819,11 @@ void Wait(uint32_t ms) {
 // ===== Line Following =====
 
 void LineBasis(int speed) {
+#if !ROBOT_FEATURE_LINE_SENSOR
+    Serial.println("[RobotAPI] Line feature disabled by hardware configuration");
+    Stop();
+    return;
+#endif
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
@@ -864,6 +874,11 @@ void LineFollow(int speed) {
 }
 
 void LineMillisecond(int speed, int millisecond) {
+#if !ROBOT_FEATURE_LINE_SENSOR
+    Serial.println("[RobotAPI] Line feature disabled by hardware configuration");
+    Stop();
+    return;
+#endif
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
@@ -900,12 +915,21 @@ void LineMillisecond(int speed, int millisecond) {
 }
 
 void LineStop() {
+#if !ROBOT_FEATURE_LINE_SENSOR
+    Stop();
+    return;
+#endif
     auto& follower = LineFollower::instance();
     follower.stop();
     Stop();
 }
 
 void LineIntersectionStop(int speed, int type) {
+#if !ROBOT_FEATURE_LINE_SENSOR
+    Serial.println("[RobotAPI] Line feature disabled by hardware configuration");
+    Stop();
+    return;
+#endif
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
@@ -926,6 +950,11 @@ void LineIntersectionStop(int speed, int type) {
 }
 
 void LineTurnEncounterLine(int speed, int angle, int direction) {
+#if !ROBOT_FEATURE_LINE_SENSOR
+    Serial.println("[RobotAPI] Line feature disabled by hardware configuration");
+    Stop();
+    return;
+#endif
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
@@ -947,6 +976,11 @@ void LineTurnEncounterLine(int speed, int angle, int direction) {
 }
 
 void LineForBmp(int speed, int degree) {
+#if !ROBOT_FEATURE_LINE_SENSOR
+    Serial.println("[RobotAPI] Line feature disabled by hardware configuration");
+    Stop();
+    return;
+#endif
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
         return;
@@ -969,7 +1003,12 @@ void LineForBmp(int speed, int degree) {
 // ===== LED, Servo, MP3, Trace =====
 
 void SetServo(int port, int angle) {
+#if !ROBOT_FEATURE_SERVO
+    (void)port; (void)angle;
+    return;
+#else
     Serial.printf("[DUMMY][SetServo] port=%d angle=%d\n", port, angle);
+#endif
 }
 
 void Set3CLed(int port, int state) {
@@ -997,13 +1036,22 @@ void SetMotorStraightAngle(int leftPort, int rightPort, int speed, int angle) {
 }
 
 void SetMp3Play(int index) {
+#if !ROBOT_FEATURE_BUZZER
+    (void)index;
+    return;
+#else
     Serial.printf("[BUZZER] SetMp3Play index=%d -> fixed beep 200ms\n", index);
     digitalWrite(OUTPUT_BUZZER_PIN, HIGH);
     delay(200);
     digitalWrite(OUTPUT_BUZZER_PIN, LOW);
+#endif
 }
 
 int16_t GetTraceValue(int port, int channel) {
+#if !ROBOT_FEATURE_LINE_SENSOR
+    (void)port; (void)channel;
+    return 0;
+#else
     SensorID id;
     switch (channel) {
         case 0: id = SensorID::LineLeft; break;
@@ -1018,9 +1066,14 @@ int16_t GetTraceValue(int port, int channel) {
         return lineSensor->isLineDetected() ? 100 : 0;
     }
     return 0;
+#endif
 }
 
 bool GetTraceState(int port, int channel) {
+#if !ROBOT_FEATURE_LINE_SENSOR
+    (void)port; (void)channel;
+    return false;
+#else
     SensorID id;
     switch (channel) {
         case 0: id = SensorID::LineLeft; break;
@@ -1035,9 +1088,14 @@ bool GetTraceState(int port, int channel) {
         return lineSensor->isLineDetected();
     }
     return false;
+#endif
 }
 
 int16_t GetTraceRaw(int port) {
+#if !ROBOT_FEATURE_LINE_SENSOR
+    (void)port;
+    return 0;
+#else
     int mask = 0;
     auto left = SensorManager::instance().getSensor(SensorID::LineLeft);
     auto center = SensorManager::instance().getSensor(SensorID::LineCenter);
@@ -1058,6 +1116,7 @@ int16_t GetTraceRaw(int port) {
         if (r->isLineDetected()) mask |= 1;
     }
     return mask;
+#endif
 }
 
 // ===== Initialization =====
@@ -1128,14 +1187,18 @@ void Initialize() {
     colorSensor.init();
 
     auto& mgr = SensorManager::instance();
+#if ROBOT_FEATURE_LINE_SENSOR
     mgr.registerSensor(SensorID::LineLeft,
                        new TCRT5000(SENSOR_TRCT5000_L_PIN, "line_left"));
     mgr.registerSensor(SensorID::LineCenter,
                        new TCRT5000(SENSOR_TRCT5000_C_PIN, "line_center"));
     mgr.registerSensor(SensorID::LineRight,
                        new TCRT5000(SENSOR_TRCT5000_R_PIN, "line_right"));
+#endif
+#if ROBOT_FEATURE_ULTRASONIC
     mgr.registerSensor(SensorID::Ultrasonic,
                        new Ultrasonic(SONIC_TRIG_PIN, SONIC_ECHO_PIN, 50000, "ultrasonic"));
+#endif
 
 #if ROBOT_FEATURE_IMU
     IMUSensor* imu = new IMUSensor();
@@ -1146,9 +1209,11 @@ void Initialize() {
         Serial.println("[RobotAPI] Some sensors failed to initialize.");
     }
 
+#if ROBOT_FEATURE_BUZZER
     pinMode(OUTPUT_BUZZER_PIN, OUTPUT);
     digitalWrite(OUTPUT_BUZZER_PIN, LOW);
     Serial.println("[RobotAPI] Buzzer initialized (OFF)");
+#endif
 
     loadSensorConfigFromStorage();
     Serial.println("[RobotAPI] Sensors initialized with SensorConfig.");

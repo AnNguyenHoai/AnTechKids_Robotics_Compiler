@@ -1,6 +1,7 @@
 #include "SerialCommandHandler.h"
 //#define DIAGNOSTIC_MANUAL_START
 
+#include "../../include/generated/generated_device_config.h"
 #include "../Services/Robot/MotionConfig.h"
 #include "../Services/Robot/RobotAPI.h"
 #include "../Services/Robot/MotorOutputMapper.h"
@@ -581,6 +582,9 @@ void SerialCommandHandler::handle() {
 
     // ---------- Ultrasonic Diagnostics ----------
     else if (input.startsWith("ultra diag")) {
+#if !ROBOT_FEATURE_ULTRASONIC
+        Serial.println("Ultrasonic feature disabled by hardware configuration.");
+#else
         Serial.println("--- Ultrasonic Diagnostics ---");
         auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
         if (sensor) {
@@ -600,6 +604,7 @@ void SerialCommandHandler::handle() {
         Serial.printf("Current Speed : %d\n", RobotAPI::getCurrentBaseSpeed());
         Serial.printf("Direction     : %d\n", RobotAPI::getCurrentDirection());
         Serial.println("-----------------------------");
+#endif
     }
     // ---------- Encoder H24-D ----------
     else if (input == "encoder show") {

@@ -8,6 +8,7 @@ from .hardware_config import (
 from .device_registry import DeviceDefinition, DeviceRegistry
 from .hardware_config_service import HardwareConfigService
 from .hardware_macro_generator import HardwareMacroGenerator
+from .hardware_requirement_validator import HardwareRequirementValidator
 
 __all__ = [
     "DEVICE_CONFIG_VERSION",
@@ -17,4 +18,5 @@ __all__ = [
     "DeviceRegistry",
     "HardwareConfigService",
     "HardwareMacroGenerator",
+    "HardwareRequirementValidator",
 ]
