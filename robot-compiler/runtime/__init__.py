@@ -4,6 +4,7 @@ from .function import RuntimeFunction
 from .instruction import RuntimeInstruction
 from .loader import ProgramLoader
 from .capability_contract import CapabilityContractError, validate_capabilities
+from .target_profile import TargetCapabilityProfile, TargetCapabilityRegistry, TargetProfileError
 from .iterator import InstructionIterator
 from .exceptions import *
 from .context import ExecutionContext, ExecutionState
@@ -57,6 +58,9 @@ __all__ = [
     "ProgramLoader",
     "CapabilityContractError",
     "validate_capabilities",
+    "TargetCapabilityProfile",
+    "TargetCapabilityRegistry",
+    "TargetProfileError",
     "InstructionIterator",
     "ExecutionContext",
     "ExecutionState",

@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "kind": "robot_target_capability_profiles",
+  "profiles": [
+    {"id": "invalid", "description": "invalid fixture", "capabilities": ["runtime.control", "runtime.control"]}
+  ]
+}
