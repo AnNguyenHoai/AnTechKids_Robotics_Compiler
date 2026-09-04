@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import importlib.util
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 IDENTITY_H = ROOT / "robot-platform/main/src/Communication/RobotIdentity.h"
@@ -35,6 +36,14 @@ def has_cpp_json_key(source: str, key: str) -> bool:
     raw_key = f'"{key}"'
     escaped_key = f'\\"{key}\\"'
     return raw_key in source or escaped_key in source
+
+
+def has_ota_manifest_environment(source: str) -> bool:
+    """Check the OTA/build environment mapping without depending on spacing."""
+    return re.search(
+        r'platformio_environment\s*=\s*"esp32dev_ota"\s+if\s+args\.mode\s*==\s*"ota"\s+else\s*"esp32dev"',
+        source,
+    ) is not None
 
 
 def main() -> int:
@@ -75,7 +84,7 @@ def main() -> int:
     assert '"robot-ota"' not in wifi_config
     assert '"robot-ota"' not in network_cpp
 
-    assert 'platformio_environment="esp32dev_ota" if args.mode == "ota" else "esp32dev"' in deploy
+    assert has_ota_manifest_environment(deploy)
     assert 'default="robot-ota"' not in deploy
 
     assert "def validate_robot_record(payload: object) -> bool:" in host_tool
