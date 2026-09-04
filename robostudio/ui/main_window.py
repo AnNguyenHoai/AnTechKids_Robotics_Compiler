@@ -4,7 +4,7 @@ RoboStudio Main Window UI – coded manually with PySide6.
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit,
-    QPushButton, QTextEdit, QLabel, QFrame, QMenuBar, QMenu, QMessageBox, QFileDialog, QTabWidget, QGroupBox
+    QPushButton, QTextEdit, QLabel, QFrame, QMenuBar, QMenu, QMessageBox, QFileDialog, QTabWidget, QGroupBox, QComboBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QAction, QCursor
@@ -23,7 +23,7 @@ class Ui_MainWindow:
 
         # File menu
         self.file_menu = menubar.addMenu("&File")
-        self.file_menu.setObjectName("menuFile")  # <-- ADDED
+        self.file_menu.setObjectName("menuFile")
 
         # Examples menu
         self.examples_menu = menubar.addMenu("&Examples")
@@ -52,6 +52,20 @@ class Ui_MainWindow:
         program_layout.setSpacing(10)
         program_layout.setContentsMargins(0, 0, 0, 0)
 
+        # H26-L target selector
+        target_layout = QHBoxLayout()
+        target_layout.setSpacing(8)
+        target_layout.addWidget(QLabel("Target:"))
+        self.target_combo = QComboBox()
+        self.target_combo.setObjectName("target_combo")
+        self.target_combo.setMinimumWidth(180)
+        target_layout.addWidget(self.target_combo)
+        self.target_description = QLabel("")
+        self.target_description.setWordWrap(True)
+        self.target_description.setStyleSheet("color: #666666;")
+        target_layout.addWidget(self.target_description, 1)
+        program_layout.addLayout(target_layout)
+
         # Code Editor
         self.code_editor = QPlainTextEdit()
         self.code_editor.setPlaceholderText("Paste your RoboSim Python code here...")
@@ -60,8 +74,8 @@ class Ui_MainWindow:
         self.code_editor.setMinimumHeight(250)
         program_layout.addWidget(self.code_editor)
 
-        # H25-J capability status
-        self.capability_group = QGroupBox("Hardware Capability")
+        # H25-J / H26-L capability status
+        self.capability_group = QGroupBox("Hardware & Target Capability")
         capability_layout = QVBoxLayout(self.capability_group)
         capability_layout.setContentsMargins(10, 8, 10, 8)
         capability_layout.setSpacing(4)
@@ -75,6 +89,11 @@ class Ui_MainWindow:
         self.capability_details.setWordWrap(True)
         self.capability_details.setStyleSheet("color: #666666;")
         capability_layout.addWidget(self.capability_details)
+
+        self.target_capability_details = QLabel("")
+        self.target_capability_details.setWordWrap(True)
+        self.target_capability_details.setStyleSheet("color: #666666;")
+        capability_layout.addWidget(self.target_capability_details)
 
         program_layout.addWidget(self.capability_group)
 
