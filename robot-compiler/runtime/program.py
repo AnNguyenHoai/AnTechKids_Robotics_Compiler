@@ -1,4 +1,3 @@
-# robot-compiler/runtime/program.py
 from dataclasses import dataclass
 from typing import List, Optional, Any
 from .function import RuntimeFunction
@@ -8,13 +7,15 @@ from .function import RuntimeFunction
 class RuntimeProgram:
     """
     Immutable runtime program, fully prepared for execution.
-    Contains constants, functions, and a flat list of all instructions.
+    Contains constants, functions, instructions, and the capabilities required
+    by its instruction stream.
     """
     constants: List[Any]
     functions: List[RuntimeFunction]
     instructions: List[Any]          # list of RuntimeInstruction
     entry_function_id: int = 0
     abi_version: int = 1
+    required_capabilities: tuple[str, ...] = ()
 
     def get_function(self, function_id: int) -> Optional[RuntimeFunction]:
         for f in self.functions:
