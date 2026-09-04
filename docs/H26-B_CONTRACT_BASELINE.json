@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "task": "H26-B",
-  "baseline_commit": "9d14e8941b2ea8bacc429c7118feb2a37001dc97",
+  "baseline_commit": "a8225414322d57e5bb9445013d8610af29ea8fdc",
   "purpose": "Protect the currently working production Golden Path while allowing future architecture migration to proceed incrementally.",
   "protected_files": {
     "robot-compiler/compiler/generated/function_registry.py": "cbcbbba21ee19a108caf4aafebbfb355bc0238ed",
     "robot-compiler/compiler/generated/opcode.py": "5440f6ec43567ef749ac586f91e056256a756a47",
     "tools/build.py": "a4de23ac985c498439bd91e4d7f99dd87d4e3023",
     "tools/compile.py": "1da55e4cdb5699b690fa7f38dd015a868002c599",
-    "tools/flash.py": "c72376015926518ea0e2bb93a79222dbb860cf9e"
+    "tools/flash.py": "e418e91d2785e78cc65fa2299c9513a5037cbcab"
   },
   "validated_generated_artifacts": {
     "robot-platform/main/src/Application/generated_program.h": [
