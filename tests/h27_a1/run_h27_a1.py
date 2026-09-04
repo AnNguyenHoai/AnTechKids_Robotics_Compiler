@@ -25,6 +25,18 @@ def load_discovery_tool():
     return module
 
 
+def has_cpp_json_key(source: str, key: str) -> bool:
+    """Accept JSON keys represented as C++ escaped string literals.
+
+    C++ JSON builders commonly store a quote as `\\"`, so a raw source check
+    for `\"key\"` is incorrect even though the generated JSON contains the
+    required key. Keep the contract source-based, but match both spellings.
+    """
+    raw_key = f'"{key}"'
+    escaped_key = f'\\"{key}\\"'
+    return raw_key in source or escaped_key in source
+
+
 def main() -> int:
     identity_h = IDENTITY_H.read_text(encoding="utf-8")
     identity_cpp = IDENTITY_CPP.read_text(encoding="utf-8")
@@ -38,12 +50,8 @@ def main() -> int:
     host_tool = DISCOVER_TOOL.read_text(encoding="utf-8")
 
     assert "kSchemaVersion = 1" in identity_h
-    assert '"schema_version"' in identity_cpp
-    assert '"device_id"' in identity_cpp
-    assert '"robot_ready"' in identity_cpp
-    assert '"network_ready"' in identity_cpp
-    assert '"ready"' in identity_cpp
-    assert '"ota"' in identity_cpp
+    for key in ("schema_version", "device_id", "robot_ready", "network_ready", "ready", "ota", "capabilities"):
+        assert has_cpp_json_key(identity_cpp, key), key
 
     assert "bool begin();" in discovery_h
     assert "void update(bool robotReady, bool networkReady, bool otaReady);" in discovery_h
