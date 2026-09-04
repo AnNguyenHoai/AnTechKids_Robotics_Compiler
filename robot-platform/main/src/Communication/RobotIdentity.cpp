@@ -1,7 +1,7 @@
 #include "RobotIdentity.h"
 
 #include <WiFi.h>
-#include "../generated/generated_device_config.h"
+#include "../../include/generated/generated_device_config.h"
 
 namespace {
 String g_deviceId;
