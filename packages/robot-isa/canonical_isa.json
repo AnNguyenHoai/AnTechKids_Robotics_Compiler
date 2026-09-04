@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "task": "H26-C",
+  "format": "rows",
+  "columns": ["id", "producer_name", "numeric_code", "category", "canonical_index"],
+  "rows": [
+    ["motion.forward", "Forward", 2, "motion", 0], ["motion.backward", "Backward", 3, "motion", 1], ["motion.turn_left", "TurnLeft", 4, "motion", 2], ["motion.turn_right", "TurnRight", 5, "motion", 3], ["motion.set_motor_speed", "SetMotorSpeed", 35, "motion", 4], ["motion.move_initialize", "MoveInitialize", 52, "motion", 5], ["motion.move_run_angle", "MoveRunAngle", 53, "motion", 6],
+    ["system.wait", "Wait", 7, "system", 7], ["system.stop", "Stop", 6, "system", 8],
+    ["sensor.read_ultrasonic", "ReadUltrasonic", 30, "sensor", 9], ["sensor.read_touch", "ReadTouch", 31, "sensor", 10], ["sensor.read_light", "ReadLight", 32, "sensor", 11], ["sensor.read_color", "ReadColor", 33, "sensor", 12], ["sensor.read_line", "ReadLine", 34, "sensor", 13], ["sensor.get_trace_value", "GetTraceValue", 42, "sensor", 14], ["sensor.get_trace_state", "GetTraceState", 43, "sensor", 15], ["sensor.get_trace_raw", "GetTraceRaw", 44, "sensor", 16], ["sensor.get_light_sensor_data", "GetLightSensorData", 54, "sensor", 17],
+    ["led.set_3c_led", "Set3CLed", 37, "led", 18], ["led.set_light_sensor_led", "SetLightSensorLed", 38, "led", 19],
+    ["servo.set_servo", "SetServo", 36, "servo", 20], ["servo.set_steering_engine", "SetSeeringEngine", 55, "servo", 21], ["servo.set_steering_engine_time", "SetSeeringEngineTime", 56, "servo", 22],
+    ["motor.set_motor", "SetMotor", 57, "motor", 23], ["motor.set_motor_servo", "SetMotorServo", 58, "motor", 24], ["motor.set_motor_straight_angle", "SetMotorStraightAngle", 39, "motor", 25],
+    ["line.line_basis", "LineBasis", 47, "line", 26], ["line.line_follow", "LineFollow", 48, "line", 27], ["line.line_stop", "LineStop", 49, "line", 28], ["line.line_millisecond", "LineMillisecond", 59, "line", 29], ["line.line_intersection_stop", "LineIntersectionStop", 40, "line", 30], ["line.line_turn_encounter_line", "LineTurnEncounterLine", 50, "line", 31], ["line.line_for_bmp", "LineForBmp", 51, "line", 32], ["line.line_set_initialize", "LineSetInitialize", 60, "line", 33],
+    ["peripheral.set_mp3_play", "SetMp3Play", 41, "peripheral", 34], ["peripheral.set_lizard", "SetLizard", 61, "peripheral", 35], ["gui.update_var", "UpdateVar", 62, "gui", 36], ["gui.display_variable", "DisplayVariable", 63, "gui", 37],
+    ["value.load_const", "LoadConst", 1, "value", 38], ["control.compare_eq", "CompareEQ", 8, "control", 39], ["control.compare_ne", "CompareNE", 9, "control", 40], ["control.compare_lt", "CompareLT", 10, "control", 41], ["control.compare_le", "CompareLE", 11, "control", 42], ["control.compare_gt", "CompareGT", 12, "control", 43], ["control.compare_ge", "CompareGE", 13, "control", 44], ["control.jump", "Jump", 14, "control", 45], ["control.jump_if_false", "JumpIfFalse", 15, "control", 46], ["control.jump_if_true", "JumpIfTrue", 16, "control", 47], ["control.label", "Label", 17, "control", 48],
+    ["math.add", "Add", 20, "math", 49], ["math.sub", "Sub", 21, "math", 50], ["math.mul", "Mul", 22, "math", 51], ["math.div", "Div", 23, "math", 52], ["math.mod", "Mod", 24, "math", 53], ["math.pow", "Pow", 25, "math", 54], ["math.neg", "Neg", 26, "math", 55],
+    ["runtime.call", "Call", 27, "runtime", 56], ["runtime.return", "Return", 28, "runtime", 57], ["value.store", "Store", 29, "value", 58], ["runtime.nop", "Nop", 64, "runtime", 59]
+  ],
+  "legacy_aliases": [
+    ["MOVE_RUN", null], ["MOVE_RUN_TIME", null], ["MOVE_STOP", null], ["WAIT", "system.wait"], ["SERVO", "servo.set_servo"], ["READ_TRACE", "sensor.get_trace_value"], ["JUMP", "control.jump"], ["JUMP_IF", null], ["CALL", "runtime.call"], ["RETURN", "runtime.return"], ["THREAD_START", null], ["THREAD_END", null]
+  ]
+}
