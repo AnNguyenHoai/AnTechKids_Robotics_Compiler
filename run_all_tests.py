@@ -41,6 +41,7 @@ def main() -> int:
         ROOT / "tests" / "h26_l" / "run_h26_l.py",
         ROOT / "tests" / "h26_m" / "run_h26_m.py",
         ROOT / "tests" / "h26_ota" / "run_h26_ota.py",
+        ROOT / "tests" / "h26_o" / "run_h26_o.py",
     ]
     missing = [path.relative_to(ROOT) for path in tests if not path.exists()]
     if missing:
