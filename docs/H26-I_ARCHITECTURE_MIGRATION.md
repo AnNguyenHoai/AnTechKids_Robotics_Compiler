@@ -47,8 +47,10 @@ blocked-until-equivalence
 ```
 
 The H26-I gate rejects production source that references the registered legacy
-components. This prevents a new production dependency from silently recreating
-the architecture split.
+components. It evaluates dependency-shaped references rather than raw filename
+substrings, and it excludes the legacy component's own source file from its scan.
+This prevents a new production dependency from silently recreating the
+architecture split without producing false positives from the legacy island itself.
 
 ## Retirement is evidence-gated
 
@@ -96,7 +98,7 @@ of the repository regression chain.
 - establishes an explicit architecture migration manifest;
 - verifies canonical ISA rows still match the generated production opcode contract;
 - verifies required production and canonical paths exist;
-- scans production roots for registered legacy references;
+- scans production roots for registered legacy references using dependency-aware matching;
 - locks legacy deletion behind an explicit equivalence/physical-evidence policy;
 - adds regression coverage for both passing and failing migration conditions.
 

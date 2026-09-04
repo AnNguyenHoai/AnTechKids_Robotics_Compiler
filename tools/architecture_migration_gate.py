@@ -34,7 +34,7 @@ def load_manifest(path: Path = MANIFEST_PATH) -> dict:
 def validate_paths(manifest: dict) -> None:
     production = manifest["production"]
     required = [
-        manifest["production"]["isa_source_of_truth"],
+        production["isa_source_of_truth"],
         production["compiler_entrypoint"],
         production["build_entrypoint"],
         production["firmware_build_entrypoint"],
@@ -101,19 +101,53 @@ def iter_source_files(root: Path):
         yield path
 
 
+def _legacy_reference_pattern(token: str) -> re.Pattern[str]:
+    """Build a dependency/reference matcher, not a raw substring matcher."""
+    normalized = token.replace("\\", "/")
+    if normalized == "robot-common" or "robot-common/" in normalized:
+        return re.compile(r"(?i)(?:packages[./\\]robot-common(?:[/\\.]|\b)|robot-common[/\\])")
+
+    # C/C++ legacy implementation files are dependencies when included, not
+    # merely when their filenames occur in comments, strings, or their own file.
+    if normalized.endswith((".h", ".hpp", ".c", ".cc", ".cpp")):
+        filename = re.escape(normalized.rsplit("/", 1)[-1])
+        return re.compile(rf"(?im)^\s*#\s*include\s*[<\"][^>\"]*{filename}[>\"]")
+
+    escaped = re.escape(token)
+    return re.compile(rf"(?<![A-Za-z0-9_.-]){escaped}(?![A-Za-z0-9_.-])")
+
+
+def _is_legacy_component_path(path: Path, legacy_path: str) -> bool:
+    try:
+        return path.resolve() == _repo_path(legacy_path).resolve()
+    except OSError:
+        return path == _repo_path(legacy_path)
+
+
 def validate_legacy_isolation(manifest: dict) -> None:
     roots = [_repo_path(value) for value in manifest["production_scan_roots"]]
     offenders: list[str] = []
     for legacy in manifest["legacy_components"]:
-        tokens = legacy["forbidden_production_tokens"]
+        legacy_path = legacy["path"]
+        patterns = [
+            (token, _legacy_reference_pattern(token))
+            for token in legacy["forbidden_production_tokens"]
+        ]
         for root in roots:
             for path in iter_source_files(root):
+                if _is_legacy_component_path(path, legacy_path):
+                    continue
                 text = path.read_text(encoding="utf-8", errors="ignore")
-                hits = [token for token in tokens if token in text]
+                hits = [token for token, pattern in patterns if pattern.search(text)]
                 if hits:
+                    try:
+                        display_path = path.relative_to(ROOT)
+                    except ValueError:
+                        display_path = path
                     offenders.append(
-                        f"{path.relative_to(ROOT)} references retired legacy token(s): {', '.join(hits)}"
+                        f"{display_path} references isolated legacy component {legacy_path}: {', '.join(hits)}"
                     )
+
     if offenders:
         raise MigrationGateError("Legacy isolation violated:\n" + "\n".join(offenders))
 
