@@ -6,10 +6,15 @@
   "protected_files": {
     "robot-compiler/compiler/generated/function_registry.py": "cbcbbba21ee19a108caf4aafebbfb355bc0238ed",
     "robot-compiler/compiler/generated/opcode.py": "5440f6ec43567ef749ac586f91e056256a756a47",
-    "robot-platform/main/src/Application/generated_program.h": "84bdf60a8eadcb6a93d5434969e1eb28a083d155",
     "tools/build.py": "a4de23ac985c498439bd91e4d7f99dd87d4e3023",
     "tools/compile.py": "1da55e4cdb5699b690fa7f38dd015a868002c599",
     "tools/flash.py": "c72376015926518ea0e2bb93a79222dbb860cf9e"
+  },
+  "validated_generated_artifacts": {
+    "robot-platform/main/src/Application/generated_program.h": [
+      "const Instruction generatedProgram[]",
+      "generatedProgramSize"
+    ]
   },
   "known_future_migrations": [
     "canonical ISA/opcode reconciliation",
