@@ -5,6 +5,7 @@
 #include "../Services/Robot/MotionConfig.h"
 #include "../Services/Robot/RobotAPI.h"
 #include "../Services/Robot/MotorOutputMapper.h"
+#include "../HardwareAbstraction/HardwareCapability.h"
 #include "../Devices/SensorConfig.h"
 #include "../Behavior/BehaviorScheduler.h"
 #include "../Diagnostics/DiagnosticsManager.h"
@@ -80,6 +81,7 @@ void SerialCommandHandler::handle() {
         Serial.println("  heading status      - show current relative heading and gyro info");
         Serial.println("  heading control     - show heading hold controller status");
         Serial.println("  robot status        - show robot ready state and IMU status");
+        Serial.println("  hardware status     - show runtime hardware capability contract");
         Serial.println("  ultra diag          - show ultrasonic diagnostic statistics");
         // ---- Diagnostic commands ----
         Serial.println("  heading on/off      - enable/disable heading control (diagnostic)");
@@ -98,6 +100,11 @@ void SerialCommandHandler::handle() {
         Serial.println("  run                 - start VM execution (manual-start mode)");
 #endif
         return;
+    }
+
+    // ---------- Hardware Capability Contract (H25-I) ----------
+    else if (input.startsWith("hardware status")) {
+        HardwareCapability::printStatus();
     }
 
     // ---------- Motion Config ----------
@@ -403,7 +410,10 @@ void SerialCommandHandler::handle() {
     }
 
     // ---------- IMU ----------
-    else if (input.startsWith("imu status")) {
+    else if (input.startsWith("imu status")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+            Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
+            return;
+        }
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (!imu) {
             Serial.println("IMU sensor not available.");
@@ -420,7 +430,10 @@ void SerialCommandHandler::handle() {
         Serial.printf("Bias Z     : %.3f deg/s\n", bias.bz);
         Serial.println("---");
     }
-    else if (input.startsWith("imu read")) {
+    else if (input.startsWith("imu read")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+            Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
+            return;
+        }
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (!imu || !imu->isReady()) {
             Serial.println("IMU sensor not ready.");
@@ -435,7 +448,10 @@ void SerialCommandHandler::handle() {
             Serial.println("Failed to read IMU data.");
         }
     }
-    else if (input.startsWith("imu calibrate")) {
+    else if (input.startsWith("imu calibrate")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+            Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
+            return;
+        }
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (!imu || !imu->isReady()) {
             Serial.println("IMU sensor not ready.");
@@ -538,7 +554,10 @@ void SerialCommandHandler::handle() {
     }
 
     // ---------- IMU Timing Statistics ----------
-    else if (input.startsWith("imu timing")) {
+    else if (input.startsWith("imu timing")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+            Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
+            return;
+        }
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (imu) {
             IMUSensor::printTimingStats();

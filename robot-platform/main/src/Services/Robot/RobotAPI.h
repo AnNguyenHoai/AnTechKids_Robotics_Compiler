@@ -14,6 +14,7 @@
 #include "RobotAPI.h"
 #include <Arduino.h>
 #include "../../HardwareAbstraction/GPIO.h"
+#include "../../HardwareAbstraction/HardwareCapability.h"
 
 namespace RobotAPI
 {
@@ -219,6 +220,10 @@ int getCurrentDirection();
  * Get robot ready state.
  */
 bool isRobotReady();
+
+/** H25-I: query the active firmware hardware capability contract. */
+bool isHardwareEnabled(HardwareCapability::Device device);
+void printHardwareCapabilities();
 
 // ================================================================
 // ULTRASONIC DIAGNOSTIC GETTERS

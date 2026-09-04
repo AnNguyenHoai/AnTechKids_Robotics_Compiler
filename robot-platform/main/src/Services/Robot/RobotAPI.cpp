@@ -21,6 +21,7 @@
 #include "../../Devices/ColorSensor.h"
 #include "../../Devices/SensorConfig.h"
 #include "../../HardwareAbstraction/GPIO.h"
+#include "../../HardwareAbstraction/HardwareCapability.h"
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/TCRT5000.h"
 #include "../../Sensor/SensorID.h"
@@ -556,6 +557,11 @@ static void _startMotion(int speed, int direction) {
 // ===== Public API =====
 
 void setMotorsDirect(int left, int right) {
+#if !ROBOT_FEATURE_MOTOR
+    (void)left; (void)right;
+    Serial.println("[RobotAPI] Motor feature disabled by hardware configuration.");
+    return;
+#endif
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Motion blocked: Robot not ready");
         return;
@@ -564,6 +570,11 @@ void setMotorsDirect(int left, int right) {
 }
 
 void SetMotorSpeed(int left, int right) {
+#if !ROBOT_FEATURE_MOTOR
+    (void)left; (void)right;
+    Serial.println("[RobotAPI] Motor feature disabled by hardware configuration.");
+    return;
+#endif
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Motion blocked: Robot not ready");
         return;
@@ -572,14 +583,29 @@ void SetMotorSpeed(int left, int right) {
 }
 
 void Forward(int16_t speed) {
+#if !ROBOT_FEATURE_MOTOR
+    (void)speed;
+    Serial.println("[RobotAPI] Motor feature disabled by hardware configuration.");
+    return;
+#endif
     _startMotion(speed, 1);
 }
 
 void Backward(int16_t speed) {
+#if !ROBOT_FEATURE_MOTOR
+    (void)speed;
+    Serial.println("[RobotAPI] Motor feature disabled by hardware configuration.");
+    return;
+#endif
     _startMotion(speed, -1);
 }
 
 void TurnLeft(int16_t speed) {
+#if !ROBOT_FEATURE_MOTOR
+    (void)speed;
+    Serial.println("[RobotAPI] Motor feature disabled by hardware configuration.");
+    return;
+#endif
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Motion blocked: Robot not ready");
         return;
@@ -591,6 +617,11 @@ void TurnLeft(int16_t speed) {
 }
 
 void TurnRight(int16_t speed) {
+#if !ROBOT_FEATURE_MOTOR
+    (void)speed;
+    Serial.println("[RobotAPI] Motor feature disabled by hardware configuration.");
+    return;
+#endif
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Motion blocked: Robot not ready");
         return;
@@ -613,6 +644,14 @@ void updateMotion() {
 
 bool isRobotReady() {
     return g_robotReady;
+}
+
+bool isHardwareEnabled(HardwareCapability::Device device) {
+    return HardwareCapability::isEnabled(device);
+}
+
+void printHardwareCapabilities() {
+    HardwareCapability::printStatus();
 }
 
 bool isHeadingHoldActive() {
@@ -1149,6 +1188,7 @@ bool GetEncoderInverted(int side) { (void)side; return false; }
 #endif
 
 void Initialize() {
+    HardwareCapability::printStatus();
 #if ROBOT_FEATURE_ENCODER
     leftEncoder.begin();
     rightEncoder.begin();
