@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "task": "H26-F",
+  "kind": "compiler_safety_resource_contract",
+  "program": {"max_instructions": 128},
+  "runtime": {"max_variables": 32, "max_call_stack": 8, "max_loop_depth": 8},
+  "operands": {"min": -2147483648, "max": 2147483647},
+  "jump_targets": {"allow_end": true},
+  "error_ids": {
+    "program_overflow": 2,
+    "invalid_jump": 3,
+    "stack_overflow": 4,
+    "invalid_return": 5,
+    "invalid_operand": 8,
+    "invalid_variable": 9
+  }
+}
