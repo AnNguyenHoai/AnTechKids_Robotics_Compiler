@@ -19,12 +19,13 @@ class ExecutionEngine:
         self.program = program
         self.context = ExecutionContext()
 
-        # RuntimeProgram supports both the function-based representation and
-        # the legacy flat instruction stream. Use the declared entry function
-        # when functions are present; otherwise iterate the top-level stream.
-        # This keeps existing RuntimeProgram callers loadable while preserving
-        # the function-based execution model produced by ProgramLoader.
-        if program.functions:
+        # Prefer the declared entry function for normal function-based programs.
+        # Legacy/runtime callers may carry function metadata without function 0
+        # while still providing a flat instruction stream. In that case the
+        # stream remains the executable fallback; capability metadata must not
+        # change the legacy loading contract.
+        entry_function = program.get_function(program.entry_function_id)
+        if entry_function is not None:
             self.iterator = InstructionIterator(
                 program,
                 function_id=program.entry_function_id,
