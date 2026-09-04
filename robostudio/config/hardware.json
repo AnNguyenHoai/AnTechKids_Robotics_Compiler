@@ -4,9 +4,9 @@
     "motor": true,
     "encoder": false,
     "line_sensor": false,
-    "ultrasonic": false,
+    "ultrasonic": true,
     "imu": false,
     "servo": false,
-    "buzzer": false
+    "buzzer": true
   }
 }

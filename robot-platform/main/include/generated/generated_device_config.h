@@ -8,9 +8,9 @@
 
 // SENSORS
 #define ROBOT_FEATURE_LINE_SENSOR        0
-#define ROBOT_FEATURE_ULTRASONIC         0
+#define ROBOT_FEATURE_ULTRASONIC         1
 #define ROBOT_FEATURE_IMU                0
 
 // EXPANSION
 #define ROBOT_FEATURE_SERVO              0
-#define ROBOT_FEATURE_BUZZER             0
+#define ROBOT_FEATURE_BUZZER             1
