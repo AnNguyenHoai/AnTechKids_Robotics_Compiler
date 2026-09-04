@@ -4,10 +4,12 @@ RoboStudio Main Window UI – coded manually with PySide6.
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit,
-    QPushButton, QTextEdit, QLabel, QFrame, QMenuBar, QMenu, QMessageBox, QFileDialog
+    QPushButton, QTextEdit, QLabel, QFrame, QMenuBar, QMenu, QMessageBox, QFileDialog, QTabWidget, QGroupBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QAction, QCursor
+
+from ui.hardware_tab import HardwareTab
 
 
 class Ui_MainWindow:
@@ -40,13 +42,41 @@ class Ui_MainWindow:
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(10, 10, 10, 10)
 
+        # Main tabs
+        self.main_tabs = QTabWidget()
+        main_layout.addWidget(self.main_tabs, 1)
+
+        # Program tab
+        self.program_tab = QWidget()
+        program_layout = QVBoxLayout(self.program_tab)
+        program_layout.setSpacing(10)
+        program_layout.setContentsMargins(0, 0, 0, 0)
+
         # Code Editor
         self.code_editor = QPlainTextEdit()
         self.code_editor.setPlaceholderText("Paste your RoboSim Python code here...")
         font = QFont("Courier New", 11)
         self.code_editor.setFont(font)
         self.code_editor.setMinimumHeight(250)
-        main_layout.addWidget(self.code_editor)
+        program_layout.addWidget(self.code_editor)
+
+        # H25-J capability status
+        self.capability_group = QGroupBox("Hardware Capability")
+        capability_layout = QVBoxLayout(self.capability_group)
+        capability_layout.setContentsMargins(10, 8, 10, 8)
+        capability_layout.setSpacing(4)
+
+        self.capability_summary = QLabel("Analyzing program requirements...")
+        self.capability_summary.setWordWrap(True)
+        self.capability_summary.setStyleSheet("font-weight: bold;")
+        capability_layout.addWidget(self.capability_summary)
+
+        self.capability_details = QLabel("")
+        self.capability_details.setWordWrap(True)
+        self.capability_details.setStyleSheet("color: #666666;")
+        capability_layout.addWidget(self.capability_details)
+
+        program_layout.addWidget(self.capability_group)
 
         # Button row
         button_layout = QHBoxLayout()
@@ -62,13 +92,13 @@ class Ui_MainWindow:
         button_layout.addWidget(self.open_firmware_button)
 
         button_layout.addStretch()
-        main_layout.addLayout(button_layout)
+        program_layout.addLayout(button_layout)
 
         # Separator
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
-        main_layout.addWidget(line)
+        program_layout.addWidget(line)
 
         # Build Output
         self.build_output = QTextEdit()
@@ -77,7 +107,13 @@ class Ui_MainWindow:
         font_output = QFont("Courier New", 10)
         self.build_output.setFont(font_output)
         self.build_output.setMinimumHeight(150)
-        main_layout.addWidget(self.build_output)
+        program_layout.addWidget(self.build_output)
+
+        self.main_tabs.addTab(self.program_tab, "Program")
+
+        # Hardware tab (H25-B)
+        self.hardware_tab = HardwareTab()
+        self.main_tabs.addTab(self.hardware_tab, "Hardware")
 
         # Status Bar
         status_layout = QHBoxLayout()

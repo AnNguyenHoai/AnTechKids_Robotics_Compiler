@@ -45,4 +45,19 @@
 // Cảm biến góc
 #define MPU6050_SDA_PIN ROBOT_PIN_21
 #define MPU6050_SCL_PIN ROBOT_PIN_13
+
+#define ROBOT_PIN_34    34
+
+#define ROBOT_PIN_35    35
+
+#define ROBOT_PIN_36    36
+
+#define ROBOT_PIN_39    39
+
+// Encoder quadrature inputs (ESP32 input-only pins)
+#define ENCODER_LEFT_A_PIN      ROBOT_PIN_34
+#define ENCODER_LEFT_B_PIN      ROBOT_PIN_35
+#define ENCODER_RIGHT_A_PIN     ROBOT_PIN_36
+#define ENCODER_RIGHT_B_PIN     ROBOT_PIN_39
+
 #endif

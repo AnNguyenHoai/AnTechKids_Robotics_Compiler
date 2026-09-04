@@ -1,0 +1,14 @@
+VAR_tuong_so = 0
+
+def task1():
+    global VAR_tuong_so
+    forward(80)
+    VAR_tuong_so = 1
+    while True:
+        if read_ultrasonic() < 20 and VAR_tuong_so == 1:
+            turn_right(80)
+            wait(550)
+            stop()
+            VAR_tuong_so += 1
+            forward(80)
+task1()

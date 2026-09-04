@@ -67,6 +67,26 @@ def convert_instruction(ins):
         operands.append(ISAOperand.integer(ins.p2))
     elif opcode == Opcode.Call:
         operands.append(ISAOperand.integer(ins.p1))
+    elif opcode in (Opcode.ReadUltrasonic, Opcode.ReadColor):
+        operands.append(ISAOperand.integer(ins.p1))
+    elif opcode in (Opcode.ReadTouch, Opcode.ReadLight, Opcode.ReadLine):
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+    elif opcode in (Opcode.GetTraceValue, Opcode.GetTraceState, Opcode.GetTraceRaw):
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+        operands.append(ISAOperand.integer(ins.p3))
+    elif opcode in (Opcode.Set3CLed, Opcode.SetLightSensorLed):
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+    elif opcode == Opcode.SetMotorSpeed:
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
+    elif opcode in (Opcode.LineBasis, Opcode.LineFollow):
+        operands.append(ISAOperand.integer(ins.p1))
+    elif opcode == Opcode.LineMillisecond:
+        operands.append(ISAOperand.integer(ins.p1))
+        operands.append(ISAOperand.integer(ins.p2))
     elif opcode == Opcode.Return:
         pass
     elif opcode in (Opcode.CompareEQ, Opcode.CompareNE, Opcode.CompareLT, 

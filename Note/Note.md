@@ -18,3 +18,16 @@
 Không cần sửa code.
 
 TEST 12 — Forward → STOP → Ultra
+
+19/8/2026:
+- Đã merge code H1, cần nạp code hardware để test - test case đã cung cấp ở GPT, hãy làm theo hướng dẫn
+
+- Đã yêu cầu GPT tạo task, tiếp theo cần download task và yêu cầu deepseek làm
+
+22/8: Hiện đang làm C5, cần verify các chương trình robosim để đảm bảo chạy được thông suốt
+
+23/8: đã làm việc với GPT H21, làm tiếp để sửa line
+
+25/8: Đã làm H23-C, tiếp sẽ flash và test rồi feedback
+
+27/8: với branch motion_debug đã fix được làm robot có thể follow line, tuy nhiên độ ổn định chưa cao cần thay thế motor trái để có torque lớn hơn rồi tối ưu hóa tiêp code

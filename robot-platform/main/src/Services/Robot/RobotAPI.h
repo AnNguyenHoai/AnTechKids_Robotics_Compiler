@@ -14,6 +14,7 @@
 #include "RobotAPI.h"
 #include <Arduino.h>
 #include "../../HardwareAbstraction/GPIO.h"
+#include "../../HardwareAbstraction/HardwareCapability.h"
 
 namespace RobotAPI
 {
@@ -21,7 +22,18 @@ namespace RobotAPI
 /******************************************************************************
  * Initialization
  ******************************************************************************/
-
+// ---- Motion Output Diagnostic (DEBUG-H2-001) ----
+void setMotionOutputDiagnosticEnabled(bool enabled);
+bool isMotionOutputDiagnosticEnabled();
+// ---- Motor PWM Diagnostic (DEBUG-H4-001) ----
+void setMotorPwmDiagnosticEnabled(bool enabled);
+bool isMotorPwmDiagnosticEnabled();
+// ---- Motor Mapping Diagnostic (H23-C) ----
+void setMotorMappingDiagnosticEnabled(bool enabled);
+bool isMotorMappingDiagnosticEnabled();
+// ---- Line Response Latency Diagnostic (H23-D) ----
+void setLineResponseDiagnosticEnabled(bool enabled);
+bool isLineResponseDiagnosticEnabled();
 /**
  * Initialize hardware (motor pins, PWM, etc.)
  */
@@ -148,6 +160,7 @@ int16_t GetTraceRaw(int port);
 
 void LineBasis(int speed);
 void LineFollow(int speed);
+void LineMillisecond(int speed, int millisecond);
 void LineStop();
 void LineTurnEncounterLine(int speed, int angle, int direction);
 void LineForBmp(int speed, int degree);
@@ -208,6 +221,10 @@ int getCurrentDirection();
  */
 bool isRobotReady();
 
+/** H25-I: query the active firmware hardware capability contract. */
+bool isHardwareEnabled(HardwareCapability::Device device);
+void printHardwareCapabilities();
+
 // ================================================================
 // ULTRASONIC DIAGNOSTIC GETTERS
 // ================================================================
@@ -223,4 +240,30 @@ uint32_t getUltraFailCount();
 // In RobotAPI.h:
 void setHeadingDiagnosticEnabled(bool enabled);
 bool isHeadingDiagnosticEnabled();
+// ---- Heading Startup Diagnostic (DEBUG-H1-001) ----
+void setHeadingStartupDiagnosticEnabled(bool enabled);
+bool isHeadingStartupDiagnosticEnabled();
+
+void UpdateEncoders();
+int64_t GetEncoderCount(int side); // 0=left, 1=right
+float GetEncoderCountsPerSecond(int side);
+float GetEncoderRPM(int side);
+void ResetEncoderCount(int side, int64_t value = 0);
+void SetEncoderCountsPerRevolution(int side, float value);
+float GetEncoderCountsPerRevolution(int side);
+void SetEncoderInverted(int side, bool inverted);
+bool GetEncoderInverted(int side);
+
+/******************************************************************************
+ * Utility
+ ******************************************************************************/
+
+/**
+ * Blocking delay.
+ *
+ * @param ms
+ *      Delay time.
+ */
+
+
 } // namespace RobotAPI

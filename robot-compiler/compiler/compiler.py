@@ -27,6 +27,14 @@ class RobotCompiler(ast.NodeVisitor):
         self.functions = {}
         self.loop_stack = []
         self.in_function = False
+
+        # Pre-register all top-level function definitions before compiling
+        # statements.  This makes function calls independent of source order
+        # while preserving the existing inline-function execution model.
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef):
+                self._register_function_definition(node)
+
         self.visit(tree)
         self.program.resolve_labels()
         return self.program
@@ -169,8 +177,26 @@ class RobotCompiler(ast.NodeVisitor):
         self.program.emit(Opcode.Store.value, result, dest, 0)
 
     # ---------- Function definition ----------
-    def visit_FunctionDef(self, node):
+    def _register_function_definition(self, node):
+        if node.args.args:
+            raise CompilerError(
+                f"User-defined function '{node.name}()' with parameters is not supported."
+            )
+        if node.args.vararg or node.args.kwarg or node.args.kwonlyargs:
+            raise CompilerError(
+                f"User-defined function '{node.name}()' with parameters is not supported."
+            )
+        for stmt in ast.walk(node):
+            if isinstance(stmt, ast.Return):
+                raise CompilerError(
+                    f"User-defined function '{node.name}()' cannot use return."
+                )
         self.functions[node.name] = node
+
+    def visit_FunctionDef(self, node):
+        # Definitions are registered in compile_ast before any statements
+        # are compiled. Do not emit runtime instructions for the definition.
+        self._register_function_definition(node)
         return
 
     # ---------- Function call (statement level) ----------
@@ -285,9 +311,14 @@ class RobotCompiler(ast.NodeVisitor):
         elif len(args) == 3:
             start = self.compile_expression(args[0])
             end = self.compile_expression(args[1])
-            step = self.compile_expression(args[2])
-            if step != 1:
-                raise CompilerError("Only step=1 is supported in for loop")
+            step_node = args[2]
+            if not (
+                isinstance(step_node, ast.Constant)
+                and isinstance(step_node.value, (int, float))
+                and not isinstance(step_node.value, bool)
+                and step_node.value == 1
+            ):
+                raise CompilerError("Only range() step=1 is supported in for loop")
         else:
             raise CompilerError("range() requires 1-3 arguments")
 

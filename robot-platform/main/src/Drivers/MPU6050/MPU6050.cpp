@@ -75,6 +75,36 @@ bool MPU6050::begin(const MPU6050Config& config) {
     return true;
 }
 
+bool MPU6050::readSample(MPU6050AccelData& accel, MPU6050GyroData& gyro, float& temperature) {
+    if (!_initialized) return false;
+
+    // MPU6050 register frame: ACCEL_XOUT_H (0x3B) through GYRO_ZOUT_L (0x48).
+    // One burst read keeps accel, temperature and gyro data coherent and minimizes I2C latency.
+    uint8_t buffer[14];
+    if (!_readReg(MPU6050_ACCEL_XOUT_H, buffer, sizeof(buffer))) {
+        return false;
+    }
+
+    const int16_t ax = (int16_t)((buffer[0]  << 8) | buffer[1]);
+    const int16_t ay = (int16_t)((buffer[2]  << 8) | buffer[3]);
+    const int16_t az = (int16_t)((buffer[4]  << 8) | buffer[5]);
+    const int16_t tr = (int16_t)((buffer[6]  << 8) | buffer[7]);
+    const int16_t gx = (int16_t)((buffer[8]  << 8) | buffer[9]);
+    const int16_t gy = (int16_t)((buffer[10] << 8) | buffer[11]);
+    const int16_t gz = (int16_t)((buffer[12] << 8) | buffer[13]);
+
+    accel.ax = ax / _accelScale;
+    accel.ay = ay / _accelScale;
+    accel.az = az / _accelScale;
+
+    gyro.gx = gx / _gyroScale - _bias.bx;
+    gyro.gy = gy / _gyroScale - _bias.by;
+    gyro.gz = gz / _gyroScale - _bias.bz;
+
+    temperature = tr / 340.0f + 36.53f;
+    return true;
+}
+
 bool MPU6050::readAccel(MPU6050AccelData& accel) {
     if (!_initialized) return false;
     int16_t raw[3];

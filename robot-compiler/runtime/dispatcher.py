@@ -45,11 +45,18 @@ class Dispatcher:
             Opcode.ReadTouch: sensor_handler.handle_read_touch,
             Opcode.ReadLight: sensor_handler.handle_read_light,
             Opcode.ReadLine: sensor_handler.handle_read_line,
+            Opcode.GetTraceValue: sensor_handler.handle_get_trace_value,
+            Opcode.GetTraceState: sensor_handler.handle_get_trace_state,
+            Opcode.GetTraceRaw: sensor_handler.handle_get_trace_raw,
             Opcode.ReadColor: sensor_handler.handle_read_color,
             Opcode.Set3CLed: led_handler.handle_set_3c_led,
             Opcode.SetLightSensorLed: led_handler.handle_set_light_sensor_led,
             Opcode.SetMp3Play: led_handler.handle_set_mp3_play,
             Opcode.SetMotorSpeed: motor_handler.handle_set_motor_speed,
+            Opcode.LineBasis: motor_handler.handle_line_basis,
+            Opcode.LineFollow: motor_handler.handle_line_follow,
+            Opcode.LineStop: motor_handler.handle_line_stop,
+            Opcode.LineMillisecond: motor_handler.handle_line_millisecond,
         }
 
     def dispatch(self, instruction: RuntimeInstruction, engine: ExecutionEngine, robot: IRobot):

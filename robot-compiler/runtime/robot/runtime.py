@@ -41,8 +41,7 @@ class RobotRuntime(IRobot):
     def set_led(self, port: int, state: int) -> None:
         """Set LED state (mock logging)."""
         print(f"[RobotRuntime] set_led(port={port}, state={state})")
-        # Optionally call hardware if it supports LED
-        # self.hardware.set_led(port, state)
+        self.hardware.set_led(port, state)
 
     def set_mp3_play(self, index: int) -> None:
         """Play beep (mock logging)."""
@@ -67,6 +66,41 @@ class RobotRuntime(IRobot):
     # ---- Legacy sensor method (for backward compatibility) ----
     def read_line_sensor(self, channel: int) -> int:
         return self.read_line(channel)
+
+    # ---- Line/trace APIs used by RoboSim line programs ----
+    def get_trace_raw(self, port: int) -> int:
+        """Return a 3-bit trace mask from the mock line channels."""
+        mask = 0
+        for channel, bit in ((0, 2), (1, 1), (2, 0)):
+            if self.hardware.read_line_sensor(channel) > 0:
+                mask |= (1 << bit)
+        return mask
+
+    def get_trace_value(self, port: int, channel: int) -> int:
+        return 100 if self.hardware.read_line_sensor(channel) > 0 else 0
+
+    def get_trace_state(self, port: int, channel: int) -> int:
+        return 1 if self.hardware.read_line_sensor(channel) > 0 else 0
+
+    def line_basis(self, speed: int) -> None:
+        # Mock runtime keeps line control deterministic: a detected trace
+        # commands forward motion; no trace stops the robot.
+        mask = self.get_trace_raw(1)
+        self.set_motor_speed(speed, speed) if mask else self.stop()
+
+    def line_follow(self, speed: int) -> None:
+        self.line_basis(speed)
+
+    def line_stop(self) -> None:
+        self.stop()
+
+    def line_millisecond(self, speed: int, milliseconds: int) -> None:
+        if milliseconds <= 0:
+            self.stop()
+            return
+        self.line_basis(speed)
+        self.wait(milliseconds)
+        self.stop()
 
     # ---- State & Events ----
     def get_state(self):

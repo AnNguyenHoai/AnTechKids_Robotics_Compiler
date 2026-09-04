@@ -1,0 +1,9 @@
+{
+  "input": "/mnt/data/robotfix/04_Robotics_SW_DeepSeek/build/c5/C5-LED-001/program.rewrite.py",
+  "output": "/mnt/data/robotfix/04_Robotics_SW_DeepSeek/build/c5/C5-LED-001/program.h",
+  "compile_time_seconds": 0.00014495849609375,
+  "instruction_count": 8,
+  "variable_count": 5,
+  "temp_count": 5,
+  "function_count": 0
+}

@@ -15,6 +15,9 @@ from ui.main_window import Ui_MainWindow
 from services.build_service import BuildService
 from services.firmware_service import FirmwareService
 from services.build_worker import BuildWorker
+from domain.device_registry import DeviceRegistry
+from domain.hardware_config_service import HardwareConfigService
+from domain.program_capabilities import ProgramCapabilityAnalyzer
 
 
 # List of example programs (name -> code)
@@ -76,6 +79,8 @@ class RoboStudioApp(QMainWindow):
         # Services
         self.build_service = BuildService()
         self.firmware_service = FirmwareService()
+        self.hardware_config_service = HardwareConfigService()
+        self._example_actions = {}
 
         # Build worker
         self.worker = None
@@ -86,6 +91,8 @@ class RoboStudioApp(QMainWindow):
 
         # Connect signals
         self.ui.compile_button.clicked.connect(self.on_compile)
+        self.ui.code_editor.textChanged.connect(self._refresh_capability_status)
+        self.ui.hardware_tab.configuration_saved.connect(self._refresh_capability_status)
         self.ui.open_firmware_button.clicked.connect(self.on_open_firmware)
         self.ui.about_action.triggered.connect(self.on_about)
 
@@ -94,6 +101,9 @@ class RoboStudioApp(QMainWindow):
 
         # Build Examples menu
         self._build_examples_menu()
+
+        # Initial capability state is part of the editor contract (H25-J).
+        self._refresh_capability_status()
 
         # Set initial status
         self.set_status("Ready", color="green")
@@ -166,6 +176,88 @@ class RoboStudioApp(QMainWindow):
         for name, code in EXAMPLES.items():
             action = self.ui.examples_menu.addAction(name)
             action.triggered.connect(lambda checked, c=code: self._load_example(c))
+            self._example_actions[name] = action
+        self._refresh_example_capabilities()
+
+    def _refresh_capability_status(self):
+        """Refresh the editor's hardware capability view without compiling."""
+        try:
+            config = self.hardware_config_service.load()
+        except Exception as exc:
+            self.ui.capability_summary.setText("Hardware capability: unavailable")
+            self.ui.capability_summary.setStyleSheet("font-weight: bold; color: red;")
+            self.ui.capability_details.setText(f"Failed to load hardware configuration: {exc}")
+            return
+
+        source = self.ui.code_editor.toPlainText()
+        analysis = ProgramCapabilityAnalyzer.analyze(source)
+        self._set_capability_labels(analysis, config)
+        self._refresh_example_capabilities()
+
+    def _set_capability_labels(self, analysis, config):
+        """Render required vs configured capabilities in a compact status card."""
+        if analysis.syntax_error:
+            self.ui.capability_summary.setText("Hardware capability: waiting for valid Python")
+            self.ui.capability_summary.setStyleSheet("font-weight: bold; color: #b36b00;")
+            self.ui.capability_details.setText(
+                "Complete the program syntax to analyze its hardware requirements."
+            )
+            return
+
+        names = {device.device_id: device.display_name for device in DeviceRegistry.all()}
+        required = [names[d] for d in analysis.required_devices]
+        configured = [names[d] for d in config.enabled_devices()]
+        missing = [names[d] for d in analysis.missing_devices(config)]
+
+        if missing:
+            self.ui.capability_summary.setText(
+                "Hardware capability: MISSING — " + ", ".join(missing)
+            )
+            self.ui.capability_summary.setStyleSheet("font-weight: bold; color: red;")
+            if not self.is_building:
+                self.ui.compile_button.setEnabled(False)
+                self.ui.compile_button.setToolTip(
+                    "Enable the missing hardware in the Hardware tab before compiling."
+                )
+        elif required:
+            if not self.is_building:
+                self.ui.compile_button.setEnabled(True)
+                self.ui.compile_button.setToolTip("Compile program")
+            self.ui.capability_summary.setText("Hardware capability: READY")
+            self.ui.capability_summary.setStyleSheet("font-weight: bold; color: green;")
+        else:
+            self.ui.capability_summary.setText("Hardware capability: no registered requirements")
+            self.ui.capability_summary.setStyleSheet("font-weight: bold; color: #666666;")
+            if not self.is_building:
+                self.ui.compile_button.setEnabled(True)
+                self.ui.compile_button.setToolTip("Compile program")
+
+        required_text = ", ".join(required) if required else "None"
+        configured_text = ", ".join(configured) if configured else "None"
+        self.ui.capability_details.setText(
+            f"Program requires: {required_text}  |  Configured: {configured_text}"
+        )
+
+    def _refresh_example_capabilities(self):
+        """Mark examples that cannot run with the current hardware configuration."""
+        if not self._example_actions:
+            return
+        try:
+            config = self.hardware_config_service.load()
+        except Exception:
+            return
+
+        for name, action in self._example_actions.items():
+            analysis = ProgramCapabilityAnalyzer.analyze(EXAMPLES[name])
+            missing = analysis.missing_devices(config)
+            if missing:
+                labels = {d.device_id: d.display_name for d in DeviceRegistry.all()}
+                missing_names = ", ".join(labels[d] for d in missing)
+                action.setEnabled(False)
+                action.setToolTip(f"Unavailable: requires {missing_names}")
+            else:
+                action.setEnabled(True)
+                action.setToolTip("Load example")
 
     def _load_example(self, code):
         """Load example code into the editor."""

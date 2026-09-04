@@ -65,6 +65,8 @@ public:
     bool begin(const MPU6050Config& config = MPU6050Config());
 
     // Đọc dữ liệu
+    // Reads the complete sensor frame in one coherent I2C burst transaction.
+    bool readSample(MPU6050AccelData& accel, MPU6050GyroData& gyro, float& temperature);
     bool readAccel(MPU6050AccelData& accel);
     bool readGyro(MPU6050GyroData& gyro);
     float readTemperature();  // °C

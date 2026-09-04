@@ -34,10 +34,23 @@ bool SensorManager::initializeAll() {
 }
 
 void SensorManager::updateAll() {
-    for (auto s : _sensors) {
-        if (s != nullptr) {
-            s->update();
+    for (size_t i = 0; i < _sensors.size(); ++i) {
+        auto s = _sensors[i];
+        if (s == nullptr) {
+            continue;
         }
+
+        // Ultrasonic is an on-demand sensor. RobotAPI::ReadUltrasonic()
+        // performs the trigger/echo transaction explicitly when the VM
+        // executes GetUltrasound(). Updating it here as part of the global
+        // sensor tick would cause a second trigger immediately before the
+        // VM read, which can overlap HC-SR04 echo timing and corrupt the
+        // following measurement.
+        if (static_cast<SensorID>(i) == SensorID::Ultrasonic) {
+            continue;
+        }
+
+        s->update();
     }
 }
 

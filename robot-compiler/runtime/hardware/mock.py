@@ -14,12 +14,18 @@ class MockHardware(IHardware):
         self._touch_values = {0: False, 1: False}
         self._light_value = 512
         self._color_value = 0
+        self.led_state = {}
 
     def set_motor(self, left: int, right: int) -> None:
         self.motor_left = max(-100, min(100, left))
         self.motor_right = max(-100, min(100, right))
         self.log.append(("set_motor", self.motor_left, self.motor_right))
         print(f"[MockHardware] Motors: L={self.motor_left}, R={self.motor_right}")
+
+    def set_led(self, port: int, state: int) -> None:
+        self.led_state[port] = int(state)
+        self.log.append(("set_led", int(port), int(state)))
+        print(f"[MockHardware] LED port={port} state={state}")
 
     def delay(self, ms: int) -> None:
         self.log.append(("delay", ms))

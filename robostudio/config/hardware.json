@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "devices": {
+    "motor": true,
+    "encoder": false,
+    "line_sensor": false,
+    "ultrasonic": true,
+    "imu": false,
+    "servo": false,
+    "buzzer": true
+  }
+}

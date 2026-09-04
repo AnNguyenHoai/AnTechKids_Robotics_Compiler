@@ -29,6 +29,8 @@ public:
     // Tuning
     void setPIDGains(float kp, float ki, float kd);
     void setPIDLimits(float min, float max);
+    void setScaleFactor(float scale) { _scaleFactor = scale; }
+    float getScaleFactor() const { return _scaleFactor; }
 
     // Reset
     void reset();
@@ -53,6 +55,15 @@ private:
     bool _bmpActive;
     uint32_t _bmpStart;
     int _bmpDuration;
+
+    // Last visible side is used to recover toward the line instead of always
+    // starting the search in the same direction.
+    RecoveryStrategy::Direction _lastLineDirection;
+    uint32_t _lastControlUpdate;
+    bool _wasRecovering;
+
+    // Scale factor for MotorMixer
+    float _scaleFactor;
 };
 
 #endif

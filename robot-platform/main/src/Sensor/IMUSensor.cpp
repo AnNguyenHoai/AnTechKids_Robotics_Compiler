@@ -1,5 +1,14 @@
 #include "IMUSensor.h"
 
+struct IMUTimingStats {
+    uint32_t count = 0;
+    uint32_t total = 0;
+    uint32_t min = UINT32_MAX;
+    uint32_t max = 0;
+};
+
+static IMUTimingStats g_imuTimingStats;
+
 IMUSensor::IMUSensor()
     : _initialized(false), _healthy(false), _name("imu") {
     _latestSample.valid = false;
@@ -33,14 +42,19 @@ void IMUSensor::update() {
         return;
     }
 
-    // Đọc một mẫu đồng bộ
     IMUSample sample;
     sample.timestamp = millis();
-    bool okAccel = _driver.readAccel(sample.accel);
-    bool okGyro = _driver.readGyro(sample.gyro);
-    sample.temperature = _driver.readTemperature();
-    sample.valid = okAccel && okGyro;
 
+    const uint32_t t0 = micros();
+    const bool ok = _driver.readSample(sample.accel, sample.gyro, sample.temperature);
+    const uint32_t dt = micros() - t0;
+
+    g_imuTimingStats.count++;
+    g_imuTimingStats.total += dt;
+    if (dt < g_imuTimingStats.min) g_imuTimingStats.min = dt;
+    if (dt > g_imuTimingStats.max) g_imuTimingStats.max = dt;
+
+    sample.valid = ok;
     if (sample.valid) {
         _latestSample = sample;
         _healthy = true;
@@ -48,6 +62,26 @@ void IMUSensor::update() {
         _healthy = false;
         _latestSample.valid = false;
     }
+}
+
+void IMUSensor::printTimingStats() {
+    Serial.println("========================================");
+    Serial.println("IMU I2C TIMING STATISTICS");
+    Serial.println("----------------------------------------");
+
+    if (g_imuTimingStats.count == 0) {
+        Serial.println("No IMU reads yet");
+    } else {
+        const float avg = (float)g_imuTimingStats.total / g_imuTimingStats.count;
+        Serial.printf("Burst sample : count=%u avg=%.2f us min=%u us max=%u us\n",
+                      g_imuTimingStats.count, avg,
+                      g_imuTimingStats.min, g_imuTimingStats.max);
+    }
+    Serial.println("========================================");
+}
+
+void IMUSensor::resetTimingStats() {
+    g_imuTimingStats = IMUTimingStats();
 }
 
 bool IMUSensor::healthy() const {
@@ -59,7 +93,7 @@ const char* IMUSensor::name() const {
 }
 
 void IMUSensor::shutdown() {
-    // Không cần thiết
+    // No explicit shutdown required for MPU6050 in the current platform.
 }
 
 bool IMUSensor::getLatestSample(IMUSample& sample) const {
@@ -69,6 +103,17 @@ bool IMUSensor::getLatestSample(IMUSample& sample) const {
     }
     sample = _latestSample;
     return true;
+}
+
+bool IMUSensor::readSample(IMUSample& sample) {
+    if (!_initialized) {
+        sample.valid = false;
+        return false;
+    }
+
+    sample.timestamp = millis();
+    sample.valid = _driver.readSample(sample.accel, sample.gyro, sample.temperature);
+    return sample.valid;
 }
 
 bool IMUSensor::readAccel(MPU6050AccelData& accel) {
@@ -87,7 +132,7 @@ float IMUSensor::readTemperature() {
 }
 
 int IMUSensor::calibrateGyro(uint16_t samples) {
-    if (!_initialized) return 2;  // COMMUNICATION_ERROR
+    if (!_initialized) return 2;
     return _driver.calibrateGyro(samples, 0.5f);
 }
 

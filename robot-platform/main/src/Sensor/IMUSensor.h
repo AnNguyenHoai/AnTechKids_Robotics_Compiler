@@ -12,12 +12,20 @@ struct IMUSample {
     float temperature;            // °C
     bool valid;
 };
-
 class IMUSensor : public ISensor {
 public:
     IMUSensor();
     ~IMUSensor() = default;
+    /**
+     * Print timing statistics for production IMU burst reads.
+     * This is diagnostic-only and does not alter sensor behavior.
+     */
+    static void printTimingStats();
 
+    /**
+     * Reset timing statistics (optional, for future use).
+     */
+    static void resetTimingStats();
     // ISensor interface
     bool initialize() override;
     void update() override;
@@ -28,7 +36,10 @@ public:
     // Lấy mẫu mới nhất (đã được cập nhật bởi update())
     bool getLatestSample(IMUSample& sample) const;
 
-    // Đọc trực tiếp (không cache) – vẫn giữ để linh hoạt
+    // Đọc trực tiếp một sample coherent (không cache).
+    bool readSample(IMUSample& sample);
+
+    // Compatibility accessors. Prefer readSample() for coherent data.
     bool readAccel(MPU6050AccelData& accel);
     bool readGyro(MPU6050GyroData& gyro);
     float readTemperature();

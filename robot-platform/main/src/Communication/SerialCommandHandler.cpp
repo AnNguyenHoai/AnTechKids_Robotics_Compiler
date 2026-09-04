@@ -1,7 +1,11 @@
 #include "SerialCommandHandler.h"
-#define DIAGNOSTIC_MANUAL_START 
+//#define DIAGNOSTIC_MANUAL_START
+
+#include "../../include/generated/generated_device_config.h"
 #include "../Services/Robot/MotionConfig.h"
 #include "../Services/Robot/RobotAPI.h"
+#include "../Services/Robot/MotorOutputMapper.h"
+#include "../HardwareAbstraction/HardwareCapability.h"
 #include "../Devices/SensorConfig.h"
 #include "../Behavior/BehaviorScheduler.h"
 #include "../Diagnostics/DiagnosticsManager.h"
@@ -14,6 +18,7 @@
 #include "../Services/Motion/HeadingController.h"
 #include "../Sensor/Ultrasonic.h"
 #include "../Services/VM/VM.h"
+#include "../Services/Line/LineFollower.h"   // <--- THÊM DÒNG NÀY
 
 #include <string.h>
 
@@ -28,6 +33,7 @@ void SerialCommandHandler::setup() {
 }
 
 void SerialCommandHandler::handle() {
+    RobotAPI::UpdateEncoders();
     if (!Serial.available()) return;
     String input = Serial.readStringUntil('\n');
     input.trim();
@@ -60,21 +66,45 @@ void SerialCommandHandler::handle() {
         Serial.println("  motor calib set left <val>  - set left motor scale (0.50-1.50)");
         Serial.println("  motor calib set right <val> - set right motor scale (0.50-1.50)");
         Serial.println("  motor calib reset   - reset both scales to 1.0");
-        Serial.println("  motor calib test <speed>    - run motors at effective speed and display");
+        Serial.println("  motor calib test <speed>    - run motors through logical motor pipeline once");
+        Serial.println("  motor diag on/off/status    - motor mapping diagnostic (change-triggered)");
+        Serial.println("  line diag on/off/status     - line sensor-to-motor latency diagnostic");
+        Serial.println("  encoder show          - show live count/speed/RPM");
+        Serial.println("  encoder reset [left|right|all] - reset count");
+        Serial.println("  encoder cpr <left> <right> - set decoded counts per wheel revolution");
+        Serial.println("  encoder invert <left|right> <0|1> - correct direction");
+        Serial.println("  line pid kp ki kd           - set line following PID gains");
+        Serial.println("  line scale <value>          - set line scale factor for motor mixer");
         Serial.println("  imu status          - show IMU status and configuration");
         Serial.println("  imu read            - read and display current IMU data");
         Serial.println("  imu calibrate       - perform gyroscope bias calibration (robot must be still)");
-        Serial.println("  heading status      - show current relative heading and gyro info + diagnostic state");
+        Serial.println("  heading status      - show current relative heading and gyro info");
         Serial.println("  heading control     - show heading hold controller status");
         Serial.println("  robot status        - show robot ready state and IMU status");
+        Serial.println("  hardware status     - show runtime hardware capability contract");
         Serial.println("  ultra diag          - show ultrasonic diagnostic statistics");
-        // ---- Diagnostic commands (new) ----
+        // ---- Diagnostic commands ----
         Serial.println("  heading on/off      - enable/disable heading control (diagnostic)");
-        Serial.println("  heading status      - also shows diagnostic state");
+        Serial.println("  heading startup on/off - enable/disable heading startup initialization (diagnostic)");
+        Serial.println("  motion output on/off   - enable/disable motion-output processing (diagnostic)");
+        Serial.println("  motor pwm on/off       - enable/disable low-level motor PWM output (diagnostic)");
+        Serial.println("  imu sensor on/off      - enable/disable IMUSensor runtime update (diagnostic)");
+        Serial.println("  imu sensor status      - show IMUSensor runtime diagnostic state");
+        Serial.println("  imu i2c on/off         - enable/disable MPU6050 I2C reads (diagnostic)");
+        Serial.println("  imu i2c status         - show I2C read diagnostic state");
+        Serial.println("  imu accel on/off/status   - enable/disable Accel I2C read (diagnostic)");
+        Serial.println("  imu gyro on/off/status    - enable/disable Gyro I2C read (diagnostic)");
+        Serial.println("  imu temp on/off/status    - enable/disable Temperature I2C read (diagnostic)");
+        Serial.println("  imu timing           - show I2C read timing statistics");
 #ifdef DIAGNOSTIC_MANUAL_START
         Serial.println("  run                 - start VM execution (manual-start mode)");
 #endif
         return;
+    }
+
+    // ---------- Hardware Capability Contract (H25-I) ----------
+    else if (input.startsWith("hardware status")) {
+        HardwareCapability::printStatus();
     }
 
     // ---------- Motion Config ----------
@@ -90,11 +120,9 @@ void SerialCommandHandler::handle() {
         Serial.printf("turnCompensation: %.3f\n", cfg.turnCompensation);
         Serial.printf("pwmPerSpeed: %.3f\n", cfg.pwmPerSpeed);
         int cmd = 50;
-        int leftEff = cmd * cfg.speedScale * cfg.leftMotorScale;
-        int rightEff = cmd * cfg.speedScale * cfg.rightMotorScale;
-        leftEff = constrain(leftEff, -100, 100);
-        rightEff = constrain(rightEff, -100, 100);
-        Serial.printf("Example command %d -> effective L=%d, R=%d\n", cmd, leftEff, rightEff);
+        int leftMapped = RobotAPI::MotorOutputMapper::map(cmd, cfg.speedScale, cfg.leftMotorScale, cfg.minSpeed);
+        int rightMapped = RobotAPI::MotorOutputMapper::map(cmd, cfg.speedScale, cfg.rightMotorScale, cfg.minSpeed);
+        Serial.printf("Example logical command %d -> mapped L=%d, R=%d (minDrive=%d)\n", cmd, leftMapped, rightMapped, cfg.minSpeed);
     }
     else if (input.startsWith("config set ")) {
         String rest = input.substring(11);
@@ -289,11 +317,9 @@ void SerialCommandHandler::handle() {
         Serial.printf("rightMotorScale : %.3f\n", cfg.rightMotorScale);
         Serial.printf("speedScale      : %.3f\n", cfg.speedScale);
         int cmd = 50;
-        int leftEff = cmd * cfg.speedScale * cfg.leftMotorScale;
-        int rightEff = cmd * cfg.speedScale * cfg.rightMotorScale;
-        leftEff = constrain(leftEff, -100, 100);
-        rightEff = constrain(rightEff, -100, 100);
-        Serial.printf("Example command %d -> effective L=%d, R=%d\n", cmd, leftEff, rightEff);
+        int leftMapped = RobotAPI::MotorOutputMapper::map(cmd, cfg.speedScale, cfg.leftMotorScale, cfg.minSpeed);
+        int rightMapped = RobotAPI::MotorOutputMapper::map(cmd, cfg.speedScale, cfg.rightMotorScale, cfg.minSpeed);
+        Serial.printf("Example logical command %d -> mapped L=%d, R=%d (minDrive=%d)\n", cmd, leftMapped, rightMapped, cfg.minSpeed);
     }
     else if (input.startsWith("motor calib set left ")) {
         float val = input.substring(21).toFloat();
@@ -301,7 +327,8 @@ void SerialCommandHandler::handle() {
             Serial.printf("Error: leftMotorScale must be between %.2f and %.2f\n", MIN_MOTOR_SCALE, MAX_MOTOR_SCALE);
         } else {
             RobotAPI::g_motionConfig.leftMotorScale = val;
-            Serial.printf("leftMotorScale set to %.3f\n", val);
+            RobotAPI::saveMotionConfigToStorage();
+            Serial.printf("leftMotorScale set to %.3f and saved\n", val);
         }
     }
     else if (input.startsWith("motor calib set right ")) {
@@ -310,13 +337,15 @@ void SerialCommandHandler::handle() {
             Serial.printf("Error: rightMotorScale must be between %.2f and %.2f\n", MIN_MOTOR_SCALE, MAX_MOTOR_SCALE);
         } else {
             RobotAPI::g_motionConfig.rightMotorScale = val;
-            Serial.printf("rightMotorScale set to %.3f\n", val);
+            RobotAPI::saveMotionConfigToStorage();
+            Serial.printf("rightMotorScale set to %.3f and saved\n", val);
         }
     }
     else if (input.startsWith("motor calib reset")) {
         RobotAPI::g_motionConfig.leftMotorScale = 1.0f;
         RobotAPI::g_motionConfig.rightMotorScale = 1.0f;
-        Serial.println("Motor calibration reset to 1.0");
+        RobotAPI::saveMotionConfigToStorage();
+        Serial.println("Motor calibration reset to 1.0 and saved");
     }
     else if (input.startsWith("motor calib test ")) {
         int speed = input.substring(17).toInt();
@@ -324,18 +353,67 @@ void SerialCommandHandler::handle() {
             Serial.println("Error: speed must be between -100 and 100");
         } else {
             auto& cfg = RobotAPI::g_motionConfig;
-            int leftEff = speed * cfg.speedScale * cfg.leftMotorScale;
-            int rightEff = speed * cfg.speedScale * cfg.rightMotorScale;
-            leftEff = constrain(leftEff, -100, 100);
-            rightEff = constrain(rightEff, -100, 100);
-            Serial.printf("Command: %d, effective left: %d, right: %d\n", speed, leftEff, rightEff);
-            RobotAPI::setMotorsDirect(leftEff, rightEff);
-            Serial.println("Motors running at effective speeds. Use 'speed 0 0' to stop.");
+            const int leftMapped = RobotAPI::MotorOutputMapper::map(speed, cfg.speedScale, cfg.leftMotorScale, cfg.minSpeed);
+            const int rightMapped = RobotAPI::MotorOutputMapper::map(speed, cfg.speedScale, cfg.rightMotorScale, cfg.minSpeed);
+            Serial.printf("Logical command: %d -> mapped left: %d, right: %d\n", speed, leftMapped, rightMapped);
+            RobotAPI::setMotorsDirect(speed, speed);
+            Serial.println("Motors running through single-calibration pipeline. Use 'speed 0 0' to stop.");
+        }
+    }
+
+    // ---------- Motor Mapping Diagnostic (H23-C) ----------
+    else if (input == "motor diag on") {
+        RobotAPI::setMotorMappingDiagnosticEnabled(true);
+    }
+    else if (input == "motor diag off") {
+        RobotAPI::setMotorMappingDiagnosticEnabled(false);
+    }
+    else if (input == "motor diag status") {
+        Serial.printf("[MOTOR-DIAG] Mapping diagnostic: %s\n",
+                      RobotAPI::isMotorMappingDiagnosticEnabled() ? "ON" : "OFF");
+    }
+    // ---------- Line Response Latency Diagnostic (H23-D) ----------
+    else if (input == "line diag on") {
+        RobotAPI::setLineResponseDiagnosticEnabled(true);
+    }
+    else if (input == "line diag off") {
+        RobotAPI::setLineResponseDiagnosticEnabled(false);
+    }
+    else if (input == "line diag status") {
+        Serial.printf("[LINE-RESPONSE] Diagnostic: %s\n",
+                      RobotAPI::isLineResponseDiagnosticEnabled() ? "ON" : "OFF");
+    }
+
+    // ===== Line PID Tuning =====
+    else if (input.startsWith("line pid ")) {
+        String rest = input.substring(8);
+        int space1 = rest.indexOf(' ');
+        int space2 = rest.indexOf(' ', space1 + 1);
+        if (space1 == -1 || space2 == -1) {
+            Serial.println("Usage: line pid kp ki kd");
+            return;
+        }
+        float kp = rest.substring(0, space1).toFloat();
+        float ki = rest.substring(space1 + 1, space2).toFloat();
+        float kd = rest.substring(space2 + 1).toFloat();
+        LineFollower::instance().setPIDGains(kp, ki, kd);
+        Serial.printf("Line PID set to Kp=%.3f Ki=%.3f Kd=%.3f\n", kp, ki, kd);
+    }
+    else if (input.startsWith("line scale ")) {
+        float scale = input.substring(11).toFloat();
+        if (scale < 0.1f || scale > 50.0f) {
+            Serial.println("Scale factor should be between 0.1 and 50.0");
+        } else {
+            LineFollower::instance().setScaleFactor(scale);
+            Serial.printf("Line scale factor set to %.2f\n", scale);
         }
     }
 
     // ---------- IMU ----------
-    else if (input.startsWith("imu status")) {
+    else if (input.startsWith("imu status")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+            Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
+            return;
+        }
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (!imu) {
             Serial.println("IMU sensor not available.");
@@ -352,25 +430,28 @@ void SerialCommandHandler::handle() {
         Serial.printf("Bias Z     : %.3f deg/s\n", bias.bz);
         Serial.println("---");
     }
-    else if (input.startsWith("imu read")) {
+    else if (input.startsWith("imu read")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+            Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
+            return;
+        }
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (!imu || !imu->isReady()) {
             Serial.println("IMU sensor not ready.");
             return;
         }
-        MPU6050AccelData accel;
-        MPU6050GyroData gyro;
-        float temp = 0.0f;
-        if (imu->readAccel(accel) && imu->readGyro(gyro)) {
-            temp = imu->readTemperature();
-            Serial.printf("Accel  X=%.3f g  Y=%.3f g  Z=%.3f g\n", accel.ax, accel.ay, accel.az);
-            Serial.printf("Gyro   X=%.3f deg/s  Y=%.3f deg/s  Z=%.3f deg/s\n", gyro.gx, gyro.gy, gyro.gz);
-            Serial.printf("Temp   %.2f °C\n", temp);
+        IMUSample sample;
+        if (imu->readSample(sample)) {
+            Serial.printf("Accel  X=%.3f g  Y=%.3f g  Z=%.3f g\n", sample.accel.ax, sample.accel.ay, sample.accel.az);
+            Serial.printf("Gyro   X=%.3f deg/s  Y=%.3f deg/s  Z=%.3f deg/s\n", sample.gyro.gx, sample.gyro.gy, sample.gyro.gz);
+            Serial.printf("Temp   %.2f °C\n", sample.temperature);
         } else {
             Serial.println("Failed to read IMU data.");
         }
     }
-    else if (input.startsWith("imu calibrate")) {
+    else if (input.startsWith("imu calibrate")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+            Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
+            return;
+        }
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         if (!imu || !imu->isReady()) {
             Serial.println("IMU sensor not ready.");
@@ -394,7 +475,6 @@ void SerialCommandHandler::handle() {
 
     // ---------- Heading ----------
     else if (input.startsWith("heading status")) {
-        // Show estimator info + diagnostic state
         Serial.println("--- Heading Status ---");
         Serial.printf("Initialized : %s\n", g_headingEstimator.isInitialized() ? "YES" : "NO");
         Serial.printf("Heading     : %.2f deg\n", g_headingEstimator.getHeadingDeg());
@@ -405,9 +485,6 @@ void SerialCommandHandler::handle() {
         if (imu) {
             Serial.printf("IMU Calibrated: %s\n", imu->isCalibrated() ? "YES" : "NO");
         }
-        // Diagnostic state
-        Serial.printf("[HEADING-DIAG] Controller: %s\n",
-                      RobotAPI::isHeadingDiagnosticEnabled() ? "ON" : "OFF");
         Serial.println("---");
     }
     else if (input.startsWith("heading control")) {
@@ -440,6 +517,70 @@ void SerialCommandHandler::handle() {
         RobotAPI::setHeadingDiagnosticEnabled(false);
     }
 
+    // ---------- Heading Startup Diagnostic (DEBUG-H1-001) ----------
+    else if (input.startsWith("heading startup on")) {
+        RobotAPI::setHeadingStartupDiagnosticEnabled(true);
+    }
+    else if (input.startsWith("heading startup off")) {
+        RobotAPI::setHeadingStartupDiagnosticEnabled(false);
+    }
+    else if (input.startsWith("heading startup status")) {
+        Serial.printf("[HEADING-STARTUP-DIAG] Heading startup: %s\n",
+                      RobotAPI::isHeadingStartupDiagnosticEnabled() ? "ON" : "OFF");
+    }
+
+    // ---------- Motion Output Diagnostic (DEBUG-H2-001) ----------
+    else if (input.startsWith("motion output on")) {
+        RobotAPI::setMotionOutputDiagnosticEnabled(true);
+    }
+    else if (input.startsWith("motion output off")) {
+        RobotAPI::setMotionOutputDiagnosticEnabled(false);
+    }
+    else if (input.startsWith("motion output status")) {
+        Serial.printf("[MOTION-DIAG] Motion output: %s\n",
+                      RobotAPI::isMotionOutputDiagnosticEnabled() ? "ON" : "OFF");
+    }
+
+    // ---------- Motor PWM Diagnostic (DEBUG-H4-001) ----------
+    else if (input.startsWith("motor pwm on")) {
+        RobotAPI::setMotorPwmDiagnosticEnabled(true);
+    }
+    else if (input.startsWith("motor pwm off")) {
+        RobotAPI::setMotorPwmDiagnosticEnabled(false);
+    }
+    else if (input.startsWith("motor pwm status")) {
+        Serial.printf("[PWM-DIAG] Motor PWM: %s\n",
+                      RobotAPI::isMotorPwmDiagnosticEnabled() ? "ON" : "OFF");
+    }
+
+    // ---------- IMU Timing Statistics ----------
+    else if (input.startsWith("imu timing")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+            Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
+            return;
+        }
+        auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
+        if (imu) {
+            IMUSensor::printTimingStats();
+        } else {
+            Serial.println("IMU sensor not available.");
+        }
+    }
+
+    // ---------- Manual start (diagnostic) ----------
+#ifdef DIAGNOSTIC_MANUAL_START
+    else if (input.startsWith("run")) {
+        if (!vm.IsRunning() && !g_vmStarted) {
+            vm.Start();
+            g_vmStarted = true;
+            Serial.println("[VM-DIAG] Manual execution started");
+        } else if (vm.IsRunning()) {
+            Serial.println("[VM-DIAG] VM already running");
+        } else {
+            Serial.println("[VM-DIAG] Cannot start VM (program not loaded or invalid state)");
+        }
+    }
+#endif
+
     // ---------- Robot Status ----------
     else if (input.startsWith("robot status")) {
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
@@ -460,6 +601,9 @@ void SerialCommandHandler::handle() {
 
     // ---------- Ultrasonic Diagnostics ----------
     else if (input.startsWith("ultra diag")) {
+#if !ROBOT_FEATURE_ULTRASONIC
+        Serial.println("Ultrasonic feature disabled by hardware configuration.");
+#else
         Serial.println("--- Ultrasonic Diagnostics ---");
         auto sensor = SensorManager::instance().getSensor(SensorID::Ultrasonic);
         if (sensor) {
@@ -479,23 +623,53 @@ void SerialCommandHandler::handle() {
         Serial.printf("Current Speed : %d\n", RobotAPI::getCurrentBaseSpeed());
         Serial.printf("Direction     : %d\n", RobotAPI::getCurrentDirection());
         Serial.println("-----------------------------");
+#endif
     }
-
-    // ---------- Manual start (diagnostic) ----------
-#ifdef DIAGNOSTIC_MANUAL_START
-    else if (input.startsWith("run")) {
-        if (!vm.IsRunning() && !g_vmStarted) {
-            vm.Start();
-            g_vmStarted = true;
-            Serial.println("[VM-DIAG] Manual execution started");
-        } else if (vm.IsRunning()) {
-            Serial.println("[VM-DIAG] VM already running");
-        } else {
-            Serial.println("[VM-DIAG] Cannot start VM (program not loaded or invalid state)");
+    // ---------- Encoder H24-D ----------
+    else if (input == "encoder show") {
+        RobotAPI::UpdateEncoders();
+        for (int side = 0; side < 2; ++side) {
+            const char* name = side == 0 ? "left" : "right";
+            Serial.printf("encoder %s: count=%lld cps=%.2f rpm=%.2f cpr=%.3f inverted=%d\n",
+                          name,
+                          (long long)RobotAPI::GetEncoderCount(side),
+                          RobotAPI::GetEncoderCountsPerSecond(side),
+                          RobotAPI::GetEncoderRPM(side),
+                          RobotAPI::GetEncoderCountsPerRevolution(side),
+                          RobotAPI::GetEncoderInverted(side));
         }
     }
-#endif
-
+    else if (input.startsWith("encoder reset")) {
+        String target = input.substring(String("encoder reset").length());
+        target.trim();
+        if (target.length() == 0 || target == "all") { RobotAPI::ResetEncoderCount(0); RobotAPI::ResetEncoderCount(1); }
+        else if (target == "left") RobotAPI::ResetEncoderCount(0);
+        else if (target == "right") RobotAPI::ResetEncoderCount(1);
+        else { Serial.println("Usage: encoder reset [left|right|all]"); return; }
+        Serial.println("Encoder count reset.");
+    }
+    else if (input.startsWith("encoder cpr ")) {
+        String rest = input.substring(String("encoder cpr ").length());
+        int space = rest.indexOf(' ');
+        if (space < 0) { Serial.println("Usage: encoder cpr <left> <right>"); return; }
+        float left = rest.substring(0, space).toFloat();
+        float right = rest.substring(space + 1).toFloat();
+        if (left <= 0.0f || right <= 0.0f) { Serial.println("CPR must be > 0."); return; }
+        RobotAPI::SetEncoderCountsPerRevolution(0, left);
+        RobotAPI::SetEncoderCountsPerRevolution(1, right);
+        Serial.printf("Encoder CPR set: left=%.3f right=%.3f\n", left, right);
+    }
+    else if (input.startsWith("encoder invert ")) {
+        String rest = input.substring(String("encoder invert ").length());
+        int space = rest.indexOf(' ');
+        if (space < 0) { Serial.println("Usage: encoder invert <left|right> <0|1>"); return; }
+        String target = rest.substring(0, space);
+        bool inverted = rest.substring(space + 1).toInt() != 0;
+        if (target == "left") RobotAPI::SetEncoderInverted(0, inverted);
+        else if (target == "right") RobotAPI::SetEncoderInverted(1, inverted);
+        else { Serial.println("Target must be left or right."); return; }
+        Serial.printf("Encoder %s inverted=%d\n", target.c_str(), inverted);
+    }
     else {
         Serial.printf("Unknown command: %s\n", input.c_str());
     }
