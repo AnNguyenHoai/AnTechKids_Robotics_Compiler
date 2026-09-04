@@ -6,6 +6,7 @@
 #include "src/Logger/BootLogger.h"
 #include "src/Diagnostic/Diagnostic.h"
 #include "src/Communication/SerialCommandHandler.h"
+#include "src/Communication/RobotNetworkService.h"
 
 // === Behavior Engine ===
 #include "src/Behavior/BehaviorScheduler.h"
@@ -109,7 +110,6 @@ void setup() {
     scheduler.addBehavior(new LineDetectBehavior(0, 50));
     scheduler.addBehavior(new LightTriggerBehavior(0, 500, 50));
     scheduler.addBehavior(new ColorDetectBehavior(0, 50));
-    
     BootLogger::log("BOOT", "Behavior Scheduler initialized with 9 behaviors");
 
     // 6. Heading / IMU startup
@@ -127,8 +127,7 @@ void setup() {
         int result = imu->calibrateGyro(500);
         if (result == 0) {
             MPU6050Bias bias = imu->getBias();
-            BootLogger::logFormat("IMU", "Calibration SUCCESS. Bias X=%.3f Y=%.3f Z=%.3f deg/s",
-                                  bias.bx, bias.by, bias.bz);
+            BootLogger::logFormat("IMU", "Calibration SUCCESS. Bias X=%.3f Y=%.3f Z=%.3f deg/s", bias.bx, bias.by, bias.bz);
             g_headingEstimator.reset();
             BootLogger::log("Heading", "Estimator reset to 0 deg");
             RobotAPI::resetHeadingController();
@@ -160,6 +159,13 @@ void setup() {
     BootLogger::log("Robot", "READY (no IMU / no heading hold)");
 #endif
 
+    // 8. Network / OTA service. Wi-Fi is optional; when configured it exposes
+    // mDNS + ArduinoOTA and a small health/info HTTP endpoint.
+    RobotNetworkService::begin();
+    if (RobotNetworkService::isReady()) {
+        BootLogger::logFormat("BOOT", "Network Ready: %s.local", RobotNetworkService::hostname());
+    }
+
     BootLogger::log("EXEC", "System Ready. Type 'help' for commands.");
     BootLogger::log("INFO", "Default mode: VM. Type 'mode behavior' to switch.");
 }
@@ -168,6 +174,7 @@ void loop() {
     uint32_t start = micros();
 
     SerialCommandHandler::handle();
+    RobotNetworkService::update();
 
     SensorManager::instance().updateAll();
     DiagnosticsManager::instance().updateSensors();
@@ -192,7 +199,6 @@ void loop() {
     if (useBehaviorEngine) {
         scheduler.update();
     } else {
-        // === Chạy VM ===
 #ifdef DIAGNOSTIC_MANUAL_START
         if (g_vmStarted && vm.IsRunning()) {
             vm.Step();
@@ -230,6 +236,7 @@ void loop() {
                     BootLogger::log("STABILITY", "VM stability test completed.");
                     while (1) {
                         SerialCommandHandler::handle();
+                        RobotNetworkService::update();
                         delay(30);
                     }
                 }
