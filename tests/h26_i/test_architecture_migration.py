@@ -22,7 +22,7 @@ class ArchitectureMigrationTests(unittest.TestCase):
             production = root / "tools"
             production.mkdir()
             (production / "bad.py").write_text(
-                "# forbidden reference\nfrom packages.robot-common import Opcode\n",
+                "from packages.robot-common import Opcode\n",
                 encoding="utf-8",
             )
 
@@ -46,7 +46,7 @@ class ArchitectureMigrationTests(unittest.TestCase):
             finally:
                 gate.ROOT = original_root
 
-    def test_legacy_component_self_reference_is_ignored(self):
+    def test_legacy_to_legacy_dependency_is_allowed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             legacy_dir = root / "robot-compiler" / "compiler"
@@ -128,6 +128,37 @@ class ArchitectureMigrationTests(unittest.TestCase):
                         "status": "legacy-isolated",
                         "retirement": "blocked-until-equivalence",
                         "forbidden_production_tokens": ["compiler.h"],
+                    }
+                ],
+            }
+
+            original_root = gate.ROOT
+            try:
+                gate.ROOT = root
+                gate.validate_legacy_isolation(manifest)
+            finally:
+                gate.ROOT = original_root
+
+    def test_validation_tool_is_excluded_from_production_scan(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = root / "tools"
+            tools.mkdir()
+            gate_file = tools / "architecture_migration_gate.py"
+            gate_file.write_text(
+                "LEGACY_TOKEN = 'packages/robot-common/include/Opcode.h'\n",
+                encoding="utf-8",
+            )
+
+            manifest = {
+                "production_scan_roots": ["tools"],
+                "validation_paths": ["tools/architecture_migration_gate.py"],
+                "legacy_components": [
+                    {
+                        "path": "legacy/Opcode.h",
+                        "status": "legacy-isolated",
+                        "retirement": "blocked-until-equivalence",
+                        "forbidden_production_tokens": ["packages/robot-common"],
                     }
                 ],
             }
