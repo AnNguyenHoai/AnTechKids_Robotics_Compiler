@@ -410,7 +410,8 @@ void SerialCommandHandler::handle() {
     }
 
     // ---------- IMU ----------
-    else if (input.startsWith("imu status")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+    else if (input.startsWith("imu status")) {
+        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
             Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
             return;
         }
@@ -430,7 +431,8 @@ void SerialCommandHandler::handle() {
         Serial.printf("Bias Z     : %.3f deg/s\n", bias.bz);
         Serial.println("---");
     }
-    else if (input.startsWith("imu read")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+    else if (input.startsWith("imu read")) {
+        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
             Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
             return;
         }
@@ -448,7 +450,8 @@ void SerialCommandHandler::handle() {
             Serial.println("Failed to read IMU data.");
         }
     }
-    else if (input.startsWith("imu calibrate")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+    else if (input.startsWith("imu calibrate")) {
+        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
             Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
             return;
         }
@@ -554,7 +557,8 @@ void SerialCommandHandler::handle() {
     }
 
     // ---------- IMU Timing Statistics ----------
-    else if (input.startsWith("imu timing")) {\n        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
+    else if (input.startsWith("imu timing")) {
+        if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
             Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
             return;
         }
