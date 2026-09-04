@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 #include "Instruction.h"
+#include "VMErrorContract.h"
 
 /*----------------------------------------------------------------------------
  * Configuration
@@ -34,11 +35,12 @@ public:
     }
 
     /**
-     * Remove all instructions.
+     * Remove all instructions and clear load status.
      */
     void Clear()
     {
         mInstructionCount = 0;
+        mErrorCode = ToErrorCode(VMErrorCode::None);
     }
 
     /**
@@ -51,12 +53,22 @@ public:
     {
         if (mInstructionCount >= MAX_PROGRAM_SIZE)
         {
+            mErrorCode = ToErrorCode(VMErrorCode::ProgramOverflow);
             return false;
         }
 
         mInstructions[mInstructionCount++] = instruction;
+        mErrorCode = ToErrorCode(VMErrorCode::None);
 
         return true;
+    }
+
+    /**
+     * Get the canonical program/container error code.
+     */
+    uint8_t GetErrorCode() const
+    {
+        return mErrorCode;
     }
 
 public:
@@ -72,4 +84,10 @@ public:
      * Number of valid instructions.
      */
     uint16_t mInstructionCount;
+
+private:
+    /**
+     * Canonical loader/container error code.
+     */
+    uint8_t mErrorCode;
 };

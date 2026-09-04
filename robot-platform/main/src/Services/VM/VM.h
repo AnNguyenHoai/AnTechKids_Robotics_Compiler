@@ -10,6 +10,7 @@
 
 #include "Program.h"
 #include "VMContext.h"
+#include "VMErrorContract.h"
 
 /******************************************************************************
  * Robot VM
@@ -50,9 +51,19 @@ public:
     uint16_t GetProgramCounter() const;
 
     /**
-     * Get error code (0 = no error).
+     * Get canonical error code (0 = no error).
      */
     uint8_t GetErrorCode() const;
+
+    /**
+     * Get canonical error identifier for diagnostics.
+     */
+    const char* GetErrorId() const;
+
+    /**
+     * Get canonical error message for diagnostics.
+     */
+    const char* GetErrorMessage() const;
 
     // ---- DIAGNOSTIC: manual control ----
     /**
