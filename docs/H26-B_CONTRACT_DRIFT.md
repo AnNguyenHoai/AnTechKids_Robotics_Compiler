@@ -57,11 +57,18 @@ side of the contract.
 
 ### 3. Firmware program boundary
 
-The checked-in generated firmware artifact must still contain the existing
+The checked-in firmware generated artifact must still contain the existing
 `generatedProgram[]` and `generatedProgramSize` declarations.
 
-The artifact content is protected by the H26-B baseline file because it is an
-input to the currently working firmware deployment flow.
+The **generated artifact content is not protected by an exact blob SHA**.
+`generated_program.h` is a derived artifact whose contents legitimately change
+when a different source program is compiled. H26-B therefore protects its
+stable production boundary (required declarations) rather than a particular
+program payload.
+
+This prevents a normal local compile/build step from being misclassified as
+architecture drift while still detecting removal or renaming of the firmware
+program boundary.
 
 ### 4. Golden corpus
 
@@ -69,12 +76,16 @@ input to the currently working firmware deployment flow.
 
 ### 5. Protected baseline
 
-`docs/H26-B_CONTRACT_BASELINE.json` stores Git blob SHAs for the production
-boundary files captured at commit `9d14e8941b2ea8bacc429c7118feb2a37001dc97`.
+`docs/H26-B_CONTRACT_BASELINE.json` stores Git blob SHAs for the stable
+production boundary files captured at commit `9d14e8941b2ea8bacc429c7118feb2a37001dc97`.
 
-A future edit to one of these files is therefore an explicit drift event. A
-migration task should update the baseline only after the new behavior has been
-characterized and the existing E2E gate has passed.
+The generated firmware artifact is listed separately under
+`validated_generated_artifacts` and is checked structurally, not by payload
+hash. A future change to its production boundary must therefore be detected by
+the structural guard; a legitimate payload regeneration must not fail H26-B.
+
+A migration task should update protected-file SHAs only after the new behavior
+has been characterized and the existing E2E gate has passed.
 
 ## Known architectural migrations
 
