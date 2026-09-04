@@ -19,6 +19,9 @@
     "robot-compiler/compiler",
     "robot-platform/main/src"
   ],
+  "validation_paths": [
+    "tools/architecture_migration_gate.py"
+  ],
   "legacy_components": [
     {
       "path": "packages/robot-common/include/Opcode.h",
