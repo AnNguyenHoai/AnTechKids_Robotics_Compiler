@@ -21,8 +21,8 @@ class ArchitectureMigrationTests(unittest.TestCase):
             root = Path(temp_dir)
             production = root / "tools"
             production.mkdir()
-            (production / "bad.py").write_text(
-                "from packages.robot-common import Opcode\n",
+            (production / "bad.cpp").write_text(
+                '#include "packages/robot-common/include/Opcode.h"\nint run() { return 0; }\n',
                 encoding="utf-8",
             )
 
