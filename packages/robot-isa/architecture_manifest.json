@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "task": "H26-I",
+  "production": {
+    "isa_source_of_truth": "packages/robot-isa/canonical_isa.json",
+    "compiler_entrypoint": "tools/compile.py",
+    "build_entrypoint": "tools/build.py",
+    "firmware_build_entrypoint": "tools/firmware_build.py",
+    "deployment_entrypoint": "tools/flash.py",
+    "runtime_boundary": "robot-platform/main/src"
+  },
+  "canonical_paths": [
+    "packages/robot-isa/canonical_isa.json",
+    "packages/robot-isa/include/CanonicalOpcodeAdapter.h",
+    "robot-compiler/compiler/canonical_opcode_adapter.py"
+  ],
+  "production_scan_roots": [
+    "tools",
+    "robot-compiler/compiler",
+    "robot-platform/main/src"
+  ],
+  "legacy_components": [
+    {
+      "path": "packages/robot-common/include/Opcode.h",
+      "status": "legacy-isolated",
+      "retirement": "blocked-until-equivalence",
+      "forbidden_production_tokens": [
+        "packages/robot-common",
+        "robot-common/include/Opcode.h"
+      ]
+    },
+    {
+      "path": "robot-compiler/compiler/compiler.cpp",
+      "status": "legacy-isolated",
+      "retirement": "blocked-until-equivalence",
+      "forbidden_production_tokens": [
+        "compiler.cpp",
+        "compiler.h"
+      ]
+    },
+    {
+      "path": "robot-compiler/compiler/compiler.h",
+      "status": "legacy-isolated",
+      "retirement": "blocked-until-equivalence",
+      "forbidden_production_tokens": [
+        "compiler.cpp",
+        "compiler.h"
+      ]
+    }
+  ],
+  "retirement_policy": {
+    "allow_delete": false,
+    "required_evidence": [
+      "canonical semantic equivalence",
+      "unified E2E oracle pass",
+      "firmware build pass",
+      "physical validation gate"
+    ]
+  }
+}
