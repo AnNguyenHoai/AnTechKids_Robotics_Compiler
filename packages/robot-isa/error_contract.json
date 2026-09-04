@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "task": "H26-D",
+  "contract": "robot-vm-error",
+  "unknown_code": 255,
+  "errors": [
+    {
+      "code": 0,
+      "id": "ok",
+      "severity": "none",
+      "name": "NoError",
+      "message": "No VM error."
+    },
+    {
+      "code": 1,
+      "id": "invalid_opcode",
+      "severity": "error",
+      "name": "InvalidOpcode",
+      "message": "The program contains an opcode the VM cannot execute."
+    },
+    {
+      "code": 2,
+      "id": "program_overflow",
+      "severity": "error",
+      "name": "ProgramOverflow",
+      "message": "The program exceeds the VM instruction capacity."
+    },
+    {
+      "code": 3,
+      "id": "invalid_jump",
+      "severity": "error",
+      "name": "InvalidJump",
+      "message": "A control-flow instruction targets an invalid program address."
+    },
+    {
+      "code": 4,
+      "id": "stack_overflow",
+      "severity": "error",
+      "name": "StackOverflow",
+      "message": "The VM call stack is full."
+    },
+    {
+      "code": 5,
+      "id": "invalid_return",
+      "severity": "error",
+      "name": "InvalidReturn",
+      "message": "A return instruction was executed without an active call frame."
+    },
+    {
+      "code": 6,
+      "id": "division_by_zero",
+      "severity": "error",
+      "name": "DivisionByZero",
+      "message": "The VM attempted integer division by zero."
+    },
+    {
+      "code": 7,
+      "id": "modulo_by_zero",
+      "severity": "error",
+      "name": "ModuloByZero",
+      "message": "The VM attempted integer modulo by zero."
+    },
+    {
+      "code": 8,
+      "id": "invalid_operand",
+      "severity": "error",
+      "name": "InvalidOperand",
+      "message": "An instruction references an operand outside the supported VM contract."
+    },
+    {
+      "code": 9,
+      "id": "invalid_variable",
+      "severity": "error",
+      "name": "InvalidVariable",
+      "message": "An instruction references a variable outside the VM variable range."
+    }
+  ],
+  "compatibility": {
+    "preserved_codes": {
+      "1": "invalid_opcode",
+      "3": "invalid_jump",
+      "4": "stack_overflow",
+      "5": "invalid_return",
+      "6": "division_by_zero",
+      "7": "modulo_by_zero"
+    },
+    "reserved_codes": {
+      "2": "program_overflow",
+      "8": "invalid_operand",
+      "9": "invalid_variable"
+    }
+  }
+}

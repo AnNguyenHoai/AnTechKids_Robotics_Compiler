@@ -36,6 +36,16 @@ uint8_t VM::GetErrorCode() const
     return mContext.mErrorCode;
 }
 
+const char* VM::GetErrorId() const
+{
+    return VMErrorId(static_cast<VMErrorCode>(mContext.mErrorCode));
+}
+
+const char* VM::GetErrorMessage() const
+{
+    return VMErrorMessage(static_cast<VMErrorCode>(mContext.mErrorCode));
+}
+
 // ---- DIAGNOSTIC: manual control ----
 void VM::SetRunning(bool running) {
     mContext.mRunning = running;
@@ -44,7 +54,7 @@ void VM::SetRunning(bool running) {
 void VM::Start() {
     mContext.mRunning = true;
     mContext.mProgramCounter = 0;
-    mContext.mErrorCode = 0;
+    mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
     // Do not reset variables; they are already loaded
     // But we can reset any other state if needed
 }
@@ -57,7 +67,7 @@ void VM::Step()
     if (mContext.mProgramCounter >= mProgram->mInstructionCount)
     {
         mContext.mRunning = false;
-        mContext.mErrorCode = 0;
+        mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
         return;
     }
 
@@ -70,9 +80,9 @@ void VM::Step()
     ExecuteInstruction(instruction);
 
     // Nếu sau khi execute mà lỗi thực sự (khác 0) thì dừng
-    if (mContext.mErrorCode != 0) {
+    if (mContext.mErrorCode != ToErrorCode(VMErrorCode::None)) {
         mContext.mRunning = false;
-        Serial.printf("[VM] Error code: %d\n", mContext.mErrorCode);
+        Serial.printf("[VM] Error code: %d (%s)\n", mContext.mErrorCode, GetErrorId());
     }
 }
 void VM::ExecuteInstruction(const Instruction& instruction)
@@ -157,12 +167,12 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             if (target > mProgram->mInstructionCount) {
                 // Target vượt quá END thật sự là invalid
                 mContext.mRunning = false;
-                mContext.mErrorCode = 3;
+                mContext.mErrorCode = ToErrorCode(VMErrorCode::InvalidJump);
             }
             else if (target == mProgram->mInstructionCount) {
                 // Jump tới END label = kết thúc chương trình bình thường
                 mContext.mRunning = false;
-                mContext.mErrorCode = 0;
+                mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
             }
             else {
                 mContext.mProgramCounter = target;
@@ -179,12 +189,12 @@ void VM::ExecuteInstruction(const Instruction& instruction)
                 if (target > mProgram->mInstructionCount) {
                     // Invalid jump target
                     mContext.mRunning = false;
-                    mContext.mErrorCode = 3;
+                    mContext.mErrorCode = ToErrorCode(VMErrorCode::InvalidJump);
                 }
                 else if (target == mProgram->mInstructionCount) {
                     // Jump to END = normal program termination
                     mContext.mRunning = false;
-                    mContext.mErrorCode = 0;
+                    mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
                 }
                 else {
                     mContext.mProgramCounter = target;
@@ -205,12 +215,12 @@ void VM::ExecuteInstruction(const Instruction& instruction)
                 if (target > mProgram->mInstructionCount) {
                     // Invalid jump target
                     mContext.mRunning = false;
-                    mContext.mErrorCode = 3;
+                    mContext.mErrorCode = ToErrorCode(VMErrorCode::InvalidJump);
                 }
                 else if (target == mProgram->mInstructionCount) {
                     // Jump to END = normal program termination
                     mContext.mRunning = false;
-                    mContext.mErrorCode = 0;
+                    mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
                 }
                 else {
                     mContext.mProgramCounter = target;
@@ -244,7 +254,7 @@ void VM::ExecuteInstruction(const Instruction& instruction)
         case Opcode::Div:
             if (mContext.mVariables[instruction.p2] == 0) {
                 mContext.mVariables[instruction.p3] = 0;
-                mContext.mErrorCode = 6; // Division by zero
+                mContext.mErrorCode = ToErrorCode(VMErrorCode::DivisionByZero);
                 mContext.mRunning = false;
             } else {
                 mContext.mVariables[instruction.p3] =
@@ -256,7 +266,7 @@ void VM::ExecuteInstruction(const Instruction& instruction)
         case Opcode::Mod:
             if (mContext.mVariables[instruction.p2] == 0) {
                 mContext.mVariables[instruction.p3] = 0;
-                mContext.mErrorCode = 7; // Modulo by zero
+                mContext.mErrorCode = ToErrorCode(VMErrorCode::ModuloByZero);
                 mContext.mRunning = false;
             } else {
                 mContext.mVariables[instruction.p3] =
@@ -295,7 +305,7 @@ void VM::ExecuteInstruction(const Instruction& instruction)
                 mContext.mCallStack[mContext.mCallStackPointer++] = mContext.mReturnAddress;
             } else {
                 mContext.mRunning = false;
-                mContext.mErrorCode = 4; // Stack overflow
+                mContext.mErrorCode = ToErrorCode(VMErrorCode::StackOverflow);
                 return;
             }
             mContext.mProgramCounter = instruction.p1;
@@ -307,7 +317,7 @@ void VM::ExecuteInstruction(const Instruction& instruction)
                 mContext.mProgramCounter = mContext.mCallStack[mContext.mCallStackPointer];
             } else {
                 mContext.mRunning = false;
-                mContext.mErrorCode = 5; // Return without call
+                mContext.mErrorCode = ToErrorCode(VMErrorCode::InvalidReturn);
             }
             break;
         case Opcode::ReadUltrasonic: {
@@ -442,7 +452,7 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             break;
         default:
             mContext.mRunning = false;
-            mContext.mErrorCode = 1; // Invalid opcode
+            mContext.mErrorCode = ToErrorCode(VMErrorCode::InvalidOpcode);
             break;
     }
 }
