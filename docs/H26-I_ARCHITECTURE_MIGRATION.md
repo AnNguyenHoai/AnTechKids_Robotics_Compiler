@@ -30,8 +30,32 @@ packages/robot-isa/architecture_manifest.json
 ```
 
 That manifest is the migration inventory for later work. It identifies the
-canonical paths, production scan roots, and legacy components that must not leak
-back into the production path.
+canonical paths, production scan roots, validation tooling, and legacy components
+that must not leak back into the production path.
+
+## Scan boundary
+
+The migration gate distinguishes three classes of repository material:
+
+```text
+production
+  -> scanned for forbidden legacy dependencies
+
+legacy
+  -> excluded from the production dependency scan
+  -> legacy-to-legacy references are allowed
+
+validation tooling
+  -> excluded from the production dependency scan
+```
+
+This is an explicit boundary, not a filename-based workaround. The manifest is the
+single source for both registered legacy paths and validation-only paths.
+
+The gate evaluates dependency-shaped references rather than raw filename
+substrings. C/C++ legacy files are flagged when production code actually includes
+them; a legacy component does not fail merely because its own implementation
+references another registered legacy component.
 
 ## Legacy policy
 
@@ -39,18 +63,15 @@ The repository still contains older architecture material, including the
 `packages/robot-common/include/Opcode.h` vocabulary and the older C++ compiler
 implementation files.
 
-They are now explicitly classified as:
+They remain explicitly classified as:
 
 ```text
 legacy-isolated
 blocked-until-equivalence
 ```
 
-The H26-I gate rejects production source that references the registered legacy
-components. It evaluates dependency-shaped references rather than raw filename
-substrings, and it excludes the legacy component's own source file from its scan.
-This prevents a new production dependency from silently recreating the
-architecture split without producing false positives from the legacy island itself.
+The H26-I gate rejects production source that depends on these components while
+allowing the legacy island itself and validation infrastructure to mention them.
 
 ## Retirement is evidence-gated
 
@@ -97,10 +118,11 @@ of the repository regression chain.
 
 - establishes an explicit architecture migration manifest;
 - verifies canonical ISA rows still match the generated production opcode contract;
-- verifies required production and canonical paths exist;
+- verifies required production, canonical, legacy, and validation paths exist;
 - scans production roots for registered legacy references using dependency-aware matching;
+- excludes the legacy island and validation tooling from that production scan;
 - locks legacy deletion behind an explicit equivalence/physical-evidence policy;
-- adds regression coverage for both passing and failing migration conditions.
+- adds regression coverage for both forbidden production dependencies and allowed legacy/tooling references.
 
 ## What H26-I does not change
 
@@ -116,5 +138,6 @@ of the repository regression chain.
 
 H26-I is complete when the migration boundary itself is testable and enforced:
 canonical semantics remain aligned with the production opcode contract, registered
-legacy components are isolated from production roots, and retirement remains
-blocked until the evidence chain is complete.
+legacy components are isolated from production roots, validation infrastructure is
+not misclassified as production, and retirement remains blocked until the evidence
+chain is complete.

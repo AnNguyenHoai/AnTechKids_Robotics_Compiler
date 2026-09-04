@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "packages" / "robot-isa" / "architecture_manifest.json"
 CANONICAL_ISA_PATH = ROOT / "packages" / "robot-isa" / "canonical_isa.json"
 GENERATED_OPCODE_PATH = ROOT / "robot-compiler" / "compiler" / "generated" / "opcode.py"
+SOURCE_EXTENSIONS = {".py", ".h", ".hpp", ".c", ".cc", ".cpp"}
 
 
 class MigrationGateError(RuntimeError):
@@ -19,6 +20,10 @@ class MigrationGateError(RuntimeError):
 
 def _repo_path(value: str) -> Path:
     return ROOT / value
+
+
+def _canonical_repo_path(value: str) -> str:
+    return value.replace("\\", "/").rstrip("/")
 
 
 def load_manifest(path: Path = MANIFEST_PATH) -> dict:
@@ -43,6 +48,7 @@ def validate_paths(manifest: dict) -> None:
     ]
     required.extend(manifest["canonical_paths"])
     required.extend(item["path"] for item in manifest["legacy_components"])
+    required.extend(manifest.get("validation_paths", []))
     missing = [value for value in required if not _repo_path(value).exists()]
     if missing:
         raise MigrationGateError("Missing architecture path(s): " + ", ".join(missing))
@@ -89,63 +95,75 @@ def validate_canonical_isa() -> None:
 
 def iter_source_files(root: Path):
     if root.is_file():
-        yield root
+        if root.suffix.lower() in SOURCE_EXTENSIONS:
+            yield root
         return
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
-        if path.suffix.lower() not in {".py", ".h", ".hpp", ".c", ".cc", ".cpp"}:
+        if path.suffix.lower() not in SOURCE_EXTENSIONS:
             continue
         if "__pycache__" in path.parts:
             continue
         yield path
 
 
-def _legacy_reference_pattern(token: str) -> re.Pattern[str]:
-    """Build a dependency/reference matcher, not a raw substring matcher."""
-    normalized = token.replace("\\", "/")
-    if normalized == "robot-common" or "robot-common/" in normalized:
-        return re.compile(r"(?i)(?:packages[./\\]robot-common(?:[/\\.]|\b)|robot-common[/\\])")
-
-    # C/C++ legacy implementation files are dependencies when included, not
-    # merely when their filenames occur in comments, strings, or their own file.
-    if normalized.endswith((".h", ".hpp", ".c", ".cc", ".cpp")):
-        filename = re.escape(normalized.rsplit("/", 1)[-1])
-        return re.compile(rf"(?im)^\s*#\s*include\s*[<\"][^>\"]*{filename}[>\"]")
-
-    escaped = re.escape(token)
-    return re.compile(rf"(?<![A-Za-z0-9_.-]){escaped}(?![A-Za-z0-9_.-])")
-
-
-def _is_legacy_component_path(path: Path, legacy_path: str) -> bool:
+def _path_key(path: Path) -> str:
     try:
-        return path.resolve() == _repo_path(legacy_path).resolve()
-    except OSError:
-        return path == _repo_path(legacy_path)
+        relative = path.resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        relative = path
+    return _canonical_repo_path(str(relative))
+
+
+def _is_legacy_component_path(path: Path, legacy_paths: set[str]) -> bool:
+    return _path_key(path) in legacy_paths
+
+
+def _is_validation_path(path: Path, validation_paths: set[str]) -> bool:
+    return _path_key(path) in validation_paths
+
+
+def _legacy_reference_patterns(legacy: dict) -> list[tuple[str, re.Pattern[str]]]:
+    patterns: list[tuple[str, re.Pattern[str]]] = []
+    for token in legacy.get("forbidden_production_tokens", []):
+        normalized = token.replace("\\", "/")
+        if normalized == "robot-common" or "robot-common/" in normalized:
+            pattern = re.compile(
+                r"(?i)(?:packages[./\\]robot-common(?:[/\\.]|\\b)|robot-common[/\\])"
+            )
+        elif normalized.endswith((".h", ".hpp", ".c", ".cc", ".cpp")):
+            filename = re.escape(normalized.rsplit("/", 1)[-1])
+            pattern = re.compile(rf"(?im)^\s*#\s*include\s*[<\"][^>\"]*{filename}[>\"]")
+        else:
+            escaped = re.escape(token)
+            pattern = re.compile(rf"(?<![A-Za-z0-9_.-]){escaped}(?![A-Za-z0-9_.-])")
+        patterns.append((token, pattern))
+    return patterns
 
 
 def validate_legacy_isolation(manifest: dict) -> None:
     roots = [_repo_path(value) for value in manifest["production_scan_roots"]]
+    legacy_paths = {_canonical_repo_path(item["path"]) for item in manifest["legacy_components"]}
+    validation_paths = {
+        _canonical_repo_path(value) for value in manifest.get("validation_paths", [])
+    }
     offenders: list[str] = []
+
     for legacy in manifest["legacy_components"]:
-        legacy_path = legacy["path"]
-        patterns = [
-            (token, _legacy_reference_pattern(token))
-            for token in legacy["forbidden_production_tokens"]
-        ]
+        legacy_path = _canonical_repo_path(legacy["path"])
+        patterns = _legacy_reference_patterns(legacy)
         for root in roots:
             for path in iter_source_files(root):
-                if _is_legacy_component_path(path, legacy_path):
+                if _is_legacy_component_path(path, legacy_paths):
+                    continue
+                if _is_validation_path(path, validation_paths):
                     continue
                 text = path.read_text(encoding="utf-8", errors="ignore")
                 hits = [token for token, pattern in patterns if pattern.search(text)]
                 if hits:
-                    try:
-                        display_path = path.relative_to(ROOT)
-                    except ValueError:
-                        display_path = path
                     offenders.append(
-                        f"{display_path} references isolated legacy component {legacy_path}: {', '.join(hits)}"
+                        f"{_path_key(path)} references isolated legacy component {legacy_path}: {', '.join(hits)}"
                     )
 
     if offenders:
