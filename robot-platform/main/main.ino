@@ -161,7 +161,7 @@ void setup() {
 
     // 8. Network / OTA service. Wi-Fi is optional; when configured it exposes
     // mDNS + ArduinoOTA and a small health/info HTTP endpoint.
-    RobotNetworkService::begin();
+    RobotNetworkService::begin(g_robotReady);
     if (RobotNetworkService::isReady()) {
         BootLogger::logFormat("BOOT", "Network Ready: %s.local", RobotNetworkService::hostname());
     }

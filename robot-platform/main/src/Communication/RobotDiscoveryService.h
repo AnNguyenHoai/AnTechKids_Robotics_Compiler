@@ -2,11 +2,11 @@
 
 namespace RobotDiscoveryService {
 
-// Start the LAN discovery responder. Safe to call after Wi-Fi is connected.
+// Initializes the LAN discovery listener. Returns true when the UDP socket is ready.
 bool begin();
 
-// Process discovery requests. Call frequently from the main loop.
-void update(bool robotReady, bool otaReady);
+// Keeps discovery alive across transient Wi-Fi/socket failures.
+void update(bool robotReady, bool networkReady, bool otaReady);
 
 bool isReady();
 

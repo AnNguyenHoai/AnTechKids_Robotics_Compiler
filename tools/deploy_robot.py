@@ -91,7 +91,7 @@ def main() -> int:
     parser.add_argument("--robot", help="Robot hostname/IP for --mode ota, e.g. robot-A1B2C3.local")
     parser.add_argument("--ssid", help="Wi-Fi SSID used to build the robot firmware")
     parser.add_argument("--wifi-password", default="", help="Wi-Fi password")
-    parser.add_argument("--ota-password", default="robot-ota", help="ArduinoOTA password")
+    parser.add_argument("--ota-password", default=None, help="ArduinoOTA password; required for --mode ota")
     args = parser.parse_args()
 
     source = Path(args.input).resolve()
@@ -99,8 +99,14 @@ def main() -> int:
         parser.error(f"Student source not found: {source}")
     if source.suffix.lower() != ".py":
         parser.error("--input must be a .py RoboSim source file")
-    if args.mode == "ota" and (not args.robot or args.ssid is None):
-        parser.error("--mode ota requires --robot and --ssid")
+    if args.mode == "ota":
+        if not args.robot or args.ssid is None:
+            parser.error("--mode ota requires --robot and --ssid")
+        ota_password = args.ota_password or os.getenv("ROBOT_OTA_PASSWORD", "")
+        if not ota_password:
+            parser.error("--mode ota requires --ota-password or ROBOT_OTA_PASSWORD; no default OTA credential is permitted")
+    else:
+        ota_password = args.ota_password if args.ota_password is not None else os.getenv("ROBOT_OTA_PASSWORD", "")
 
     project_name = source.stem
     build_dir = BUILD_ROOT / project_name
@@ -114,7 +120,8 @@ def main() -> int:
     run([sys.executable, str(ROOT / "tools" / "compile.py"), "--input", str(rewritten), "--output", str(header), "--report", str(report)])
 
     capabilities = infer_capabilities(header)
-    manifest = create_manifest(build_dir, "esp32", capabilities, source_path=source, platformio_environment="esp32dev")
+    platformio_environment = "esp32dev_ota" if args.mode == "ota" else "esp32dev"
+    manifest = create_manifest(build_dir, "esp32", capabilities, source_path=source, platformio_environment=platformio_environment)
     manifest_dict = manifest.to_dict()
     write_manifest(manifest, manifest_path)
     validate_manifest(manifest_path, expected_target="esp32")
@@ -128,7 +135,8 @@ def main() -> int:
     if args.ssid is not None:
         env["ROBOT_WIFI_SSID"] = args.ssid
         env["ROBOT_WIFI_PASSWORD"] = args.wifi_password
-    env["ROBOT_OTA_PASSWORD"] = args.ota_password
+    if ota_password:
+        env["ROBOT_OTA_PASSWORD"] = ota_password
 
     if args.mode == "build":
         run(["pio", "run", "-e", "esp32dev"], env=env)

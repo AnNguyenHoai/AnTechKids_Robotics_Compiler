@@ -14,7 +14,7 @@ void ensureInitialized() {
         return;
     }
 
-    uint64_t efuseMac = ESP.getEfuseMac();
+    const uint64_t efuseMac = ESP.getEfuseMac();
     char idBuffer[13];
     snprintf(idBuffer, sizeof(idBuffer), "%012llX", efuseMac);
 
@@ -68,15 +68,20 @@ String capabilitiesJson() {
            ",\"buzzer\":" + boolJson(ROBOT_FEATURE_BUZZER) + "}";
 }
 
-String infoJson(bool ready, bool otaReady) {
+String infoJson(bool robotReady, bool networkReady, bool otaReady) {
     ensureInitialized();
-    String body = "{\"protocol\":\"antechkids.robot.v1\",\"device_id\":\"" +
-                  g_deviceId + "\",\"name\":\"" + g_displayName +
+    const bool aggregateReady = robotReady && networkReady;
+    String body = "{\"protocol\":\"antechkids.robot.v1\",\"schema_version\":" +
+                  String(kSchemaVersion) +
+                  ",\"device_id\":\"" + g_deviceId +
+                  "\",\"name\":\"" + g_displayName +
                   "\",\"hostname\":\"" + g_hostname +
                   "\",\"ip\":\"" + WiFi.localIP().toString() +
                   "\",\"target\":\"" + target() +
                   "\",\"firmware\":\"" + firmwareVersion() +
-                  "\",\"ready\":" + boolJson(ready) +
+                  "\",\"robot_ready\":" + boolJson(robotReady) +
+                  ",\"network_ready\":" + boolJson(networkReady) +
+                  ",\"ready\":" + boolJson(aggregateReady) +
                   ",\"ota\":" + boolJson(otaReady) +
                   ",\"capabilities\":" + capabilitiesJson() + "}";
     return body;
