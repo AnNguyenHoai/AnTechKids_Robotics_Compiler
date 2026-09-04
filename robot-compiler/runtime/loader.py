@@ -1,4 +1,3 @@
-# runtime/loader.py
 from typing import List
 from compiler.binary import BinaryProgram
 from compiler.isa import OperandKind
@@ -12,6 +11,8 @@ from .exceptions import (
     UnsupportedVersionException,
     InvalidInstructionException,
 )
+from .capability_contract import capability_ids_for_opcodes
+
 
 class ProgramLoader:
     @staticmethod
@@ -25,10 +26,8 @@ class ProgramLoader:
 
         constants = list(binary.constant_pool.constants)
         stream_data = binary.instruction_stream.data
-        offset = 0
         all_instructions: List[RuntimeInstruction] = []
         function_list: List[RuntimeFunction] = []
-
         opcode_registry = {op.value: op for op in Opcode}
 
         for ft_entry in binary.function_table.entries:
@@ -58,7 +57,7 @@ class ProgramLoader:
                         raise InvalidInstructionException(f"Unsupported operand kind: {op.kind}")
 
                 runtime_ins = RuntimeInstruction(
-                    opcode=ins.opcode,  # ins.opcode là Opcode
+                    opcode=ins.opcode,
                     operands=operands,
                     index=len(all_instructions)
                 )
@@ -74,10 +73,14 @@ class ProgramLoader:
             function_list.append(func)
 
         entry_id = 0 if function_list else -1
+        required = capability_ids_for_opcodes(
+            instruction.opcode.value for instruction in all_instructions
+        )
         return RuntimeProgram(
             constants=constants,
             functions=function_list,
             instructions=all_instructions,
             entry_function_id=entry_id,
             abi_version=header.abi_version,
+            required_capabilities=required,
         )

@@ -1,14 +1,15 @@
 # runtime/vm.py
-from typing import Optional
+from typing import Optional, Iterable
 from .program import RuntimeProgram
 from .engine import ExecutionEngine
 from .dispatcher import Dispatcher
 from .robot import RobotRuntime
 from .hardware import MockHardware
 from .context import ExecutionState
+from .capability_contract import validate_capabilities
 
 class VirtualMachine:
-    def __init__(self, hardware=None):
+    def __init__(self, hardware=None, runtime_capabilities: Optional[Iterable[str]] = None):
         if hardware is None:
             hardware = MockHardware()
         self.hardware = hardware
@@ -16,8 +17,19 @@ class VirtualMachine:
         self.engine = ExecutionEngine()
         self.dispatcher = Dispatcher()
         self.state = ExecutionState.CREATED
+        self.runtime_capabilities = (
+            frozenset(runtime_capabilities) if runtime_capabilities is not None else None
+        )
 
     def load(self, program: RuntimeProgram):
+        # Enforcement is intentionally at the runtime load boundary: a
+        # program cannot start execution on a runtime that lacks a required
+        # capability. Omitting runtime_capabilities preserves legacy callers.
+        if self.runtime_capabilities is not None:
+            validate_capabilities(
+                program.required_capabilities,
+                self.runtime_capabilities,
+            )
         self.engine.load(program)
         self.state = ExecutionState.LOADED
 
