@@ -6,6 +6,8 @@
 #include <ESPmDNS.h>
 #include <string.h>
 
+#include "RobotIdentity.h"
+#include "RobotDiscoveryService.h"
 #include "../Logger/BootLogger.h"
 
 #ifndef ROBOT_WIFI_SSID
@@ -20,27 +22,17 @@
 
 namespace {
 WebServer g_server(80);
-String g_hostname;
 bool g_ready = false;
-
-String macSuffix() {
-    uint64_t mac = ESP.getEfuseMac();
-    char buffer[7];
-    snprintf(buffer, sizeof(buffer), "%06llX", mac & 0xFFFFFFULL);
-    return String(buffer);
-}
 
 void sendHealth() {
     String body = "{\"status\":\"ok\",\"ready\":" + String(g_ready ? "true" : "false") +
-                  ",\"hostname\":\"" + g_hostname + "\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
+                  ",\"hostname\":\"" + String(RobotIdentity::hostname()) +
+                  "\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
     g_server.send(200, "application/json", body);
 }
 
 void sendInfo() {
-    String body = "{\"device\":\"AnTechKids-Robot\",\"hostname\":\"" + g_hostname +
-                  "\",\"ip\":\"" + WiFi.localIP().toString() +
-                  "\",\"target\":\"esp32\",\"ota\":true}";
-    g_server.send(200, "application/json", body);
+    g_server.send(200, "application/json", RobotIdentity::infoJson(true, g_ready));
 }
 
 void onOtaStart() {
@@ -71,7 +63,7 @@ void connectWiFi() {
     }
 
     WiFi.mode(WIFI_STA);
-    WiFi.setHostname(g_hostname.c_str());
+    WiFi.setHostname(RobotIdentity::hostname());
     WiFi.begin(ROBOT_WIFI_SSID, ROBOT_WIFI_PASSWORD);
 
     const uint32_t deadline = millis() + 10000UL;
@@ -85,8 +77,8 @@ void connectWiFi() {
     }
 
     BootLogger::logFormat("NET", "Wi-Fi connected: %s", WiFi.localIP().toString().c_str());
-    MDNS.begin(g_hostname.c_str());
-    ArduinoOTA.setHostname(g_hostname.c_str());
+    MDNS.begin(RobotIdentity::hostname());
+    ArduinoOTA.setHostname(RobotIdentity::hostname());
     if (strlen(ROBOT_OTA_PASSWORD) != 0) {
         ArduinoOTA.setPassword(ROBOT_OTA_PASSWORD);
     }
@@ -102,13 +94,14 @@ void connectWiFi() {
     g_server.begin();
     g_ready = true;
 
-    BootLogger::logFormat("NET", "OTA ready at %s.local", g_hostname.c_str());
+    RobotDiscoveryService::begin();
+    BootLogger::logFormat("NET", "Discovery ready on UDP %u", 4210U);
+    BootLogger::logFormat("NET", "OTA ready at %s.local", RobotIdentity::hostname());
 }
 }
 
 namespace RobotNetworkService {
 void begin() {
-    g_hostname = String("robot-") + macSuffix();
     g_ready = false;
     connectWiFi();
 }
@@ -119,8 +112,9 @@ void update() {
     }
     ArduinoOTA.handle();
     g_server.handleClient();
+    RobotDiscoveryService::update(g_ready, g_ready);
 }
 
 bool isReady() { return g_ready; }
-const char* hostname() { return g_hostname.c_str(); }
+const char* hostname() { return RobotIdentity::hostname(); }
 }
