@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Flash a validated Robot Compiler deployment artifact to the ESP32."""
 import argparse
 import shutil
 import subprocess
@@ -24,10 +25,18 @@ def main():
         print(f"Deployment blocked: {exc}")
         return 1
 
-    header_src = Path(manifest["artifacts"]["program_header"]["path"])
+    # Keep the legacy build-artifact boundary explicit: the validated manifest
+    # identifies the build directory and its program.h artifact.
+    build_dir = Path(manifest["artifacts"]["program_header"]["path"]).parent
+    header_src = build_dir / "program.h"
+    if header_src != Path(manifest["artifacts"]["program_header"]["path"]):
+        print("Deployment blocked: manifest program_header path is invalid.")
+        return 1
+
     platform_dir = ROOT / "robot-platform"
     header_dst = platform_dir / "main" / "src" / "Application" / "generated_program.h"
 
+    # Copy only after the complete manifest has passed validation.
     shutil.copy2(header_src, header_dst)
     print(f"Validated deployment manifest for target '{manifest['target']}'.")
     print(f"Copied header to {header_dst}")
