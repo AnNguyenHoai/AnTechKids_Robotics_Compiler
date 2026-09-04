@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "task": "H26-E",
+  "kind": "robot_capability_model",
+  "capabilities": [
+    {"id":"motion.basic","category":"motion","description":"Basic forward/backward/turn/stop motion","opcodes":[2,3,4,5,6],"required":true},
+    {"id":"motion.speed","category":"motion","description":"Direct motor speed control","opcodes":[35],"required":false},
+    {"id":"motion.encoder_angle","category":"motion","description":"Encoder/angle based movement","opcodes":[52,53],"required":false},
+    {"id":"sensor.ultrasonic","category":"sensor","description":"Ultrasonic distance sensing","opcodes":[30],"required":false},
+    {"id":"sensor.touch","category":"sensor","description":"Touch sensing","opcodes":[31],"required":false},
+    {"id":"sensor.light","category":"sensor","description":"Light sensing","opcodes":[32,54],"required":false},
+    {"id":"sensor.color","category":"sensor","description":"Color sensing","opcodes":[33],"required":false},
+    {"id":"sensor.line","category":"sensor","description":"Line sensing and trace state","opcodes":[34,42,43,44],"required":false},
+    {"id":"actuator.servo","category":"actuator","description":"Servo and steering control","opcodes":[36,55,56],"required":false},
+    {"id":"actuator.led","category":"actuator","description":"LED control","opcodes":[37,38],"required":false},
+    {"id":"actuator.motor","category":"actuator","description":"Motor helper operations","opcodes":[39,57,58],"required":false},
+    {"id":"line.follow","category":"line","description":"Line following services","opcodes":[40,47,48,49,50,51,59,60],"required":false},
+    {"id":"peripheral.mp3","category":"peripheral","description":"MP3 playback","opcodes":[41],"required":false},
+    {"id":"peripheral.lizard","category":"peripheral","description":"Lizard peripheral","opcodes":[61],"required":false},
+    {"id":"gui.variable","category":"gui","description":"Variable display/update helpers","opcodes":[62,63],"required":false},
+    {"id":"runtime.control","category":"runtime","description":"Values, comparisons, control flow and calls","opcodes":[1,7,8,9,10,11,12,13,14,15,16,17,20,21,22,23,24,25,26,27,28,29,64],"required":true}
+  ]
+}
