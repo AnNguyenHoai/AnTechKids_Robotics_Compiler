@@ -6,6 +6,7 @@ from typing import List, Set, Tuple
 
 from .hardware_config import HardwareConfig
 from .hardware_requirements import HardwareRequirementRegistry
+from .program_capabilities import ProgramCapabilityAnalyzer
 
 
 @dataclass(frozen=True)
@@ -45,15 +46,19 @@ class HardwareRequirementValidator:
 
     @classmethod
     def validate(cls, source: str, config: HardwareConfig) -> HardwareValidationResult:
+        analysis = ProgramCapabilityAnalyzer.analyze(source)
+        if analysis.syntax_error:
+            # Let the language compiler own syntax diagnostics.
+            return HardwareValidationResult(True, ())
+
+        issues: List[HardwareValidationIssue] = []
         try:
             tree = ast.parse(source)
         except SyntaxError:
-            # Let the language compiler own syntax diagnostics.
             return HardwareValidationResult(True, ())
 
         module_aliases: Set[str] = set(cls.MODULE_ALIASES)
         direct_imports: Set[str] = set()
-
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -63,9 +68,7 @@ class HardwareRequirementValidator:
                 for alias in node.names:
                     direct_imports.add(alias.asname or alias.name)
 
-        issues: List[HardwareValidationIssue] = []
         seen = set()
-
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue

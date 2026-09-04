@@ -20,3 +20,4 @@ __all__ = [
     "HardwareMacroGenerator",
     "HardwareRequirementValidator",
 ]
+from .program_capabilities import ProgramCapabilityAnalysis, ProgramCapabilityAnalyzer

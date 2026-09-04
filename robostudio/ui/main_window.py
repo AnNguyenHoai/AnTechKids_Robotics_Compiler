@@ -4,7 +4,7 @@ RoboStudio Main Window UI – coded manually with PySide6.
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit,
-    QPushButton, QTextEdit, QLabel, QFrame, QMenuBar, QMenu, QMessageBox, QFileDialog, QTabWidget
+    QPushButton, QTextEdit, QLabel, QFrame, QMenuBar, QMenu, QMessageBox, QFileDialog, QTabWidget, QGroupBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QAction, QCursor
@@ -59,6 +59,24 @@ class Ui_MainWindow:
         self.code_editor.setFont(font)
         self.code_editor.setMinimumHeight(250)
         program_layout.addWidget(self.code_editor)
+
+        # H25-J capability status
+        self.capability_group = QGroupBox("Hardware Capability")
+        capability_layout = QVBoxLayout(self.capability_group)
+        capability_layout.setContentsMargins(10, 8, 10, 8)
+        capability_layout.setSpacing(4)
+
+        self.capability_summary = QLabel("Analyzing program requirements...")
+        self.capability_summary.setWordWrap(True)
+        self.capability_summary.setStyleSheet("font-weight: bold;")
+        capability_layout.addWidget(self.capability_summary)
+
+        self.capability_details = QLabel("")
+        self.capability_details.setWordWrap(True)
+        self.capability_details.setStyleSheet("color: #666666;")
+        capability_layout.addWidget(self.capability_details)
+
+        program_layout.addWidget(self.capability_group)
 
         # Button row
         button_layout = QHBoxLayout()
