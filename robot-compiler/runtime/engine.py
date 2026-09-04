@@ -18,7 +18,20 @@ class ExecutionEngine:
     def load(self, program: RuntimeProgram):
         self.program = program
         self.context = ExecutionContext()
-        self.iterator = InstructionIterator(program, function_id=0)
+
+        # RuntimeProgram supports both the function-based representation and
+        # the legacy flat instruction stream. Use the declared entry function
+        # when functions are present; otherwise iterate the top-level stream.
+        # This keeps existing RuntimeProgram callers loadable while preserving
+        # the function-based execution model produced by ProgramLoader.
+        if program.functions:
+            self.iterator = InstructionIterator(
+                program,
+                function_id=program.entry_function_id,
+            )
+        else:
+            self.iterator = InstructionIterator(program)
+
         self.context.program_counter = 0
         self.context.state = ExecutionState.LOADED
         # Khởi tạo global vars
