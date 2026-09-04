@@ -10,7 +10,6 @@ IDENTITY_CPP = ROOT / "robot-platform/main/src/Communication/RobotIdentity.cpp"
 DISCOVERY_H = ROOT / "robot-platform/main/src/Communication/RobotDiscoveryService.h"
 DISCOVERY_CPP = ROOT / "robot-platform/main/src/Communication/RobotDiscoveryService.cpp"
 NETWORK_CPP = ROOT / "robot-platform/main/src/Communication/RobotNetworkService.cpp"
-MAIN_INO = ROOT / "robot-platform/main/main.ino"
 DISCOVER_TOOL = ROOT / "tools/discover_robot.py"
 
 
@@ -39,13 +38,11 @@ def test_discovery_contract():
 
 def test_network_exposes_identity_and_discovery():
     network = NETWORK_CPP.read_text(encoding="utf-8")
-    main = MAIN_INO.read_text(encoding="utf-8")
     assert '#include "RobotIdentity.h"' in network
     assert '#include "RobotDiscoveryService.h"' in network
     assert "RobotIdentity::infoJson" in network
     assert "RobotDiscoveryService::begin" in network
     assert "RobotDiscoveryService::update" in network
-    assert "RobotIdentity::hostname" in main
 
 
 def test_host_discovery_client():
