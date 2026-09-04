@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "kind": "robot_target_capability_profiles",
+  "profiles": [
+    {
+      "id": "robosim",
+      "description": "RoboSim virtual execution target",
+      "capabilities": [
+        "runtime.control",
+        "motion.basic",
+        "motion.speed",
+        "motion.encoder_angle",
+        "sensor.ultrasonic",
+        "sensor.touch",
+        "sensor.light",
+        "sensor.color",
+        "sensor.line",
+        "actuator.servo",
+        "actuator.led",
+        "actuator.motor",
+        "line.follow",
+        "peripheral.mp3",
+        "peripheral.lizard",
+        "gui.variable"
+      ]
+    },
+    {
+      "id": "esp32",
+      "description": "ESP32 runtime target",
+      "capabilities": [
+        "runtime.control",
+        "motion.basic",
+        "motion.speed",
+        "sensor.ultrasonic",
+        "sensor.touch",
+        "sensor.light",
+        "sensor.color",
+        "sensor.line",
+        "actuator.servo",
+        "actuator.led",
+        "actuator.motor",
+        "line.follow",
+        "peripheral.mp3",
+        "peripheral.lizard",
+        "gui.variable"
+      ]
+    },
+    {
+      "id": "arduino",
+      "description": "Arduino Uno/Mega runtime target",
+      "capabilities": [
+        "runtime.control",
+        "motion.basic",
+        "motion.speed",
+        "sensor.ultrasonic",
+        "sensor.touch",
+        "sensor.light",
+        "sensor.color",
+        "sensor.line",
+        "actuator.servo",
+        "actuator.led",
+        "actuator.motor",
+        "line.follow",
+        "peripheral.mp3",
+        "gui.variable"
+      ]
+    }
+  ]
+}
