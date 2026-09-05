@@ -1,7 +1,7 @@
 {
-  "input": "/mnt/data/robotfix/04_Robotics_SW_DeepSeek/build/c5/C5-LINE-002/program.rewrite.py",
-  "output": "/mnt/data/robotfix/04_Robotics_SW_DeepSeek/build/c5/C5-LINE-002/program.h",
-  "compile_time_seconds": 0.00015592575073242188,
+  "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\c5\\C5-LINE-002\\program.rewrite.py",
+  "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\c5\\C5-LINE-002\\program.h",
+  "compile_time_seconds": 0.0010898113250732422,
   "instruction_count": 7,
   "variable_count": 3,
   "temp_count": 3,

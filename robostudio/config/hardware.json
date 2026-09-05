@@ -3,7 +3,7 @@
   "devices": {
     "motor": true,
     "encoder": false,
-    "line_sensor": false,
+    "line_sensor": true,
     "ultrasonic": true,
     "imu": false,
     "servo": false,

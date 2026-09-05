@@ -7,7 +7,7 @@
 #define ROBOT_FEATURE_ENCODER            0
 
 // SENSORS
-#define ROBOT_FEATURE_LINE_SENSOR        0
+#define ROBOT_FEATURE_LINE_SENSOR        1
 #define ROBOT_FEATURE_ULTRASONIC         1
 #define ROBOT_FEATURE_IMU                0
 

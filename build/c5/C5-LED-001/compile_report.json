@@ -1,7 +1,7 @@
 {
-  "input": "/mnt/data/robotfix/04_Robotics_SW_DeepSeek/build/c5/C5-LED-001/program.rewrite.py",
-  "output": "/mnt/data/robotfix/04_Robotics_SW_DeepSeek/build/c5/C5-LED-001/program.h",
-  "compile_time_seconds": 0.00014495849609375,
+  "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\c5\\C5-LED-001\\program.rewrite.py",
+  "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\c5\\C5-LED-001\\program.h",
+  "compile_time_seconds": 0.011408567428588867,
   "instruction_count": 8,
   "variable_count": 5,
   "temp_count": 5,
