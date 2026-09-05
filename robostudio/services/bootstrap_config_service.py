@@ -2,19 +2,18 @@
 from __future__ import annotations
 
 import json
-import sys
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-
-# RoboStudio can be launched/tests can be executed with only ``robostudio/``
-# on sys.path. The canonical bootstrap implementation lives at the repository
-# root in ``tools.bootstrap_config``. Add that root explicitly before importing
-# it so both execution contexts resolve the same implementation.
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 import tools.bootstrap_config as bootstrap_config
+
+ROOT = Path(__file__).resolve().parents[2]
+ARDUINO_SKETCH = ROOT / "robot-platform" / "main"
+ARDUINO_BOOTSTRAP_HEADER = (
+    ARDUINO_SKETCH / "include" / "generated" / "generated_bootstrap_config.h"
+)
 
 
 class BootstrapConfigService:
@@ -22,6 +21,10 @@ class BootstrapConfigService:
 
     def __init__(self, root: Path | None = None):
         self.root = root or ROOT
+        self.arduino_sketch = self.root / "robot-platform" / "main"
+        self.arduino_bootstrap_header = (
+            self.arduino_sketch / "include" / "generated" / "generated_bootstrap_config.h"
+        )
 
     def generate(self, ssid: str, wifi_password: str, ota_password: str,
                  output: Path | None = None) -> Path:
@@ -37,11 +40,73 @@ class BootstrapConfigService:
             output.write_text(
                 json.dumps(config, indent=2) + "\n", encoding="utf-8"
             )
+            # Generate the local header consumed directly by Arduino IDE.
+            # This file is Git-ignored because it contains Wi-Fi credentials.
+            bootstrap_config.write_arduino_header(config, self.arduino_bootstrap_header)
         except (OSError, ValueError) as exc:
             raise RuntimeError(
                 str(exc) or "Unable to generate bootstrap config."
             ) from exc
         return output
+
+    def arduino_sketch_path(self) -> Path:
+        """Return the Arduino sketch folder used for first flash."""
+        return self.arduino_sketch
+
+    def arduino_header_path(self) -> Path:
+        """Return the local generated header consumed by the Arduino sketch."""
+        return self.arduino_bootstrap_header
+
+    def open_arduino_sketch(self) -> tuple[bool, str]:
+        """Open the robot sketch with Arduino IDE, with OS fallback."""
+        sketch = self.arduino_sketch
+        main_ino = sketch / "main.ino"
+        if not main_ino.is_file():
+            return False, f"Arduino sketch not found: {main_ino}"
+
+        candidates: list[str] = []
+        configured = os.getenv("ARDUINO_IDE", "").strip()
+        if configured:
+            candidates.append(configured)
+        for command in ("arduino-ide", "arduino"):
+            found = shutil.which(command)
+            if found:
+                candidates.append(found)
+
+        if os.name == "nt":
+            local = os.getenv("LOCALAPPDATA", "")
+            program_files = os.getenv("PROGRAMFILES", "")
+            program_files_x86 = os.getenv("PROGRAMFILES(X86)", "")
+            candidates.extend([
+                str(Path(local) / "Programs" / "Arduino IDE" / "Arduino IDE.exe") if local else "",
+                str(Path(program_files) / "Arduino IDE" / "Arduino IDE.exe") if program_files else "",
+                str(Path(program_files_x86) / "Arduino IDE" / "Arduino IDE.exe") if program_files_x86 else "",
+                str(Path(program_files) / "Arduino IDE" / "arduino.exe") if program_files else "",
+                str(Path(program_files_x86) / "Arduino IDE" / "arduino.exe") if program_files_x86 else "",
+            ])
+
+        for candidate in candidates:
+            if not candidate or not Path(candidate).is_file():
+                continue
+            try:
+                subprocess.Popen([candidate, str(main_ino)], cwd=str(sketch))
+                return True, f"Arduino IDE opened: {main_ino}"
+            except OSError:
+                continue
+
+        # If the IDE executable is not discoverable, use the OS file association.
+        try:
+            if os.name == "nt":
+                os.startfile(str(main_ino))  # type: ignore[attr-defined]
+            elif shutil.which("open"):
+                subprocess.Popen(["open", str(main_ino)])
+            elif shutil.which("xdg-open"):
+                subprocess.Popen(["xdg-open", str(main_ino)])
+            else:
+                return False, "Arduino IDE executable was not found."
+            return True, f"Opened Arduino sketch: {main_ino}"
+        except OSError as exc:
+            return False, f"Unable to open Arduino sketch: {exc}"
 
     def validate(self, path: Path) -> bool:
         try:

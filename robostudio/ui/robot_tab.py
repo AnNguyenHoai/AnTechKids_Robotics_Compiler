@@ -36,20 +36,6 @@ class _DeploymentWorker(QThread):
         self.completed.emit(RobotDeploymentService().deploy_ota(*self.args))
 
 
-class _BootstrapWorker(QThread):
-    completed = Signal(object)
-
-    def __init__(self, config_path: Path, usb_port: str):
-        super().__init__()
-        self.config_path = config_path
-        self.usb_port = usb_port
-
-    def run(self):
-        self.completed.emit(
-            RobotDeploymentService().flash_first_robot(self.config_path, self.usb_port)
-        )
-
-
 class RobotTab(QWidget):
     """End-user Golden Path plus teacher-only first-flash bootstrap setup."""
 
@@ -61,7 +47,6 @@ class RobotTab(QWidget):
         self._bootstrap_path: Path | None = None
         self._discovery_worker = None
         self._deployment_worker = None
-        self._bootstrap_worker = None
         self._bootstrap_service = BootstrapConfigService()
         self._build_ui()
 
@@ -101,9 +86,9 @@ class RobotTab(QWidget):
         self.generate_bootstrap_button = QPushButton("Generate First-Flash Config")
         self.generate_bootstrap_button.clicked.connect(self.generate_bootstrap)
         usb_row.addWidget(self.generate_bootstrap_button)
-        self.flash_bootstrap_button = QPushButton("Flash New Robot via USB")
+        self.flash_bootstrap_button = QPushButton("Flash New Robot via USB (Arduino IDE)")
         self.flash_bootstrap_button.setEnabled(False)
-        self.flash_bootstrap_button.clicked.connect(self.flash_bootstrap)
+        self.flash_bootstrap_button.clicked.connect(self.open_arduino_first_flash)
         usb_row.addWidget(self.flash_bootstrap_button)
         bootstrap_form.addRow("USB Port:", usb_row)
         self.bootstrap_status = QLabel("No first-flash configuration generated")
@@ -179,49 +164,34 @@ class RobotTab(QWidget):
             return
         self._bootstrap_path = path
         self.flash_bootstrap_button.setEnabled(True)
+        header = self._bootstrap_service.arduino_header_path()
         self.bootstrap_status.setText(
-            "✓ First-flash configuration ready. It is stored locally outside Git. "
-            "Use Flash New Robot via USB to provision a new robot."
+            "✓ First-flash configuration ready.\n"
+            f"Arduino bootstrap header: {header}\n"
+            "Click 'Flash New Robot via USB (Arduino IDE)' to open the robot sketch, "
+            "then select your ESP32 board and COM port and click Upload."
         )
         self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
 
-    def flash_bootstrap(self):
+    def open_arduino_first_flash(self):
         if self._bootstrap_path is None:
             return
-        self.generate_bootstrap_button.setEnabled(False)
-        self.flash_bootstrap_button.setEnabled(False)
-        self.refresh_button.setEnabled(False)
-        self.bootstrap_status.setText("Flashing first-boot firmware via USB...")
-        self.progress.setVisible(True)
-        self._bootstrap_worker = _BootstrapWorker(
-            self._bootstrap_path, self.usb_port_edit.text().strip()
-        )
-        self._bootstrap_worker.completed.connect(self._on_bootstrap_finished)
-        self._bootstrap_worker.finished.connect(self._bootstrap_worker_finished)
-        self._bootstrap_worker.start()
-
-    def _bootstrap_worker_finished(self):
-        self.progress.setVisible(False)
-        self.generate_bootstrap_button.setEnabled(True)
-        self.refresh_button.setEnabled(True)
-
-    def _on_bootstrap_finished(self, result):
-        self.output_label.setText(result.output[-2500:] if result.output else "")
-        if result.success:
+        ok, message = self._bootstrap_service.open_arduino_sketch()
+        if ok:
             self.bootstrap_status.setText(
-                "✓ First flash completed. "
-                + (f"Discovered {result.verified_robot.display_label}." if result.verified_robot else "Robot discovery is still pending; click Discover Robots.")
+                "✓ First-flash config is attached to the Arduino sketch.\n"
+                "In Arduino IDE: select ESP32 Dev Module + the USB port, then click Upload.\n"
+                "After boot, the robot should join the configured Wi-Fi and become discoverable."
             )
             self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
-            if result.verified_robot:
-                self.ssid_edit.setText(self.bootstrap_ssid_edit.text().strip())
-                self.wifi_password_edit.setText(self.bootstrap_wifi_password_edit.text())
-                self.ota_password_edit.setText(self.bootstrap_ota_password_edit.text())
-                self.discover()
         else:
-            self.bootstrap_status.setText(f"✗ {result.error or 'First flash failed.'}")
-            self.bootstrap_status.setStyleSheet("font-weight: bold; color: red;")
-        self.flash_bootstrap_button.setEnabled(self._bootstrap_path is not None)
+            QMessageBox.warning(
+                self,
+                "Arduino IDE",
+                f"{message}\n\nOpen this sketch manually:\n"
+                f"{self._bootstrap_service.arduino_sketch_path()}\n\n"
+                "Then open main.ino in Arduino IDE and click Upload.",
+            )
 
     def discover(self):
         if self._discovery_worker and self._discovery_worker.isRunning():
