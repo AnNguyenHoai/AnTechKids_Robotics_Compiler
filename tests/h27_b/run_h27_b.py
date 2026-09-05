@@ -2,6 +2,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -97,3 +98,17 @@ def test_robot_tab_blocks_robot_without_ota(app):
     tab.robot_combo.setCurrentIndex(0)
     tab._on_robot_selected(0)
     assert tab.deploy_button.isEnabled() is False
+
+
+def test_standalone_robostudio_entrypoint_can_import_shared_tools():
+    """Regression: `cd robostudio && python main.py` must resolve repo tools."""
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run(
+        [sys.executable, "-c", "import main; import tools.bootstrap_config"],
+        cwd=ROOT / "robostudio",
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
