@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
 
 def main() -> int:
@@ -19,18 +21,23 @@ def main() -> int:
     network_cpp = ROOT / "robot-platform" / "main" / "src" / "Communication" / "RobotNetworkService.cpp"
     deploy = ROOT / "tools" / "deploy_robot.py"
     robot_tab = ROOT / "robostudio" / "ui" / "robot_tab.py"
+    arduino_docs = ROOT / "docs" / "FIRST_FLASH_ARDUINO.md"
 
-    for path in (generator, config_service, wifi_script, platformio, wifi_header, wifi_cpp, network_cpp, deploy, robot_tab):
+    for path in (generator, config_service, wifi_script, platformio, wifi_header, wifi_cpp, network_cpp, deploy, robot_tab, arduino_docs):
         assert path.is_file(), f"missing H27-B0 file: {path}"
 
     generated = generator.read_text(encoding="utf-8")
     assert "antechkids.robot.bootstrap" in generated
     assert "schema_version" in generated
     assert "Wi-Fi password" in generated
+    assert "write_arduino_header" in generated
+    assert "ROBOT_BOOTSTRAP_PROVISIONED" in generated
 
     service = config_service.read_text(encoding="utf-8")
     assert "tools.bootstrap_config" in service
     assert ".robostudio" in service
+    assert "arduino_bootstrap_header" in service
+    assert "open_arduino_sketch" in service
 
     pio = platformio.read_text(encoding="utf-8")
     assert "[env:esp32dev_bootstrap]" in pio
@@ -48,6 +55,7 @@ def main() -> int:
     assert "robot-net" in cpp
     assert "putBool" in cpp
     assert "ROBOT_WIFI_SSID" in cpp
+    assert "generated_bootstrap_config.h" in cpp
 
     network = network_cpp.read_text(encoding="utf-8")
     assert '#include "RobotWiFiConfig.h"' in network
@@ -63,10 +71,17 @@ def main() -> int:
     ui = robot_tab.read_text(encoding="utf-8")
     assert "BootstrapConfigService" in ui
     assert "Generate First-Flash Config" in ui
-    assert "Flash New Robot via USB" in ui
+    assert "Flash New Robot via USB (Arduino IDE)" in ui
+    assert "arduino_header_path" in ui
+
+    docs = arduino_docs.read_text(encoding="utf-8")
+    assert "Arduino IDE" in docs
+    assert "generated_bootstrap_config.h" in docs
+    assert "main.ino" in docs
 
     with tempfile.TemporaryDirectory() as tmp:
         output = Path(tmp) / "robot_bootstrap.json"
+        header_output = Path(tmp) / "generated_bootstrap_config.h"
         import subprocess
         result = subprocess.run(
             [
@@ -75,6 +90,7 @@ def main() -> int:
                 "--password", "secret",
                 "--ota-password", "ota-secret",
                 "--output", str(output),
+                "--arduino-header-output", str(header_output),
             ], cwd=ROOT, capture_output=True, text=True,
         )
         assert result.returncode == 0, result.stdout + result.stderr
@@ -84,8 +100,13 @@ def main() -> int:
         assert data["wifi"]["ssid"] == "Classroom-WiFi"
         assert data["wifi"]["password"] == "secret"
         assert data["ota"]["password"] == "ota-secret"
+        generated_header = header_output.read_text(encoding="utf-8")
+        assert '#define ROBOT_WIFI_SSID "Classroom-WiFi"' in generated_header
+        assert '#define ROBOT_WIFI_PASSWORD "secret"' in generated_header
+        assert '#define ROBOT_OTA_PASSWORD "ota-secret"' in generated_header
+        assert "ROBOT_BOOTSTRAP_PROVISIONED 1" in generated_header
 
-    print("H27-B0 PASS: first-flash Wi-Fi bootstrap contract")
+    print("H27-B0 PASS: first-flash Wi-Fi bootstrap + Arduino IDE path")
     return 0
 
 
