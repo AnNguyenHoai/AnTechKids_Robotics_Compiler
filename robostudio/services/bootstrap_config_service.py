@@ -1,15 +1,19 @@
-"""RoboStudio first-flash bootstrap configuration helpers."""
 from __future__ import annotations
 
-import json
-import os
-import shutil
-import subprocess
+import sys
 from pathlib import Path
+
+# The test suite imports `ui.robot_tab` directly. In that execution mode
+# Python starts with `tests/` on sys.path, so repository-level `tools/` is not
+# automatically importable. Resolve the repository root from this module and
+# expose it before importing the canonical bootstrap helper.
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 import tools.bootstrap_config as bootstrap_config
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = _ROOT
 ARDUINO_SKETCH = ROOT / "robot-platform" / "main"
 ARDUINO_BOOTSTRAP_HEADER = (
     ARDUINO_SKETCH / "include" / "generated" / "generated_bootstrap_config.h"
@@ -38,10 +42,8 @@ class BootstrapConfigService:
         try:
             config = bootstrap_config.make_config(ssid, wifi_password, ota_password)
             output.write_text(
-                json.dumps(config, indent=2) + "\n", encoding="utf-8"
+                __import__("json").dumps(config, indent=2) + "\n", encoding="utf-8"
             )
-            # Generate the local header consumed directly by Arduino IDE.
-            # This file is Git-ignored because it contains Wi-Fi credentials.
             bootstrap_config.write_arduino_header(config, self.arduino_bootstrap_header)
         except (OSError, ValueError) as exc:
             raise RuntimeError(
@@ -50,15 +52,17 @@ class BootstrapConfigService:
         return output
 
     def arduino_sketch_path(self) -> Path:
-        """Return the Arduino sketch folder used for first flash."""
         return self.arduino_sketch
 
     def arduino_header_path(self) -> Path:
-        """Return the local generated header consumed by the Arduino sketch."""
         return self.arduino_bootstrap_header
 
     def open_arduino_sketch(self) -> tuple[bool, str]:
         """Open the robot sketch with Arduino IDE, with OS fallback."""
+        import os
+        import shutil
+        import subprocess
+
         sketch = self.arduino_sketch
         main_ino = sketch / "main.ino"
         if not main_ino.is_file():
@@ -94,10 +98,9 @@ class BootstrapConfigService:
             except OSError:
                 continue
 
-        # If the IDE executable is not discoverable, use the OS file association.
         try:
             if os.name == "nt":
-                os.startfile(str(main_ino))  # type: ignore[attr-defined]
+                os.startfile(str(main_ino))
             elif shutil.which("open"):
                 subprocess.Popen(["open", str(main_ino)])
             elif shutil.which("xdg-open"):
