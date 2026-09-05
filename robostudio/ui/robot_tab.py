@@ -219,7 +219,12 @@ class RobotTab(QWidget):
             self.robot_combo.addItem(f"{robot.display_label} — {state}", robot.device_id)
         self.robot_combo.blockSignals(False)
         if self._robots:
+            # `addItem()` selects index 0 while signals are blocked. Calling
+            # setCurrentIndex(0) afterwards therefore emits no signal, leaving
+            # `_selected` unset and the Run button disabled. Explicitly route
+            # the first discovered robot through the same selection handler.
             self.robot_combo.setCurrentIndex(0)
+            self._on_robot_selected(0)
             self.robot_status.setText(f"Found {len(self._robots)} robot(s).")
         else:
             self.robot_status.setText(
