@@ -33,7 +33,11 @@ constexpr bool IsKnownVMErrorCode(uint8_t code)
     return code <= ToErrorCode(VMErrorCode::InvalidVariable);
 }
 
-constexpr const char* VMErrorId(VMErrorCode error)
+// These lookup helpers are runtime string mappings. Keep them non-constexpr
+// because the ESP32 Arduino toolchain used by this project is compiled with
+// a pre-C++14 constexpr rule that rejects switch statements in constexpr
+// function bodies.
+inline const char* VMErrorId(VMErrorCode error)
 {
     switch (error)
     {
@@ -51,7 +55,7 @@ constexpr const char* VMErrorId(VMErrorCode error)
     }
 }
 
-constexpr const char* VMErrorMessage(VMErrorCode error)
+inline const char* VMErrorMessage(VMErrorCode error)
 {
     switch (error)
     {
