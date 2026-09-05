@@ -1,14 +1,17 @@
 """RoboStudio robot deployment orchestration.
 
-The UI delegates the canonical compile/build/OTA pipeline to
-``tools/deploy_robot.py`` instead of duplicating PlatformIO logic.
+The UI delegates the canonical compile/build/USB/OTA pipeline to
+``tools/deploy_robot.py``. First-flash bootstrap is deliberately a separate
+operation because it provisions a new robot before normal LAN discovery.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +32,80 @@ class RobotDeploymentService:
     def __init__(self, root: Path | None = None):
         self.root = root or ROOT
         self.discovery = RobotDiscoveryClient()
+
+    def generate_bootstrap_config(self, ssid: str, wifi_password: str,
+                                  ota_password: str, output: Path) -> Path:
+        if not ssid.strip():
+            raise ValueError("Wi-Fi SSID is required.")
+        if not ota_password:
+            raise ValueError("OTA password is required for first-flash bootstrap.")
+        command = [
+            sys.executable,
+            str(self.root / "tools" / "bootstrap_config.py"),
+            "generate",
+            "--ssid", ssid.strip(),
+            "--password", wifi_password,
+            "--ota-password", ota_password,
+            "--output", str(output),
+        ]
+        completed = subprocess.run(
+            command, cwd=self.root, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        if completed.returncode != 0:
+            raise RuntimeError((completed.stdout or completed.stderr).strip() or "Unable to generate bootstrap config.")
+        return output
+
+    def flash_first_robot(self, config_path: Path, usb_port: str = "") -> DeploymentResult:
+        """Build and USB-flash a first-boot firmware containing bootstrap data."""
+        config_path = config_path.resolve()
+        if not config_path.is_file():
+            return DeploymentResult(False, "", f"Bootstrap config not found: {config_path}")
+
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            if config.get("type") != "antechkids.robot.bootstrap":
+                return DeploymentResult(False, "", "Invalid bootstrap config type.")
+            if config.get("schema_version") != 1:
+                return DeploymentResult(False, "", "Unsupported bootstrap config schema.")
+        except (OSError, json.JSONDecodeError) as exc:
+            return DeploymentResult(False, "", f"Invalid bootstrap config: {exc}")
+
+        command = [
+            sys.executable,
+            str(self.root / "tools" / "deploy_robot.py"),
+            "--mode", "bootstrap",
+            "--bootstrap-config", str(config_path),
+        ]
+        if usb_port.strip():
+            command.extend(["--port", usb_port.strip()])
+
+        try:
+            completed = subprocess.run(
+                command, cwd=self.root, capture_output=True,
+                text=True, encoding="utf-8", errors="replace",
+            )
+        except OSError as exc:
+            return DeploymentResult(False, "", f"Unable to start first-flash: {exc}")
+
+        output = (completed.stdout or "") + (("\n" + completed.stderr) if completed.stderr else "")
+        if completed.returncode != 0:
+            return DeploymentResult(False, output, "First-flash failed.")
+
+        # The robot has just rebooted and may need a few seconds to associate.
+        # Discovery is product-level verification; do not claim network success
+        # merely because PlatformIO accepted the USB upload.
+        deadline = time.monotonic() + 20.0
+        while time.monotonic() < deadline:
+            try:
+                robots = self.discovery.discover()
+                if robots:
+                    return DeploymentResult(True, output, verified_robot=robots[0])
+            except Exception:
+                pass
+            time.sleep(1.0)
+
+        return DeploymentResult(True, output, "First-flash completed; robot discovery timed out.")
 
     def deploy_ota(self, code: str, robot: RobotInfo, wifi_ssid: str,
                    wifi_password: str, ota_password: str) -> DeploymentResult:
@@ -70,8 +147,6 @@ class RobotDeploymentService:
             if completed.returncode != 0:
                 return DeploymentResult(False, output, "OTA deployment failed.")
 
-            # Verify identity after reboot. Prefer the discovered hostname, then
-            # fall back to the last known IP if mDNS is unavailable on the host.
             verified = None
             verification_error = None
             for host in (robot.hostname, robot.ip):

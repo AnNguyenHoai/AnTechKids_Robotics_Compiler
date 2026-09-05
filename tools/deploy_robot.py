@@ -4,9 +4,9 @@
 Flow: RoboSim source -> rewrite -> compile -> manifest validation -> firmware
 build -> USB or ESP32 OTA upload -> optional health check.
 
-Wi-Fi and OTA credentials are supplied through process arguments or the
-ROBOT_WIFI_* / ROBOT_OTA_PASSWORD environment variables. Credentials are
-never written to source files or deployment manifests.
+The ``bootstrap`` mode is the first-flash path: a RoboStudio-generated local
+artifact is consumed by PlatformIO and stored by the firmware in ESP32 NVS.
+Bootstrap artifacts and credentials are never written into the repository.
 """
 from __future__ import annotations
 
@@ -80,16 +80,62 @@ def wait_for_robot(host: str, timeout: float = 20.0) -> dict:
     raise RuntimeError(f"Robot health check timed out for {host}: {last_error}")
 
 
+def validate_bootstrap_config(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Invalid bootstrap config: {exc}") from exc
+    if data.get("type") != "antechkids.robot.bootstrap":
+        raise RuntimeError("Unsupported robot bootstrap config type")
+    if data.get("schema_version") != 1:
+        raise RuntimeError("Unsupported robot bootstrap schema version")
+    wifi = data.get("wifi")
+    ota = data.get("ota")
+    if not isinstance(wifi, dict) or not str(wifi.get("ssid", "")).strip():
+        raise RuntimeError("Bootstrap config requires a Wi-Fi SSID")
+    if not isinstance(ota, dict) or not str(ota.get("password", "")):
+        raise RuntimeError("Bootstrap config requires an OTA password")
+    return data
+
+
+def flash_bootstrap(config_path: Path, port: str | None) -> int:
+    config = validate_bootstrap_config(config_path.resolve())
+    # Keep credentials out of the command line; PlatformIO reads the artifact
+    # through ROBOT_BOOTSTRAP_CONFIG and injects it only into the local build.
+    env = os.environ.copy()
+    env["ROBOT_BOOTSTRAP_CONFIG"] = str(config_path.resolve())
+    env["ROBOT_WIFI_SSID"] = str(config["wifi"]["ssid"])
+    env["ROBOT_WIFI_PASSWORD"] = str(config["wifi"].get("password", ""))
+    env["ROBOT_OTA_PASSWORD"] = str(config["ota"]["password"])
+
+    command = ["pio", "run", "-e", "esp32dev_bootstrap", "-t", "upload"]
+    if port:
+        command.extend(["--upload-port", port])
+    run(command, env=env)
+    print("FIRST-FLASH BOOTSTRAP PASS")
+    print("Wi-Fi bootstrap data embedded for NVS provisioning on first boot.")
+    return 0
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Deploy a student RoboSim program in one command")
-    parser.add_argument("--input", required=True, help="Student RoboSim .py source")
-    parser.add_argument("--mode", choices=("build", "usb", "ota"), default="build")
-    parser.add_argument("--port", help="USB serial port for --mode usb")
+    parser = argparse.ArgumentParser(description="Deploy a student RoboSim program or bootstrap a new robot")
+    parser.add_argument("--input", help="Student RoboSim .py source; not required for bootstrap")
+    parser.add_argument("--mode", choices=("build", "usb", "bootstrap", "ota"), default="build")
+    parser.add_argument("--port", help="USB serial port for --mode usb/bootstrap")
     parser.add_argument("--robot", help="Robot hostname/IP for --mode ota, e.g. robot-A1B2C3.local")
     parser.add_argument("--ssid", help="Wi-Fi SSID used to build the robot firmware")
     parser.add_argument("--wifi-password", default=None, help="Wi-Fi password; prefer ROBOT_WIFI_PASSWORD")
     parser.add_argument("--ota-password", default=None, help="ArduinoOTA password; prefer ROBOT_OTA_PASSWORD")
+    parser.add_argument("--bootstrap-config", help="RoboStudio-generated first-flash bootstrap JSON")
     args = parser.parse_args()
+
+    if args.mode == "bootstrap":
+        if not args.bootstrap_config:
+            parser.error("--mode bootstrap requires --bootstrap-config")
+        return flash_bootstrap(Path(args.bootstrap_config), args.port)
+
+    if not args.input:
+        parser.error("--input is required unless --mode bootstrap is used")
 
     source = Path(args.input).resolve()
     if not source.is_file():

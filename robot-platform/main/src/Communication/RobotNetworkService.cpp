@@ -8,17 +8,8 @@
 
 #include "RobotIdentity.h"
 #include "RobotDiscoveryService.h"
+#include "RobotWiFiConfig.h"
 #include "../Logger/BootLogger.h"
-
-#ifndef ROBOT_WIFI_SSID
-#define ROBOT_WIFI_SSID ""
-#endif
-#ifndef ROBOT_WIFI_PASSWORD
-#define ROBOT_WIFI_PASSWORD ""
-#endif
-#ifndef ROBOT_OTA_PASSWORD
-#define ROBOT_OTA_PASSWORD ""
-#endif
 
 namespace {
 constexpr uint32_t kWifiRetryIntervalMs = 5000UL;
@@ -68,7 +59,7 @@ void onOtaProgress(unsigned int progress, unsigned int total) {
 
 void onOtaError(ota_error_t error) {
     RobotNetworkService::setUpdateInProgress(false);
-    g_otaReady = strlen(ROBOT_OTA_PASSWORD) != 0;
+    g_otaReady = strlen(RobotWiFiConfig::otaPassword()) != 0;
     BootLogger::logFormat("OTA", "Error %u", static_cast<unsigned int>(error));
 }
 
@@ -86,7 +77,7 @@ void registerHttpHandlers() {
 
 bool connectWiFi() {
     g_lastWifiAttemptMs = millis();
-    if (strlen(ROBOT_WIFI_SSID) == 0) {
+    if (!RobotWiFiConfig::isConfigured()) {
         g_networkReady = false;
         g_otaReady = false;
         BootLogger::log("NET", "Wi-Fi not configured; OTA disabled");
@@ -95,7 +86,7 @@ bool connectWiFi() {
 
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(RobotIdentity::hostname());
-    WiFi.begin(ROBOT_WIFI_SSID, ROBOT_WIFI_PASSWORD);
+    WiFi.begin(RobotWiFiConfig::ssid(), RobotWiFiConfig::password());
 
     const uint32_t deadline = millis() + kWifiConnectTimeoutMs;
     while (WiFi.status() != WL_CONNECTED && millis() < deadline) {
@@ -114,14 +105,14 @@ bool connectWiFi() {
 
     MDNS.begin(RobotIdentity::hostname());
     ArduinoOTA.setHostname(RobotIdentity::hostname());
-    if (strlen(ROBOT_OTA_PASSWORD) != 0) {
-        ArduinoOTA.setPassword(ROBOT_OTA_PASSWORD);
+    if (strlen(RobotWiFiConfig::otaPassword()) != 0) {
+        ArduinoOTA.setPassword(RobotWiFiConfig::otaPassword());
         g_otaReady = true;
         ArduinoOTA.begin();
         BootLogger::logFormat("NET", "OTA ready at %s.local", RobotIdentity::hostname());
     } else {
         g_otaReady = false;
-        BootLogger::log("NET", "OTA disabled: ROBOT_OTA_PASSWORD is not provisioned");
+        BootLogger::log("NET", "OTA disabled: OTA password is not provisioned");
     }
 
     registerHttpHandlers();
@@ -164,6 +155,10 @@ void begin(bool robotReady) {
     g_robotReady = robotReady;
     g_updateInProgress = false;
     g_lastWifiAttemptMs = millis();
+
+    if (!RobotWiFiConfig::begin()) {
+        BootLogger::log("NET", "No Wi-Fi configuration available");
+    }
     connectWiFi();
 }
 

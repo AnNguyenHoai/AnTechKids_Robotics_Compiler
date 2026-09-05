@@ -2,4 +2,5 @@
 build/
 .pytest_cache/
 .robot/
+.robostudio/
 *.pyc
