@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
+
+import tools.bootstrap_config as bootstrap_config
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -24,40 +24,20 @@ class BootstrapConfigService:
         output = output or (self.root / ".robostudio" / "bootstrap" / "robot_bootstrap.json")
         output.parent.mkdir(parents=True, exist_ok=True)
 
-        command = [
-            sys.executable,
-            str(self.root / "tools" / "bootstrap_config.py"),
-            "generate",
-            "--ssid", ssid.strip(),
-            "--password", wifi_password,
-            "--ota-password", ota_password,
-            "--output", str(output),
-        ]
-        completed = subprocess.run(
-            command, cwd=self.root, capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
-        )
-        if completed.returncode != 0:
-            raise RuntimeError(
-                (completed.stdout or completed.stderr).strip()
-                or "Unable to generate bootstrap config."
+        try:
+            config = bootstrap_config.make_config(ssid, wifi_password, ota_password)
+            output.write_text(
+                json.dumps(config, indent=2) + "\n", encoding="utf-8"
             )
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(
+                str(exc) or "Unable to generate bootstrap config."
+            ) from exc
         return output
 
     def validate(self, path: Path) -> bool:
-        command = [
-            sys.executable,
-            str(self.root / "tools" / "bootstrap_config.py"),
-            "validate",
-            "--input", str(path.resolve()),
-        ]
-        completed = subprocess.run(
-            command, cwd=self.root, capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
-        )
-        if completed.returncode != 0:
-            raise ValueError(
-                (completed.stdout or completed.stderr).strip()
-                or "Invalid bootstrap config."
-            )
+        try:
+            bootstrap_config.validate_config(path.resolve())
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
         return True
