@@ -4,11 +4,16 @@
 // current PlatformIO environment. RobotAPI.cpp uses GPIO pins as the logical
 // LEDC handle; this adapter preserves that call-site contract while mapping
 // those pins to stable LEDC channels.
+//
+// IMPORTANT: this header is injected by PlatformIO with -include. The Arduino
+// core also compiles esp32-hal-ledc.c, so the LEDC compatibility macros must
+// never be visible to C translation units. Otherwise the core's own ledcWrite
+// implementation is rewritten by our macro and fails to compile.
 
 #include <Arduino.h>
 #include <esp32-hal-ledc.h>
 
-#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR < 3
+#if defined(__cplusplus) && defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR < 3
 
 static inline uint8_t robotLedcChannelForPin(uint8_t pin)
 {
