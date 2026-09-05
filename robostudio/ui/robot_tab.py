@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
@@ -226,7 +227,6 @@ class RobotTab(QWidget):
             else:
                 subprocess.Popen(["xdg-open", str(path)])
         except OSError:
-            # Opening the folder is convenience only; the path is already shown in UI.
             pass
 
     def flash_bootstrap(self):
