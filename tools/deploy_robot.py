@@ -4,8 +4,9 @@
 Flow: RoboSim source -> rewrite -> compile -> manifest validation -> firmware
 build -> USB or ESP32 OTA upload -> optional health check.
 
-Wi-Fi credentials are supplied through process arguments and converted into
-PlatformIO build environment variables. They are never written to source files.
+Wi-Fi and OTA credentials are supplied through process arguments or the
+ROBOT_WIFI_* / ROBOT_OTA_PASSWORD environment variables. Credentials are
+never written to source files or deployment manifests.
 """
 from __future__ import annotations
 
@@ -27,11 +28,7 @@ BUILD_ROOT = ROOT / "build"
 sys.path.insert(0, str(ROOT))
 
 from tools.deployment_contract import (
-    DeploymentContractError,
-    create_manifest,
-    sha256_file,
-    validate_manifest,
-    write_manifest,
+    create_manifest, sha256_file, validate_manifest, write_manifest,
 )
 
 CAPABILITY_BY_OPCODE = {
@@ -90,8 +87,8 @@ def main() -> int:
     parser.add_argument("--port", help="USB serial port for --mode usb")
     parser.add_argument("--robot", help="Robot hostname/IP for --mode ota, e.g. robot-A1B2C3.local")
     parser.add_argument("--ssid", help="Wi-Fi SSID used to build the robot firmware")
-    parser.add_argument("--wifi-password", default="", help="Wi-Fi password")
-    parser.add_argument("--ota-password", default=None, help="ArduinoOTA password; required for --mode ota")
+    parser.add_argument("--wifi-password", default=None, help="Wi-Fi password; prefer ROBOT_WIFI_PASSWORD")
+    parser.add_argument("--ota-password", default=None, help="ArduinoOTA password; prefer ROBOT_OTA_PASSWORD")
     args = parser.parse_args()
 
     source = Path(args.input).resolve()
@@ -99,14 +96,16 @@ def main() -> int:
         parser.error(f"Student source not found: {source}")
     if source.suffix.lower() != ".py":
         parser.error("--input must be a .py RoboSim source file")
+
+    wifi_ssid = args.ssid if args.ssid is not None else os.getenv("ROBOT_WIFI_SSID", "")
+    wifi_password = args.wifi_password if args.wifi_password is not None else os.getenv("ROBOT_WIFI_PASSWORD", "")
+    ota_password = args.ota_password if args.ota_password is not None else os.getenv("ROBOT_OTA_PASSWORD", "")
+
     if args.mode == "ota":
-        if not args.robot or args.ssid is None:
-            parser.error("--mode ota requires --robot and --ssid")
-        ota_password = args.ota_password or os.getenv("ROBOT_OTA_PASSWORD", "")
+        if not args.robot or not wifi_ssid:
+            parser.error("--mode ota requires --robot and --ssid (or ROBOT_WIFI_SSID)")
         if not ota_password:
             parser.error("--mode ota requires --ota-password or ROBOT_OTA_PASSWORD; no default OTA credential is permitted")
-    else:
-        ota_password = args.ota_password if args.ota_password is not None else os.getenv("ROBOT_OTA_PASSWORD", "")
 
     project_name = source.stem
     build_dir = BUILD_ROOT / project_name
@@ -132,9 +131,9 @@ def main() -> int:
     print(f"Capabilities: {', '.join(capabilities)}")
 
     env = os.environ.copy()
-    if args.ssid is not None:
-        env["ROBOT_WIFI_SSID"] = args.ssid
-        env["ROBOT_WIFI_PASSWORD"] = args.wifi_password
+    if wifi_ssid:
+        env["ROBOT_WIFI_SSID"] = wifi_ssid
+        env["ROBOT_WIFI_PASSWORD"] = wifi_password
     if ota_password:
         env["ROBOT_OTA_PASSWORD"] = ota_password
 
@@ -154,9 +153,7 @@ def main() -> int:
     firmware = PLATFORM / ".pio" / "build" / ("esp32dev_ota" if args.mode == "ota" else "esp32dev") / "firmware.bin"
     if firmware.is_file():
         manifest_dict["artifacts"]["firmware"] = {
-            "path": str(firmware),
-            "size": firmware.stat().st_size,
-            "sha256": sha256_file(firmware),
+            "path": str(firmware), "size": firmware.stat().st_size, "sha256": sha256_file(firmware),
         }
         manifest_path.write_text(json.dumps(manifest_dict, indent=2) + "\n", encoding="utf-8")
         print(f"Firmware artifact: {firmware}")
