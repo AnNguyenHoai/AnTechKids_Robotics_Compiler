@@ -2,11 +2,19 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
-import tools.bootstrap_config as bootstrap_config
-
 ROOT = Path(__file__).resolve().parents[2]
+
+# RoboStudio can be launched/tests can be executed with only ``robostudio/``
+# on sys.path. The canonical bootstrap implementation lives at the repository
+# root in ``tools.bootstrap_config``. Add that root explicitly before importing
+# it so both execution contexts resolve the same implementation.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import tools.bootstrap_config as bootstrap_config
 
 
 class BootstrapConfigService:
