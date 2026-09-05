@@ -15,6 +15,7 @@
 #include <Arduino.h>
 #include "../../HardwareAbstraction/GPIO.h"
 #include "../../HardwareAbstraction/HardwareCapability.h"
+#include "../../Compatibility/LEDCCompat.h"
 
 namespace RobotAPI
 {
