@@ -1,5 +1,7 @@
-"""RoboStudio Robot tab: Discover → Select → OTA → Deploy → Verify."""
+"""RoboStudio Robot tab: first-flash bootstrap + Discover → Select → OTA → Deploy → Verify."""
 from __future__ import annotations
+
+from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
@@ -7,6 +9,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QPushButton, QComboBox, QVBoxLayout, QWidget,
 )
 
+from services.bootstrap_config_service import BootstrapConfigService
 from services.robot_deployment_service import RobotDeploymentService, RobotInfo
 from services.robot_discovery_service import RobotDiscoveryClient
 
@@ -33,16 +36,33 @@ class _DeploymentWorker(QThread):
         self.completed.emit(RobotDeploymentService().deploy_ota(*self.args))
 
 
+class _BootstrapWorker(QThread):
+    completed = Signal(object)
+
+    def __init__(self, config_path: Path, usb_port: str):
+        super().__init__()
+        self.config_path = config_path
+        self.usb_port = usb_port
+
+    def run(self):
+        self.completed.emit(
+            RobotDeploymentService().flash_first_robot(self.config_path, self.usb_port)
+        )
+
+
 class RobotTab(QWidget):
-    """End-user Golden Path for the current student program."""
+    """End-user Golden Path plus teacher-only first-flash bootstrap setup."""
 
     def __init__(self, code_provider, parent=None):
         super().__init__(parent)
         self._code_provider = code_provider
         self._robots: list[RobotInfo] = []
         self._selected: RobotInfo | None = None
+        self._bootstrap_path: Path | None = None
         self._discovery_worker = None
         self._deployment_worker = None
+        self._bootstrap_worker = None
+        self._bootstrap_service = BootstrapConfigService()
         self._build_ui()
 
     def _build_ui(self):
@@ -54,11 +74,42 @@ class RobotTab(QWidget):
         title.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(title)
         description = QLabel(
-            "Find a robot on the local Wi-Fi network, select it, then run "
-            "the current student program over OTA."
+            "Set up a new robot once, then discover and run student programs over OTA. "
+            "First-flash Wi-Fi data is generated locally and stored in the robot's NVS."
         )
         description.setWordWrap(True)
         layout.addWidget(description)
+
+        bootstrap_group = QGroupBox("0. First-Flash Setup (Teacher)")
+        bootstrap_form = QFormLayout(bootstrap_group)
+        self.bootstrap_ssid_edit = QLineEdit()
+        self.bootstrap_ssid_edit.setPlaceholderText("Classroom Wi-Fi network")
+        bootstrap_form.addRow("Wi-Fi SSID:", self.bootstrap_ssid_edit)
+        self.bootstrap_wifi_password_edit = QLineEdit()
+        self.bootstrap_wifi_password_edit.setEchoMode(QLineEdit.Password)
+        self.bootstrap_wifi_password_edit.setPlaceholderText("Leave empty if open")
+        bootstrap_form.addRow("Wi-Fi Password:", self.bootstrap_wifi_password_edit)
+        self.bootstrap_ota_password_edit = QLineEdit()
+        self.bootstrap_ota_password_edit.setEchoMode(QLineEdit.Password)
+        self.bootstrap_ota_password_edit.setPlaceholderText("OTA password for this robot fleet")
+        bootstrap_form.addRow("OTA Password:", self.bootstrap_ota_password_edit)
+
+        usb_row = QHBoxLayout()
+        self.usb_port_edit = QLineEdit()
+        self.usb_port_edit.setPlaceholderText("Optional, e.g. COM4")
+        usb_row.addWidget(self.usb_port_edit, 1)
+        self.generate_bootstrap_button = QPushButton("Generate First-Flash Config")
+        self.generate_bootstrap_button.clicked.connect(self.generate_bootstrap)
+        usb_row.addWidget(self.generate_bootstrap_button)
+        self.flash_bootstrap_button = QPushButton("Flash New Robot via USB")
+        self.flash_bootstrap_button.setEnabled(False)
+        self.flash_bootstrap_button.clicked.connect(self.flash_bootstrap)
+        usb_row.addWidget(self.flash_bootstrap_button)
+        bootstrap_form.addRow("USB Port:", usb_row)
+        self.bootstrap_status = QLabel("No first-flash configuration generated")
+        self.bootstrap_status.setWordWrap(True)
+        bootstrap_form.addRow("Status:", self.bootstrap_status)
+        layout.addWidget(bootstrap_group)
 
         discovery_group = QGroupBox("1. Select Robot")
         discovery_layout = QVBoxLayout(discovery_group)
@@ -116,6 +167,61 @@ class RobotTab(QWidget):
         self.output_label.setStyleSheet("font-family: 'Courier New'; color: #666666;")
         layout.addWidget(self.output_label)
         layout.addStretch()
+
+    def generate_bootstrap(self):
+        ssid = self.bootstrap_ssid_edit.text().strip()
+        wifi_password = self.bootstrap_wifi_password_edit.text()
+        ota_password = self.bootstrap_ota_password_edit.text()
+        try:
+            path = self._bootstrap_service.generate(ssid, wifi_password, ota_password)
+        except (ValueError, RuntimeError, OSError) as exc:
+            QMessageBox.warning(self, "Bootstrap configuration", str(exc))
+            return
+        self._bootstrap_path = path
+        self.flash_bootstrap_button.setEnabled(True)
+        self.bootstrap_status.setText(
+            "✓ First-flash configuration ready. It is stored locally outside Git. "
+            "Use Flash New Robot via USB to provision a new robot."
+        )
+        self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
+
+    def flash_bootstrap(self):
+        if self._bootstrap_path is None:
+            return
+        self.generate_bootstrap_button.setEnabled(False)
+        self.flash_bootstrap_button.setEnabled(False)
+        self.refresh_button.setEnabled(False)
+        self.bootstrap_status.setText("Flashing first-boot firmware via USB...")
+        self.progress.setVisible(True)
+        self._bootstrap_worker = _BootstrapWorker(
+            self._bootstrap_path, self.usb_port_edit.text().strip()
+        )
+        self._bootstrap_worker.completed.connect(self._on_bootstrap_finished)
+        self._bootstrap_worker.finished.connect(self._bootstrap_worker_finished)
+        self._bootstrap_worker.start()
+
+    def _bootstrap_worker_finished(self):
+        self.progress.setVisible(False)
+        self.generate_bootstrap_button.setEnabled(True)
+        self.refresh_button.setEnabled(True)
+
+    def _on_bootstrap_finished(self, result):
+        self.output_label.setText(result.output[-2500:] if result.output else "")
+        if result.success:
+            self.bootstrap_status.setText(
+                "✓ First flash completed. "
+                + (f"Discovered {result.verified_robot.display_label}." if result.verified_robot else "Robot discovery is still pending; click Discover Robots.")
+            )
+            self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
+            if result.verified_robot:
+                self.ssid_edit.setText(self.bootstrap_ssid_edit.text().strip())
+                self.wifi_password_edit.setText(self.bootstrap_wifi_password_edit.text())
+                self.ota_password_edit.setText(self.bootstrap_ota_password_edit.text())
+                self.discover()
+        else:
+            self.bootstrap_status.setText(f"✗ {result.error or 'First flash failed.'}")
+            self.bootstrap_status.setStyleSheet("font-weight: bold; color: red;")
+        self.flash_bootstrap_button.setEnabled(self._bootstrap_path is not None)
 
     def discover(self):
         if self._discovery_worker and self._discovery_worker.isRunning():
