@@ -1,6 +1,8 @@
 """RoboStudio Robot tab: first-flash bootstrap + Discover → Select → OTA → Deploy → Verify."""
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
@@ -59,6 +61,7 @@ class RobotTab(QWidget):
         self._robots: list[RobotInfo] = []
         self._selected: RobotInfo | None = None
         self._bootstrap_path: Path | None = None
+        self._arduino_package_path: Path | None = None
         self._discovery_worker = None
         self._deployment_worker = None
         self._bootstrap_worker = None
@@ -101,6 +104,9 @@ class RobotTab(QWidget):
         self.generate_bootstrap_button = QPushButton("Generate First-Flash Config")
         self.generate_bootstrap_button.clicked.connect(self.generate_bootstrap)
         usb_row.addWidget(self.generate_bootstrap_button)
+        self.generate_arduino_button = QPushButton("Generate Arduino IDE Package")
+        self.generate_arduino_button.clicked.connect(self.generate_arduino_package)
+        usb_row.addWidget(self.generate_arduino_button)
         self.flash_bootstrap_button = QPushButton("Flash New Robot via USB")
         self.flash_bootstrap_button.setEnabled(False)
         self.flash_bootstrap_button.clicked.connect(self.flash_bootstrap)
@@ -168,10 +174,15 @@ class RobotTab(QWidget):
         layout.addWidget(self.output_label)
         layout.addStretch()
 
+    def _bootstrap_inputs(self):
+        return (
+            self.bootstrap_ssid_edit.text().strip(),
+            self.bootstrap_wifi_password_edit.text(),
+            self.bootstrap_ota_password_edit.text(),
+        )
+
     def generate_bootstrap(self):
-        ssid = self.bootstrap_ssid_edit.text().strip()
-        wifi_password = self.bootstrap_wifi_password_edit.text()
-        ota_password = self.bootstrap_ota_password_edit.text()
+        ssid, wifi_password, ota_password = self._bootstrap_inputs()
         try:
             path = self._bootstrap_service.generate(ssid, wifi_password, ota_password)
         except (ValueError, RuntimeError, OSError) as exc:
@@ -185,10 +196,44 @@ class RobotTab(QWidget):
         )
         self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
 
+    def generate_arduino_package(self):
+        ssid, wifi_password, ota_password = self._bootstrap_inputs()
+        try:
+            path = self._bootstrap_service.generate_arduino_package(
+                ssid, wifi_password, ota_password
+            )
+        except (ValueError, RuntimeError, OSError) as exc:
+            QMessageBox.warning(self, "Arduino IDE first flash", str(exc))
+            return
+        self._arduino_package_path = path
+        self.bootstrap_status.setText(
+            "✓ Arduino IDE first-flash package ready. "
+            f"Open {path / 'FirstFlash.ino'} in Arduino IDE, select ESP32 Dev Module "
+            "and upload over USB. After Wi-Fi connects, click Discover Robots."
+        )
+        self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
+        self.output_label.setText(str(path))
+        self._open_package_folder(path)
+
+    @staticmethod
+    def _open_package_folder(path: Path):
+        """Open the generated package in the platform file manager."""
+        try:
+            if hasattr(os, "startfile"):
+                os.startfile(str(path))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(path)])
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+        except OSError:
+            # Opening the folder is convenience only; the path is already shown in UI.
+            pass
+
     def flash_bootstrap(self):
         if self._bootstrap_path is None:
             return
         self.generate_bootstrap_button.setEnabled(False)
+        self.generate_arduino_button.setEnabled(False)
         self.flash_bootstrap_button.setEnabled(False)
         self.refresh_button.setEnabled(False)
         self.bootstrap_status.setText("Flashing first-boot firmware via USB...")
@@ -203,6 +248,7 @@ class RobotTab(QWidget):
     def _bootstrap_worker_finished(self):
         self.progress.setVisible(False)
         self.generate_bootstrap_button.setEnabled(True)
+        self.generate_arduino_button.setEnabled(True)
         self.refresh_button.setEnabled(True)
 
     def _on_bootstrap_finished(self, result):
