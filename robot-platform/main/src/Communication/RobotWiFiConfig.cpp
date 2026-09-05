@@ -2,6 +2,13 @@
 
 #include <Preferences.h>
 
+// Arduino IDE first-flash path: RoboStudio generates this header locally
+// inside the sketch. PlatformIO may still provide the same macros through
+// wifi_config.py. The generated header is intentionally not committed.
+#if __has_include("../../include/generated/generated_bootstrap_config.h")
+#include "../../include/generated/generated_bootstrap_config.h"
+#endif
+
 #ifndef ROBOT_WIFI_SSID
 #define ROBOT_WIFI_SSID ""
 #endif
@@ -27,7 +34,7 @@ bool g_initialized = false;
 bool g_provisioned = false;
 
 bool hasBootstrap() {
-    return strlen(ROBOT_WIFI_SSID) > 0;
+    return strlen(ROBOT_WIFI_SSID) > 0 && strlen(ROBOT_OTA_PASSWORD) > 0;
 }
 
 bool loadStored() {
