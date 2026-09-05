@@ -6,6 +6,7 @@ RoboStudio MVP - Entry Point
 import sys
 from PySide6.QtWidgets import QApplication
 from app import RoboStudioApp
+from ui.robot_tab import RobotTab
 
 
 def main():
@@ -14,6 +15,9 @@ def main():
     app.setOrganizationName("RobotDevPlatform")
 
     window = RoboStudioApp()
+    robot_tab = RobotTab(lambda: window.ui.code_editor.toPlainText(), window)
+    window.ui.main_tabs.addTab(robot_tab, "Robot")
+    window.ui.code_editor.textChanged.connect(robot_tab.refresh_code_state)
     window.show()
 
     sys.exit(app.exec())
