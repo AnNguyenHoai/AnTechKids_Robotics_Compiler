@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
-import tools.bootstrap_config as bootstrap_config
-
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import tools.bootstrap_config as bootstrap_config
 
 
 class BootstrapConfigService:
@@ -34,6 +37,27 @@ class BootstrapConfigService:
                 str(exc) or "Unable to generate bootstrap config."
             ) from exc
         return output
+
+    def generate_arduino_package(self, ssid: str, wifi_password: str,
+                                 ota_password: str,
+                                 output: Path | None = None) -> Path:
+        """Generate a local Arduino IDE sketch for the first USB flash."""
+        if not ssid.strip():
+            raise ValueError("Wi-Fi SSID is required.")
+        if not ota_password:
+            raise ValueError("OTA password is required for first-flash bootstrap.")
+        output = output or (
+            self.root / ".robostudio" / "arduino_first_flash" / "AnTechKidsFirstFlash"
+        )
+
+        from tools.arduino_first_flash import generate_package
+
+        try:
+            return generate_package(ssid, wifi_password, ota_password, output)
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(
+                str(exc) or "Unable to generate Arduino first-flash package."
+            ) from exc
 
     def validate(self, path: Path) -> bool:
         try:
