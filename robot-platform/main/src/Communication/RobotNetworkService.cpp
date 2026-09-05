@@ -14,6 +14,14 @@
 namespace {
 constexpr uint32_t kWifiRetryIntervalMs = 5000UL;
 constexpr uint32_t kWifiConnectTimeoutMs = 10000UL;
+
+// Keep the legacy compile-time contract as an empty fallback. H27-B0 supplies
+// a real credential through wifi_config.py when the bootstrap/OTA build
+// environment is used; this fallback never introduces a shared OTA password.
+#ifndef ROBOT_OTA_PASSWORD
+#define ROBOT_OTA_PASSWORD ""
+#endif
+
 WebServer g_server(80);
 bool g_networkReady = false;
 bool g_otaReady = false;
