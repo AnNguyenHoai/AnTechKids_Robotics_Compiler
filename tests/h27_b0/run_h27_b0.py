@@ -78,8 +78,11 @@ def main() -> int:
     ui = robot_tab.read_text(encoding="utf-8")
     assert "BootstrapConfigService" in ui
     assert "RobotDeploymentService" in ui
-    assert "Generate First-Flash Config" in ui
-    assert "Flash New Robot via USB (PlatformIO)" in ui
+    # H27-B0 validates the current RoboStudio first-flash controls. The UI was
+    # refined after the original contract was written, so these assertions
+    # follow the user-facing labels that are actually rendered now.
+    assert "Generate Config" in ui
+    assert "Flash via USB" in ui
     assert "_BootstrapFlashWorker" in ui
     assert "flash_first_robot" in ui
     assert "open_arduino_sketch" not in ui
