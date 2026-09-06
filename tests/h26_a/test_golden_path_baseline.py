@@ -64,7 +64,8 @@ def test_flash_pipeline_consumes_program_header_and_uploads_existing_firmware():
     flash_source = (ROOT / "tools" / "flash.py").read_text(encoding="utf-8")
     assert 'header_src = build_dir / "program.h"' in flash_source
     assert 'generated_program.h' in flash_source
-    assert '["pio", "run", "-t", "upload"' in flash_source
+    assert 'platformio_command("run", "-t", "upload", "-d", str(platform_dir))' in flash_source
+    assert "run_process(" in flash_source
 
 
 def test_h26_a_documentation_exists():
