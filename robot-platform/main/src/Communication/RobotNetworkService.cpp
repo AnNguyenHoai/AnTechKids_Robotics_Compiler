@@ -23,6 +23,13 @@ constexpr char kHttpOtaPath[] = "/api/v1/ota";
 #define ROBOT_OTA_PASSWORD ""
 #endif
 
+enum class WifiState {
+    Idle,
+    Connecting,
+    Connected,
+    RetryWait,
+};
+
 WebServer g_server(80);
 bool g_networkReady = false;
 bool g_otaReady = false;
@@ -31,8 +38,10 @@ bool g_updateInProgress = false;
 bool g_httpOtaAuthenticated = false;
 bool g_httpOtaStarted = false;
 bool g_httpOtaCompleted = false;
-uint32_t g_lastWifiAttemptMs = 0;
 bool g_handlersRegistered = false;
+WifiState g_wifiState = WifiState::Idle;
+uint32_t g_wifiStateSinceMs = 0;
+uint32_t g_lastWifiAttemptMs = 0;
 
 void sendHealth() {
     const bool aggregateReady = g_robotReady && g_networkReady;
@@ -166,35 +175,40 @@ void registerHttpHandlers() {
     g_handlersRegistered = true;
 }
 
-bool connectWiFi() {
-    g_lastWifiAttemptMs = millis();
+bool startWifiConnection() {
     if (!RobotWiFiConfig::isConfigured()) {
         g_networkReady = false;
         g_otaReady = false;
+        g_wifiState = WifiState::Idle;
         BootLogger::log("NET", "Wi-Fi not configured; OTA disabled");
         return false;
     }
 
+    // Always terminate the previous STA attempt before starting another one.
+    // This prevents ESP32 from receiving a new config while STA is still
+    // connecting ("sta is connecting, cannot set config").
+    WiFi.disconnect(false, false);
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(RobotIdentity::hostname());
     WiFi.begin(RobotWiFiConfig::ssid(), RobotWiFiConfig::password());
 
-    const uint32_t deadline = millis() + kWifiConnectTimeoutMs;
-    while (WiFi.status() != WL_CONNECTED && millis() < deadline) {
-        delay(250);
-    }
+    g_networkReady = false;
+    g_otaReady = false;
+    g_wifiState = WifiState::Connecting;
+    g_wifiStateSinceMs = millis();
+    g_lastWifiAttemptMs = g_wifiStateSinceMs;
+    BootLogger::log("NET", "Wi-Fi connection attempt started");
+    return true;
+}
 
-    if (WiFi.status() != WL_CONNECTED) {
-        g_networkReady = false;
-        g_otaReady = false;
-        BootLogger::log("NET", "Wi-Fi connection failed; will retry");
-        return false;
-    }
-
+void onWifiConnected() {
+    g_wifiState = WifiState::Connected;
     g_networkReady = true;
     BootLogger::logFormat("NET", "Wi-Fi connected: %s", WiFi.localIP().toString().c_str());
 
+    MDNS.end();
     MDNS.begin(RobotIdentity::hostname());
+
     ArduinoOTA.setHostname(RobotIdentity::hostname());
     if (strlen(RobotWiFiConfig::otaPassword()) != 0) {
         ArduinoOTA.setPassword(RobotWiFiConfig::otaPassword());
@@ -214,28 +228,52 @@ bool connectWiFi() {
     } else {
         BootLogger::logFormat("NET", "Discovery ready on UDP %u", 4210U);
     }
-    return true;
 }
 
-void handleNetworkRecovery() {
-    if (WiFi.status() == WL_CONNECTED) {
-        if (!g_networkReady) {
-            connectWiFi();
+void handleWifiState() {
+    const wl_status_t status = WiFi.status();
+
+    if (g_wifiState == WifiState::Connecting) {
+        if (status == WL_CONNECTED) {
+            onWifiConnected();
+            return;
+        }
+
+        if (millis() - g_wifiStateSinceMs >= kWifiConnectTimeoutMs) {
+            WiFi.disconnect(false, false);
+            g_networkReady = false;
+            g_otaReady = false;
+            g_wifiState = WifiState::RetryWait;
+            g_wifiStateSinceMs = millis();
+            BootLogger::log("NET", "Wi-Fi connection failed; will retry");
         }
         return;
     }
 
-    if (g_networkReady) {
-        g_networkReady = false;
-        g_otaReady = false;
-        RobotDiscoveryService::begin();
-        BootLogger::log("NET", "Wi-Fi disconnected; network services unavailable");
+    if (g_wifiState == WifiState::RetryWait) {
+        if (status == WL_CONNECTED) {
+            onWifiConnected();
+            return;
+        }
+
+        if (millis() - g_wifiStateSinceMs >= kWifiRetryIntervalMs) {
+            startWifiConnection();
+        }
+        return;
     }
 
-    if (millis() - g_lastWifiAttemptMs >= kWifiRetryIntervalMs) {
-        connectWiFi();
+    if (g_wifiState == WifiState::Connected) {
+        if (status != WL_CONNECTED) {
+            g_networkReady = false;
+            g_otaReady = false;
+            RobotDiscoveryService::begin();
+            g_wifiState = WifiState::RetryWait;
+            g_wifiStateSinceMs = millis();
+            BootLogger::log("NET", "Wi-Fi disconnected; network services unavailable");
+        }
     }
 }
+
 }
 
 namespace RobotNetworkService {
@@ -248,16 +286,18 @@ void begin(bool robotReady) {
     g_httpOtaAuthenticated = false;
     g_httpOtaStarted = false;
     g_httpOtaCompleted = false;
-    g_lastWifiAttemptMs = millis();
+    g_wifiState = WifiState::Idle;
+    g_wifiStateSinceMs = millis();
+    g_lastWifiAttemptMs = 0;
 
     if (!RobotWiFiConfig::begin()) {
         BootLogger::log("NET", "No Wi-Fi configuration available");
     }
-    connectWiFi();
+    startWifiConnection();
 }
 
 void update() {
-    handleNetworkRecovery();
+    handleWifiState();
     if (!g_networkReady) {
         return;
     }
