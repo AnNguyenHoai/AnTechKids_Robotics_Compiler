@@ -3,21 +3,26 @@
 The UI delegates the canonical compile/build/USB/OTA pipeline to
 ``tools/deploy_robot.py``. First-flash bootstrap is deliberately a separate
 operation because it provisions a new robot before normal LAN discovery.
+
+Deployment subprocesses are streamed through Qt-safe callbacks so the UI can
+show live PlatformIO output instead of appearing frozen during a build/upload.
 """
 from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from services.robot_discovery_service import RobotDiscoveryClient, RobotInfo
+from tools.deployment_runtime import DeploymentRuntimeError, run_process
 
 ROOT = Path(__file__).resolve().parents[2]
+DeploymentOutputCallback = Callable[[str], None]
 
 
 @dataclass(frozen=True)
@@ -48,15 +53,18 @@ class RobotDeploymentService:
             "--ota-password", ota_password,
             "--output", str(output),
         ]
-        completed = subprocess.run(
-            command, cwd=self.root, capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
-        )
+        try:
+            completed = run_process(command, cwd=self.root, timeout=300.0)
+        except DeploymentRuntimeError as exc:
+            raise RuntimeError(str(exc)) from exc
         if completed.returncode != 0:
-            raise RuntimeError((completed.stdout or completed.stderr).strip() or "Unable to generate bootstrap config.")
+            raise RuntimeError(
+                completed.output.strip() or "Unable to generate bootstrap config."
+            )
         return output
 
-    def flash_first_robot(self, config_path: Path, usb_port: str = "") -> DeploymentResult:
+    def flash_first_robot(self, config_path: Path, usb_port: str = "",
+                          on_output: DeploymentOutputCallback | None = None) -> DeploymentResult:
         """Build and USB-flash a first-boot firmware containing bootstrap data."""
         config_path = config_path.resolve()
         if not config_path.is_file():
@@ -81,14 +89,17 @@ class RobotDeploymentService:
             command.extend(["--port", usb_port.strip()])
 
         try:
-            completed = subprocess.run(
-                command, cwd=self.root, capture_output=True,
-                text=True, encoding="utf-8", errors="replace",
+            completed = run_process(
+                command,
+                cwd=self.root,
+                env=os.environ.copy(),
+                timeout=360.0,
+                on_output=on_output,
             )
-        except OSError as exc:
-            return DeploymentResult(False, "", f"Unable to start first-flash: {exc}")
+        except DeploymentRuntimeError as exc:
+            return DeploymentResult(False, "", str(exc))
 
-        output = (completed.stdout or "") + (("\n" + completed.stderr) if completed.stderr else "")
+        output = completed.output
         if completed.returncode != 0:
             return DeploymentResult(False, output, "First-flash failed.")
 
@@ -108,7 +119,8 @@ class RobotDeploymentService:
         return DeploymentResult(True, output, "First-flash completed; robot discovery timed out.")
 
     def deploy_ota(self, code: str, robot: RobotInfo, wifi_ssid: str,
-                   wifi_password: str, ota_password: str) -> DeploymentResult:
+                   wifi_password: str, ota_password: str,
+                   on_output: DeploymentOutputCallback | None = None) -> DeploymentResult:
         """Compile, build, OTA-upload and verify the selected robot."""
         if not robot.ota:
             return DeploymentResult(False, "", "Selected robot does not advertise OTA support.")
@@ -139,11 +151,18 @@ class RobotDeploymentService:
                 "--robot", robot.ip,
                 "--ssid", wifi_ssid.strip(),
             ]
-            completed = subprocess.run(
-                command, cwd=self.root, env=env, capture_output=True,
-                text=True, encoding="utf-8", errors="replace",
-            )
-            output = (completed.stdout or "") + (("\n" + completed.stderr) if completed.stderr else "")
+            try:
+                completed = run_process(
+                    command,
+                    cwd=self.root,
+                    env=env,
+                    timeout=360.0,
+                    on_output=on_output,
+                )
+            except DeploymentRuntimeError as exc:
+                return DeploymentResult(False, "", str(exc))
+
+            output = completed.output
             if completed.returncode != 0:
                 return DeploymentResult(False, output, "OTA deployment failed.")
 

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from services.bootstrap_config_service import BootstrapConfigService
-from services.robot_deployment_service import RobotDeploymentService, RobotInfo
+from services.robot_deployment_service import RobotDeploymentService, DeploymentResult, RobotInfo
 from services.robot_discovery_service import RobotDiscoveryClient
 from ui.serial_console import SerialConsoleWidget
 
@@ -29,6 +29,7 @@ class _DiscoveryWorker(QThread):
 
 class _BootstrapFlashWorker(QThread):
     completed = Signal(object)
+    output = Signal(str)
 
     def __init__(self, config_path, usb_port):
         super().__init__()
@@ -36,21 +37,29 @@ class _BootstrapFlashWorker(QThread):
         self.usb_port = usb_port
 
     def run(self):
-        result = RobotDeploymentService().flash_first_robot(
-            Path(self.config_path), self.usb_port
-        )
+        try:
+            result = RobotDeploymentService().flash_first_robot(
+                Path(self.config_path), self.usb_port, self.output.emit
+            )
+        except Exception as exc:
+            result = DeploymentResult(False, "", f"First-flash runtime error: {exc}")
         self.completed.emit(result)
 
 
 class _DeploymentWorker(QThread):
     completed = Signal(object)
+    output = Signal(str)
 
     def __init__(self, code, robot, ssid, wifi_password, ota_password):
         super().__init__()
         self.args = (code, robot, ssid, wifi_password, ota_password)
 
     def run(self):
-        self.completed.emit(RobotDeploymentService().deploy_ota(*self.args))
+        try:
+            result = RobotDeploymentService().deploy_ota(*self.args, on_output=self.output.emit)
+        except Exception as exc:
+            result = DeploymentResult(False, "", f"Deployment runtime error: {exc}")
+        self.completed.emit(result)
 
 
 class RobotTab(QWidget):
@@ -282,10 +291,11 @@ class RobotTab(QWidget):
             "PlatformIO is building the bootstrap firmware and uploading it over USB. "
             "Keep the robot connected until the upload completes."
         )
-        self.set_logs("PlatformIO first-flash in progress...")
+        self.set_logs("PlatformIO first-flash in progress...\n")
         self._bootstrap_flash_worker = _BootstrapFlashWorker(
             self._bootstrap_path, self.usb_port_edit.text().strip()
         )
+        self._bootstrap_flash_worker.output.connect(self.append_logs)
         self._bootstrap_flash_worker.completed.connect(self._on_bootstrap_flash_finished)
         self._bootstrap_flash_worker.finished.connect(self._bootstrap_flash_finished)
         self._bootstrap_flash_worker.start()
@@ -410,10 +420,11 @@ class RobotTab(QWidget):
         self.progress.setVisible(True)
         self.result_label.setText(f"Deploying to {robot.display_label}...")
         self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
-        self.set_logs("Compiling, building and uploading. Please wait...")
+        self.set_logs("Compiling, building and uploading. Please wait...\n")
         self._deployment_worker = _DeploymentWorker(
             code, robot, ssid, wifi_password, ota_password
         )
+        self._deployment_worker.output.connect(self.append_logs)
         self._deployment_worker.completed.connect(self._on_deploy_finished)
         self._deployment_worker.finished.connect(self._deployment_finished)
         self._deployment_worker.start()
@@ -436,9 +447,22 @@ class RobotTab(QWidget):
         self._refresh_deploy_enabled()
 
     def set_logs(self, text: str):
-        """Replace the deployment log and keep the latest output visible."""
+        """Replace deployment logs and move the viewer to the newest output."""
         self.output_label.setPlainText(text or "")
         self.output_label.verticalScrollBar().setValue(self.output_label.verticalScrollBar().maximum())
+
+    def append_logs(self, text: str):
+        """Append live deployment output without stealing the user's scroll position."""
+        if not text:
+            return
+        scrollbar = self.output_label.verticalScrollBar()
+        at_bottom = scrollbar.value() >= scrollbar.maximum() - 2
+        cursor = self.output_label.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self.output_label.setTextCursor(cursor)
+        self.output_label.insertPlainText(text)
+        if at_bottom:
+            scrollbar.setValue(scrollbar.maximum())
 
     def clear_logs(self):
         self.output_label.clear()
