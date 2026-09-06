@@ -1,6 +1,7 @@
 #include "RobotNetworkService.h"
 
 #include <ArduinoOTA.h>
+#include <Update.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -10,14 +11,14 @@
 #include "RobotDiscoveryService.h"
 #include "RobotWiFiConfig.h"
 #include "../Logger/BootLogger.h"
+#include "../Services/Robot/RobotAPI.h"
 
 namespace {
 constexpr uint32_t kWifiRetryIntervalMs = 5000UL;
 constexpr uint32_t kWifiConnectTimeoutMs = 10000UL;
+constexpr char kHttpOtaUser[] = "robot";
+constexpr char kHttpOtaPath[] = "/api/v1/ota";
 
-// Keep the legacy compile-time contract as an empty fallback. H27-B0 supplies
-// a real credential through wifi_config.py when the bootstrap/OTA build
-// environment is used; this fallback never introduces a shared OTA password.
 #ifndef ROBOT_OTA_PASSWORD
 #define ROBOT_OTA_PASSWORD ""
 #endif
@@ -27,6 +28,9 @@ bool g_networkReady = false;
 bool g_otaReady = false;
 bool g_robotReady = false;
 bool g_updateInProgress = false;
+bool g_httpOtaAuthenticated = false;
+bool g_httpOtaStarted = false;
+bool g_httpOtaCompleted = false;
 uint32_t g_lastWifiAttemptMs = 0;
 bool g_handlersRegistered = false;
 
@@ -36,6 +40,7 @@ void sendHealth() {
                   ",\"robot_ready\":" + String(g_robotReady ? "true" : "false") +
                   ",\"network_ready\":" + String(g_networkReady ? "true" : "false") +
                   ",\"ota\":" + String(g_otaReady ? "true" : "false") +
+                  ",\"http_ota\":true\n" +
                   ",\"hostname\":\"" + String(RobotIdentity::hostname()) +
                   "\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
     g_server.send(200, "application/json", body);
@@ -48,35 +53,113 @@ void sendInfo() {
 void onOtaStart() {
     RobotNetworkService::setUpdateInProgress(true);
     g_otaReady = false;
-    BootLogger::log("OTA", "Firmware update started");
+    BootLogger::log("OTA", "ArduinoOTA firmware update started");
 }
 
 void onOtaEnd() {
     RobotNetworkService::setUpdateInProgress(false);
-    BootLogger::log("OTA", "Firmware update complete; rebooting");
+    BootLogger::log("OTA", "ArduinoOTA firmware update complete; rebooting");
 }
 
 void onOtaProgress(unsigned int progress, unsigned int total) {
     static unsigned int last = 0;
-    unsigned int percent = total == 0 ? 0 : (progress * 100U) / total;
+    const unsigned int percent = total == 0 ? 0 : (progress * 100U) / total;
     if (percent >= last + 10U || percent == 100U) {
         last = percent;
-        BootLogger::logFormat("OTA", "Progress %u%%", percent);
+        BootLogger::logFormat("OTA", "ArduinoOTA progress %u%%", percent);
     }
 }
 
 void onOtaError(ota_error_t error) {
     RobotNetworkService::setUpdateInProgress(false);
     g_otaReady = strlen(RobotWiFiConfig::otaPassword()) != 0;
-    BootLogger::logFormat("OTA", "Error %u", static_cast<unsigned int>(error));
+    BootLogger::logFormat("OTA", "ArduinoOTA error %u", static_cast<unsigned int>(error));
+}
+
+void handleHttpOtaUpload() {
+    HTTPUpload& upload = g_server.upload();
+
+    if (upload.status == UPLOAD_FILE_START) {
+        g_httpOtaAuthenticated = g_server.authenticate(kHttpOtaUser, RobotWiFiConfig::otaPassword());
+        g_httpOtaStarted = false;
+        g_httpOtaCompleted = false;
+
+        if (!g_httpOtaAuthenticated) {
+            BootLogger::log("OTA", "HTTP OTA authentication failed");
+            return;
+        }
+
+        g_updateInProgress = true;
+        RobotAPI::Stop();
+        BootLogger::logFormat("OTA", "HTTP OTA started: %s", upload.filename.c_str());
+
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+            Update.printError(Serial);
+            g_httpOtaAuthenticated = false;
+            g_updateInProgress = false;
+            return;
+        }
+        g_httpOtaStarted = true;
+        return;
+    }
+
+    if (!g_httpOtaAuthenticated || !g_httpOtaStarted) {
+        return;
+    }
+
+    if (upload.status == UPLOAD_FILE_WRITE) {
+        const size_t written = Update.write(upload.buf, upload.currentSize);
+        if (written != upload.currentSize) {
+            Update.printError(Serial);
+            g_httpOtaStarted = false;
+            g_updateInProgress = false;
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (Update.end(true)) {
+            g_httpOtaCompleted = true;
+            BootLogger::logFormat("OTA", "HTTP OTA upload complete: %lu bytes", static_cast<unsigned long>(upload.totalSize));
+        } else {
+            Update.printError(Serial);
+            g_httpOtaStarted = false;
+            g_updateInProgress = false;
+        }
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        Update.end(false);
+        g_httpOtaStarted = false;
+        g_updateInProgress = false;
+        BootLogger::log("OTA", "HTTP OTA upload aborted");
+    }
+}
+
+void handleHttpOtaFinish() {
+    if (!g_httpOtaAuthenticated) {
+        g_server.requestAuthentication(BASIC_AUTH, "Robot OTA");
+        return;
+    }
+
+    g_server.sendHeader("Connection", "close");
+    if (!g_httpOtaStarted || !g_httpOtaCompleted || Update.hasError()) {
+        g_updateInProgress = false;
+        g_server.send(500, "text/plain", Update.hasError() ? Update.errorString() : "OTA upload failed");
+        g_httpOtaAuthenticated = false;
+        return;
+    }
+
+    g_server.send(200, "text/plain", "OK - firmware received, rebooting");
+    g_httpOtaAuthenticated = false;
+    g_updateInProgress = false;
+    delay(250);
+    ESP.restart();
 }
 
 void registerHttpHandlers() {
     if (g_handlersRegistered) {
         return;
     }
+
     g_server.on("/api/v1/health", HTTP_GET, sendHealth);
     g_server.on("/api/v1/info", HTTP_GET, sendInfo);
+    g_server.on(kHttpOtaPath, HTTP_POST, handleHttpOtaFinish, handleHttpOtaUpload);
     g_server.onNotFound([]() {
         g_server.send(404, "application/json", "{\"error\":\"not_found\"}");
     });
@@ -162,6 +245,9 @@ void begin(bool robotReady) {
     g_otaReady = false;
     g_robotReady = robotReady;
     g_updateInProgress = false;
+    g_httpOtaAuthenticated = false;
+    g_httpOtaStarted = false;
+    g_httpOtaCompleted = false;
     g_lastWifiAttemptMs = millis();
 
     if (!RobotWiFiConfig::begin()) {

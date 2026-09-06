@@ -40,40 +40,31 @@
 // ============================================================
 //#define DIAGNOSTIC_MANUAL_START   // <--- BẬT MACRO
 
-// VM
 VM vm;
 Program program;
 const int STABILITY_ITERATIONS = 1;
 int executionCounter = 0;
 
-// Behavior Engine
 BehaviorScheduler scheduler;
 bool useBehaviorEngine = false;
 
-// Heading Estimator (global instance)
 HeadingEstimator g_headingEstimator;
-
-// === Robot Ready State ===
 bool g_robotReady = false;
-
-// === Diagnostic manual-start control (always defined) ===
 bool g_manualStartEnabled = false;
 bool g_vmStarted = true;
+
 void setup() {
     Serial.begin(115200);
     while (!Serial) { }
 
     BootLogger::log("BOOT", "Power On");
 
-    // 1. Hardware Initialization
     RobotAPI::Initialize();
     BootLogger::log("BOOT", "Hardware Ready");
 
-    // 2. Diagnostics
     Diagnostic::runAll();
     BootLogger::log("BOOT", "Diagnostics Complete");
 
-    // 3. Load Program for VM
     if (!ProgramLoader::LoadFromGenerated(program)) {
         BootLogger::log("ERROR", "Failed to load program. Halted.");
         while (1) { }
@@ -83,7 +74,6 @@ void setup() {
     vm.LoadProgram(&program);
 
 #ifdef DIAGNOSTIC_MANUAL_START
-    // In manual-start mode, VM is loaded but not running
     g_manualStartEnabled = true;
     g_vmStarted = false;
     vm.SetRunning(false);
@@ -92,7 +82,6 @@ void setup() {
     BootLogger::log("BOOT", "VM Ready");
 #endif
 
-    // 4. Serial Command Handler
     SerialCommandHandler::setup();
     BootLogger::log("BOOT", "Serial Handler Ready");
 
@@ -100,7 +89,6 @@ void setup() {
     DevelopmentConsole::instance().setEnabled(false);
     BootLogger::log("BOOT", "Development Console ready (disabled by default)");
 
-    // 5. Initialize Behavior Scheduler with default behaviors
     scheduler.addBehavior(new MoveForwardBehavior(50, 2000));
     scheduler.addBehavior(new TouchStopBehavior(0, 50));
     scheduler.addBehavior(new WaitBehavior(1000));
@@ -112,12 +100,10 @@ void setup() {
     scheduler.addBehavior(new ColorDetectBehavior(0, 50));
     BootLogger::log("BOOT", "Behavior Scheduler initialized with 9 behaviors");
 
-    // 6. Heading / IMU startup
 #if ROBOT_FEATURE_IMU
     g_headingEstimator.reset();
-    BootLogger::log("BOOT", "Heading Estimator reset");
+    BootLogger::log("IMU", "Heading Estimator reset");
 
-    // 7. AUTOMATIC IMU CALIBRATION (blocking)
     BootLogger::log("IMU", "Starting automatic gyro calibration...");
     BootLogger::log("IMU", "Keep robot completely still!");
     RobotAPI::Stop();
@@ -159,8 +145,6 @@ void setup() {
     BootLogger::log("Robot", "READY (no IMU / no heading hold)");
 #endif
 
-    // 8. Network / OTA service. Wi-Fi is optional; when configured it exposes
-    // mDNS + ArduinoOTA and a small health/info HTTP endpoint.
     RobotNetworkService::begin(g_robotReady);
     if (RobotNetworkService::isReady()) {
         BootLogger::logFormat("BOOT", "Network Ready: %s.local", RobotNetworkService::hostname());
@@ -175,6 +159,16 @@ void loop() {
 
     SerialCommandHandler::handle();
     RobotNetworkService::update();
+
+    // During OTA, do not execute student code or drive motors. The network
+    // service owns the firmware update transaction and the robot reboots when
+    // the new image has been committed successfully.
+    if (RobotNetworkService::isUpdateInProgress()) {
+        RobotAPI::Stop();
+        DiagnosticsManager::instance().recordLoopTime(micros() - start);
+        delay(1);
+        return;
+    }
 
     SensorManager::instance().updateAll();
     DiagnosticsManager::instance().updateSensors();
