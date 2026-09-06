@@ -2,7 +2,11 @@
 """One-click student program deployment pipeline.
 
 Flow: RoboSim source -> rewrite -> compile -> manifest validation -> firmware
-build -> USB or ESP32 OTA upload -> optional health check.
+build -> USB or HTTP OTA upload -> health check.
+
+The firmware keeps ArduinoOTA for compatibility/recovery, while RoboStudio uses
+an HTTP OTA endpoint so deployment does not depend on espota's UDP invitation
+and host-side listener. This is more reliable on classroom Windows networks.
 
 The ``bootstrap`` mode is the first-flash path: a RoboStudio-generated local
 artifact is consumed by PlatformIO and stored by the firmware in ESP32 NVS.
@@ -11,12 +15,15 @@ Bootstrap artifacts and credentials are never written into the repository.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -100,21 +107,96 @@ def validate_bootstrap_config(path: Path) -> dict:
 
 def flash_bootstrap(config_path: Path, port: str | None) -> int:
     config = validate_bootstrap_config(config_path.resolve())
-    # Keep credentials out of the command line; PlatformIO reads the artifact
-    # through ROBOT_BOOTSTRAP_CONFIG and injects it only into the local build.
     env = os.environ.copy()
     env["ROBOT_BOOTSTRAP_CONFIG"] = str(config_path.resolve())
     env["ROBOT_WIFI_SSID"] = str(config["wifi"]["ssid"])
     env["ROBOT_WIFI_PASSWORD"] = str(config["wifi"].get("password", ""))
     env["ROBOT_OTA_PASSWORD"] = str(config["ota"]["password"])
 
-    command = ["pio", "run", "-e", "esp32dev_bootstrap", "-t", "upload"]
+    command = [sys.executable, "-m", "platformio", "run", "-e", "esp32dev_bootstrap", "-t", "upload"]
     if port:
         command.extend(["--upload-port", port])
     run(command, env=env)
     print("FIRST-FLASH BOOTSTRAP PASS")
     print("Wi-Fi bootstrap data embedded for NVS provisioning on first boot.")
     return 0
+
+
+def http_ota_upload(host: str, password: str, firmware: Path, timeout: float = 180.0) -> str:
+    """Upload firmware using the robot's HTTP OTA endpoint.
+
+    A multipart/form-data request is sent directly to the robot. Unlike
+    espota, this path does not require the robot to open a reverse TCP
+    connection to a random port on the developer PC.
+    """
+    if not password:
+        raise RuntimeError("HTTP OTA requires the robot OTA password")
+    if not firmware.is_file():
+        raise RuntimeError(f"Firmware image not found: {firmware}")
+
+    boundary = "----AnTechKidsRoboStudioOTA" + f"{int(time.time() * 1000):x}"
+    filename = firmware.name
+    preamble = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="firmware"; filename="{filename}"\r\n'
+        "Content-Type: application/octet-stream\r\n"
+        "\r\n"
+    ).encode("ascii")
+    closing = f"\r\n--{boundary}--\r\n".encode("ascii")
+    total_length = len(preamble) + firmware.stat().st_size + len(closing)
+    auth = base64.b64encode(f"robot:{password}".encode("utf-8")).decode("ascii")
+
+    url = f"http://{host}/api/v1/ota"
+    request = urllib.request.Request(url, method="POST")
+    request.add_header("Authorization", f"Basic {auth}")
+    request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+    request.add_header("Content-Length", str(total_length))
+    request.add_header("Connection", "close")
+
+    print(f"HTTP OTA target: {host}:80")
+    print(f"HTTP OTA image: {firmware} ({firmware.stat().st_size} bytes)")
+
+    # urllib's standard Request API buffers a bytes body. To keep the
+    # deployment memory footprint bounded, use a low-level HTTP connection
+    # and stream the firmware in chunks.
+    from http.client import HTTPConnection
+
+    connection = HTTPConnection(host, 80, timeout=timeout)
+    started = time.monotonic()
+    try:
+        connection.connect()
+        connection.putrequest("POST", "/api/v1/ota")
+        connection.putheader("Authorization", f"Basic {auth}")
+        connection.putheader("Content-Type", f"multipart/form-data; boundary={boundary}")
+        connection.putheader("Content-Length", str(total_length))
+        connection.putheader("Connection", "close")
+        connection.endheaders()
+        connection.send(preamble)
+
+        sent = 0
+        with firmware.open("rb") as stream:
+            while True:
+                chunk = stream.read(8192)
+                if not chunk:
+                    break
+                connection.send(chunk)
+                sent += len(chunk)
+                if sent == firmware.stat().st_size or sent % (256 * 1024) < len(chunk):
+                    print(f"HTTP OTA upload: {sent}/{firmware.stat().st_size} bytes")
+        connection.send(closing)
+
+        response = connection.getresponse()
+        response_body = response.read().decode("utf-8", errors="replace").strip()
+        if response.status != 200 or not response_body.startswith("OK"):
+            raise RuntimeError(f"Robot rejected HTTP OTA ({response.status}): {response_body}")
+
+        elapsed = time.monotonic() - started
+        print(f"HTTP OTA accepted by robot in {elapsed:.1f}s")
+        return response_body
+    except (OSError, socket.error) as exc:
+        raise RuntimeError(f"HTTP OTA transport failed for {host}: {exc}") from exc
+    finally:
+        connection.close()
 
 
 def main() -> int:
@@ -125,7 +207,7 @@ def main() -> int:
     parser.add_argument("--robot", help="Robot hostname/IP for --mode ota, e.g. robot-A1B2C3.local")
     parser.add_argument("--ssid", help="Wi-Fi SSID used to build the robot firmware")
     parser.add_argument("--wifi-password", default=None, help="Wi-Fi password; prefer ROBOT_WIFI_PASSWORD")
-    parser.add_argument("--ota-password", default=None, help="ArduinoOTA password; prefer ROBOT_OTA_PASSWORD")
+    parser.add_argument("--ota-password", default=None, help="ArduinoOTA/HTTP OTA password; prefer ROBOT_OTA_PASSWORD")
     parser.add_argument("--bootstrap-config", help="RoboStudio-generated first-flash bootstrap JSON")
     args = parser.parse_args()
 
@@ -184,15 +266,19 @@ def main() -> int:
         env["ROBOT_OTA_PASSWORD"] = ota_password
 
     if args.mode == "build":
-        run(["pio", "run", "-e", "esp32dev"], env=env)
+        run([sys.executable, "-m", "platformio", "run", "-e", "esp32dev"], env=env)
     elif args.mode == "usb":
-        command = ["pio", "run", "-e", "esp32dev", "-t", "upload"]
+        command = [sys.executable, "-m", "platformio", "run", "-e", "esp32dev", "-t", "upload"]
         if args.port:
             command.extend(["--upload-port", args.port])
         run(command, env=env)
     else:
-        env["ROBOT_OTA_HOST"] = args.robot
-        run(["pio", "run", "-e", "esp32dev_ota", "-t", "upload"], env=env)
+        # Build with the OTA environment so the same Wi-Fi/OTA credentials
+        # are injected into the firmware, then use HTTP OTA as the canonical
+        # RoboStudio transport. ArduinoOTA remains available for recovery.
+        run([sys.executable, "-m", "platformio", "run", "-e", "esp32dev_ota"], env=env)
+        firmware = PLATFORM / ".pio" / "build" / "esp32dev_ota" / "firmware.bin"
+        http_ota_upload(args.robot, ota_password, firmware)
         health = wait_for_robot(args.robot)
         print(f"Robot READY: {health.get('hostname')} @ {health.get('ip')}")
 
