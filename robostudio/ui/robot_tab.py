@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from services.bootstrap_config_service import BootstrapConfigService
 from services.robot_deployment_service import RobotDeploymentService, RobotInfo
 from services.robot_discovery_service import RobotDiscoveryClient
+from ui.serial_console import SerialConsoleWidget
 
 
 class _DiscoveryWorker(QThread):
@@ -131,6 +132,12 @@ class RobotTab(QWidget):
         self.robot_details.setStyleSheet("color: #666666;")
         discovery_layout.addWidget(self.robot_details)
         layout.addWidget(discovery_group)
+
+        serial_group = QGroupBox("USB Serial Console")
+        serial_layout = QVBoxLayout(serial_group)
+        self.serial_console = SerialConsoleWidget(serial_group)
+        serial_layout.addWidget(self.serial_console)
+        layout.addWidget(serial_group)
 
         connection_group = QGroupBox("2. Wi-Fi / OTA")
         form = QFormLayout(connection_group)
