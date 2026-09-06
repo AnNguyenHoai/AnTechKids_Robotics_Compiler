@@ -21,9 +21,9 @@ def main() -> int:
     network_cpp = ROOT / "robot-platform" / "main" / "src" / "Communication" / "RobotNetworkService.cpp"
     deploy = ROOT / "tools" / "deploy_robot.py"
     robot_tab = ROOT / "robostudio" / "ui" / "robot_tab.py"
-    arduino_docs = ROOT / "docs" / "FIRST_FLASH_ARDUINO.md"
+    docs = ROOT / "docs" / "FIRST_FLASH_ARDUINO.md"
 
-    for path in (generator, config_service, wifi_script, platformio, wifi_header, wifi_cpp, network_cpp, deploy, robot_tab, arduino_docs):
+    for path in (generator, config_service, wifi_script, platformio, wifi_header, wifi_cpp, network_cpp, deploy, robot_tab, docs):
         assert path.is_file(), f"missing H27-B0 file: {path}"
 
     generated = generator.read_text(encoding="utf-8")
@@ -37,16 +37,19 @@ def main() -> int:
     assert "tools.bootstrap_config" in service
     assert ".robostudio" in service
     assert "arduino_bootstrap_header" in service
-    assert "open_arduino_sketch" in service
+    assert "open_arduino_sketch" in service  # compatibility helper; not used by RoboStudio deployment
 
     pio = platformio.read_text(encoding="utf-8")
     assert "[env:esp32dev_bootstrap]" in pio
     assert "extends = env:esp32dev" in pio
+    assert "src_dir = main" in pio
+    assert "build_src_filter = +<*>" in pio
 
     wifi = wifi_script.read_text(encoding="utf-8")
     assert "ROBOT_BOOTSTRAP_CONFIG" in wifi
     assert "antechkids.robot.bootstrap" in wifi
     assert "ROBOT_BOOTSTRAP_PROVISIONED" in wifi
+    assert 'env.get("PIOENV") == "esp32dev_bootstrap"' in wifi
 
     header = wifi_header.read_text(encoding="utf-8")
     cpp = wifi_cpp.read_text(encoding="utf-8")
@@ -67,17 +70,23 @@ def main() -> int:
     assert '"bootstrap"' in deploy_text
     assert "--bootstrap-config" in deploy_text
     assert "esp32dev_bootstrap" in deploy_text
+    assert "python -m platformio" in deploy_text
 
     ui = robot_tab.read_text(encoding="utf-8")
     assert "BootstrapConfigService" in ui
+    assert "RobotDeploymentService" in ui
     assert "Generate First-Flash Config" in ui
-    assert "Flash New Robot via USB (Arduino IDE)" in ui
-    assert "arduino_header_path" in ui
+    assert "Flash New Robot via USB (PlatformIO)" in ui
+    assert "_BootstrapFlashWorker" in ui
+    assert "flash_first_robot" in ui
+    assert "open_arduino_sketch" not in ui
 
-    docs = arduino_docs.read_text(encoding="utf-8")
-    assert "Arduino IDE" in docs
-    assert "generated_bootstrap_config.h" in docs
-    assert "main.ino" in docs
+    docs_text = docs.read_text(encoding="utf-8")
+    assert "First Flash with PlatformIO" in docs_text
+    assert "PlatformIO" in docs_text
+    assert "python -m platformio" in docs_text
+    assert "esp32dev_bootstrap" in docs_text
+    assert "Arduino IDE interaction is not required" in docs_text
 
     with tempfile.TemporaryDirectory() as tmp:
         output = Path(tmp) / "robot_bootstrap.json"
@@ -85,7 +94,7 @@ def main() -> int:
         import subprocess
         result = subprocess.run(
             [
-                "python", str(generator), "generate",
+                sys.executable, str(generator), "generate",
                 "--ssid", "Classroom-WiFi",
                 "--password", "secret",
                 "--ota-password", "ota-secret",
@@ -106,7 +115,7 @@ def main() -> int:
         assert '#define ROBOT_OTA_PASSWORD "ota-secret"' in generated_header
         assert "ROBOT_BOOTSTRAP_PROVISIONED 1" in generated_header
 
-    print("H27-B0 PASS: first-flash Wi-Fi bootstrap + Arduino IDE path")
+    print("H27-B0 PASS: first-flash Wi-Fi bootstrap + PlatformIO canonical path")
     return 0
 
 
