@@ -22,7 +22,7 @@ class TestContractDrift(unittest.TestCase):
     def test_current_baseline_has_no_unexpected_drift(self):
         findings, baseline = checker.run()
         errors = [item for item in findings if item.severity == "ERROR"]
-        self.assertEqual(baseline["baseline_commit"], "a8225414322d57e5bb9445013d8610af29ea8fdc")
+        self.assertEqual(baseline["baseline_commit"], "93fa908ebba21cfe76c384627b951af7e9f41072")
         self.assertEqual(errors, [], msg="; ".join(item.message for item in errors))
 
     def test_registry_is_backed_by_generated_opcode_contract(self):

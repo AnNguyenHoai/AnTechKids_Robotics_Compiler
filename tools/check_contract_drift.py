@@ -97,7 +97,7 @@ def check_flash_boundary(findings: list[Finding]) -> None:
     required_tokens = [
         'build_dir / "program.h"',
         '"generated_program.h"',
-        '"pio", "run", "-t", "upload"',
+        'platformio_command("run", "-t", "upload"',
     ]
     missing = [token for token in required_tokens if token not in text]
     if missing:
