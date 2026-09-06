@@ -39,17 +39,14 @@ class SerialConsoleWidget(QWidget):
         self.port_combo = QComboBox()
         self.port_combo.setMinimumWidth(160)
         connection_row.addWidget(self.port_combo)
-
         self.refresh_button = QPushButton("Refresh")
         self.refresh_button.clicked.connect(self.refresh_ports)
         connection_row.addWidget(self.refresh_button)
-
         self.baud_combo = QComboBox()
         for baud in (9600, 19200, 38400, 57600, 115200):
             self.baud_combo.addItem(str(baud), baud)
         self.baud_combo.setCurrentText(str(DEFAULT_BAUD_RATE))
         connection_row.addWidget(self.baud_combo)
-
         self.connect_button = QPushButton("Connect")
         self.connect_button.clicked.connect(self.toggle_connection)
         connection_row.addWidget(self.connect_button)
@@ -72,11 +69,9 @@ class SerialConsoleWidget(QWidget):
         self.clear_button = QPushButton("Clear")
         self.clear_button.clicked.connect(self.clear)
         controls_row.addWidget(self.clear_button)
-
         self.copy_button = QPushButton("Copy")
         self.copy_button.clicked.connect(self.copy)
         controls_row.addWidget(self.copy_button)
-
         self.auto_scroll_check = QCheckBox("Auto-scroll")
         self.auto_scroll_check.setChecked(True)
         self.auto_scroll_check.toggled.connect(self._set_auto_scroll)
@@ -136,9 +131,8 @@ class SerialConsoleWidget(QWidget):
             return
         baud = int(self.baud_combo.currentData())
         self.connect_button.setEnabled(False)
-        if self._service.connect_port(port, baud):
-            return
-        self.connect_button.setEnabled(True)
+        if not self._service.connect_port(port, baud):
+            self.connect_button.setEnabled(True)
 
     def _on_connection_changed(self, connected: bool, message: str) -> None:
         self.connect_button.setEnabled(True)
@@ -166,12 +160,14 @@ class SerialConsoleWidget(QWidget):
     def append_output(self, text: str) -> None:
         if not text:
             return
+        scrollbar = self.output.verticalScrollBar()
+        was_at_bottom = scrollbar.value() >= scrollbar.maximum() - 2
         self.output.moveCursor(QTextCursor.End)
         self.output.insertPlainText(text)
-        if self._auto_scroll:
-            self.output.moveCursor(QTextCursor.End)
+        if self._auto_scroll or was_at_bottom:
+            scrollbar.setValue(scrollbar.maximum())
         else:
-            self.output.moveCursor(QTextCursor.End)
+            scrollbar.setValue(min(scrollbar.value(), scrollbar.maximum()))
 
     def _append_system(self, text: str) -> None:
         self.append_output(text.rstrip("\n") + "\n")
@@ -187,7 +183,7 @@ class SerialConsoleWidget(QWidget):
     def _set_auto_scroll(self, enabled: bool) -> None:
         self._auto_scroll = enabled
         if enabled:
-            self.output.moveCursor(QTextCursor.End)
+            self.output.verticalScrollBar().setValue(self.output.verticalScrollBar().maximum())
 
     def send_command(self) -> None:
         command = self.command_edit.text().strip()
