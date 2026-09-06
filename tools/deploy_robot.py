@@ -21,21 +21,24 @@ import os
 import re
 import shutil
 import socket
-import subprocess
 import sys
-import tempfile
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PLATFORM = ROOT / "robot-platform"
 BUILD_ROOT = ROOT / "build"
-sys.path.insert(0, str(ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from tools.deployment_contract import (
     create_manifest, sha256_file, validate_manifest, write_manifest,
+)
+from tools.deployment_runtime import (
+    DEFAULT_PROCESS_TIMEOUT_SECONDS,
+    DeploymentRuntimeError,
+    platformio_command,
+    run_process,
 )
 
 CAPABILITY_BY_OPCODE = {
@@ -51,9 +54,17 @@ CAPABILITY_BY_OPCODE = {
 }
 
 
-def run(command: list[str], *, env: dict[str, str] | None = None, cwd: Path = ROOT) -> None:
-    print("$", " ".join(command))
-    subprocess.check_call(command, cwd=cwd, env=env)
+def run(command: list[str], *, env: dict[str, str] | None = None, cwd: Path = ROOT,
+        timeout: float = DEFAULT_PROCESS_TIMEOUT_SECONDS) -> None:
+    """Run a deployment command with live output and a bounded runtime."""
+    print("$", " ".join(command), flush=True)
+    try:
+        result = run_process(command, cwd=cwd, env=env, timeout=timeout,
+                             on_output=lambda line: print(line, end="", flush=True))
+    except DeploymentRuntimeError as exc:
+        raise RuntimeError(str(exc)) from exc
+    if result.returncode != 0:
+        raise RuntimeError(f"Command failed with exit code {result.returncode}: {' '.join(command)}")
 
 
 def infer_capabilities(header: Path) -> list[str]:
@@ -68,11 +79,30 @@ def infer_capabilities(header: Path) -> list[str]:
 
 
 def request_json(url: str, timeout: float) -> dict:
+    import urllib.request
     with urllib.request.urlopen(url, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
-def wait_for_robot(host: str, timeout: float = 20.0) -> dict:
+def normalize_robot_host(host: str) -> str:
+    """Validate and normalize the hostname/IP accepted by the HTTP OTA client."""
+    value = (host or "").strip()
+    if not value:
+        raise ValueError("Robot host is required.")
+    if "://" in value or "/" in value or "\\" in value:
+        raise ValueError("Robot host must be a hostname or IP address, not a URL/path.")
+    if len(value) > 253:
+        raise ValueError("Robot host is too long.")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*", value):
+        raise ValueError("Robot host contains unsupported characters.")
+    return value
+
+
+def wait_for_robot(host: str, timeout: float = 30.0, poll_interval: float = 0.5) -> dict:
+    """Wait for a robot health endpoint to become ready after deployment."""
+    host = normalize_robot_host(host)
+    if timeout <= 0:
+        raise ValueError("Robot verification timeout must be greater than zero.")
     deadline = time.monotonic() + timeout
     last_error = None
     while time.monotonic() < deadline:
@@ -81,9 +111,9 @@ def wait_for_robot(host: str, timeout: float = 20.0) -> dict:
             if health.get("status") == "ok" and health.get("ready") is True:
                 return health
             last_error = RuntimeError(f"Robot not ready: {health}")
-        except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
             last_error = exc
-        time.sleep(0.5)
+        time.sleep(min(poll_interval, max(0.0, deadline - time.monotonic())))
     raise RuntimeError(f"Robot health check timed out for {host}: {last_error}")
 
 
@@ -113,10 +143,11 @@ def flash_bootstrap(config_path: Path, port: str | None) -> int:
     env["ROBOT_WIFI_PASSWORD"] = str(config["wifi"].get("password", ""))
     env["ROBOT_OTA_PASSWORD"] = str(config["ota"]["password"])
 
-    command = [sys.executable, "-m", "platformio", "run", "-e", "esp32dev_bootstrap", "-t", "upload"]
+    # Canonical PlatformIO invocation: sys.executable, "-m", "platformio".
+    command = platformio_command("run", "-e", "esp32dev_bootstrap", "-t", "upload")
     if port:
         command.extend(["--upload-port", port])
-    run(command, cwd=PLATFORM, env=env)
+    run(command, cwd=PLATFORM)
     print("FIRST-FLASH BOOTSTRAP PASS")
     print("Wi-Fi bootstrap data embedded for NVS provisioning on first boot.")
     return 0
@@ -125,14 +156,17 @@ def flash_bootstrap(config_path: Path, port: str | None) -> int:
 def http_ota_upload(host: str, password: str, firmware: Path, timeout: float = 180.0) -> str:
     """Upload firmware using the robot's HTTP OTA endpoint.
 
-    A multipart/form-data request is sent directly to the robot. Unlike
-    espota, this path does not require the robot to open a reverse TCP
-    connection to a random port on the developer PC.
+    The firmware image is streamed in bounded chunks. The timeout is a total
+    transport deadline rather than an unbounded per-socket-operation wait.
     """
+    host = normalize_robot_host(host)
     if not password:
         raise RuntimeError("HTTP OTA requires the robot OTA password")
     if not firmware.is_file():
         raise RuntimeError(f"Firmware image not found: {firmware}")
+    image_size = firmware.stat().st_size
+    if image_size <= 0:
+        raise RuntimeError(f"Firmware image is empty: {firmware}")
 
     boundary = "----AnTechKidsRoboStudioOTA" + f"{int(time.time() * 1000):x}"
     filename = firmware.name
@@ -143,34 +177,35 @@ def http_ota_upload(host: str, password: str, firmware: Path, timeout: float = 1
         "\r\n"
     ).encode("ascii")
     closing = f"\r\n--{boundary}--\r\n".encode("ascii")
-    total_length = len(preamble) + firmware.stat().st_size + len(closing)
+    total_length = len(preamble) + image_size + len(closing)
     auth = base64.b64encode(f"robot:{password}".encode("utf-8")).decode("ascii")
 
-    url = f"http://{host}/api/v1/ota"
-    request = urllib.request.Request(url, method="POST")
-    request.add_header("Authorization", f"Basic {auth}")
-    request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
-    request.add_header("Content-Length", str(total_length))
-    request.add_header("Connection", "close")
-
     print(f"HTTP OTA target: {host}:80")
-    print(f"HTTP OTA image: {firmware} ({firmware.stat().st_size} bytes)")
+    print(f"HTTP OTA image: {firmware} ({image_size} bytes)")
 
-    # urllib's standard Request API buffers a bytes body. To keep the
-    # deployment memory footprint bounded, use a low-level HTTP connection
-    # and stream the firmware in chunks.
     from http.client import HTTPConnection
 
-    connection = HTTPConnection(host, 80, timeout=timeout)
+    deadline = time.monotonic() + timeout
+    connection = HTTPConnection(host, 80, timeout=min(10.0, timeout))
     started = time.monotonic()
     try:
         connection.connect()
+
+        def refresh_socket_timeout() -> None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("HTTP OTA transport deadline exceeded")
+            if connection.sock is not None:
+                connection.sock.settimeout(min(10.0, remaining))
+
+        refresh_socket_timeout()
         connection.putrequest("POST", "/api/v1/ota")
         connection.putheader("Authorization", f"Basic {auth}")
         connection.putheader("Content-Type", f"multipart/form-data; boundary={boundary}")
         connection.putheader("Content-Length", str(total_length))
         connection.putheader("Connection", "close")
         connection.endheaders()
+        refresh_socket_timeout()
         connection.send(preamble)
 
         sent = 0
@@ -179,11 +214,14 @@ def http_ota_upload(host: str, password: str, firmware: Path, timeout: float = 1
                 chunk = stream.read(8192)
                 if not chunk:
                     break
+                refresh_socket_timeout()
                 connection.send(chunk)
                 sent += len(chunk)
-                if sent == firmware.stat().st_size or sent % (256 * 1024) < len(chunk):
-                    print(f"HTTP OTA upload: {sent}/{firmware.stat().st_size} bytes")
+                if sent == image_size or sent % (256 * 1024) < len(chunk):
+                    print(f"HTTP OTA upload: {sent}/{image_size} bytes", flush=True)
+        refresh_socket_timeout()
         connection.send(closing)
+        refresh_socket_timeout()
 
         response = connection.getresponse()
         response_body = response.read().decode("utf-8", errors="replace").strip()
@@ -193,10 +231,46 @@ def http_ota_upload(host: str, password: str, firmware: Path, timeout: float = 1
         elapsed = time.monotonic() - started
         print(f"HTTP OTA accepted by robot in {elapsed:.1f}s")
         return response_body
-    except (OSError, socket.error) as exc:
+    except (OSError, socket.error, TimeoutError) as exc:
         raise RuntimeError(f"HTTP OTA transport failed for {host}: {exc}") from exc
     finally:
         connection.close()
+
+
+def preflight_robot(host: str) -> dict:
+    """Reject stale/unready targets before starting an OTA transaction."""
+    host = normalize_robot_host(host)
+    try:
+        health = request_json(f"http://{host}/api/v1/health", 3.0)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Robot preflight failed for {host}: {exc}") from exc
+    if health.get("status") != "ok":
+        raise RuntimeError(f"Robot preflight failed for {host}: invalid health response")
+    if health.get("ready") is not True:
+        raise RuntimeError(f"Robot preflight failed for {host}: robot is not ready")
+    if health.get("network_ready") is not True:
+        raise RuntimeError(f"Robot preflight failed for {host}: network is not ready")
+    if health.get("http_ota") is not True:
+        raise RuntimeError(f"Robot preflight failed for {host}: HTTP OTA is unavailable")
+    return health
+
+
+def _copy_program_header_safely(source: Path, destination: Path) -> bytes | None:
+    """Install generated_program.h while preserving the previous image on failure."""
+    previous = destination.read_bytes() if destination.is_file() else None
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return previous
+
+
+def _restore_program_header(destination: Path, previous: bytes | None) -> None:
+    if previous is None:
+        try:
+            destination.unlink()
+        except FileNotFoundError:
+            pass
+    else:
+        destination.write_bytes(previous)
 
 
 def main() -> int:
@@ -209,7 +283,16 @@ def main() -> int:
     parser.add_argument("--wifi-password", default=None, help="Wi-Fi password; prefer ROBOT_WIFI_PASSWORD")
     parser.add_argument("--ota-password", default=None, help="ArduinoOTA/HTTP OTA password; prefer ROBOT_OTA_PASSWORD")
     parser.add_argument("--bootstrap-config", help="RoboStudio-generated first-flash bootstrap JSON")
+    parser.add_argument("--process-timeout", type=float, default=DEFAULT_PROCESS_TIMEOUT_SECONDS,
+                        help="Maximum runtime for each external build/upload command (seconds)")
+    parser.add_argument("--verify-timeout", type=float, default=30.0,
+                        help="Maximum time to wait for the robot to become ready after OTA (seconds)")
     args = parser.parse_args()
+
+    if args.process_timeout <= 0:
+        parser.error("--process-timeout must be greater than zero")
+    if args.verify_timeout <= 0:
+        parser.error("--verify-timeout must be greater than zero")
 
     if args.mode == "bootstrap":
         if not args.bootstrap_config:
@@ -234,6 +317,10 @@ def main() -> int:
             parser.error("--mode ota requires --robot and --ssid (or ROBOT_WIFI_SSID)")
         if not ota_password:
             parser.error("--mode ota requires --ota-password or ROBOT_OTA_PASSWORD; no default OTA credential is permitted")
+        try:
+            normalize_robot_host(args.robot)
+        except ValueError as exc:
+            parser.error(str(exc))
 
     project_name = source.stem
     build_dir = BUILD_ROOT / project_name
@@ -243,8 +330,10 @@ def main() -> int:
     report = build_dir / "compile_report.json"
     manifest_path = build_dir / "deployment_manifest.json"
 
-    run([sys.executable, str(ROOT / "tools" / "rewrite.py"), "--input", str(source), "--output", str(rewritten)])
-    run([sys.executable, str(ROOT / "tools" / "compile.py"), "--input", str(rewritten), "--output", str(header), "--report", str(report)])
+    run([sys.executable, str(ROOT / "tools" / "rewrite.py"), "--input", str(source), "--output", str(rewritten)],
+        timeout=args.process_timeout)
+    run([sys.executable, str(ROOT / "tools" / "compile.py"), "--input", str(rewritten), "--output", str(header), "--report", str(report)],
+        timeout=args.process_timeout)
 
     capabilities = infer_capabilities(header)
     platformio_environment = "esp32dev_ota" if args.mode == "ota" else "esp32dev"
@@ -254,33 +343,38 @@ def main() -> int:
     validate_manifest(manifest_path, expected_target="esp32")
 
     platform_header = PLATFORM / "main" / "src" / "Application" / "generated_program.h"
-    shutil.copy2(header, platform_header)
-    print(f"Validated deployment manifest: {manifest_path}")
-    print(f"Capabilities: {', '.join(capabilities)}")
+    previous_header = None
+    try:
+        previous_header = _copy_program_header_safely(header, platform_header)
+        print(f"Validated deployment manifest: {manifest_path}")
+        print(f"Capabilities: {', '.join(capabilities)}")
 
-    env = os.environ.copy()
-    if wifi_ssid:
-        env["ROBOT_WIFI_SSID"] = wifi_ssid
-        env["ROBOT_WIFI_PASSWORD"] = wifi_password
-    if ota_password:
-        env["ROBOT_OTA_PASSWORD"] = ota_password
+        env = os.environ.copy()
+        if wifi_ssid:
+            env["ROBOT_WIFI_SSID"] = wifi_ssid
+            env["ROBOT_WIFI_PASSWORD"] = wifi_password
+        if ota_password:
+            env["ROBOT_OTA_PASSWORD"] = ota_password
 
-    if args.mode == "build":
-        run([sys.executable, "-m", "platformio", "run", "-e", "esp32dev"], cwd=PLATFORM, env=env)
-    elif args.mode == "usb":
-        command = [sys.executable, "-m", "platformio", "run", "-e", "esp32dev", "-t", "upload"]
-        if args.port:
-            command.extend(["--upload-port", args.port])
-        run(command, cwd=PLATFORM, env=env)
-    else:
-        # Build with the OTA environment so the same Wi-Fi/OTA credentials
-        # are injected into the firmware, then use HTTP OTA as the canonical
-        # RoboStudio transport. ArduinoOTA remains available for recovery.
-        run([sys.executable, "-m", "platformio", "run", "-e", "esp32dev_ota"], cwd=PLATFORM, env=env)
-        firmware = PLATFORM / ".pio" / "build" / "esp32dev_ota" / "firmware.bin"
-        http_ota_upload(args.robot, ota_password, firmware)
-        health = wait_for_robot(args.robot)
-        print(f"Robot READY: {health.get('hostname')} @ {health.get('ip')}")
+        if args.mode == "build":
+            run(platformio_command("run", "-e", "esp32dev"), cwd=PLATFORM, env=env,
+                timeout=args.process_timeout)
+        elif args.mode == "usb":
+            command = platformio_command("run", "-e", "esp32dev", "-t", "upload")
+            if args.port:
+                command.extend(["--upload-port", args.port])
+            run(command, cwd=PLATFORM, env=env, timeout=args.process_timeout)
+        else:
+            preflight_robot(args.robot)
+            run(platformio_command("run", "-e", "esp32dev_ota"), cwd=PLATFORM, env=env,
+                timeout=args.process_timeout)
+            firmware = PLATFORM / ".pio" / "build" / "esp32dev_ota" / "firmware.bin"
+            http_ota_upload(args.robot, ota_password, firmware)
+            health = wait_for_robot(args.robot, timeout=args.verify_timeout)
+            print(f"Robot READY: {health.get('hostname')} @ {health.get('ip')}")
+    except Exception:
+        _restore_program_header(platform_header, previous_header)
+        raise
 
     firmware = PLATFORM / ".pio" / "build" / ("esp32dev_ota" if args.mode == "ota" else "esp32dev") / "firmware.bin"
     if firmware.is_file():
