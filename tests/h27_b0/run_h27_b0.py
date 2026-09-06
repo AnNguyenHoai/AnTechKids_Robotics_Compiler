@@ -70,7 +70,10 @@ def main() -> int:
     assert '"bootstrap"' in deploy_text
     assert "--bootstrap-config" in deploy_text
     assert "esp32dev_bootstrap" in deploy_text
-    assert "python -m platformio" in deploy_text
+    # deploy_robot.py invokes PlatformIO through the active Python interpreter.
+    # This is intentionally stronger than matching a shell-specific `python`
+    # executable name, and keeps RoboStudio independent of PATH on Windows.
+    assert 'sys.executable, "-m", "platformio"' in deploy_text
 
     ui = robot_tab.read_text(encoding="utf-8")
     assert "BootstrapConfigService" in ui
