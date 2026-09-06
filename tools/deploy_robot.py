@@ -51,9 +51,9 @@ CAPABILITY_BY_OPCODE = {
 }
 
 
-def run(command: list[str], *, env: dict[str, str] | None = None) -> None:
+def run(command: list[str], *, env: dict[str, str] | None = None, cwd: Path = ROOT) -> None:
     print("$", " ".join(command))
-    subprocess.check_call(command, cwd=ROOT, env=env)
+    subprocess.check_call(command, cwd=cwd, env=env)
 
 
 def infer_capabilities(header: Path) -> list[str]:
@@ -116,7 +116,7 @@ def flash_bootstrap(config_path: Path, port: str | None) -> int:
     command = [sys.executable, "-m", "platformio", "run", "-e", "esp32dev_bootstrap", "-t", "upload"]
     if port:
         command.extend(["--upload-port", port])
-    run(command, env=env)
+    run(command, cwd=PLATFORM, env=env)
     print("FIRST-FLASH BOOTSTRAP PASS")
     print("Wi-Fi bootstrap data embedded for NVS provisioning on first boot.")
     return 0
@@ -266,17 +266,17 @@ def main() -> int:
         env["ROBOT_OTA_PASSWORD"] = ota_password
 
     if args.mode == "build":
-        run([sys.executable, "-m", "platformio", "run", "-e", "esp32dev"], env=env)
+        run([sys.executable, "-m", "platformio", "run", "-e", "esp32dev"], cwd=PLATFORM, env=env)
     elif args.mode == "usb":
         command = [sys.executable, "-m", "platformio", "run", "-e", "esp32dev", "-t", "upload"]
         if args.port:
             command.extend(["--upload-port", args.port])
-        run(command, env=env)
+        run(command, cwd=PLATFORM, env=env)
     else:
         # Build with the OTA environment so the same Wi-Fi/OTA credentials
         # are injected into the firmware, then use HTTP OTA as the canonical
         # RoboStudio transport. ArduinoOTA remains available for recovery.
-        run([sys.executable, "-m", "platformio", "run", "-e", "esp32dev_ota"], env=env)
+        run([sys.executable, "-m", "platformio", "run", "-e", "esp32dev_ota"], cwd=PLATFORM, env=env)
         firmware = PLATFORM / ".pio" / "build" / "esp32dev_ota" / "firmware.bin"
         http_ota_upload(args.robot, ota_password, firmware)
         health = wait_for_robot(args.robot)
