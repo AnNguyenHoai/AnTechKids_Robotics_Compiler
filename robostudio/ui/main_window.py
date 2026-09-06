@@ -15,7 +15,8 @@ from ui.hardware_tab import HardwareTab
 class Ui_MainWindow:
     def setupUi(self, MainWindow):
         MainWindow.setWindowTitle("RoboStudio")
-        MainWindow.resize(850, 650)
+        MainWindow.resize(1100, 760)
+        MainWindow.setMinimumSize(980, 680)
 
         # Menu Bar
         menubar = QMenuBar(MainWindow)
@@ -44,6 +45,7 @@ class Ui_MainWindow:
 
         # Main tabs
         self.main_tabs = QTabWidget()
+        self.main_tabs.setDocumentMode(True)
         main_layout.addWidget(self.main_tabs, 1)
 
         # Program tab
@@ -72,7 +74,7 @@ class Ui_MainWindow:
         font = QFont("Courier New", 11)
         self.code_editor.setFont(font)
         self.code_editor.setMinimumHeight(250)
-        program_layout.addWidget(self.code_editor)
+        program_layout.addWidget(self.code_editor, 1)
 
         # H25-J / H26-L capability status
         self.capability_group = QGroupBox("Hardware & Target Capability")
