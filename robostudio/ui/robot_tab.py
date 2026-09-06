@@ -6,7 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QProgressBar, QPushButton, QComboBox, QVBoxLayout, QWidget,
+    QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QComboBox, QVBoxLayout, QWidget,
 )
 
 from services.bootstrap_config_service import BootstrapConfigService
@@ -163,11 +163,43 @@ class RobotTab(QWidget):
         run_layout.addWidget(self.result_label)
         layout.addWidget(run_group)
 
-        self.output_label = QLabel("")
-        self.output_label.setWordWrap(True)
-        self.output_label.setStyleSheet("font-family: 'Courier New'; color: #666666;")
-        layout.addWidget(self.output_label)
-        layout.addStretch()
+        log_header = QHBoxLayout()
+        log_title = QLabel("Deployment Logs")
+        log_title.setStyleSheet("font-weight: bold;")
+        log_header.addWidget(log_title)
+        log_header.addStretch()
+        self.clear_logs_button = QPushButton("Clear Logs")
+        self.clear_logs_button.clicked.connect(self.clear_logs)
+        log_header.addWidget(self.clear_logs_button)
+        self.copy_logs_button = QPushButton("Copy Log")
+        self.copy_logs_button.clicked.connect(self.copy_logs)
+        log_header.addWidget(self.copy_logs_button)
+        layout.addLayout(log_header)
+
+        self.output_label = QPlainTextEdit()
+        self.output_label.setReadOnly(True)
+        self.output_label.setPlaceholderText("Deployment and PlatformIO logs will appear here...")
+        self.output_label.setMinimumHeight(180)
+        self.output_label.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.output_label.setStyleSheet("font-family: 'Courier New';")
+        layout.addWidget(self.output_label, 1)
+
+    def set_logs(self, text: str):
+        """Replace the visible deployment log without truncating its contents."""
+        self.output_label.setPlainText(text or "")
+        self.output_label.verticalScrollBar().setValue(
+            self.output_label.verticalScrollBar().maximum()
+        )
+
+    def clear_logs(self):
+        """Remove all deployment logs currently displayed in the UI."""
+        self.output_label.clear()
+
+    def copy_logs(self):
+        """Copy the complete deployment log to the system clipboard."""
+        self.output_label.selectAll()
+        self.output_label.copy()
+        self.output_label.moveCursor(self.output_label.textCursor().MoveOperation.End)
 
     def generate_bootstrap(self):
         ssid = self.bootstrap_ssid_edit.text().strip()
@@ -204,7 +236,7 @@ class RobotTab(QWidget):
             "PlatformIO is building the bootstrap firmware and uploading it over USB. "
             "Keep the robot connected until the upload completes."
         )
-        self.output_label.setText("PlatformIO first-flash in progress...")
+        self.set_logs("PlatformIO first-flash in progress...")
 
         self._bootstrap_flash_worker = _BootstrapFlashWorker(
             self._bootstrap_path, self.usb_port_edit.text().strip()
@@ -219,7 +251,7 @@ class RobotTab(QWidget):
         self.refresh_button.setEnabled(True)
 
     def _on_bootstrap_flash_finished(self, result):
-        self.output_label.setText(result.output[-2500:] if result.output else "")
+        self.set_logs(result.output or "")
         if result.success:
             if result.verified_robot:
                 self.bootstrap_status.setText(
@@ -335,7 +367,7 @@ class RobotTab(QWidget):
         self.progress.setVisible(True)
         self.result_label.setText(f"Deploying to {robot.display_label}...")
         self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
-        self.output_label.setText("Compiling, building and uploading. Please wait...")
+        self.set_logs("Compiling, building and uploading. Please wait...")
 
         self._deployment_worker = _DeploymentWorker(
             code, robot, ssid, wifi_password, ota_password
@@ -349,7 +381,7 @@ class RobotTab(QWidget):
         self.refresh_button.setEnabled(True)
 
     def _on_deploy_finished(self, result):
-        self.output_label.setText(result.output[-2500:] if result.output else "")
+        self.set_logs(result.output or "")
         if result.success:
             verified = result.verified_robot
             self.result_label.setText(
