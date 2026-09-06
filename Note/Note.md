@@ -31,3 +31,6 @@ TEST 12 — Forward → STOP → Ultra
 25/8: Đã làm H23-C, tiếp sẽ flash và test rồi feedback
 
 27/8: với branch motion_debug đã fix được làm robot có thể follow line, tuy nhiên độ ổn định chưa cao cần thay thế motor trái để có torque lớn hơn rồi tối ưu hóa tiêp code
+
+6/9:
+      - đã yêu cầu GPT fix, chưa merge vào codebase. Tiếp theo cần làm theo hướng dẫn GPT để test và flash được qua OTA. Sau khi quay lại merge PR46
