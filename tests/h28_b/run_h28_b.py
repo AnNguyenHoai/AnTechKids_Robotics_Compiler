@@ -66,6 +66,21 @@ def test_bootstrap_propagates_generated_credentials_to_platformio():
     assert captured["env"]["ROBOT_OTA_PASSWORD"] == "ota-secret"
 
 
+def test_bootstrap_build_forces_generated_credentials_before_nvs_fallback():
+    wifi = (ROOT / "robot-platform" / "main" / "src" / "Communication" / "RobotWiFiConfig.cpp").read_text(encoding="utf-8")
+    wifi_config = (ROOT / "robot-platform" / "wifi_config.py").read_text(encoding="utf-8")
+
+    bootstrap_guard = wifi.index("#ifdef ROBOT_BOOTSTRAP_PROVISIONED")
+    stored_fallback = wifi.index("if (loadStored())")
+
+    assert bootstrap_guard < stored_fallback
+    assert "g_ssid = ROBOT_WIFI_SSID;" in wifi[bootstrap_guard:stored_fallback]
+    assert "g_password = ROBOT_WIFI_PASSWORD;" in wifi[bootstrap_guard:stored_fallback]
+    assert "g_otaPassword = ROBOT_OTA_PASSWORD;" in wifi[bootstrap_guard:stored_fallback]
+    assert "save(g_ssid.c_str(), g_password.c_str(), g_otaPassword.c_str())" in wifi[bootstrap_guard:stored_fallback]
+    assert 'env.Append(CPPDEFINES=[("ROBOT_BOOTSTRAP_PROVISIONED", "1")])' in wifi_config
+
+
 def main() -> int:
     deploy = (ROOT / "tools" / "deploy_robot.py").read_text(encoding="utf-8")
     flash = (ROOT / "tools" / "flash.py").read_text(encoding="utf-8")
@@ -74,6 +89,7 @@ def main() -> int:
     runtime = (ROOT / "tools" / "deployment_runtime.py").read_text(encoding="utf-8")
 
     test_bootstrap_propagates_generated_credentials_to_platformio()
+    test_bootstrap_build_forces_generated_credentials_before_nvs_fallback()
 
     assert DEFAULT_PROCESS_TIMEOUT_SECONDS == 300.0
     assert platformio_command("run", "-e", "esp32dev")[:3] == [sys.executable, "-m", "platformio"]
