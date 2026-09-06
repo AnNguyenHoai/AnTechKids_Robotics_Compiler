@@ -2,7 +2,6 @@
 """H28-B deployment runtime hardening contract tests."""
 from __future__ import annotations
 
-import os
 import sys
 import tempfile
 from pathlib import Path
@@ -17,7 +16,11 @@ from tools.deployment_runtime import (
     platformio_command,
     run_process,
 )
-from tools.deploy_robot import normalize_robot_host
+from tools.deploy_robot import (
+    _copy_program_header_safely,
+    _restore_program_header,
+    normalize_robot_host,
+)
 
 
 def main() -> int:
@@ -30,9 +33,10 @@ def main() -> int:
     assert DEFAULT_PROCESS_TIMEOUT_SECONDS == 300.0
     assert platformio_command("run", "-e", "esp32dev")[:3] == [sys.executable, "-m", "platformio"]
     assert "subprocess.Popen" in runtime
-    assert "process timed out" not in runtime.lower()  # timeout is exposed by DeploymentRuntimeError instead
     assert "DeploymentRuntimeError" in runtime
     assert "threading.Thread" in runtime
+    assert "subprocess.check_call" not in deploy
+    assert "subprocess.check_call" not in flash
 
     streamed: list[str] = []
     result = run_process(
@@ -74,7 +78,7 @@ def main() -> int:
     assert "--verify-timeout" in deploy
     assert "_copy_program_header_safely" in deploy
     assert "_restore_program_header" in deploy
-    assert "sys.executable, \"-m\", \"platformio\"" in flash or "platformio_command(" in flash
+    assert "platformio_command(" in flash
 
     assert "on_output: DeploymentOutputCallback" in service
     assert "timeout=360.0" in service
@@ -83,9 +87,16 @@ def main() -> int:
     assert "without stealing the user's scroll position" in robot_tab
 
     with tempfile.TemporaryDirectory() as tmp:
-        marker = Path(tmp) / "marker.txt"
-        marker.write_text("ok", encoding="utf-8")
-        assert marker.read_text(encoding="utf-8") == "ok"
+        tmp_path = Path(tmp)
+        source = tmp_path / "new.h"
+        destination = tmp_path / "generated_program.h"
+        source.write_text("new", encoding="utf-8")
+        destination.write_text("old", encoding="utf-8")
+        previous = _copy_program_header_safely(source, destination)
+        assert previous == b"old"
+        assert destination.read_text(encoding="utf-8") == "new"
+        _restore_program_header(destination, previous)
+        assert destination.read_text(encoding="utf-8") == "old"
 
     print("H28-B PASS: deployment runtime hardening + live output + bounded subprocesses")
     return 0
