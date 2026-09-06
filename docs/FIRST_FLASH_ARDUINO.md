@@ -15,7 +15,7 @@ RoboStudio prepares the first-flash Wi-Fi bootstrap for the ESP32. The bootstrap
 9. Wait for the robot to boot and connect to the configured Wi-Fi.
 10. Return to RoboStudio and click **Discover Robots**.
 
-No Arduino IDE interaction is required for the first-flash path. PlatformIO is the canonical build and upload engine. The Arduino sketch layout remains supported by the firmware source tree, but it is not part of the RoboStudio deployment flow.
+Arduino IDE interaction is not required. PlatformIO is the canonical build and upload engine for the first-flash path. The Arduino sketch layout remains supported by the firmware source tree, but it is not part of the RoboStudio deployment flow.
 
 ## Generated files
 
