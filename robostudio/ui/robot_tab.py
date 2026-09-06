@@ -25,6 +25,21 @@ class _DiscoveryWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class _BootstrapFlashWorker(QThread):
+    completed = Signal(object)
+
+    def __init__(self, config_path, usb_port):
+        super().__init__()
+        self.config_path = config_path
+        self.usb_port = usb_port
+
+    def run(self):
+        result = RobotDeploymentService().flash_first_robot(
+            Path(self.config_path), self.usb_port
+        )
+        self.completed.emit(result)
+
+
 class _DeploymentWorker(QThread):
     completed = Signal(object)
 
@@ -46,6 +61,7 @@ class RobotTab(QWidget):
         self._selected: RobotInfo | None = None
         self._bootstrap_path: Path | None = None
         self._discovery_worker = None
+        self._bootstrap_flash_worker = None
         self._deployment_worker = None
         self._bootstrap_service = BootstrapConfigService()
         self._build_ui()
@@ -60,7 +76,7 @@ class RobotTab(QWidget):
         layout.addWidget(title)
         description = QLabel(
             "Set up a new robot once, then discover and run student programs over OTA. "
-            "First-flash Wi-Fi data is generated locally and stored in the robot's NVS."
+            "First-flash Wi-Fi data is generated locally and provisioned through PlatformIO."
         )
         description.setWordWrap(True)
         layout.addWidget(description)
@@ -86,9 +102,9 @@ class RobotTab(QWidget):
         self.generate_bootstrap_button = QPushButton("Generate First-Flash Config")
         self.generate_bootstrap_button.clicked.connect(self.generate_bootstrap)
         usb_row.addWidget(self.generate_bootstrap_button)
-        self.flash_bootstrap_button = QPushButton("Flash New Robot via USB (Arduino IDE)")
+        self.flash_bootstrap_button = QPushButton("Flash New Robot via USB (PlatformIO)")
         self.flash_bootstrap_button.setEnabled(False)
-        self.flash_bootstrap_button.clicked.connect(self.open_arduino_first_flash)
+        self.flash_bootstrap_button.clicked.connect(self.flash_bootstrap)
         usb_row.addWidget(self.flash_bootstrap_button)
         bootstrap_form.addRow("USB Port:", usb_row)
         self.bootstrap_status = QLabel("No first-flash configuration generated")
@@ -164,34 +180,67 @@ class RobotTab(QWidget):
             return
         self._bootstrap_path = path
         self.flash_bootstrap_button.setEnabled(True)
-        header = self._bootstrap_service.arduino_header_path()
         self.bootstrap_status.setText(
             "✓ First-flash configuration ready.\n"
-            f"Arduino bootstrap header: {header}\n"
-            "Click 'Flash New Robot via USB (Arduino IDE)' to open the robot sketch, "
-            "then select your ESP32 board and COM port and click Upload."
+            f"Bootstrap artifact: {path}\n"
+            "Click 'Flash New Robot via USB (PlatformIO)' to build and upload the "
+            "bootstrap firmware directly."
         )
         self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
 
-    def open_arduino_first_flash(self):
+    def flash_bootstrap(self):
         if self._bootstrap_path is None:
             return
-        ok, message = self._bootstrap_service.open_arduino_sketch()
-        if ok:
-            self.bootstrap_status.setText(
-                "✓ First-flash config is attached to the Arduino sketch.\n"
-                "In Arduino IDE: select ESP32 Dev Module + the USB port, then click Upload.\n"
-                "After boot, the robot should join the configured Wi-Fi and become discoverable."
-            )
+        if self._bootstrap_flash_worker and self._bootstrap_flash_worker.isRunning():
+            return
+
+        self.generate_bootstrap_button.setEnabled(False)
+        self.flash_bootstrap_button.setEnabled(False)
+        self.refresh_button.setEnabled(False)
+        self.progress.setVisible(True)
+        self.result_label.setText("Building and flashing first-boot firmware with PlatformIO...")
+        self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
+        self.bootstrap_status.setText(
+            "PlatformIO is building the bootstrap firmware and uploading it over USB. "
+            "Keep the robot connected until the upload completes."
+        )
+        self.output_label.setText("PlatformIO first-flash in progress...")
+
+        self._bootstrap_flash_worker = _BootstrapFlashWorker(
+            self._bootstrap_path, self.usb_port_edit.text().strip()
+        )
+        self._bootstrap_flash_worker.completed.connect(self._on_bootstrap_flash_finished)
+        self._bootstrap_flash_worker.finished.connect(self._bootstrap_flash_finished)
+        self._bootstrap_flash_worker.start()
+
+    def _bootstrap_flash_finished(self):
+        self.progress.setVisible(False)
+        self.generate_bootstrap_button.setEnabled(True)
+        self.refresh_button.setEnabled(True)
+
+    def _on_bootstrap_flash_finished(self, result):
+        self.output_label.setText(result.output[-2500:] if result.output else "")
+        if result.success:
+            if result.verified_robot:
+                self.bootstrap_status.setText(
+                    "✓ First flash complete and robot discovered.\n"
+                    f"Robot: {result.verified_robot.display_label} @ {result.verified_robot.ip}"
+                )
+            else:
+                self.bootstrap_status.setText(
+                    "✓ First flash completed. Robot discovery timed out; "
+                    "wait for Wi-Fi and click Discover Robots."
+                )
             self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
+            self.result_label.setText("✓ First-flash upload completed.")
+            self.result_label.setStyleSheet("font-weight: bold; color: green;")
         else:
-            QMessageBox.warning(
-                self,
-                "Arduino IDE",
-                f"{message}\n\nOpen this sketch manually:\n"
-                f"{self._bootstrap_service.arduino_sketch_path()}\n\n"
-                "Then open main.ino in Arduino IDE and click Upload.",
+            self.bootstrap_status.setText(
+                f"✗ First-flash failed: {result.error or 'unknown error'}"
             )
+            self.bootstrap_status.setStyleSheet("font-weight: bold; color: red;")
+            self.result_label.setText("First-flash failed. Check the PlatformIO output.")
+            self.result_label.setStyleSheet("font-weight: bold; color: red;")
 
     def discover(self):
         if self._discovery_worker and self._discovery_worker.isRunning():
@@ -219,10 +268,6 @@ class RobotTab(QWidget):
             self.robot_combo.addItem(f"{robot.display_label} — {state}", robot.device_id)
         self.robot_combo.blockSignals(False)
         if self._robots:
-            # `addItem()` selects index 0 while signals are blocked. Calling
-            # setCurrentIndex(0) afterwards therefore emits no signal, leaving
-            # `_selected` unset and the Run button disabled. Explicitly route
-            # the first discovered robot through the same selection handler.
             self.robot_combo.setCurrentIndex(0)
             self._on_robot_selected(0)
             self.robot_status.setText(f"Found {len(self._robots)} robot(s).")
