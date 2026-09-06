@@ -2,6 +2,7 @@
 """H28-B deployment runtime hardening contract tests."""
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -10,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import tools.deploy_robot as deploy_robot
 from tools.deployment_runtime import (
     DEFAULT_PROCESS_TIMEOUT_SECONDS,
     DeploymentRuntimeError,
@@ -23,12 +25,55 @@ from tools.deploy_robot import (
 )
 
 
+def test_bootstrap_propagates_generated_credentials_to_platformio():
+    captured = {}
+
+    def fake_run(command, *, env=None, cwd=ROOT, timeout=DEFAULT_PROCESS_TIMEOUT_SECONDS):
+        captured["command"] = command
+        captured["env"] = env
+        captured["cwd"] = cwd
+        captured["timeout"] = timeout
+
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = Path(tmp) / "robot_bootstrap.json"
+        config_path.write_text(
+            json.dumps({
+                "type": "antechkids.robot.bootstrap",
+                "schema_version": 1,
+                "wifi": {"ssid": "classroom-wifi", "password": "wifi-secret"},
+                "ota": {"password": "ota-secret"},
+            }),
+            encoding="utf-8",
+        )
+        original_run = deploy_robot.run
+        deploy_robot.run = fake_run
+        try:
+            assert deploy_robot.flash_bootstrap(config_path, "COM4") == 0
+        finally:
+            deploy_robot.run = original_run
+
+    assert captured["command"][:3] == [sys.executable, "-m", "platformio"]
+    assert "-e" in captured["command"]
+    assert "esp32dev_bootstrap" in captured["command"]
+    assert "-t" in captured["command"]
+    assert "upload" in captured["command"]
+    assert "--upload-port" in captured["command"]
+    assert "COM4" in captured["command"]
+    assert captured["cwd"] == deploy_robot.PLATFORM
+    assert captured["env"]["ROBOT_BOOTSTRAP_CONFIG"] == str(config_path.resolve())
+    assert captured["env"]["ROBOT_WIFI_SSID"] == "classroom-wifi"
+    assert captured["env"]["ROBOT_WIFI_PASSWORD"] == "wifi-secret"
+    assert captured["env"]["ROBOT_OTA_PASSWORD"] == "ota-secret"
+
+
 def main() -> int:
     deploy = (ROOT / "tools" / "deploy_robot.py").read_text(encoding="utf-8")
     flash = (ROOT / "tools" / "flash.py").read_text(encoding="utf-8")
     service = (ROOT / "robostudio" / "services" / "robot_deployment_service.py").read_text(encoding="utf-8")
     robot_tab = (ROOT / "robostudio" / "ui" / "robot_tab.py").read_text(encoding="utf-8")
     runtime = (ROOT / "tools" / "deployment_runtime.py").read_text(encoding="utf-8")
+
+    test_bootstrap_propagates_generated_credentials_to_platformio()
 
     assert DEFAULT_PROCESS_TIMEOUT_SECONDS == 300.0
     assert platformio_command("run", "-e", "esp32dev")[:3] == [sys.executable, "-m", "platformio"]

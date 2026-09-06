@@ -147,7 +147,7 @@ def flash_bootstrap(config_path: Path, port: str | None) -> int:
     command = platformio_command("run", "-e", "esp32dev_bootstrap", "-t", "upload")
     if port:
         command.extend(["--upload-port", port])
-    run(command, cwd=PLATFORM)
+    run(command, cwd=PLATFORM, env=env)
     print("FIRST-FLASH BOOTSTRAP PASS")
     print("Wi-Fi bootstrap data embedded for NVS provisioning on first boot.")
     return 0
