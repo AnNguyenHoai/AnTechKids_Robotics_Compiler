@@ -64,6 +64,27 @@ bool begin() {
     }
 
     g_initialized = true;
+
+#ifdef ROBOT_BOOTSTRAP_PROVISIONED
+    // A bootstrap image is an explicit recovery/provisioning operation.
+    // Always apply its generated credentials, even when this ESP32 already
+    // contains an older robot-net NVS entry. This is intentionally scoped to
+    // the robot-net namespace; other NVS configuration remains untouched.
+    if (!hasBootstrap()) {
+        Serial.println("[NET] Bootstrap build has no valid Wi-Fi configuration");
+        return false;
+    }
+
+    g_ssid = ROBOT_WIFI_SSID;
+    g_password = ROBOT_WIFI_PASSWORD;
+    g_otaPassword = ROBOT_OTA_PASSWORD;
+    if (!save(g_ssid.c_str(), g_password.c_str(), g_otaPassword.c_str())) {
+        Serial.println("[NET] Failed to persist bootstrap Wi-Fi configuration");
+        return false;
+    }
+    Serial.println("[NET] Bootstrap Wi-Fi configuration forced into NVS");
+    return true;
+#else
     if (loadStored()) {
         Serial.println("[NET] Loaded persistent Wi-Fi configuration from NVS");
         return true;
@@ -83,6 +104,7 @@ bool begin() {
     }
     Serial.println("[NET] First-flash Wi-Fi configuration persisted to NVS");
     return true;
+#endif
 }
 
 bool isConfigured() {
