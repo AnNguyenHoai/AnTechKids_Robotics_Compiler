@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
+    QSizePolicy,
     QWidget,
 )
 
@@ -35,14 +36,24 @@ class SerialConsoleWidget(QWidget):
         layout.setSpacing(6)
 
         connection_row = QHBoxLayout()
+        connection_row.setSpacing(6)
         connection_row.addWidget(QLabel("USB Serial:"))
         self.port_combo = QComboBox()
-        self.port_combo.setMinimumWidth(160)
-        connection_row.addWidget(self.port_combo)
+        self.port_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.port_combo.setMinimumWidth(230)
+        self.port_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.port_combo.setMinimumContentsLength(24)
+        self.port_combo.setMaxVisibleItems(12)
+        # Keep the popup wide enough for Windows COM descriptions. The
+        # combo itself remains responsive while the popup avoids truncation.
+        self.port_combo.view().setMinimumWidth(420)
+        connection_row.addWidget(self.port_combo, 1)
         self.refresh_button = QPushButton("Refresh")
         self.refresh_button.clicked.connect(self.refresh_ports)
         connection_row.addWidget(self.refresh_button)
         self.baud_combo = QComboBox()
+        self.baud_combo.setMinimumWidth(88)
+        self.baud_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         for baud in (9600, 19200, 38400, 57600, 115200):
             self.baud_combo.addItem(str(baud), baud)
         self.baud_combo.setCurrentText(str(DEFAULT_BAUD_RATE))
@@ -50,7 +61,6 @@ class SerialConsoleWidget(QWidget):
         self.connect_button = QPushButton("Connect")
         self.connect_button.clicked.connect(self.toggle_connection)
         connection_row.addWidget(self.connect_button)
-        connection_row.addStretch()
         layout.addLayout(connection_row)
 
         self.status_label = QLabel("● Disconnected")

@@ -24,5 +24,10 @@ def test_canonical_deployment_entry_point_exists():
 def test_production_firmware_source_filter_excludes_legacy():
     platformio = ROOT / "robot-platform" / "platformio.ini"
     text = platformio.read_text(encoding="utf-8")
-    assert "src_filter = +<src/*>" in text
+    # H26-O follows the canonical PlatformIO layout: the production
+    # firmware source root is main/ and the source filter includes only
+    # that canonical tree. Do not resurrect the retired src_filter syntax.
+    assert "src_dir = main" in text
+    assert "build_src_filter = +<*>" in text
+    assert "src_filter =" not in text
     assert "legacy" not in text
