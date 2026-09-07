@@ -147,7 +147,7 @@ class RobotCompiler(ast.NodeVisitor):
             if alias.name not in ('rcu', '_thread'):
                 raise CompilerError(f"Unsupported import: import {alias.name}")
             if alias.asname is not None:
-                raise CompilerError(f"Import alias is not supported: import {alias.name} as {alias.name}")
+                raise CompilerError(f"Import alias is not supported: import {alias.name} as {alias.asname}")
         return None
 
     def visit_ImportFrom(self, node):
@@ -211,6 +211,10 @@ class RobotCompiler(ast.NodeVisitor):
         for stmt in ast.walk(node):
             if isinstance(stmt, ast.Return):
                 raise CompilerError(f"User-defined function '{node.name}()' cannot use return.")
+            if isinstance(stmt, ast.Break):
+                raise CompilerError(f"User-defined function '{node.name}()' cannot use break.")
+            if isinstance(stmt, ast.Continue):
+                raise CompilerError(f"User-defined function '{node.name}()' cannot use continue.")
         self.functions[node.name] = node
 
     def visit_FunctionDef(self, node):
