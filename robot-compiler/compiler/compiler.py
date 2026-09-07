@@ -63,7 +63,7 @@ class RobotCompiler(ast.NodeVisitor):
         info = FUNCTION_REGISTRY.get(func_name)
         if info:
             return info.get("semantic", "Native")
-        return "Native"  # fallback
+        return "Native"
 
     # ----------------------------------------------------------
     # Expression compilation
@@ -148,10 +148,6 @@ class RobotCompiler(ast.NodeVisitor):
             self.visit(stmt)
 
     def generic_visit(self, node):
-        # Never silently ignore a Python construct that has no compiler
-        # semantics. Operator/context nodes are normally consumed directly by
-        # their parent compiler methods and are allowed here only for AST
-        # traversal safety.
         if isinstance(node, (ast.operator, ast.unaryop, ast.boolop, ast.cmpop,
                              ast.expr_context)):
             return super().generic_visit(node)
@@ -190,6 +186,10 @@ class RobotCompiler(ast.NodeVisitor):
                 raise CompilerError("_thread.start_new_thread() does not support keyword arguments.")
             return self.visit(ast.Call(func=func, args=[], keywords=[]))
         if isinstance(value, ast.Call):
+            return self.visit(value)
+        if isinstance(value, ast.Compare):
+            return self.visit(value)
+        if isinstance(value, ast.BoolOp):
             return self.visit(value)
         raise CompilerError(f"Unsupported expression statement: {type(value).__name__}")
 
@@ -249,7 +249,6 @@ class RobotCompiler(ast.NodeVisitor):
             raise CompilerError(f"Unsupported function call: {ast.dump(node.func)}")
         func = node.func.id
 
-        # User-defined function
         if func in self.functions:
             self._validate_call(node, func)
             function = self.functions[func]
@@ -257,7 +256,6 @@ class RobotCompiler(ast.NodeVisitor):
                 self.visit(stmt)
             return
 
-        # Built-in function - MUST exist in registry
         info = FUNCTION_REGISTRY.get(func)
         if info is None:
             raise CompilerError(f"Unknown function or Robot API: '{func}()'.")

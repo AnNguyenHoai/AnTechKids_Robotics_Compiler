@@ -77,7 +77,7 @@ def main() -> int:
         ),
         (
             "starred arguments",
-            "import rcu\nargs = (1, 1)\nset_3c_led(*args)\n",
+            "import rcu\nset_3c_led(*(1, 1))\n",
             "does not support starred arguments",
         ),
         (
@@ -109,6 +109,14 @@ set_motor_speed(50, speed)
 stop()
 """)
     print("PASS: valid program remains compilable")
+
+    compile_source("""
+import rcu
+speed = 80
+speed > 50
+stop()
+""")
+    print("PASS: top-level comparison expression remains compilable")
 
     print("H29-A semantic hardening: PASS")
     return 0
