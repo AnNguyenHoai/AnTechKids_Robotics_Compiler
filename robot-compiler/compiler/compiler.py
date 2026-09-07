@@ -33,9 +33,6 @@ class RobotCompiler(ast.NodeVisitor):
         if not isinstance(tree, ast.Module):
             raise CompilerError("Compiler input must be a Python module.")
 
-        # Pre-register all top-level function definitions before compiling
-        # statements. This makes function calls independent of source order
-        # while preserving the existing inline-function execution model.
         for node in tree.body:
             if isinstance(node, ast.FunctionDef):
                 self._register_function_definition(node)
@@ -59,7 +56,6 @@ class RobotCompiler(ast.NodeVisitor):
         return self.allocate_temp()
 
     def _get_semantic(self, func_name):
-        """Get semantic classification for a function."""
         info = FUNCTION_REGISTRY.get(func_name)
         if info:
             return info.get("semantic", "Native")
@@ -124,32 +120,24 @@ class RobotCompiler(ast.NodeVisitor):
     def validate_argument_count(self, node, function_name, expected):
         actual = len(node.args)
         if actual != expected:
-            raise CompilerError(
-                f"{function_name}() expects exactly {expected} argument(s)."
-            )
+            raise CompilerError(f"{function_name}() expects exactly {expected} argument(s).")
 
     def _validate_call(self, node, function_name):
         if node.keywords:
-            raise CompilerError(
-                f"{function_name}() does not support keyword arguments."
-            )
+            raise CompilerError(f"{function_name}() does not support keyword arguments.")
         for arg in node.args:
             if isinstance(arg, ast.Starred):
-                raise CompilerError(
-                    f"{function_name}() does not support starred arguments."
-                )
+                raise CompilerError(f"{function_name}() does not support starred arguments.")
 
     # ----------------------------------------------------------
     # AST Visitors
     # ----------------------------------------------------------
-
     def visit_Module(self, node):
         for stmt in node.body:
             self.visit(stmt)
 
     def generic_visit(self, node):
-        if isinstance(node, (ast.operator, ast.unaryop, ast.boolop, ast.cmpop,
-                             ast.expr_context)):
+        if isinstance(node, (ast.operator, ast.unaryop, ast.boolop, ast.cmpop, ast.expr_context)):
             return super().generic_visit(node)
         raise CompilerError(f"Unsupported syntax node: {type(node).__name__}")
 
@@ -159,7 +147,7 @@ class RobotCompiler(ast.NodeVisitor):
             if alias.name not in ('rcu', '_thread'):
                 raise CompilerError(f"Unsupported import: import {alias.name}")
             if alias.asname is not None:
-                raise CompilerError(f"Import alias is not supported: import {alias.name} as {alias.asname}")
+                raise CompilerError(f"Import alias is not supported: import {alias.name} as {alias.name}")
         return None
 
     def visit_ImportFrom(self, node):
@@ -172,10 +160,8 @@ class RobotCompiler(ast.NodeVisitor):
     # ---------- _thread.start_new_thread ----------
     def visit_Expr(self, node):
         value = node.value
-        if (isinstance(value, ast.Call) and
-            isinstance(value.func, ast.Attribute) and
-            isinstance(value.func.value, ast.Name) and
-            value.func.value.id == '_thread' and
+        if (isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) and
+            isinstance(value.func.value, ast.Name) and value.func.value.id == '_thread' and
             value.func.attr == 'start_new_thread'):
             if len(value.args) != 2:
                 raise CompilerError("_thread.start_new_thread() expects a function and args tuple.")
@@ -202,16 +188,13 @@ class RobotCompiler(ast.NodeVisitor):
             raise CompilerError("Only variable assignment supported.")
         name = target.id
         dest = self.current_scope.allocate(name)
-
         if isinstance(node.value, ast.Constant):
             self.program.emit(Opcode.LoadConst.value, dest, node.value.value)
             return
-
         if isinstance(node.value, ast.Name):
             src = self.current_scope.resolve(node.value.id)
             self.program.emit(Opcode.Store.value, src, dest, 0)
             return
-
         result = self.compile_expression(node.value)
         self.program.emit(Opcode.Store.value, result, dest, 0)
 
@@ -220,22 +203,14 @@ class RobotCompiler(ast.NodeVisitor):
         if node.name in self.functions:
             raise CompilerError(f"Duplicate function definition: '{node.name}()'.")
         if node.name in FUNCTION_REGISTRY:
-            raise CompilerError(
-                f"User-defined function '{node.name}()' conflicts with a built-in Robot API."
-            )
+            raise CompilerError(f"User-defined function '{node.name}()' conflicts with a built-in Robot API.")
         if node.args.args:
-            raise CompilerError(
-                f"User-defined function '{node.name}()' with parameters is not supported."
-            )
+            raise CompilerError(f"User-defined function '{node.name}()' with parameters is not supported.")
         if node.args.vararg or node.args.kwarg or node.args.kwonlyargs:
-            raise CompilerError(
-                f"User-defined function '{node.name}()' with parameters is not supported."
-            )
+            raise CompilerError(f"User-defined function '{node.name}()' with parameters is not supported.")
         for stmt in ast.walk(node):
             if isinstance(stmt, ast.Return):
-                raise CompilerError(
-                    f"User-defined function '{node.name}()' cannot use return."
-                )
+                raise CompilerError(f"User-defined function '{node.name}()' cannot use return.")
         self.functions[node.name] = node
 
     def visit_FunctionDef(self, node):
@@ -252,44 +227,46 @@ class RobotCompiler(ast.NodeVisitor):
         if func in self.functions:
             self._validate_call(node, func)
             function = self.functions[func]
-            for stmt in function.body:
-                self.visit(stmt)
+            caller_scope = self.current_scope
+            caller_loop_stack = self.loop_stack
+            self.current_scope = Scope(parent=self.global_scope, allocator=self.global_scope)
+            self.loop_stack = []
+            self.in_function = True
+            try:
+                for stmt in function.body:
+                    self.visit(stmt)
+            finally:
+                self.current_scope = caller_scope
+                self.loop_stack = caller_loop_stack
+                self.in_function = caller_scope is not self.global_scope
             return
 
         info = FUNCTION_REGISTRY.get(func)
         if info is None:
             raise CompilerError(f"Unknown function or Robot API: '{func}()'.")
-
         self._validate_call(node, func)
         expected = info.get("arguments", 0)
         actual = len(node.args)
         if actual != expected:
             raise CompilerError(f"{func}() expects exactly {expected} argument(s).")
-
-        handler = info["handler"]
-        handler(self, node)
+        info["handler"](self, node)
 
     # ---------- Function call (expression level) ----------
     def compile_call_value(self, node):
         if not isinstance(node.func, ast.Name):
             raise CompilerError(f"Unsupported function call in expression: {ast.dump(node.func)}")
         func = node.func.id
-
         if func in self.functions:
             raise CompilerError(f"User-defined function '{func}()' cannot be used as a value")
-
         info = FUNCTION_REGISTRY.get(func)
         if info is None:
             raise CompilerError(f"Unknown function or Robot API: '{func}()'.")
-
         self._validate_call(node, func)
         expected = info.get("arguments", 0)
         actual = len(node.args)
         if actual != expected:
             raise CompilerError(f"{func}() expects exactly {expected} argument(s).")
-
-        handler = info["handler"]
-        result = handler(self, node)
+        result = info["handler"](self, node)
         if result is None:
             raise CompilerError(f"Robot API '{func}()' does not return a value.")
         return result
@@ -323,20 +300,14 @@ class RobotCompiler(ast.NodeVisitor):
         result = self.compile_expression(node.test)
         else_label = self.program.new_label()
         end_label = self.program.new_label()
-
         self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, else_label)
-
         for stmt in node.body:
             self.visit(stmt)
-
         if len(node.orelse) > 0:
             self.program.emit_jump(Opcode.Jump.value, end_label)
-
         self.program.emit_label(else_label)
-
         for stmt in node.orelse:
             self.visit(stmt)
-
         self.program.emit_label(end_label)
 
     # ---------- For ----------
@@ -347,7 +318,6 @@ class RobotCompiler(ast.NodeVisitor):
             raise CompilerError("For loop only supports range()")
         if not isinstance(node.iter.func, ast.Name) or node.iter.func.id != 'range':
             raise CompilerError("For loop only supports range()")
-
         args = node.iter.args
         if len(args) == 1:
             start = 0
@@ -359,46 +329,32 @@ class RobotCompiler(ast.NodeVisitor):
             start = self.compile_expression(args[0])
             end = self.compile_expression(args[1])
             step_node = args[2]
-            if not (
-                isinstance(step_node, ast.Constant)
-                and isinstance(step_node.value, (int, float))
-                and not isinstance(step_node.value, bool)
-                and step_node.value == 1
-            ):
+            if not (isinstance(step_node, ast.Constant) and isinstance(step_node.value, (int, float))
+                    and not isinstance(step_node.value, bool) and step_node.value == 1):
                 raise CompilerError("Only range() step=1 is supported in for loop")
         else:
             raise CompilerError("range() requires 1-3 arguments")
-
         target = node.target
         if not isinstance(target, ast.Name):
             raise CompilerError("For loop target must be a variable name")
-        var_name = target.id
-        var_index = self.current_scope.allocate(var_name)
-
+        var_index = self.current_scope.allocate(target.id)
         self.program.emit(Opcode.LoadConst.value, var_index, start)
-
         begin_label = self.program.new_label()
         continue_label = self.program.new_label()
         end_label = self.program.new_label()
         self.loop_stack.append({"continue": continue_label, "end": end_label})
-
         self.program.emit_label(begin_label)
-
         temp = self.allocate_temp()
         self.program.emit(Opcode.CompareLT.value, var_index, end, temp)
         self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, temp, end_label)
-
         for stmt in node.body:
             self.visit(stmt)
-
         self.program.emit_label(continue_label)
         temp2 = self.allocate_temp()
         self.program.emit(Opcode.LoadConst.value, temp2, 1)
         self.program.emit(Opcode.Add.value, var_index, temp2, temp)
         self.program.emit(Opcode.Store.value, temp, var_index, 0)
-
         self.program.emit_jump(Opcode.Jump.value, begin_label)
-
         self.loop_stack.pop()
         self.program.emit_label(end_label)
 
@@ -406,37 +362,30 @@ class RobotCompiler(ast.NodeVisitor):
     def visit_While(self, node):
         if node.orelse:
             raise CompilerError("While-else is not supported by the RoboSim language.")
-        if (isinstance(node.test, ast.Constant) and node.test.value in (True, 1) and
-            len(node.body) == 1 and isinstance(node.body[0], ast.Pass)):
+        if (isinstance(node.test, ast.Constant) and node.test.value in (True, 1)
+                and len(node.body) == 1 and isinstance(node.body[0], ast.Pass)):
             return
-
         begin_label = self.program.new_label()
         end_label = self.program.new_label()
         self.loop_stack.append({"continue": begin_label, "end": end_label})
         self.program.emit_label(begin_label)
-
         if not (isinstance(node.test, ast.Constant) and node.test.value in (True, 1)):
             result = self.compile_expression(node.test)
             self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, end_label)
-
         for stmt in node.body:
             self.visit(stmt)
-
         self.program.emit_jump(Opcode.Jump.value, begin_label)
-
         self.loop_stack.pop()
         self.program.emit_label(end_label)
 
     # ---------- Break ----------
     def visit_Break(self, node):
-        if len(self.loop_stack) == 0:
+        if not self.loop_stack:
             raise CompilerError("'break' outside loop.")
-        context = self.loop_stack[-1]
-        self.program.emit_jump(Opcode.Jump.value, context["end"])
+        self.program.emit_jump(Opcode.Jump.value, self.loop_stack[-1]["end"])
 
     # ---------- Continue ----------
     def visit_Continue(self, node):
-        if len(self.loop_stack) == 0:
+        if not self.loop_stack:
             raise CompilerError("'continue' outside loop.")
-        context = self.loop_stack[-1]
-        self.program.emit_jump(Opcode.Jump.value, context["continue"])
+        self.program.emit_jump(Opcode.Jump.value, self.loop_stack[-1]["continue"])
