@@ -83,12 +83,12 @@ expect_program(program, [
 print("Test demo_variable.py : PASS")
 
 # ---- Test unknown function ----
-# Compiler now emits Nop for unknown functions, so compilation succeeds
-program = compile_file("demo_unknown_function.py")
-assert len(program.instructions) > 0, "Program should have at least one instruction"
-# The compiler emits Nop for unknown functions
-assert program.instructions[-1].opcode == Opcode.Nop.value, "Expected Nop for unknown function"
-print("Test demo_unknown_function.py : PASS (compiled with Nop)")
+try:
+    compile_file("demo_unknown_function.py")
+    assert False, "CompilerError expected for unknown function"
+except CompilerError as e:
+    assert "Unknown function or Robot API" in str(e)
+print("Test demo_unknown_function.py : PASS (rejected)")
 
 # ---- Test wrong argument count ----
 try:
@@ -217,7 +217,6 @@ expect_program(program, [
 print("Test demo_break.py : PASS")
 
 program = compile_file("demo_continue.py")
-# Continue không có bytecode cụ thể, chỉ là jump, nên ta chỉ kiểm tra không lỗi.
 print("Test demo_continue.py : PASS")
 
 program = compile_file("demo_bool_and.py")
@@ -310,43 +309,41 @@ print("Test sensor_if.py : PASS")
 
 
 def test_invalid_value_call():
-    """forward() is a statement (void), but using it as a value should still compile
-       (compiler will emit Nop or appropriate code)."""
+    """A void Robot API cannot be used as an expression value."""
     source = "x = forward(50)"
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(source)
         path = Path(f.name)
     try:
         compiler = RobotCompiler()
-        program = compiler.compile(path)
-        # Compilation should succeed (no exception)
-        # Verify that the program has at least one instruction
-        assert len(program.instructions) > 0, "Program should have instructions"
-        print("Test invalid_value_call.py : PASS (compiled successfully)")
-    except Exception as e:
-        assert False, f"Unexpected exception: {e}"
+        try:
+            compiler.compile(path)
+        except CompilerError as e:
+            assert "does not return a value" in str(e)
+            print("Test invalid_value_call.py : PASS (rejected)")
+            return
+        assert False, "CompilerError expected for void API used as a value"
     finally:
         path.unlink(missing_ok=True)
 
 
 def test_invalid_stop_value():
-    """stop() is a statement (void), but using it as a value should still compile
-       (compiler will emit Nop or appropriate code)."""
+    """stop() is a void Robot API and cannot be used as an expression value."""
     source = "x = stop()"
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(source)
         path = Path(f.name)
     try:
         compiler = RobotCompiler()
-        program = compiler.compile(path)
-        # Compilation should succeed (no exception)
-        # Verify that the program has at least one instruction
-        assert len(program.instructions) > 0, "Program should have instructions"
-        print("Test invalid_stop_value.py : PASS (compiled successfully)")
-    except Exception as e:
-        assert False, f"Unexpected exception: {e}"
+        try:
+            compiler.compile(path)
+        except CompilerError as e:
+            assert "does not return a value" in str(e)
+            print("Test invalid_stop_value.py : PASS (rejected)")
+            return
+        assert False, "CompilerError expected for void API used as a value"
     finally:
         path.unlink(missing_ok=True)
 
@@ -364,13 +361,12 @@ set_motor_straight_angle(1, 2, 70, 360)
 line_intersection_stop(70, 17)
 """
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(source)
         path = Path(f.name)
     try:
         compiler = RobotCompiler()
         program = compiler.compile(path)
-        # Kiểm tra có ít nhất 5 instructions (mỗi lệnh emit một Nop hoặc opcode thực)
         assert len(program.instructions) >= 5, f"Expected at least 5 instructions, got {len(program.instructions)}"
         print("PASS: New APIs compile")
     finally:

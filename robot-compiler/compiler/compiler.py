@@ -63,7 +63,7 @@ class RobotCompiler(ast.NodeVisitor):
         info = FUNCTION_REGISTRY.get(func_name)
         if info:
             return info.get("semantic", "Native")
-        return "Native"
+        return "Native"  # fallback
 
     # ----------------------------------------------------------
     # Expression compilation
@@ -175,21 +175,23 @@ class RobotCompiler(ast.NodeVisitor):
 
     # ---------- _thread.start_new_thread ----------
     def visit_Expr(self, node):
-        if (isinstance(node.value, ast.Call) and
-            isinstance(node.value.func, ast.Attribute) and
-            isinstance(node.value.func.value, ast.Name) and
-            node.value.func.value.id == '_thread' and
-            node.value.func.attr == 'start_new_thread'):
-            if len(node.value.args) != 2:
+        value = node.value
+        if (isinstance(value, ast.Call) and
+            isinstance(value.func, ast.Attribute) and
+            isinstance(value.func.value, ast.Name) and
+            value.func.value.id == '_thread' and
+            value.func.attr == 'start_new_thread'):
+            if len(value.args) != 2:
                 raise CompilerError("_thread.start_new_thread() expects a function and args tuple.")
-            func = node.value.args[0]
+            func = value.args[0]
             if not isinstance(func, ast.Name):
                 raise CompilerError("_thread.start_new_thread() requires a function name.")
-            if node.value.keywords:
+            if value.keywords:
                 raise CompilerError("_thread.start_new_thread() does not support keyword arguments.")
-            return self.visit(ast.Expr(ast.Call(func=func, args=[], keywords=[])))
-        self.generic_visit(node)
-        return node
+            return self.visit(ast.Call(func=func, args=[], keywords=[]))
+        if isinstance(value, ast.Call):
+            return self.visit(value)
+        raise CompilerError(f"Unsupported expression statement: {type(value).__name__}")
 
     # ---------- Assign ----------
     def visit_Assign(self, node):
