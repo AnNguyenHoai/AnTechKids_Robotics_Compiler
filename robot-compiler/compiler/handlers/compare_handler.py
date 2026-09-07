@@ -16,6 +16,14 @@ class CompareHandler:
 
     @staticmethod
     def compare(compiler, node):
+        # RoboSim currently defines comparison as exactly one binary
+        # comparison. Python's chained comparison syntax (a < b < c)
+        # has different semantics and must never be silently truncated.
+        if len(node.ops) != 1 or len(node.comparators) != 1:
+            raise CompilerError(
+                "Chained comparisons are not supported; use separate comparisons."
+            )
+
         left = compiler.resolve_argument(node.left)
         right = compiler.resolve_argument(node.comparators[0])
         result = compiler.allocate_result()
