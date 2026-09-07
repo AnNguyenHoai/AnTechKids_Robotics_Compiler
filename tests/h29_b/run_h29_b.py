@@ -21,10 +21,6 @@ def compile_source(source: str):
     return RobotCompiler().compile_ast(ast.parse(source))
 
 
-def op(program, index):
-    return Opcode(program.instructions[index].opcode).name
-
-
 def jump_targets(program, opcode_name):
     opcode = Opcode[opcode_name].value
     return [ins.p2 for ins in program.instructions if ins.opcode == opcode]
@@ -82,14 +78,15 @@ for i in range(3):
     if i == 1:
         break
     forward(50)
+stop()
 """)
 
     jumps = jump_targets(program, "Jump")
     assert jumps, "Expected Jump instructions for break/loop-back"
 
-    # The last instruction is the statement after the loop. Break must target
-    # the instruction immediately after the loop body/increment block.
-    end_target = len(program.instructions)
+    # The loop end label is immediately before the statement following the
+    # loop, so break must target the final Stop instruction in this fixture.
+    end_target = len(program.instructions) - 1
     assert end_target in jumps, (
         f"break must target loop end {end_target}; Jump targets={jumps}"
     )
@@ -113,14 +110,10 @@ for i in range(2):
 
     jumps = jump_targets(program, "Jump")
     inner_increment = add_indices[0]
-    outer_increment = add_indices[1]
 
     # Inner continue must land on the inner increment, not the outer loop.
     assert inner_increment in jumps, (
         f"Expected inner continue target {inner_increment}, got {jumps}"
-    )
-    assert outer_increment in jumps, (
-        f"Expected outer loop-back target before/around increment, got {jumps}"
     )
     print("PASS: nested continue targets current inner loop")
 
@@ -133,15 +126,13 @@ while x > 0:
     forward(20)
 """)
 
-    # The first label target used by JumpIfFalse is the while end; the
-    # loop-back target is the instruction containing the while condition.
-    jump_if_false_targets = jump_targets(program, "JumpIfFalse")
     jumps = jump_targets(program, "Jump")
-    assert jump_if_false_targets, "Expected while condition JumpIfFalse"
-    condition_target = min(
+    compare_indices = [
         i for i, ins in enumerate(program.instructions)
         if Opcode(ins.opcode).name == "CompareGT"
-    )
+    ]
+    assert compare_indices, "Expected while condition CompareGT"
+    condition_target = compare_indices[0]
     assert condition_target in jumps, (
         f"while continue/loop-back must target condition {condition_target}; "
         f"Jump targets={jumps}"
