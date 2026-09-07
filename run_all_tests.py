@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the repository's regression and H26/H27/H28 contract test suites."""
+"""Run the repository's regression and H26/H27/H28/H29 contract test suites."""
 
 from __future__ import annotations
 
@@ -46,6 +46,7 @@ def main() -> int:
         ROOT / "tests" / "h27_b0" / "run_h27_b0.py",
         ROOT / "tests" / "h27_b" / "run_h27_b.py",
         ROOT / "tests" / "h28_b" / "run_h28_b.py",
+        ROOT / "tests" / "h29_a" / "run_h29_a.py",
     ]
     missing = [path.relative_to(ROOT) for path in tests if not path.exists()]
     if missing:

@@ -1,3 +1,6 @@
+from .error import CompilerError
+
+
 class Scope:
     def __init__(self, parent=None):
         self.parent = parent
@@ -15,4 +18,4 @@ class Scope:
             return self.variables[name]
         if self.parent:
             return self.parent.resolve(name)
-        raise KeyError(f"Variable '{name}' not found")
+        raise CompilerError(f"Variable '{name}' is not defined.")
