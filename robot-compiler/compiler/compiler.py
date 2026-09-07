@@ -341,6 +341,8 @@ class RobotCompiler(ast.NodeVisitor):
 
     # ---------- For ----------
     def visit_For(self, node):
+        if node.orelse:
+            raise CompilerError("For-else is not supported by the RoboSim language.")
         if not isinstance(node.iter, ast.Call):
             raise CompilerError("For loop only supports range()")
         if not isinstance(node.iter.func, ast.Name) or node.iter.func.id != 'range':
@@ -376,8 +378,9 @@ class RobotCompiler(ast.NodeVisitor):
         self.program.emit(Opcode.LoadConst.value, var_index, start)
 
         begin_label = self.program.new_label()
+        continue_label = self.program.new_label()
         end_label = self.program.new_label()
-        self.loop_stack.append({"begin": begin_label, "end": end_label})
+        self.loop_stack.append({"continue": continue_label, "end": end_label})
 
         self.program.emit_label(begin_label)
 
@@ -388,6 +391,7 @@ class RobotCompiler(ast.NodeVisitor):
         for stmt in node.body:
             self.visit(stmt)
 
+        self.program.emit_label(continue_label)
         temp2 = self.allocate_temp()
         self.program.emit(Opcode.LoadConst.value, temp2, 1)
         self.program.emit(Opcode.Add.value, var_index, temp2, temp)
@@ -400,13 +404,15 @@ class RobotCompiler(ast.NodeVisitor):
 
     # ---------- While ----------
     def visit_While(self, node):
+        if node.orelse:
+            raise CompilerError("While-else is not supported by the RoboSim language.")
         if (isinstance(node.test, ast.Constant) and node.test.value in (True, 1) and
             len(node.body) == 1 and isinstance(node.body[0], ast.Pass)):
             return
 
         begin_label = self.program.new_label()
         end_label = self.program.new_label()
-        self.loop_stack.append({"begin": begin_label, "end": end_label})
+        self.loop_stack.append({"continue": begin_label, "end": end_label})
         self.program.emit_label(begin_label)
 
         if not (isinstance(node.test, ast.Constant) and node.test.value in (True, 1)):
@@ -433,4 +439,4 @@ class RobotCompiler(ast.NodeVisitor):
         if len(self.loop_stack) == 0:
             raise CompilerError("'continue' outside loop.")
         context = self.loop_stack[-1]
-        self.program.emit_jump(Opcode.Jump.value, context["begin"])
+        self.program.emit_jump(Opcode.Jump.value, context["continue"])
