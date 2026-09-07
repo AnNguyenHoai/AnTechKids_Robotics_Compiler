@@ -18,6 +18,7 @@ class RobotCompiler(ast.NodeVisitor):
         self.functions = {}
         self.loop_stack = []
         self.in_function = False
+        self._top_level_functions = {}
 
     def compile_ast(self, tree):
         self.program = Program()
@@ -27,13 +28,18 @@ class RobotCompiler(ast.NodeVisitor):
         self.functions = {}
         self.loop_stack = []
         self.in_function = False
+        self._top_level_functions = {}
+
+        if not isinstance(tree, ast.Module):
+            raise CompilerError("Compiler input must be a Python module.")
 
         # Pre-register all top-level function definitions before compiling
-        # statements.  This makes function calls independent of source order
+        # statements. This makes function calls independent of source order
         # while preserving the existing inline-function execution model.
         for node in tree.body:
             if isinstance(node, ast.FunctionDef):
                 self._register_function_definition(node)
+                self._top_level_functions[node.name] = node
 
         self.visit(tree)
         self.program.resolve_labels()
@@ -57,7 +63,7 @@ class RobotCompiler(ast.NodeVisitor):
         info = FUNCTION_REGISTRY.get(func_name)
         if info:
             return info.get("semantic", "Native")
-        return "Native"  # fallback
+        return "Native"
 
     # ----------------------------------------------------------
     # Expression compilation
@@ -101,7 +107,7 @@ class RobotCompiler(ast.NodeVisitor):
         elif isinstance(expr, ast.Call):
             return self.compile_call_value(expr)
         else:
-            raise CompilerError(f"Unsupported expression type: {type(expr)}")
+            raise CompilerError(f"Unsupported expression type: {type(expr).__name__}")
 
     def resolve_argument(self, arg):
         if isinstance(arg, ast.Name):
@@ -113,7 +119,7 @@ class RobotCompiler(ast.NodeVisitor):
         elif isinstance(arg, (ast.BinOp, ast.UnaryOp, ast.Compare, ast.BoolOp, ast.Call)):
             return self.compile_expression(arg)
         else:
-            raise CompilerError(f"Unsupported argument type: {type(arg)}")
+            raise CompilerError(f"Unsupported argument type: {type(arg).__name__}")
 
     def validate_argument_count(self, node, function_name, expected):
         actual = len(node.args)
@@ -122,25 +128,50 @@ class RobotCompiler(ast.NodeVisitor):
                 f"{function_name}() expects exactly {expected} argument(s)."
             )
 
+    def _validate_call(self, node, function_name):
+        if node.keywords:
+            raise CompilerError(
+                f"{function_name}() does not support keyword arguments."
+            )
+        for arg in node.args:
+            if isinstance(arg, ast.Starred):
+                raise CompilerError(
+                    f"{function_name}() does not support starred arguments."
+                )
+
     # ----------------------------------------------------------
     # AST Visitors
     # ----------------------------------------------------------
 
+    def visit_Module(self, node):
+        for stmt in node.body:
+            self.visit(stmt)
+
+    def generic_visit(self, node):
+        # Never silently ignore a Python construct that has no compiler
+        # semantics. Operator/context nodes are normally consumed directly by
+        # their parent compiler methods and are allowed here only for AST
+        # traversal safety.
+        if isinstance(node, (ast.operator, ast.unaryop, ast.boolop, ast.cmpop,
+                             ast.expr_context)):
+            return super().generic_visit(node)
+        raise CompilerError(f"Unsupported syntax node: {type(node).__name__}")
+
     # ---------- Import ----------
     def visit_Import(self, node):
-        new_names = []
         for alias in node.names:
             if alias.name not in ('rcu', '_thread'):
-                new_names.append(alias)
-        if new_names:
-            node.names = new_names
-            return node
+                raise CompilerError(f"Unsupported import: import {alias.name}")
+            if alias.asname is not None:
+                raise CompilerError(f"Import alias is not supported: import {alias.name} as {alias.asname}")
         return None
 
     def visit_ImportFrom(self, node):
-        if node.module in ('rcu', '_thread'):
-            return None
-        return node
+        if node.module not in ('rcu', '_thread'):
+            raise CompilerError(f"Unsupported import: from {node.module or ''} import ...")
+        if node.level:
+            raise CompilerError("Relative imports are not supported.")
+        return None
 
     # ---------- _thread.start_new_thread ----------
     def visit_Expr(self, node):
@@ -149,8 +180,14 @@ class RobotCompiler(ast.NodeVisitor):
             isinstance(node.value.func.value, ast.Name) and
             node.value.func.value.id == '_thread' and
             node.value.func.attr == 'start_new_thread'):
+            if len(node.value.args) != 2:
+                raise CompilerError("_thread.start_new_thread() expects a function and args tuple.")
             func = node.value.args[0]
-            return ast.Expr(ast.Call(func=func, args=[], keywords=[]))
+            if not isinstance(func, ast.Name):
+                raise CompilerError("_thread.start_new_thread() requires a function name.")
+            if node.value.keywords:
+                raise CompilerError("_thread.start_new_thread() does not support keyword arguments.")
+            return self.visit(ast.Expr(ast.Call(func=func, args=[], keywords=[])))
         self.generic_visit(node)
         return node
 
@@ -178,6 +215,12 @@ class RobotCompiler(ast.NodeVisitor):
 
     # ---------- Function definition ----------
     def _register_function_definition(self, node):
+        if node.name in self.functions:
+            raise CompilerError(f"Duplicate function definition: '{node.name}()'.")
+        if node.name in FUNCTION_REGISTRY:
+            raise CompilerError(
+                f"User-defined function '{node.name}()' conflicts with a built-in Robot API."
+            )
         if node.args.args:
             raise CompilerError(
                 f"User-defined function '{node.name}()' with parameters is not supported."
@@ -194,9 +237,8 @@ class RobotCompiler(ast.NodeVisitor):
         self.functions[node.name] = node
 
     def visit_FunctionDef(self, node):
-        # Definitions are registered in compile_ast before any statements
-        # are compiled. Do not emit runtime instructions for the definition.
-        self._register_function_definition(node)
+        if self._top_level_functions.get(node.name) is not node:
+            raise CompilerError("Nested function definitions are not supported.")
         return
 
     # ---------- Function call (statement level) ----------
@@ -207,6 +249,7 @@ class RobotCompiler(ast.NodeVisitor):
 
         # User-defined function
         if func in self.functions:
+            self._validate_call(node, func)
             function = self.functions[func]
             for stmt in function.body:
                 self.visit(stmt)
@@ -215,10 +258,9 @@ class RobotCompiler(ast.NodeVisitor):
         # Built-in function - MUST exist in registry
         info = FUNCTION_REGISTRY.get(func)
         if info is None:
-            # Fallback: emit NOP so compilation never fails
-            self.program.emit(Opcode.Nop.value, 0, 0, 0)
-            return
+            raise CompilerError(f"Unknown function or Robot API: '{func}()'.")
 
+        self._validate_call(node, func)
         expected = info.get("arguments", 0)
         actual = len(node.args)
         if actual != expected:
@@ -238,11 +280,9 @@ class RobotCompiler(ast.NodeVisitor):
 
         info = FUNCTION_REGISTRY.get(func)
         if info is None:
-            # Dummy return for unknown functions
-            dest = self.allocate_temp()
-            self.program.emit(Opcode.LoadConst.value, dest, 0)
-            return dest
+            raise CompilerError(f"Unknown function or Robot API: '{func}()'.")
 
+        self._validate_call(node, func)
         expected = info.get("arguments", 0)
         actual = len(node.args)
         if actual != expected:
@@ -251,10 +291,7 @@ class RobotCompiler(ast.NodeVisitor):
         handler = info["handler"]
         result = handler(self, node)
         if result is None:
-            # If handler returns None, allocate a default
-            dest = self.allocate_temp()
-            self.program.emit(Opcode.LoadConst.value, dest, 0)
-            return dest
+            raise CompilerError(f"Robot API '{func}()' does not return a value.")
         return result
 
     # ---------- Compare ----------
@@ -272,6 +309,14 @@ class RobotCompiler(ast.NodeVisitor):
     # ---------- Name ----------
     def visit_Name(self, node):
         return self.current_scope.resolve(node.id)
+
+    # ---------- Return ----------
+    def visit_Return(self, node):
+        raise CompilerError("'return' is not supported by the RoboSim language.")
+
+    # ---------- Pass ----------
+    def visit_Pass(self, node):
+        return
 
     # ---------- If ----------
     def visit_If(self, node):
