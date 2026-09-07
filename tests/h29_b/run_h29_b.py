@@ -130,24 +130,44 @@ for i in range(2):
 
 def test_while_continue_targets_condition():
     program = compile_source("""
+x = 2
 while x > 0:
     if x == 1:
         continue
     forward(20)
 """)
 
+    # A condition can require multiple instructions (for example, loading
+    # the RHS constant) before its Compare opcode. Therefore the correct
+    # target is the condition *entry label*, not necessarily the CompareGT
+    # instruction itself.
     jumps = jump_targets(program, "Jump")
     compare_indices = [
         i for i, ins in enumerate(program.instructions)
         if Opcode(ins.opcode).name == "CompareGT"
     ]
     assert compare_indices, "Expected while condition CompareGT"
-    condition_target = compare_indices[0]
-    assert condition_target in jumps, (
-        f"while continue/loop-back must target condition {condition_target}; "
-        f"Jump targets={jumps}"
+
+    compare_index = compare_indices[0]
+    backward_jumps = [
+        target
+        for index, ins in enumerate(program.instructions)
+        if Opcode(ins.opcode).name == "Jump"
+        for target in [ins.p2]
+        if target < index
+    ]
+    assert backward_jumps, "Expected while continue/loop-back backward Jump"
+
+    condition_target = backward_jumps[0]
+    assert all(target == condition_target for target in backward_jumps), (
+        f"while continue/loop-back must share condition target {condition_target}; "
+        f"Backward jump targets={backward_jumps}"
     )
-    print("PASS: while continue targets condition")
+    assert condition_target <= compare_index, (
+        f"while condition target {condition_target} must enter before CompareGT "
+        f"at {compare_index}"
+    )
+    print("PASS: while continue targets condition entry")
 
 
 def main() -> int:
