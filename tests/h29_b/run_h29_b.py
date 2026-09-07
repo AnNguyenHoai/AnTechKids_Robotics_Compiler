@@ -40,6 +40,16 @@ def expect_error(name: str, source: str, expected: str):
     raise AssertionError(f"{name}: compilation unexpectedly succeeded")
 
 
+def increment_block_indices(program):
+    """Return LoadConst indices that immediately precede loop Add increments."""
+    indices = []
+    for i, ins in enumerate(program.instructions):
+        if Opcode(ins.opcode).name == "Add" and i > 0:
+            if Opcode(program.instructions[i - 1].opcode).name == "LoadConst":
+                indices.append(i - 1)
+    return indices
+
+
 def test_for_continue_reaches_increment():
     program = compile_source("""
 for i in range(3):
@@ -48,25 +58,21 @@ for i in range(3):
     forward(50)
 """)
 
-    # The for-loop increment is the Add instruction immediately following
-    # the increment LoadConst. A continue must jump to that increment label,
-    # never directly back to the loop condition.
-    add_indices = [
-        i for i, ins in enumerate(program.instructions)
-        if Opcode(ins.opcode).name == "Add"
-    ]
-    assert len(add_indices) == 1, f"Expected one loop increment Add, got {add_indices}"
-    increment_add = add_indices[0]
+    # The continue label is immediately before the increment LoadConst. A
+    # continue must jump there, then execute Add and only then loop back.
+    increments = increment_block_indices(program)
+    assert len(increments) == 1, f"Expected one loop increment, got {increments}"
+    increment_start = increments[0]
 
     jumps = jump_targets(program, "Jump")
-    assert increment_add in jumps, (
-        "for/continue must jump to the loop increment; "
-        f"Jump targets={jumps}, increment Add={increment_add}"
+    assert increment_start in jumps, (
+        "for/continue must jump to the loop increment block; "
+        f"Jump targets={jumps}, increment start={increment_start}"
     )
 
-    # The normal loop-back jump must still target the loop condition, which
-    # occurs before the increment block.
-    assert any(target < increment_add for target in jumps), (
+    # The normal loop-back jump must still target the loop condition, before
+    # the increment block.
+    assert any(target < increment_start for target in jumps), (
         f"Expected a loop-back Jump before increment, got {jumps}"
     )
     print("PASS: for continue executes increment before next condition")
@@ -102,18 +108,22 @@ for i in range(2):
         forward(10)
 """)
 
-    add_indices = [
-        i for i, ins in enumerate(program.instructions)
-        if Opcode(ins.opcode).name == "Add"
-    ]
-    assert len(add_indices) == 2, f"Expected two loop increments, got {add_indices}"
+    increments = increment_block_indices(program)
+    assert len(increments) == 2, f"Expected two loop increments, got {increments}"
 
     jumps = jump_targets(program, "Jump")
-    inner_increment = add_indices[0]
+    inner_increment_start = increments[0]
+    outer_increment_start = increments[1]
 
-    # Inner continue must land on the inner increment, not the outer loop.
-    assert inner_increment in jumps, (
-        f"Expected inner continue target {inner_increment}, got {jumps}"
+    # Inner continue must land on the inner increment, not the outer loop's
+    # increment block. The outer loop's increment is reached naturally after
+    # the inner loop finishes.
+    assert inner_increment_start in jumps, (
+        f"Expected inner continue target {inner_increment_start}, got {jumps}"
+    )
+    assert outer_increment_start not in jumps, (
+        f"Inner continue must not target outer increment {outer_increment_start}; "
+        f"Jump targets={jumps}"
     )
     print("PASS: nested continue targets current inner loop")
 
