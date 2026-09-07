@@ -208,12 +208,14 @@ class RobotCompiler(ast.NodeVisitor):
             raise CompilerError(f"User-defined function '{node.name}()' with parameters is not supported.")
         if node.args.vararg or node.args.kwarg or node.args.kwonlyargs:
             raise CompilerError(f"User-defined function '{node.name}()' with parameters is not supported.")
-        for stmt in ast.walk(node):
-            if isinstance(stmt, ast.Return):
+        for nested in ast.walk(node):
+            if isinstance(nested, ast.FunctionDef) and nested is not node:
+                raise CompilerError("Nested function definitions are not supported.")
+            if isinstance(nested, ast.Return):
                 raise CompilerError(f"User-defined function '{node.name}()' cannot use return.")
-            if isinstance(stmt, ast.Break):
+            if isinstance(nested, ast.Break):
                 raise CompilerError(f"User-defined function '{node.name}()' cannot use break.")
-            if isinstance(stmt, ast.Continue):
+            if isinstance(nested, ast.Continue):
                 raise CompilerError(f"User-defined function '{node.name}()' cannot use continue.")
         self.functions[node.name] = node
 
