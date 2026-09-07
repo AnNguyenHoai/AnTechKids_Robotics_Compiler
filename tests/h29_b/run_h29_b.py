@@ -129,7 +129,10 @@ for i in range(2):
 
 
 def test_while_continue_targets_condition():
+    # x must be defined before the while condition. H29-B is testing control
+    # flow here, not undefined-variable handling (which belongs to H29-A).
     program = compile_source("""
+x = 2
 while x > 0:
     if x == 1:
         continue
