@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -55,12 +54,14 @@ def application_root() -> Path:
     if override:
         return Path(override).expanduser().resolve()
     if is_frozen():
-        return Path(sys.executable).resolve().parent
+        return Path(__import__("sys").executable).resolve().parent
     return runtime_paths.application_root()
 
 
 def deployment_runtime_root() -> Path:
     """Return the immutable PlatformIO/deployment runtime root."""
+    # Keep this function as the deployment-facing API while using the same
+    # canonical runtime-path primitive as the tool resolver.
     return application_root() / "runtime" / "platformio"
 
 
