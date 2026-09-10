@@ -37,6 +37,7 @@ from tools.deployment_contract import (
 from tools.deployment_runtime import (
     DEFAULT_PROCESS_TIMEOUT_SECONDS,
     DeploymentRuntimeError,
+    deployment_runtime_environment,
     platformio_command,
     run_process,
 )
@@ -137,13 +138,12 @@ def validate_bootstrap_config(path: Path) -> dict:
 
 def flash_bootstrap(config_path: Path, port: str | None) -> int:
     config = validate_bootstrap_config(config_path.resolve())
-    env = os.environ.copy()
+    env = deployment_runtime_environment(os.environ.copy())
     env["ROBOT_BOOTSTRAP_CONFIG"] = str(config_path.resolve())
     env["ROBOT_WIFI_SSID"] = str(config["wifi"]["ssid"])
     env["ROBOT_WIFI_PASSWORD"] = str(config["wifi"].get("password", ""))
     env["ROBOT_OTA_PASSWORD"] = str(config["ota"]["password"])
 
-    # Canonical PlatformIO invocation: sys.executable, "-m", "platformio".
     command = platformio_command("run", "-e", "esp32dev_bootstrap", "-t", "upload")
     if port:
         command.extend(["--upload-port", port])
@@ -349,7 +349,7 @@ def main() -> int:
         print(f"Validated deployment manifest: {manifest_path}")
         print(f"Capabilities: {', '.join(capabilities)}")
 
-        env = os.environ.copy()
+        env = deployment_runtime_environment(os.environ.copy())
         if wifi_ssid:
             env["ROBOT_WIFI_SSID"] = wifi_ssid
             env["ROBOT_WIFI_PASSWORD"] = wifi_password
