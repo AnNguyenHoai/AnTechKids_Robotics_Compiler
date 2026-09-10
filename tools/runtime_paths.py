@@ -61,17 +61,19 @@ def resolve_path(*parts: str | os.PathLike[str], writable: bool = False) -> Path
 
 
 def _tool_candidates(name: str) -> list[Path]:
-    """Return supported locations for a bundled executable."""
-    suffixes = [""]
-    if os.name == "nt":
-        suffixes = [".exe", ".cmd", ".bat", ""]
-    return [
-        application_root() / "runtime" / "bin" / f"{name}{suffix}"
-        for suffix in suffixes
-    ] + [
-        application_root() / "runtime" / "tools" / f"{name}{suffix}"
-        for suffix in suffixes
-    ]
+    """Return deterministic locations for a bundled executable.
+
+    The release contract is Windows-first, but the resolver intentionally
+    recognizes Windows executable suffixes even when the test/build host is
+    not Windows. This keeps the package layout contract independent of the
+    host OS used to validate the distribution.
+    """
+    suffixes = [".exe", ".cmd", ".bat", ""]
+    candidates: list[Path] = []
+    for directory in ("runtime/bin", "runtime/tools"):
+        for suffix in suffixes:
+            candidates.append(application_root() / directory / f"{name}{suffix}")
+    return candidates
 
 
 def resolve_bundled_tool(name: str) -> Path | None:
