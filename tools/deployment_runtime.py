@@ -15,11 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from tools.runtime_paths import (
-    application_root,
-    is_frozen,
-    platformio_command as resolve_platformio_command,
-)
+from tools import runtime_paths
+from tools.runtime_paths import platformio_command as resolve_platformio_command
 
 DEFAULT_PROCESS_TIMEOUT_SECONDS = 300.0
 PLATFORMIO_CORE_DIR_ENV = "PLATFORMIO_CORE_DIR"
@@ -47,7 +44,7 @@ class ProcessResult:
 
 def deployment_runtime_root() -> Path:
     """Return the immutable PlatformIO/deployment runtime root."""
-    return application_root() / "runtime" / "platformio"
+    return runtime_paths.application_root() / "runtime" / "platformio"
 
 
 def deployment_runtime_core_dir() -> Path:
@@ -173,3 +170,10 @@ def run_process(
 
     reader_done.wait(timeout=2.0)
     return ProcessResult(process.returncode, "".join(output))
+
+
+# Keep this local alias for compatibility with existing tests that patch the
+# deployment module's frozen-state probe. Path resolution itself is delegated
+# to runtime_paths so both modules observe the same application-root contract.
+def is_frozen() -> bool:
+    return runtime_paths.is_frozen()
