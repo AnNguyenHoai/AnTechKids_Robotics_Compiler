@@ -97,19 +97,25 @@ def python_command(*args: str) -> list[str]:
 
 
 def platformio_command(*args: str) -> list[str]:
-    """Build a PlatformIO command owned by RoboStudio.
+    """Build a PlatformIO command without depending on PATH.
 
-    Packaged builds use a bundled ``pio``/``platformio`` executable. Source
-    development retains ``sys.executable -m platformio`` as a compatibility
-    path. A frozen build never falls back to PATH or a system Python.
+    A packaged Python runtime is preferred because a copied Windows virtual
+    environment can retain an absolute interpreter reference and therefore is
+    not a safe portable artifact. When the RoboStudio runtime contains Python,
+    PlatformIO is launched as a module from that interpreter. A directly
+    bundled PlatformIO executable remains supported as a compatibility option.
     """
+    bundled_python = resolve_bundled_tool("python")
+    if bundled_python:
+        return [str(bundled_python), "-m", "platformio", *args]
     for name in ("pio", "platformio"):
         bundled = resolve_bundled_tool(name)
         if bundled:
             return [str(bundled), *args]
     if is_frozen():
         raise RuntimePathError(
-            "RoboStudio packaged runtime is missing runtime/bin/pio.exe."
+            "RoboStudio packaged runtime is missing a deployment runtime: "
+            "runtime/bin/python.exe with PlatformIO or runtime/bin/pio.exe."
         )
     return [sys.executable, "-m", "platformio", *args]
 
