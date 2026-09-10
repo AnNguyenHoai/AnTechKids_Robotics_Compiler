@@ -8,12 +8,13 @@ output streaming.
 from __future__ import annotations
 
 import subprocess
-import sys
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
+
+from tools.runtime_paths import platformio_command as resolve_platformio_command
 
 DEFAULT_PROCESS_TIMEOUT_SECONDS = 300.0
 
@@ -31,13 +32,14 @@ class ProcessResult:
 
 
 def platformio_command(*args: str) -> list[str]:
-    """Build a PlatformIO command using the active Python interpreter.
+    """Build the PlatformIO command through the RoboStudio runtime resolver.
 
-    Using ``python -m platformio`` keeps RoboStudio independent of whether the
-    PlatformIO executable directory is present in the user's PATH (notably on
-    Windows installations launched from a GUI).
+    A packaged RoboStudio build uses its private runtime/bin tool. Source
+    development retains the existing interpreter-based PlatformIO fallback.
+    The deployment layer therefore never performs PATH-based executable
+    lookup itself.
     """
-    return [sys.executable, "-m", "platformio", *args]
+    return resolve_platformio_command(*args)
 
 
 def run_process(
