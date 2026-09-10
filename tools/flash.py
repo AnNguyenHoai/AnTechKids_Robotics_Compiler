@@ -13,7 +13,6 @@ from tools.deployment_contract import DeploymentContractError, validate_manifest
 from tools.deployment_runtime import (
     DEFAULT_PROCESS_TIMEOUT_SECONDS,
     DeploymentRuntimeError,
-    deployment_runtime_environment,
     platformio_command,
     run_process,
 )
@@ -37,6 +36,8 @@ def main():
         print(f"Deployment blocked: {exc}")
         return 1
 
+    # Keep the legacy build-artifact boundary explicit: the validated manifest
+    # identifies the build directory and its program.h artifact.
     build_dir = Path(manifest["artifacts"]["program_header"]["path"]).parent
     header_src = build_dir / "program.h"
     if header_src != Path(manifest["artifacts"]["program_header"]["path"]):
@@ -47,11 +48,11 @@ def main():
     header_dst = platform_dir / "main" / "src" / "Application" / "generated_program.h"
     previous_header = header_dst.read_bytes() if header_dst.is_file() else None
 
+    # Copy only after the complete manifest has passed validation.
     shutil.copy2(header_src, header_dst)
     print(f"Validated deployment manifest for target '{manifest['target']}'.")
     print(f"Copied header to {header_dst}")
 
-    env = deployment_runtime_environment()
     cmd = platformio_command("run", "-t", "upload", "-d", str(platform_dir))
     if args.port:
         cmd.extend(["--upload-port", args.port])
@@ -60,7 +61,6 @@ def main():
         result = run_process(
             cmd,
             cwd=ROOT,
-            env=env,
             timeout=args.process_timeout,
             on_output=lambda line: print(line, end="", flush=True),
         )
