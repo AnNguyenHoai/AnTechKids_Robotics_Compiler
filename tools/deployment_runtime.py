@@ -3,10 +3,11 @@
 The deployment boundary must not depend on a shell command being available on
 PATH and must not leave a GUI operation blocked forever. This module provides a
 small, UI-independent process runner with bounded execution and line-oriented
-output streaming.
+output streaming, plus an application-owned PlatformIO runtime environment.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import threading
 import time
@@ -14,9 +15,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from tools.runtime_paths import platformio_command as resolve_platformio_command
+from tools.runtime_paths import (
+    application_root,
+    is_frozen,
+    platformio_command as resolve_platformio_command,
+)
 
 DEFAULT_PROCESS_TIMEOUT_SECONDS = 300.0
+PLATFORMIO_CORE_DIR_ENV = "PLATFORMIO_CORE_DIR"
+PLATFORMIO_PLATFORMS_DIR_ENV = "PLATFORMIO_PLATFORMS_DIR"
+PLATFORMIO_PACKAGES_DIR_ENV = "PLATFORMIO_PACKAGES_DIR"
+PLATFORMIO_CACHE_DIR_ENV = "PLATFORMIO_CACHE_DIR"
+PLATFORMIO_BUILD_CACHE_DIR_ENV = "PLATFORMIO_BUILD_CACHE_DIR"
+PLATFORMIO_WORKSPACE_DIR_ENV = "PLATFORMIO_WORKSPACE_DIR"
+PLATFORMIO_DISABLE_UPGRADE_CHECK_ENV = "PLATFORMIO_DISABLE_UPGRADE_CHECK"
+PLATFORMIO_DISABLE_PROGRESSBAR_ENV = "PLATFORMIO_DISABLE_PROGRESSBAR"
+PLATFORMIO_NO_ANSI_ENV = "PLATFORMIO_NO_ANSI"
 
 
 class DeploymentRuntimeError(RuntimeError):
@@ -31,14 +45,67 @@ class ProcessResult:
     output: str
 
 
-def platformio_command(*args: str) -> list[str]:
-    """Build the PlatformIO command through the RoboStudio runtime resolver.
+def deployment_runtime_root() -> Path:
+    """Return the immutable PlatformIO/deployment runtime root."""
+    return application_root() / "runtime" / "platformio"
 
-    A packaged RoboStudio build uses its private runtime/bin tool. Source
-    development retains the existing interpreter-based PlatformIO fallback.
-    The deployment layer therefore never performs PATH-based executable
-    lookup itself.
+
+def deployment_runtime_core_dir() -> Path:
+    """Return the private PlatformIO Core data directory shipped by RoboStudio."""
+    return deployment_runtime_root()
+
+
+def deployment_runtime_environment(
+    base_env: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Build the environment for a deployment subprocess.
+
+    Frozen RoboStudio runs are completely isolated from the user's global
+    PlatformIO installation. PlatformIO's documented directory environment
+    variables are pointed at the application-owned runtime. Source builds keep
+    their existing environment so the developer workflow remains unchanged.
     """
+    env = dict(os.environ if base_env is None else base_env)
+    if not is_frozen():
+        return env
+
+    core = deployment_runtime_core_dir()
+    env.update(
+        {
+            PLATFORMIO_CORE_DIR_ENV: str(core),
+            PLATFORMIO_PLATFORMS_DIR_ENV: str(core / "platforms"),
+            PLATFORMIO_PACKAGES_DIR_ENV: str(core / "packages"),
+            PLATFORMIO_CACHE_DIR_ENV: str(core / ".cache"),
+            PLATFORMIO_BUILD_CACHE_DIR_ENV: str(core / "build-cache"),
+            PLATFORMIO_WORKSPACE_DIR_ENV: str(core / "workspace"),
+            PLATFORMIO_DISABLE_UPGRADE_CHECK_ENV: "true",
+            PLATFORMIO_DISABLE_PROGRESSBAR_ENV: "true",
+            PLATFORMIO_NO_ANSI_ENV: "true",
+        }
+    )
+    return env
+
+
+def validate_deployment_runtime() -> Path:
+    """Validate that the packaged PlatformIO runtime has its required layout."""
+    root = deployment_runtime_root()
+    if not root.is_dir():
+        raise DeploymentRuntimeError(
+            f"RoboStudio deployment runtime is missing: {root}"
+        )
+    if not (root / "platforms").is_dir():
+        raise DeploymentRuntimeError(
+            f"RoboStudio deployment runtime is missing platforms: {root / 'platforms'}"
+        )
+    if not (root / "packages").is_dir():
+        raise DeploymentRuntimeError(
+            f"RoboStudio deployment runtime is missing packages: {root / 'packages'}"
+        )
+    return root
+
+
+def platformio_command(*args: str) -> list[str]:
+    """Build the PlatformIO command through the RoboStudio runtime resolver."""
     return resolve_platformio_command(*args)
 
 
@@ -50,12 +117,7 @@ def run_process(
     timeout: float = DEFAULT_PROCESS_TIMEOUT_SECONDS,
     on_output: Callable[[str], None] | None = None,
 ) -> ProcessResult:
-    """Run a process, stream combined output, and enforce a hard deadline.
-
-    ``subprocess.run(..., timeout=...)`` is not sufficient for RoboStudio's
-    live console because it buffers output until the child exits. A dedicated
-    reader thread drains stdout while the caller enforces the deadline.
-    """
+    """Run a process, stream combined output, and enforce a hard deadline."""
     if not command:
         raise ValueError("Deployment command must not be empty.")
     if timeout <= 0:
