@@ -56,6 +56,14 @@ def _file_entries(root: Path) -> list[dict[str, object]]:
     ]
 
 
+def _copy_application_metadata(executable: Path, output: Path) -> None:
+    """Copy application-owned VERSION next to the packaged executable."""
+    version = executable.parent / runtime_integrity.APPLICATION_VERSION_FILE
+    if not version.is_file():
+        raise DistributionPackageError(f"Missing application VERSION: {version}")
+    shutil.copy2(version, output / runtime_integrity.APPLICATION_VERSION_FILE)
+
+
 def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
     """Build a clean distribution and return its distribution manifest."""
     output = Path(output)
@@ -69,6 +77,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
     if not executable.is_file():
         raise DistributionPackageError(f"Missing RoboStudio executable: {executable}")
     shutil.copy2(executable, output / executable.name)
+    _copy_application_metadata(executable, output)
 
     _copy_tree(inputs.runtime_bin, output / runtime_preflight.RUNTIME_BIN, "portable Python")
     _copy_tree(inputs.runtime_platformio, output / runtime_preflight.RUNTIME_PLATFORMIO, "PlatformIO")
