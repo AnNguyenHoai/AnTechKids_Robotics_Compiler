@@ -87,16 +87,34 @@ def resolve_path(*parts: str | os.PathLike[str], writable: bool = False) -> Path
     return root.joinpath(*(Path(part) for part in parts))
 
 
+def _tool_root() -> Path:
+    """Return the application-owned root used for bundled artifact identity.
+
+    ``application_root()`` deliberately returns the canonical installation
+    identity. Bundled-artifact discovery has a stricter identity contract: an
+    explicit ``ROBOSTUDIO_HOME`` must be preserved exactly so a packaged tool
+    path remains the same path object supplied by the application/distribution
+    layout. This is also what allows deterministic tests and deployments to
+    reason about the physical packaged artifact without an implicit filesystem
+    canonicalization step.
+    """
+    override = os.environ.get(APPLICATION_HOME_ENV)
+    if override:
+        return Path(override).expanduser()
+    return application_root()
+
+
 def _tool_candidates(name: str) -> list[Path]:
     """Return supported locations for a bundled executable."""
     suffixes = [""]
     if os.name == "nt":
         suffixes = [".exe", ".cmd", ".bat", ""]
+    root = _tool_root()
     return [
-        application_root() / "runtime" / "bin" / f"{name}{suffix}"
+        root / "runtime" / "bin" / f"{name}{suffix}"
         for suffix in suffixes
     ] + [
-        application_root() / "runtime" / "tools" / f"{name}{suffix}"
+        root / "runtime" / "tools" / f"{name}{suffix}"
         for suffix in suffixes
     ]
 
