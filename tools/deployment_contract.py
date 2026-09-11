@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping
 
-ROOT = Path(__file__).resolve().parent.parent
-TARGET_PROFILES = ROOT / "packages" / "robot-isa" / "target_profiles.json"
+from tools.runtime_resources import resolve_resource
+
 SCHEMA_VERSION = 1
 CONTRACT_KIND = "robot_deployment_manifest"
 
@@ -36,7 +36,8 @@ def _artifact(path: Path) -> dict:
     return {"path": str(path), "size": path.stat().st_size, "sha256": sha256_file(path)}
 
 
-def _profiles(path: Path = TARGET_PROFILES) -> dict[str, dict]:
+def _profiles(path: Path | None = None) -> dict[str, dict]:
+    path = Path(path) if path is not None else resolve_resource("target_profiles")
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
