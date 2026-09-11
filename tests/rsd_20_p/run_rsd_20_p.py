@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,7 +45,6 @@ def _minimal_pe(import_name: str | None = None) -> bytes:
     data[pe_offset + 20:pe_offset + 22] = optional_size.to_bytes(2, "little")
     optional = pe_offset + 24
     data[optional:optional + 2] = (0x20B).to_bytes(2, "little")
-    # PE32+ data directory starts at optional+112. Import directory is index 1.
     import_directory = optional + 112 + 8
     data[import_directory:import_directory + 4] = (0x1030).to_bytes(4, "little")
     section = section_table
@@ -63,16 +62,15 @@ def _minimal_pe(import_name: str | None = None) -> bytes:
     return bytes(data)
 
 
-def _make_distribution(root: Path, *, imported_dll: str | None = None, include_import: bool = False, host_path: bool = False) -> Path:
+def _make_distribution(root: Path, *, imported_dll: str | None = None, include_dependency: bool = True, host_path: bool = False) -> Path:
     root.mkdir(parents=True)
     executable = root / "RoboStudio.exe"
-    executable.write_bytes(_minimal_pe(imported_dll if include_import else None))
+    executable.write_bytes(_minimal_pe(imported_dll))
     (root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
 
     runtime = root / "runtime"
     runtime_bin = runtime / "bin"
     runtime_bin.mkdir(parents=True)
-    # The test needs only a runtime-shaped file; RSD-20-P does not execute it.
     (runtime_bin / ("python.exe" if sys.platform == "win32" else "python")).write_bytes(b"portable-python")
 
     platformio = runtime / "platformio"
@@ -96,7 +94,7 @@ def _make_distribution(root: Path, *, imported_dll: str | None = None, include_i
     resources.mkdir(parents=True)
     (resources / "target_profiles.json").write_text('{"targets": []}\n', encoding="utf-8")
     runtime_resources.write_resource_manifest(runtime / "resources")
-    if imported_dll and include_import:
+    if imported_dll and include_dependency:
         (root / imported_dll).write_bytes(_minimal_pe())
     if host_path:
         (root / "runtime" / "resources" / "host-config.json").write_text(
@@ -118,8 +116,8 @@ def _make_distribution(root: Path, *, imported_dll: str | None = None, include_i
     return root
 
 
-def _build_release(distribution: Path, base: Path) -> Path:
-    artifact = base / "release" / "RoboStudio-Windows.zip"
+def _build_release(distribution: Path, base: Path, name: str) -> Path:
+    artifact = base / "release" / f"{name}.zip"
     from tools import release_package
     release_package.build_release(distribution, artifact)
     return artifact
@@ -129,8 +127,8 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="robostudio-rsd20p-") as temp:
         base = Path(temp)
 
-        valid_distribution = _make_distribution(base / "valid", imported_dll="Qt6Core.dll", include_import=True)
-        valid_artifact = _build_release(valid_distribution, base)
+        valid_distribution = _make_distribution(base / "valid", imported_dll="Qt6Core.dll")
+        valid_artifact = _build_release(valid_distribution, base, "valid")
         report = portable_release_proof.prove_portable_release(valid_artifact)
         check("valid portable release passes", report.passed)
         check("packaged dependency is counted", report.packaged_dependency_count >= 1)
@@ -138,8 +136,8 @@ def main() -> int:
         check("release file count is recorded", report.file_count > 0)
         check("report is machine-readable", portable_release_proof.report_to_dict(report)["status"] == "PASS")
 
-        missing_dependency = _make_distribution(base / "missing", imported_dll="Qt6Core.dll", include_import=False)
-        missing_artifact = _build_release(missing_dependency, base)
+        missing_distribution = _make_distribution(base / "missing", imported_dll="Qt6Core.dll", include_dependency=False)
+        missing_artifact = _build_release(missing_distribution, base, "missing")
         expect_error(
             "missing non-system PE dependency is rejected",
             lambda: portable_release_proof.prove_portable_release(missing_artifact),
@@ -147,7 +145,7 @@ def main() -> int:
         )
 
         host_leak = _make_distribution(base / "host-leak", host_path=True)
-        host_artifact = _build_release(host_leak, base)
+        host_artifact = _build_release(host_leak, base, "host-leak")
         expect_error(
             "host-specific absolute path is rejected",
             lambda: portable_release_proof.prove_portable_release(host_artifact),
@@ -155,8 +153,8 @@ def main() -> int:
         )
 
         symlink_artifact = base / "release" / "symlink.zip"
-        with __import__("zipfile").ZipFile(symlink_artifact, "w") as archive:
-            info = __import__("zipfile").ZipInfo("link")
+        with zipfile.ZipFile(symlink_artifact, "w") as archive:
+            info = zipfile.ZipInfo("link")
             info.external_attr = 0o120777 << 16
             archive.writestr(info, b"target")
         expect_error(
