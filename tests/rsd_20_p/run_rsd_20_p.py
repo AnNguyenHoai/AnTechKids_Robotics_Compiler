@@ -159,8 +159,8 @@ def main() -> int:
             archive.writestr(info, b"target")
         expect_error(
             "symlink member is rejected",
-            lambda: portable_release_proof.prove_portable_release(symlink_artifact),
-            "release integrity validation failed",
+            lambda: portable_release_proof._validate_zip_members(symlink_artifact),
+            "symlink",
         )
 
     print("RSD-20-P production portable release proof checks: PASS")
