@@ -31,6 +31,7 @@ class PortableReleaseReport:
     """Machine-readable result of the RSD-12 acceptance gate."""
 
     artifact: Path
+    relocated_root: Path
     relocation_verified: bool
     file_count: int
     application: str
@@ -177,6 +178,7 @@ def validate_release_artifact(
 
         return PortableReleaseReport(
             artifact=artifact,
+            relocated_root=relocated,
             relocation_verified=True,
             file_count=int(release_manifest.get("file_count", 0)),
             application=application,
