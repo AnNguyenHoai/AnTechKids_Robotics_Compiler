@@ -37,7 +37,7 @@ The packager copies only registered resources and writes the manifest. It does n
 
 ## Deployment integration
 
-`tools/deployment_contract.py` now resolves `target_profiles.json` through the runtime resource contract. This removes the previous hard dependency on the repository checkout for packaged deployments while preserving source-mode behavior.
+`tools/deployment_contract.py` resolves `target_profiles.json` through the runtime resource contract. This removes the previous hard dependency on the repository checkout for packaged deployments while preserving source-mode behavior.
 
 ## Gate
 

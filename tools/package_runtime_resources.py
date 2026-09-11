@@ -19,7 +19,6 @@ def package_resources(source: Path, output: Path) -> dict:
         raise RuntimeError(f"Runtime resource source directory not found: {source}")
     if output == source or source in output.parents:
         raise RuntimeError("Output resource directory must not be inside the source directory.")
-
     output.mkdir(parents=True, exist_ok=True)
     copied: list[str] = []
     for name, relative in RESOURCE_SPECS.items():
@@ -30,15 +29,14 @@ def package_resources(source: Path, output: Path) -> dict:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_file, target)
         copied.append(name)
-
     manifest_path = write_resource_manifest(output, copied)
     return {"resources": copied, "manifest": str(manifest_path)}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Package RoboStudio runtime resources")
-    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE, help="Repository resource source root")
-    parser.add_argument("--output", type=Path, required=True, help="runtime/resources output directory")
+    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
+    parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     result = package_resources(args.source, args.output)
     print(f"Runtime resources staged: {args.output}")

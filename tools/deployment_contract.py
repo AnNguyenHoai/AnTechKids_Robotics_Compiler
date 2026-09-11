@@ -53,9 +53,7 @@ def validate_target_capabilities(target: str, required: Iterable[str], profiles:
         raise DeploymentContractError(f"Unknown deployment target: {target}")
     missing = sorted(set(required) - set(profile.get("capabilities", ())))
     if missing:
-        raise DeploymentContractError(
-            f"Target '{target}' cannot deploy program; missing capabilities: {', '.join(missing)}"
-        )
+        raise DeploymentContractError(f"Target '{target}' cannot deploy program; missing capabilities: {', '.join(missing)}")
 
 
 @dataclass(frozen=True)
@@ -68,14 +66,7 @@ class DeploymentManifest:
     platformio_environment: str = "esp32dev"
 
     def to_dict(self) -> dict:
-        result = {
-            "schema_version": SCHEMA_VERSION,
-            "kind": CONTRACT_KIND,
-            "target": self.target,
-            "platformio_environment": self.platformio_environment,
-            "required_capabilities": list(self.required_capabilities),
-            "artifacts": {"program_header": self.program_header},
-        }
+        result = {"schema_version": SCHEMA_VERSION, "kind": CONTRACT_KIND, "target": self.target, "platformio_environment": self.platformio_environment, "required_capabilities": list(self.required_capabilities), "artifacts": {"program_header": self.program_header}}
         if self.compile_report is not None:
             result["artifacts"]["compile_report"] = self.compile_report
         if self.source is not None:

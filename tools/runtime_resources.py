@@ -46,19 +46,12 @@ def _validate_name(name: str) -> Path:
 
 
 def resolve_resource(name: str, *, required: bool = True) -> Path | None:
-    """Resolve a named runtime resource without consulting CWD or PATH.
-
-    Frozen distributions are self-contained and may only consume packaged
-    resources. Source runs use the repository copy as a development fallback.
-    An explicit ``ROBOSTUDIO_HOME`` controls the packaged root in both modes,
-    which makes distribution tests and relocated installations deterministic.
-    """
+    """Resolve a named runtime resource without consulting CWD or PATH."""
     relative = _validate_name(name)
     if is_frozen() or os.environ.get(APPLICATION_HOME_ENV):
         candidate = runtime_resource_root() / relative
     else:
         candidate = _source_resource_root() / relative
-
     if candidate.is_file():
         return candidate
     if required:
@@ -70,7 +63,6 @@ def resolve_resource(name: str, *, required: bool = True) -> Path | None:
 
 
 def resource_manifest_path() -> Path:
-    """Return the application-owned runtime resource manifest path."""
     return runtime_resource_root() / RESOURCE_MANIFEST_NAME
 
 
@@ -83,7 +75,6 @@ def sha256_file(path: Path) -> str:
 
 
 def build_resource_manifest(root: Path | None = None, resources: Iterable[str] | None = None) -> dict:
-    """Build a relocatable manifest containing resource paths and checksums."""
     root = Path(root) if root is not None else runtime_resource_root()
     names = tuple(resources) if resources is not None else tuple(RESOURCE_SPECS)
     entries: dict[str, dict] = {}
@@ -97,27 +88,18 @@ def build_resource_manifest(root: Path | None = None, resources: Iterable[str] |
             "size": path.stat().st_size,
             "sha256": sha256_file(path),
         }
-    return {
-        "schema": "antechkids.robostudio.runtime-resources",
-        "schema_version": 1,
-        "resources": entries,
-    }
+    return {"schema": "antechkids.robostudio.runtime-resources", "schema_version": 1, "resources": entries}
 
 
 def write_resource_manifest(root: Path | None = None, resources: Iterable[str] | None = None) -> Path:
-    """Write a relocatable runtime resource manifest and return its path."""
     root = Path(root) if root is not None else runtime_resource_root()
     root.mkdir(parents=True, exist_ok=True)
     path = root / RESOURCE_MANIFEST_NAME
-    path.write_text(
-        json.dumps(build_resource_manifest(root, resources), indent=2) + "\n",
-        encoding="utf-8",
-    )
+    path.write_text(json.dumps(build_resource_manifest(root, resources), indent=2) + "\n", encoding="utf-8")
     return path
 
 
 def validate_resource_manifest(path: Path | None = None) -> dict:
-    """Validate packaged resources against a relocatable manifest."""
     manifest_path = Path(path) if path is not None else resource_manifest_path()
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -125,7 +107,6 @@ def validate_resource_manifest(path: Path | None = None) -> dict:
         raise RuntimeResourceError(f"Unable to load runtime resource manifest: {exc}") from exc
     if manifest.get("schema") != "antechkids.robostudio.runtime-resources" or manifest.get("schema_version") != 1:
         raise RuntimeResourceError("Unsupported runtime resource manifest schema")
-
     root = manifest_path.parent
     for name, entry in manifest.get("resources", {}).items():
         relative = _validate_name(name)
