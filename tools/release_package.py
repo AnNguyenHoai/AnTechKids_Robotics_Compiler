@@ -6,7 +6,7 @@ ZIP artifact from an already validated distribution, reject host-specific
 content, and validate the artifact without extracting it into the current
 working directory.
 """
-from __future__ import annotations__
+from __future__ import annotations
 
 import sys
 from pathlib import Path
