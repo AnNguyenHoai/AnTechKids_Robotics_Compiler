@@ -7,7 +7,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from tools import runtime_preflight, runtime_resources
+from tools import runtime_integrity, runtime_preflight, runtime_resources
 
 DISTRIBUTION_MANIFEST = "distribution-manifest.json"
 SCHEMA = "antechkids.robostudio.distribution"
@@ -85,6 +85,15 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
         runtime_preflight.validate_distribution(output)
     except Exception as exc:
         raise DistributionPackageError(f"Assembled distribution failed runtime preflight: {exc}") from exc
+
+    # RSD-10: freeze the exact runtime identity after all runtime inputs and
+    # generated resource metadata are in their final packaged form. The
+    # integrity manifest itself lives outside the component boundaries it
+    # fingerprints, so it does not recursively hash itself.
+    try:
+        runtime_integrity.write_runtime_manifest(output)
+    except runtime_integrity.RuntimeIntegrityError as exc:
+        raise DistributionPackageError(f"Unable to create runtime integrity manifest: {exc}") from exc
 
     manifest = {
         "schema": SCHEMA,
