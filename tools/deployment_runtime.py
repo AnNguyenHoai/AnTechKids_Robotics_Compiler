@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from tools import runtime_paths
+from tools import build_isolation, runtime_paths
 from tools.runtime_paths import platformio_command as resolve_platformio_command
 
 DEFAULT_PROCESS_TIMEOUT_SECONDS = 300.0
@@ -72,33 +72,51 @@ def deployment_runtime_core_dir() -> Path:
 
 def deployment_runtime_environment(
     base_env: Mapping[str, str] | None = None,
+    *,
+    project_name: str | None = None,
 ) -> dict[str, str]:
     """Build the environment for a deployment subprocess.
 
     Frozen RoboStudio runs are completely isolated from the user's global
-    PlatformIO installation. PlatformIO's documented directory environment
-    variables are pointed at the application-owned runtime. Source builds keep
-    their existing environment so the developer workflow remains unchanged.
+    PlatformIO installation. PlatformIO's core/platform/package directories
+    are pointed at the application-owned runtime. When ``project_name`` is
+    supplied, all writable PlatformIO build state is moved to the per-project
+    RoboStudio user-data workspace; this prevents ``robot-platform/.pio`` and
+    other host/project-local build state from being created by one-click
+    deployment.
+
+    Source builds keep their existing PlatformIO core/toolchain fallback, but
+    an explicit project name still receives the same isolated build workspace.
     """
     env = dict(os.environ if base_env is None else base_env)
-    if not is_frozen():
-        return env
+    if is_frozen():
+        core = deployment_runtime_core_dir()
+        env.update(
+            {
+                PLATFORMIO_CORE_DIR_ENV: str(core),
+                PLATFORMIO_PLATFORMS_DIR_ENV: str(core / "platforms"),
+                PLATFORMIO_PACKAGES_DIR_ENV: str(core / "packages"),
+                PLATFORMIO_CACHE_DIR_ENV: str(core / ".cache"),
+                PLATFORMIO_BUILD_CACHE_DIR_ENV: str(core / "build-cache"),
+                PLATFORMIO_WORKSPACE_DIR_ENV: str(core / "workspace"),
+                PLATFORMIO_DISABLE_UPGRADE_CHECK_ENV: "true",
+                PLATFORMIO_DISABLE_PROGRESSBAR_ENV: "true",
+                PLATFORMIO_NO_ANSI_ENV: "true",
+            }
+        )
 
-    core = deployment_runtime_core_dir()
-    env.update(
-        {
-            PLATFORMIO_CORE_DIR_ENV: str(core),
-            PLATFORMIO_PLATFORMS_DIR_ENV: str(core / "platforms"),
-            PLATFORMIO_PACKAGES_DIR_ENV: str(core / "packages"),
-            PLATFORMIO_CACHE_DIR_ENV: str(core / ".cache"),
-            PLATFORMIO_BUILD_CACHE_DIR_ENV: str(core / "build-cache"),
-            PLATFORMIO_WORKSPACE_DIR_ENV: str(core / "workspace"),
-            PLATFORMIO_DISABLE_UPGRADE_CHECK_ENV: "true",
-            PLATFORMIO_DISABLE_PROGRESSBAR_ENV: "true",
-            PLATFORMIO_NO_ANSI_ENV: "true",
-        }
-    )
+    if project_name is not None:
+        env = build_isolation.build_environment(project_name, env)
+
     return env
+
+
+def isolated_deployment_environment(
+    project_name: str,
+    base_env: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Return the canonical deployment environment with isolated build state."""
+    return deployment_runtime_environment(base_env, project_name=project_name)
 
 
 def validate_deployment_runtime() -> Path:
