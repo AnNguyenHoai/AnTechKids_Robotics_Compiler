@@ -27,14 +27,12 @@ def main() -> int:
         ROOT / "robot-compiler" / "integration" / "end_to_end" / "run_integration_tests.py",
         ROOT / "tests" / "c4" / "test_language_semantics.py",
         ROOT / "tests" / "c5" / "test_c5_pipeline.py",
-        # Distribution gates must run from the repository root so packaging
-        # regressions cannot silently pass because they were omitted from the
-        # aggregate test command.
         ROOT / "tests" / "rsd_02" / "run_rsd_02.py",
         ROOT / "tests" / "rsd_03" / "run_rsd_03.py",
         ROOT / "tests" / "rsd_04" / "run_rsd_04.py",
         ROOT / "tests" / "rsd_05" / "run_rsd_05.py",
         ROOT / "tests" / "rsd_06" / "run_rsd_06.py",
+        ROOT / "tests" / "rsd_07" / "run_rsd_07.py",
         ROOT / "tests" / "h26_a" / "run_h26_a.py",
         ROOT / "tests" / "h26_b" / "run_h26_b.py",
         ROOT / "tests" / "h26_c" / "run_h26_c.py",
