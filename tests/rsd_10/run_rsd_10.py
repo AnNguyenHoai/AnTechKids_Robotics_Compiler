@@ -30,16 +30,16 @@ def expect_error(name: str, fn, expected: str) -> None:
 
 def make_runtime(root: Path) -> None:
     (root / "VERSION").write_text("0.1.1\n", encoding="utf-8")
-    (root / "runtime" / "bin").mkdir(parents=True)
+    (root / "runtime" / "bin").mkdir(parents=True, exist_ok=True)
     (root / "runtime" / "bin" / "python.exe").write_bytes(b"portable-python-v1")
     core = root / "runtime" / "platformio"
-    (core / "platforms" / "espressif32").mkdir(parents=True)
+    (core / "platforms" / "espressif32").mkdir(parents=True, exist_ok=True)
     (core / "platforms" / "espressif32" / "platform.json").write_text(
         '{"name":"espressif32","version":"7.0.1"}\n', encoding="utf-8"
     )
-    (core / "packages" / "tool-esptoolpy").mkdir(parents=True)
+    (core / "packages" / "tool-esptoolpy").mkdir(parents=True, exist_ok=True)
     (core / "packages" / "tool-esptoolpy" / "version.txt").write_text("4.11.0\n", encoding="utf-8")
-    (root / "runtime" / "resources" / "robot-isa").mkdir(parents=True)
+    (root / "runtime" / "resources" / "robot-isa").mkdir(parents=True, exist_ok=True)
     (root / "runtime" / "resources" / "robot-isa" / "target_profiles.json").write_text(
         '{"schema_version":1,"kind":"robot_target_capability_profiles","profiles":[]}\n',
         encoding="utf-8",
@@ -57,7 +57,10 @@ def main() -> int:
         manifest = runtime_integrity.validate_runtime_manifest(manifest_path)
         check("complete runtime validates", manifest["portable"] is True)
         check("application version is locked", manifest["application_version"] == "0.1.1")
-        check("all required components are recorded", set(runtime_integrity.COMPONENTS) <= set((name, root / rel, kind) for name, rel, kind in runtime_integrity.COMPONENTS))
+        check(
+            "all required components are recorded",
+            set(manifest["components"]) == {name for name, _, _ in runtime_integrity.COMPONENTS},
+        )
         check("portable Python is fingerprinted", "portable_python" in manifest["components"])
         check("PlatformIO core is fingerprinted", "platformio_core" in manifest["components"])
         check("PlatformIO packages are fingerprinted", "platformio_packages" in manifest["components"])
