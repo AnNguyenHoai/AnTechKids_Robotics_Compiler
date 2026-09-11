@@ -65,15 +65,29 @@ def user_data_root() -> Path:
 
 
 def resolve_path(*parts: str | os.PathLike[str], writable: bool = False) -> Path:
-    """Resolve an application-owned path without depending on CWD."""
+    """Resolve an application-owned path without depending on CWD.
+
+    Preserve the selected root's path identity. In particular, do not call
+    ``resolve()`` on the joined resource path: packaged resources may live
+    beneath a Windows junction/reparse point and the distribution contract is
+    defined by the application-owned path supplied to this resolver.
+    """
     root = user_data_root() if writable else application_root()
-    return root.joinpath(*(Path(part) for part in parts)).resolve()
+    return root.joinpath(*(Path(part) for part in parts))
+
+
+def _tool_root() -> Path:
+    """Return the path identity used to locate bundled application tools."""
+    override = os.environ.get(APPLICATION_HOME_ENV)
+    if override:
+        return Path(override).expanduser()
+    return application_root()
 
 
 def _tool_candidates(name: str) -> list[Path]:
     """Return deterministic locations for a bundled executable."""
     suffixes = (".exe", ".cmd", ".bat", "")
-    runtime = runtime_root()
+    runtime = _tool_root() / "runtime"
     candidates: list[Path] = []
     for directory in (runtime / "bin", runtime / "tools"):
         for suffix in suffixes:
@@ -86,8 +100,7 @@ def resolve_bundled_tool(name: str) -> Path | None:
 
     Resolution is deliberately limited to the two application-owned runtime
     directories. No PATH search and no user PlatformIO directory are allowed.
-    The returned path is the exact application-owned candidate path so tests,
-    manifests, and subprocess callers retain a stable distribution identity.
+    The returned path is the exact application-owned candidate path.
     """
     if not name or Path(name).name != name:
         raise ValueError("Tool name must be a simple executable name.")
