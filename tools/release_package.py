@@ -8,12 +8,21 @@ working directory.
 """
 from __future__ import annotations
 
+# Direct CLI execution (``python tools/release_package.py``) starts with the
+# tools directory on sys.path. Bootstrap the repository root before importing
+# sibling package modules; normal package imports are unaffected.
+import sys
+from pathlib import Path
+
+if __package__ in (None, ""):
+    _repository_root = Path(__file__).resolve().parent.parent
+    if str(_repository_root) not in sys.path:
+        sys.path.insert(0, str(_repository_root))
+
 import hashlib
 import json
-import re
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
 
 from tools import distribution_package, release_compatibility, runtime_integrity, runtime_preflight
 
@@ -28,11 +37,8 @@ _FORBIDDEN_PARTS = {
     "penv",
     "__pycache__",
 }
-# These markers identify host-owned installation roots.  ``site-packages`` is
-# intentionally not forbidden by itself: it is a valid directory name inside a
-# self-contained Python runtime and can legitimately occur in a generated
-# distribution manifest. Host leakage is rejected when the host installation
-# root itself is embedded in textual metadata.
+# These markers identify host-owned installation roots. ``site-packages`` is
+# valid inside a self-contained Python runtime and is therefore not forbidden.
 _FORBIDDEN_TEXT = (
     "\\AppData\\Local\\Programs\\Python",
     "\\AppData\\Local\\pypoetry",
@@ -254,19 +260,20 @@ def main() -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description="Build and validate a portable RoboStudio release ZIP")
-    parser.add_argument("--distribution", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--distribution", required=False, type=Path)
+    parser.add_argument("--output", required=False, type=Path)
     parser.add_argument("--validate", action="store_true")
     args = parser.parse_args()
-
     if args.validate:
+        if args.output is None:
+            parser.error("--output is required with --validate")
         validate_release_artifact(args.output)
-        print(f"Release artifact valid: {args.output.resolve()}")
         return 0
-
-    result = build_release(args.distribution, args.output)
-    print(f"Release artifact: {result.artifact}")
-    print(f"Files packaged: {result.file_count}")
-    print(f"Manifest: {result.manifest}")
-    print(f"SHA-256: {result.sha256}")
+    if args.distribution is None or args.output is None:
+        parser.error("--distribution and --output are required unless --help is used")
+    build_release(args.distribution, args.output)
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
