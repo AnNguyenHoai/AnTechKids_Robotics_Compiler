@@ -6,11 +6,8 @@ ZIP artifact from an already validated distribution, reject host-specific
 content, and validate the artifact without extracting it into the current
 working directory.
 """
-from __future__ import annotations
+from __future__ import annotations__
 
-# Direct CLI execution (``python tools/release_package.py``) starts with the
-# tools directory on sys.path. Bootstrap the repository root before importing
-# sibling package modules; normal package imports are unaffected.
 import sys
 from pathlib import Path
 
@@ -30,15 +27,9 @@ RELEASE_MANIFEST = "release-manifest.json"
 RELEASE_SCHEMA = "antechkids.robostudio.release"
 RELEASE_SCHEMA_VERSION = 1
 ARTIFACT_SUFFIX = ".zip"
+DETERMINISTIC_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
-_FORBIDDEN_PARTS = {
-    ".git",
-    ".pio",
-    "penv",
-    "__pycache__",
-}
-# These markers identify host-owned installation roots. ``site-packages`` is
-# valid inside a self-contained Python runtime and is therefore not forbidden.
+_FORBIDDEN_PARTS = {".git", ".pio", "penv", "__pycache__"}
 _FORBIDDEN_TEXT = (
     "\\AppData\\Local\\Programs\\Python",
     "\\AppData\\Local\\pypoetry",
@@ -109,8 +100,37 @@ def _archive_entries(root: Path) -> tuple[list[tuple[Path, str]], list[str]]:
     return files, directories
 
 
+def _zip_info(name: str, *, directory: bool = False) -> zipfile.ZipInfo:
+    """Create ZIP metadata that is independent of host filesystem metadata."""
+    info = zipfile.ZipInfo(name, DETERMINISTIC_ZIP_TIMESTAMP)
+    info.create_system = 3
+    info.create_version = 20
+    info.extract_version = 20
+    info.flag_bits = 0x800
+    info.compress_type = zipfile.ZIP_DEFLATED
+    if directory:
+        info.external_attr = 0o40775 << 16 | 0x10
+    else:
+        info.external_attr = 0o100644 << 16
+    return info
+
+
+def _write_deterministic_zip(artifact: Path, files: list[tuple[Path, str]], directories: list[str]) -> None:
+    """Write a stable ZIP: sorted paths, fixed timestamps and fixed metadata."""
+    with zipfile.ZipFile(artifact, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for relative in directories:
+            archive.writestr(_zip_info(relative, directory=True), b"", compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+        for source, relative in files:
+            archive.writestr(
+                _zip_info(relative),
+                source.read_bytes(),
+                compress_type=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+            )
+
+
 def build_release(distribution_root: Path, artifact: Path) -> ReleaseArtifact:
-    """Validate a distribution and package it as a portable ZIP artifact."""
+    """Validate a distribution and package it as a reproducible portable ZIP."""
     root = Path(distribution_root).resolve()
     artifact = Path(artifact).resolve()
     if not root.is_dir():
@@ -133,12 +153,7 @@ def build_release(distribution_root: Path, artifact: Path) -> ReleaseArtifact:
     artifact.parent.mkdir(parents=True, exist_ok=True)
     if artifact.exists():
         artifact.unlink()
-
-    with zipfile.ZipFile(artifact, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        for relative in directories:
-            archive.writestr(relative, b"")
-        for source, relative in entries:
-            archive.write(source, relative)
+    _write_deterministic_zip(artifact, entries, directories)
 
     application_version = runtime_integrity.application_version(root)
     if application_version == "unknown":
@@ -186,13 +201,12 @@ def validate_release_artifact(artifact: Path, manifest: Path | None = None) -> d
     try:
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ReleasePackageError(f"Unable to load release manifest: {exc}") from exc
+        raise ReleasePackageError(f"Unable to load release manifest: {manifest_path}") from exc
     if data.get("schema") != RELEASE_SCHEMA or data.get("schema_version") != RELEASE_SCHEMA_VERSION:
         raise ReleasePackageError("Unsupported release manifest schema")
 
     if _sha256(artifact) != data.get("artifact_sha256"):
         raise ReleasePackageError("Release artifact checksum mismatch")
-
     if data.get("artifact") != artifact.name or data.get("portable") is not True:
         raise ReleasePackageError("Release manifest does not describe this portable artifact")
 
@@ -200,24 +214,14 @@ def validate_release_artifact(artifact: Path, manifest: Path | None = None) -> d
         compatibility = release_compatibility.read_compatibility(data)
     except release_compatibility.ReleaseCompatibilityError as exc:
         raise ReleasePackageError(f"Invalid release compatibility contract: {exc}") from exc
-
     if data.get("application_version") != compatibility.application_version:
         raise ReleasePackageError("Release manifest application version disagrees with compatibility contract")
-
     if compatibility.runtime_integrity_schema_version != runtime_integrity.SCHEMA_VERSION:
-        raise ReleasePackageError(
-            "Release is incompatible with runtime integrity schema "
-            f"{runtime_integrity.SCHEMA_VERSION}"
-        )
+        raise ReleasePackageError("Release is incompatible with runtime integrity schema " f"{runtime_integrity.SCHEMA_VERSION}")
     if compatibility.distribution_schema_version != distribution_package.SCHEMA_VERSION:
-        raise ReleasePackageError(
-            "Release is incompatible with distribution schema "
-            f"{distribution_package.SCHEMA_VERSION}"
-        )
+        raise ReleasePackageError("Release is incompatible with distribution schema " f"{distribution_package.SCHEMA_VERSION}")
     if compatibility.release_schema_version != RELEASE_SCHEMA_VERSION:
-        raise ReleasePackageError(
-            f"Release is incompatible with release schema {RELEASE_SCHEMA_VERSION}"
-        )
+        raise ReleasePackageError(f"Release is incompatible with release schema {RELEASE_SCHEMA_VERSION}")
 
     expected = {str(item.get("path")): item for item in data.get("files", [])}
     try:
@@ -244,7 +248,6 @@ def validate_release_artifact(artifact: Path, manifest: Path | None = None) -> d
                     raise ReleasePackageError(f"Release file checksum mismatch: {item.filename}")
     except zipfile.BadZipFile as exc:
         raise ReleasePackageError(f"Invalid release ZIP: {artifact}") from exc
-
     return data
 
 
