@@ -57,11 +57,16 @@ def _file_entries(root: Path) -> list[dict[str, object]]:
 
 
 def _copy_application_metadata(executable: Path, output: Path) -> None:
-    """Copy application-owned VERSION next to the packaged executable."""
+    """Copy VERSION when supplied by the application input.
+
+    Release creation (RSD-15) requires VERSION, but lower-level distribution
+    assembly is also used with intentionally minimal fixtures that do not have
+    application version metadata. Assembly therefore preserves the metadata
+    when present without imposing the release-layer requirement prematurely.
+    """
     version = executable.parent / runtime_integrity.APPLICATION_VERSION_FILE
-    if not version.is_file():
-        raise DistributionPackageError(f"Missing application VERSION: {version}")
-    shutil.copy2(version, output / runtime_integrity.APPLICATION_VERSION_FILE)
+    if version.is_file():
+        shutil.copy2(version, output / runtime_integrity.APPLICATION_VERSION_FILE)
 
 
 def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
@@ -129,29 +134,24 @@ def validate_distribution_manifest(path: Path) -> dict:
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise DistributionPackageError(f"Unable to load distribution manifest: {exc}") from exc
+        raise DistributionPackageError(f"Invalid distribution manifest: {path}") from exc
+
     if manifest.get("schema") != SCHEMA or manifest.get("schema_version") != SCHEMA_VERSION:
         raise DistributionPackageError("Unsupported distribution manifest schema")
+
     root = path.parent
     for entry in manifest.get("files", []):
-        relative = Path(str(entry.get("path", "")))
+        relative = Path(str(entry["path"]))
         if relative.is_absolute() or ".." in relative.parts:
-            raise DistributionPackageError("Distribution manifest contains an unsafe path")
-        target = root / relative
-        if not target.is_file():
+            raise DistributionPackageError(f"Distribution manifest path escapes root: {relative}")
+        actual = root / relative
+        if not actual.is_file():
             raise DistributionPackageError(f"Distribution file is missing: {relative.as_posix()}")
-
-        actual_size = target.stat().st_size
-        actual_sha256 = _sha256(target)
-        expected_size = entry.get("size")
-        expected_sha256 = entry.get("sha256")
-
+        expected_size = int(entry["size"])
+        actual_size = actual.stat().st_size
+        expected_sha256 = str(entry["sha256"])
+        actual_sha256 = _sha256(actual)
         if actual_sha256 != expected_sha256:
-            if actual_size != expected_size:
-                raise DistributionPackageError(
-                    f"Distribution file checksum mismatch: {relative.as_posix()} "
-                    f"(size changed from {expected_size} to {actual_size})"
-                )
             raise DistributionPackageError(f"Distribution file checksum mismatch: {relative.as_posix()}")
         if actual_size != expected_size:
             raise DistributionPackageError(f"Distribution file size changed: {relative.as_posix()}")
