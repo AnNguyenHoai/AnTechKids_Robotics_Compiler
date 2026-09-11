@@ -143,10 +143,14 @@ def validate_provenance(path: Path, artifact: Path, release_manifest: Path) -> d
         raise ValueError(f"Unable to load release provenance: {path}") from exc
     if data.get("schema") != SCHEMA or data.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("Unsupported release provenance schema")
-    if data.get("artifact") != artifact.name:
-        raise ValueError("Release provenance artifact name mismatch")
+
+    # Check the supplied artifact bytes before its filename. A tampered copy
+    # may have a temporary name, but its integrity failure must be reported as
+    # a checksum mismatch rather than being masked by that name change.
     if data.get("artifact_sha256") != sha256_file(artifact):
         raise ValueError("Release provenance artifact checksum mismatch")
+    if data.get("artifact") != artifact.name:
+        raise ValueError("Release provenance artifact name mismatch")
     if data.get("release_manifest_sha256") != sha256_file(release_manifest):
         raise ValueError("Release provenance release-manifest checksum mismatch")
     if data.get("source_revision") in (None, ""):
