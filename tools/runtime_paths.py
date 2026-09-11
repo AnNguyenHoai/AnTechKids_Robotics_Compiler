@@ -73,8 +73,9 @@ def resolve_path(*parts: str | os.PathLike[str], writable: bool = False) -> Path
 def _tool_candidates(name: str) -> list[Path]:
     """Return deterministic locations for a bundled executable."""
     suffixes = (".exe", ".cmd", ".bat", "")
+    runtime = runtime_root()
     candidates: list[Path] = []
-    for directory in (runtime_root() / "bin", runtime_root() / "tools"):
+    for directory in (runtime / "bin", runtime / "tools"):
         for suffix in suffixes:
             candidates.append(directory / f"{name}{suffix}")
     return candidates
@@ -85,14 +86,14 @@ def resolve_bundled_tool(name: str) -> Path | None:
 
     Resolution is deliberately limited to the two application-owned runtime
     directories. No PATH search and no user PlatformIO directory are allowed.
-    The returned path is absolute and normalized so callers can safely pass it
-    to subprocess APIs from any working directory.
+    The returned path is the exact application-owned candidate path so tests,
+    manifests, and subprocess callers retain a stable distribution identity.
     """
     if not name or Path(name).name != name:
         raise ValueError("Tool name must be a simple executable name.")
     for candidate in _tool_candidates(name):
         if candidate.is_file():
-            return candidate.resolve()
+            return candidate
     return None
 
 

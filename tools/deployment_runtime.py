@@ -44,16 +44,17 @@ class ProcessResult:
 
 
 def application_root() -> Path:
-    """Resolve the application root through the deployment frozen-state seam.
+    """Resolve the deployment application root deterministically.
 
-    ``ROBOSTUDIO_HOME`` always wins, which gives packaged integrations and
-    contract tests a deterministic root. When no override exists, a frozen
-    deployment is rooted beside its executable. Source builds delegate to the
-    canonical runtime-path implementation.
+    An explicit ``ROBOSTUDIO_HOME`` override is intentionally preserved as
+    supplied (apart from ``~`` expansion). This keeps the deployment runtime
+    contract identical to the application-owned path supplied by the caller;
+    filesystem canonicalization belongs to resource APIs that explicitly need
+    it, not to the identity of the packaged root.
     """
     override = os.environ.get(runtime_paths.APPLICATION_HOME_ENV)
     if override:
-        return Path(override).expanduser().resolve()
+        return Path(override).expanduser()
     if is_frozen():
         return Path(sys.executable).resolve().parent
     return runtime_paths.application_root()
