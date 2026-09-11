@@ -41,28 +41,6 @@ def _validate_host_independence(root: Path, base_env: Mapping[str, str]) -> None
     """Verify launch/build resolution is unaffected by hostile host settings."""
     env = distribution_launch.clean_machine_environment(root, base_env)
 
-    required_removed = (
-        "PYTHONHOME",
-        "PYTHONPATH",
-        "VIRTUAL_ENV",
-        "CONDA_PREFIX",
-        "CONDA_DEFAULT_ENV",
-        "PIOHOME_DIR",
-        "PLATFORMIO_CORE_DIR",
-        "PLATFORMIO_PLATFORMS_DIR",
-        "PLATFORMIO_PACKAGES_DIR",
-        "PLATFORMIO_CACHE_DIR",
-        "PLATFORMIO_BUILD_CACHE_DIR",
-        "PLATFORMIO_WORKSPACE_DIR",
-    )
-    if any(name in env and name in base_env for name in required_removed):
-        # Runtime variables must be replaced/removed rather than inherited.
-        for name in required_removed:
-            if name in base_env and name not in {"PLATFORMIO_CORE_DIR"}:
-                # All of these are either absent or replaced below. The explicit
-                # application-owned values are checked separately.
-                continue
-
     expected_core = root / "runtime" / "platformio"
     if Path(env["ROBOSTUDIO_HOME"]) != root:
         raise PortableReleaseGateError("Launch environment does not identify relocated application root")
@@ -135,6 +113,23 @@ def _validate_build_isolation(root: Path, base_env: Mapping[str, str]) -> Path:
                 os.environ[name] = value
 
 
+def _validate_relocated_runtime(root: Path, hostile_env: Mapping[str, str]) -> None:
+    """Validate a relocated distribution with its application identity injected."""
+    old_home = os.environ.get(runtime_paths.APPLICATION_HOME_ENV)
+    try:
+        os.environ[runtime_paths.APPLICATION_HOME_ENV] = str(root)
+        try:
+            runtime_preflight.validate_distribution(root)
+        except Exception as exc:
+            raise PortableReleaseGateError(f"Relocated runtime preflight failed: {exc}") from exc
+        _validate_host_independence(root, hostile_env)
+    finally:
+        if old_home is None:
+            os.environ.pop(runtime_paths.APPLICATION_HOME_ENV, None)
+        else:
+            os.environ[runtime_paths.APPLICATION_HOME_ENV] = old_home
+
+
 def validate_release_artifact(
     artifact: Path,
     manifest: Path | None = None,
@@ -157,11 +152,6 @@ def validate_release_artifact(
         except (OSError, zipfile.BadZipFile) as exc:
             raise PortableReleaseGateError(f"Unable to relocate release artifact: {exc}") from exc
 
-        try:
-            runtime_preflight.validate_distribution(relocated)
-        except Exception as exc:
-            raise PortableReleaseGateError(f"Relocated runtime preflight failed: {exc}") from exc
-
         hostile = dict(os.environ if base_env is None else base_env)
         hostile.update(
             {
@@ -175,7 +165,7 @@ def validate_release_artifact(
                 "PLATFORMIO_WORKSPACE_DIR": "C:\\HostWorkspace",
             }
         )
-        _validate_host_independence(relocated, hostile)
+        _validate_relocated_runtime(relocated, hostile)
         workspace = _validate_build_isolation(relocated, hostile)
 
         # RSD-11 guarantees that the portable application has no need to create
