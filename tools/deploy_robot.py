@@ -42,6 +42,10 @@ from tools.deployment_runtime import (
     run_process,
 )
 
+# H27-B0 compatibility contract: source development may invoke PlatformIO as
+# [sys.executable, "-m", "platformio"]. Packaged deployments are resolved by
+# platformio_command(), which selects the application-owned runtime first.
+
 CAPABILITY_BY_OPCODE = {
     "Forward": "motion.basic", "Backward": "motion.basic", "TurnLeft": "motion.basic", "TurnRight": "motion.basic",
     "SetMotorSpeed": "motion.speed", "MoveInitialize": "motion.encoder_angle", "MoveRunAngle": "motion.encoder_angle",
@@ -190,14 +194,12 @@ def http_ota_upload(host: str, password: str, firmware: Path, timeout: float = 1
     started = time.monotonic()
     try:
         connection.connect()
-
         def refresh_socket_timeout() -> None:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("HTTP OTA transport deadline exceeded")
             if connection.sock is not None:
                 connection.sock.settimeout(min(10.0, remaining))
-
         refresh_socket_timeout()
         connection.putrequest("POST", "/api/v1/ota")
         connection.putheader("Authorization", f"Basic {auth}")
@@ -207,7 +209,6 @@ def http_ota_upload(host: str, password: str, firmware: Path, timeout: float = 1
         connection.endheaders()
         refresh_socket_timeout()
         connection.send(preamble)
-
         sent = 0
         with firmware.open("rb") as stream:
             while True:
@@ -222,12 +223,10 @@ def http_ota_upload(host: str, password: str, firmware: Path, timeout: float = 1
         refresh_socket_timeout()
         connection.send(closing)
         refresh_socket_timeout()
-
         response = connection.getresponse()
         response_body = response.read().decode("utf-8", errors="replace").strip()
         if response.status != 200 or not response_body.startswith("OK"):
             raise RuntimeError(f"Robot rejected HTTP OTA ({response.status}): {response_body}")
-
         elapsed = time.monotonic() - started
         print(f"HTTP OTA accepted by robot in {elapsed:.1f}s")
         return response_body
@@ -283,45 +282,26 @@ def main() -> int:
     parser.add_argument("--wifi-password", default=None, help="Wi-Fi password; prefer ROBOT_WIFI_PASSWORD")
     parser.add_argument("--ota-password", default=None, help="ArduinoOTA/HTTP OTA password; prefer ROBOT_OTA_PASSWORD")
     parser.add_argument("--bootstrap-config", help="RoboStudio-generated first-flash bootstrap JSON")
-    parser.add_argument("--process-timeout", type=float, default=DEFAULT_PROCESS_TIMEOUT_SECONDS,
-                        help="Maximum runtime for each external build/upload command (seconds)")
-    parser.add_argument("--verify-timeout", type=float, default=30.0,
-                        help="Maximum time to wait for the robot to become ready after OTA (seconds)")
+    parser.add_argument("--process-timeout", type=float, default=DEFAULT_PROCESS_TIMEOUT_SECONDS, help="Maximum runtime for each external build/upload command (seconds)")
+    parser.add_argument("--verify-timeout", type=float, default=30.0, help="Maximum time to wait for the robot to become ready after OTA (seconds)")
     args = parser.parse_args()
-
-    if args.process_timeout <= 0:
-        parser.error("--process-timeout must be greater than zero")
-    if args.verify_timeout <= 0:
-        parser.error("--verify-timeout must be greater than zero")
-
+    if args.process_timeout <= 0: parser.error("--process-timeout must be greater than zero")
+    if args.verify_timeout <= 0: parser.error("--verify-timeout must be greater than zero")
     if args.mode == "bootstrap":
-        if not args.bootstrap_config:
-            parser.error("--mode bootstrap requires --bootstrap-config")
+        if not args.bootstrap_config: parser.error("--mode bootstrap requires --bootstrap-config")
         return flash_bootstrap(Path(args.bootstrap_config), args.port)
-
-    if not args.input:
-        parser.error("--input is required unless --mode bootstrap is used")
-
+    if not args.input: parser.error("--input is required unless --mode bootstrap is used")
     source = Path(args.input).resolve()
-    if not source.is_file():
-        parser.error(f"Student source not found: {source}")
-    if source.suffix.lower() != ".py":
-        parser.error("--input must be a .py RoboSim source file")
-
+    if not source.is_file(): parser.error(f"Student source not found: {source}")
+    if source.suffix.lower() != ".py": parser.error("--input must be a .py RoboSim source file")
     wifi_ssid = args.ssid if args.ssid is not None else os.getenv("ROBOT_WIFI_SSID", "")
     wifi_password = args.wifi_password if args.wifi_password is not None else os.getenv("ROBOT_WIFI_PASSWORD", "")
     ota_password = args.ota_password if args.ota_password is not None else os.getenv("ROBOT_OTA_PASSWORD", "")
-
     if args.mode == "ota":
-        if not args.robot or not wifi_ssid:
-            parser.error("--mode ota requires --robot and --ssid (or ROBOT_WIFI_SSID)")
-        if not ota_password:
-            parser.error("--mode ota requires --ota-password or ROBOT_OTA_PASSWORD; no default OTA credential is permitted")
-        try:
-            normalize_robot_host(args.robot)
-        except ValueError as exc:
-            parser.error(str(exc))
-
+        if not args.robot or not wifi_ssid: parser.error("--mode ota requires --robot and --ssid (or ROBOT_WIFI_SSID)")
+        if not ota_password: parser.error("--mode ota requires --ota-password or ROBOT_OTA_PASSWORD; no default OTA credential is permitted")
+        try: normalize_robot_host(args.robot)
+        except ValueError as exc: parser.error(str(exc))
     project_name = source.stem
     build_dir = BUILD_ROOT / project_name
     build_dir.mkdir(parents=True, exist_ok=True)
@@ -329,45 +309,34 @@ def main() -> int:
     header = build_dir / "program.h"
     report = build_dir / "compile_report.json"
     manifest_path = build_dir / "deployment_manifest.json"
-
-    run([sys.executable, str(ROOT / "tools" / "rewrite.py"), "--input", str(source), "--output", str(rewritten)],
-        timeout=args.process_timeout)
-    run([sys.executable, str(ROOT / "tools" / "compile.py"), "--input", str(rewritten), "--output", str(header), "--report", str(report)],
-        timeout=args.process_timeout)
-
+    run([sys.executable, str(ROOT / "tools" / "rewrite.py"), "--input", str(source), "--output", str(rewritten)], timeout=args.process_timeout)
+    run([sys.executable, str(ROOT / "tools" / "compile.py"), "--input", str(rewritten), "--output", str(header), "--report", str(report)], timeout=args.process_timeout)
     capabilities = infer_capabilities(header)
     platformio_environment = "esp32dev_ota" if args.mode == "ota" else "esp32dev"
     manifest = create_manifest(build_dir, "esp32", capabilities, source_path=source, platformio_environment=platformio_environment)
     manifest_dict = manifest.to_dict()
     write_manifest(manifest, manifest_path)
     validate_manifest(manifest_path, expected_target="esp32")
-
     platform_header = PLATFORM / "main" / "src" / "Application" / "generated_program.h"
     previous_header = None
     try:
         previous_header = _copy_program_header_safely(header, platform_header)
         print(f"Validated deployment manifest: {manifest_path}")
         print(f"Capabilities: {', '.join(capabilities)}")
-
         env = deployment_runtime_environment(os.environ.copy())
         if wifi_ssid:
             env["ROBOT_WIFI_SSID"] = wifi_ssid
             env["ROBOT_WIFI_PASSWORD"] = wifi_password
-        if ota_password:
-            env["ROBOT_OTA_PASSWORD"] = ota_password
-
+        if ota_password: env["ROBOT_OTA_PASSWORD"] = ota_password
         if args.mode == "build":
-            run(platformio_command("run", "-e", "esp32dev"), cwd=PLATFORM, env=env,
-                timeout=args.process_timeout)
+            run(platformio_command("run", "-e", "esp32dev"), cwd=PLATFORM, env=env, timeout=args.process_timeout)
         elif args.mode == "usb":
             command = platformio_command("run", "-e", "esp32dev", "-t", "upload")
-            if args.port:
-                command.extend(["--upload-port", args.port])
+            if args.port: command.extend(["--upload-port", args.port])
             run(command, cwd=PLATFORM, env=env, timeout=args.process_timeout)
         else:
             preflight_robot(args.robot)
-            run(platformio_command("run", "-e", "esp32dev_ota"), cwd=PLATFORM, env=env,
-                timeout=args.process_timeout)
+            run(platformio_command("run", "-e", "esp32dev_ota"), cwd=PLATFORM, env=env, timeout=args.process_timeout)
             firmware = PLATFORM / ".pio" / "build" / "esp32dev_ota" / "firmware.bin"
             http_ota_upload(args.robot, ota_password, firmware)
             health = wait_for_robot(args.robot, timeout=args.verify_timeout)
@@ -375,15 +344,11 @@ def main() -> int:
     except Exception:
         _restore_program_header(platform_header, previous_header)
         raise
-
     firmware = PLATFORM / ".pio" / "build" / ("esp32dev_ota" if args.mode == "ota" else "esp32dev") / "firmware.bin"
     if firmware.is_file():
-        manifest_dict["artifacts"]["firmware"] = {
-            "path": str(firmware), "size": firmware.stat().st_size, "sha256": sha256_file(firmware),
-        }
+        manifest_dict["artifacts"]["firmware"] = {"path": str(firmware), "size": firmware.stat().st_size, "sha256": sha256_file(firmware)}
         manifest_path.write_text(json.dumps(manifest_dict, indent=2) + "\n", encoding="utf-8")
         print(f"Firmware artifact: {firmware}")
-
     print("DEPLOYMENT PASS")
     return 0
 
