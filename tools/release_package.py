@@ -82,18 +82,30 @@ def _reject_forbidden_text(data: bytes, name: str) -> None:
             raise ReleasePackageError(f"Release contains host-specific path in {name}: {marker}")
 
 
-def _archive_entries(root: Path) -> list[tuple[Path, str]]:
-    entries: list[tuple[Path, str]] = []
+def _archive_entries(root: Path) -> tuple[list[tuple[Path, str]], list[str]]:
+    """Return file entries and explicit empty-directory entries.
+
+    ZIP archives do not preserve filesystem directories unless they are
+    represented explicitly. Runtime contracts such as PlatformIO's
+    ``platforms`` and ``packages`` directories may legitimately be empty in a
+    synthetic/minimal distribution fixture, so retain those directories in
+    the release without adding fake payload files to the distribution.
+    """
+    files: list[tuple[Path, str]] = []
+    directories: list[str] = []
     for path in sorted(root.rglob("*")):
-        if not path.is_file():
-            continue
         relative = path.relative_to(root).as_posix()
         if relative == RELEASE_MANIFEST:
             continue
         if not _safe_member(relative):
             raise ReleasePackageError(f"Release contains forbidden path: {relative}")
-        entries.append((path, relative))
-    return entries
+        if path.is_dir():
+            if not any(path.iterdir()):
+                directories.append(relative.rstrip("/") + "/")
+            continue
+        if path.is_file():
+            files.append((path, relative))
+    return files, directories
 
 
 def build_release(distribution_root: Path, artifact: Path) -> ReleaseArtifact:
@@ -113,7 +125,7 @@ def build_release(distribution_root: Path, artifact: Path) -> ReleaseArtifact:
     except Exception as exc:
         raise ReleasePackageError(f"Distribution validation failed: {exc}") from exc
 
-    entries = _archive_entries(root)
+    entries, directories = _archive_entries(root)
     if not entries:
         raise ReleasePackageError("Distribution contains no release files")
 
@@ -122,6 +134,11 @@ def build_release(distribution_root: Path, artifact: Path) -> ReleaseArtifact:
         artifact.unlink()
 
     with zipfile.ZipFile(artifact, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        # Explicit directory records are required for empty runtime directories
+        # to survive relocation/extraction. They are structural metadata only;
+        # the release manifest continues to fingerprint files exclusively.
+        for relative in directories:
+            archive.writestr(relative, b"")
         for source, relative in entries:
             archive.write(source, relative)
 
@@ -176,13 +193,21 @@ def validate_release_artifact(artifact: Path, manifest: Path | None = None) -> d
             names = [item.filename for item in members]
             if len(names) != len(set(names)):
                 raise ReleasePackageError("Release artifact contains duplicate paths")
-            if set(names) != set(expected):
+
+            # Directory entries are structural ZIP metadata and are not part of
+            # the file manifest. This preserves backward compatibility with
+            # older releases while allowing empty runtime directories to survive
+            # extraction on a clean machine.
+            file_members = [item for item in members if not item.is_dir()]
+            file_names = [item.filename for item in file_members]
+            if set(file_names) != set(expected):
                 raise ReleasePackageError("Release artifact file list does not match release manifest")
+
             for item in members:
-                if not _safe_member(item.filename):
+                if not _safe_member(item.filename.rstrip("/")):
                     raise ReleasePackageError(f"Release artifact contains unsafe path: {item.filename}")
                 if item.is_dir():
-                    raise ReleasePackageError(f"Release artifact contains directory entry: {item.filename}")
+                    continue
                 payload = archive.read(item)
                 _reject_forbidden_text(payload, item.filename)
                 entry = expected[item.filename]
