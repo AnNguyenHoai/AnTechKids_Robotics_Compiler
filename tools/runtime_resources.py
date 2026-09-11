@@ -13,7 +13,12 @@ import os
 from pathlib import Path
 from typing import Iterable
 
-from tools.runtime_paths import APPLICATION_HOME_ENV, application_root, is_frozen
+from tools.runtime_paths import (
+    APPLICATION_HOME_ENV,
+    application_root,
+    is_frozen,
+    runtime_root,
+)
 
 RESOURCE_ROOT_NAME = Path("runtime") / "resources"
 RESOURCE_MANIFEST_NAME = "runtime-resources.json"
@@ -21,11 +26,6 @@ RESOURCE_SPECS = {
     "target_profiles": Path("robot-isa") / "target_profiles.json",
 }
 
-# ``RESOURCE_SPECS`` paths are relative to the resource root.  In source mode
-# that root is the repository's ``packages`` directory, not the individual
-# ``packages/robot-isa`` package.  Keeping both roots at the same level is
-# essential: otherwise ``robot-isa`` would be appended twice and legacy
-# deployment-contract tests would fail before capability validation runs.
 SOURCE_RESOURCE_ROOT = Path(__file__).resolve().parents[1] / "packages"
 
 
@@ -34,8 +34,14 @@ class RuntimeResourceError(RuntimeError):
 
 
 def runtime_resource_root() -> Path:
-    """Return the application-owned, read-only resource root."""
-    return application_root() / RESOURCE_ROOT_NAME
+    """Return the application-owned runtime resource root.
+
+    Use the same explicit ``ROBOSTUDIO_HOME`` path identity as the runtime
+    directory rather than rebuilding it through ``application_root()``.  The
+    latter canonicalizes the environment override, which can change the
+    lexical path identity used by packaged/test layouts on Windows.
+    """
+    return runtime_root() / "resources"
 
 
 def _source_resource_root() -> Path:
