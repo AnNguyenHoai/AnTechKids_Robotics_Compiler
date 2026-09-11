@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -42,9 +43,25 @@ class ProcessResult:
     output: str
 
 
+def application_root() -> Path:
+    """Resolve the application root through the deployment frozen-state seam.
+
+    ``ROBOSTUDIO_HOME`` always wins, which gives packaged integrations and
+    contract tests a deterministic root. When no override exists, a frozen
+    deployment is rooted beside its executable. Source builds delegate to the
+    canonical runtime-path implementation.
+    """
+    override = os.environ.get(runtime_paths.APPLICATION_HOME_ENV)
+    if override:
+        return Path(override).expanduser().resolve()
+    if is_frozen():
+        return Path(sys.executable).resolve().parent
+    return runtime_paths.application_root()
+
+
 def deployment_runtime_root() -> Path:
     """Return the immutable PlatformIO/deployment runtime root."""
-    return runtime_paths.application_root() / "runtime" / "platformio"
+    return application_root() / "runtime" / "platformio"
 
 
 def deployment_runtime_core_dir() -> Path:
@@ -87,9 +104,7 @@ def validate_deployment_runtime() -> Path:
     """Validate that the packaged PlatformIO runtime has its required layout."""
     root = deployment_runtime_root()
     if not root.is_dir():
-        raise DeploymentRuntimeError(
-            f"RoboStudio deployment runtime is missing: {root}"
-        )
+        raise DeploymentRuntimeError(f"RoboStudio deployment runtime is missing: {root}")
     if not (root / "platforms").is_dir():
         raise DeploymentRuntimeError(
             f"RoboStudio deployment runtime is missing platforms: {root / 'platforms'}"
@@ -133,9 +148,7 @@ def run_process(
             bufsize=1,
         )
     except OSError as exc:
-        raise DeploymentRuntimeError(
-            f"Unable to start deployment command: {exc}"
-        ) from exc
+        raise DeploymentRuntimeError(f"Unable to start deployment command: {exc}") from exc
 
     output: list[str] = []
     reader_done = threading.Event()
@@ -163,9 +176,7 @@ def run_process(
                 process.kill()
                 process.wait()
             reader_done.wait(timeout=2.0)
-            raise DeploymentRuntimeError(
-                f"Deployment command timed out after {timeout:.0f}s."
-            )
+            raise DeploymentRuntimeError(f"Deployment command timed out after {timeout:.0f}s.")
         time.sleep(0.05)
 
     reader_done.wait(timeout=2.0)
@@ -173,7 +184,6 @@ def run_process(
 
 
 # Keep this local alias for compatibility with existing tests that patch the
-# deployment module's frozen-state probe. Path resolution itself is delegated
-# to runtime_paths so both modules observe the same application-root contract.
+# deployment module's frozen-state probe.
 def is_frozen() -> bool:
     return runtime_paths.is_frozen()

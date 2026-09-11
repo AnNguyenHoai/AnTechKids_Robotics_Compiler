@@ -40,6 +40,16 @@ def application_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def runtime_root() -> Path:
+    """Return the application-owned runtime directory."""
+    return application_root() / "runtime"
+
+
+def platformio_runtime_root() -> Path:
+    """Return the application-owned PlatformIO Core directory."""
+    return runtime_root() / "platformio"
+
+
 def user_data_root() -> Path:
     """Return the writable per-user RoboStudio data directory.
 
@@ -61,28 +71,28 @@ def resolve_path(*parts: str | os.PathLike[str], writable: bool = False) -> Path
 
 
 def _tool_candidates(name: str) -> list[Path]:
-    """Return deterministic locations for a bundled executable.
-
-    The release contract is Windows-first, but the resolver intentionally
-    recognizes Windows executable suffixes even when the test/build host is
-    not Windows. This keeps the package layout contract independent of the
-    host OS used to validate the distribution.
-    """
-    suffixes = [".exe", ".cmd", ".bat", ""]
+    """Return deterministic locations for a bundled executable."""
+    suffixes = (".exe", ".cmd", ".bat", "")
     candidates: list[Path] = []
-    for directory in ("runtime/bin", "runtime/tools"):
+    for directory in (runtime_root() / "bin", runtime_root() / "tools"):
         for suffix in suffixes:
-            candidates.append(application_root() / directory / f"{name}{suffix}")
+            candidates.append(directory / f"{name}{suffix}")
     return candidates
 
 
 def resolve_bundled_tool(name: str) -> Path | None:
-    """Find a tool shipped inside the RoboStudio distribution."""
+    """Find a tool shipped inside the RoboStudio distribution.
+
+    Resolution is deliberately limited to the two application-owned runtime
+    directories. No PATH search and no user PlatformIO directory are allowed.
+    The returned path is absolute and normalized so callers can safely pass it
+    to subprocess APIs from any working directory.
+    """
     if not name or Path(name).name != name:
         raise ValueError("Tool name must be a simple executable name.")
     for candidate in _tool_candidates(name):
         if candidate.is_file():
-            return candidate
+            return candidate.resolve()
     return None
 
 
@@ -99,14 +109,7 @@ def python_command(*args: str) -> list[str]:
 
 
 def platformio_command(*args: str) -> list[str]:
-    """Build a PlatformIO command without depending on PATH.
-
-    A packaged Python runtime is preferred because a copied Windows virtual
-    environment can retain an absolute interpreter reference and therefore is
-    not a safe portable artifact. When the RoboStudio runtime contains Python,
-    PlatformIO is launched as a module from that interpreter. A directly
-    bundled PlatformIO executable remains supported as a compatibility option.
-    """
+    """Build a PlatformIO command without depending on PATH."""
     bundled_python = resolve_bundled_tool("python")
     if bundled_python:
         return [str(bundled_python), "-m", "platformio", *args]
