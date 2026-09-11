@@ -4,4 +4,7 @@ build/
 .robot/
 .robostudio/
 robot-platform/main/include/generated/generated_bootstrap_config.h
+runtime/platformio/
+dist/
+release/
 *.pyc

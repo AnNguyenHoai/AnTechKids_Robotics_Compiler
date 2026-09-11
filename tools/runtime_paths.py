@@ -2,7 +2,7 @@
 
 RoboStudio must run from a packaged directory without depending on the
 repository checkout, the current working directory, or executables installed
-on the user's PATH.  Source/development runs retain a small compatibility
+on the user's PATH. Source/development runs retain a small compatibility
 fallback so existing developer workflows keep working.
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ def application_root() -> Path:
     """Return the immutable RoboStudio installation/application root.
 
     ``ROBOSTUDIO_HOME`` is an explicit override for integration tests and
-    controlled deployments.  A frozen build is rooted at the executable;
+    controlled deployments. A frozen build is rooted at the executable;
     source builds are rooted at the repository containing ``tools/``.
     """
     override = os.environ.get(APPLICATION_HOME_ENV)
@@ -38,6 +38,16 @@ def application_root() -> Path:
     if is_frozen():
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parents[1]
+
+
+def runtime_root() -> Path:
+    """Return the application-owned runtime directory."""
+    return application_root() / "runtime"
+
+
+def platformio_runtime_root() -> Path:
+    """Return the application-owned PlatformIO Core directory."""
+    return runtime_root() / "platformio"
 
 
 def user_data_root() -> Path:
@@ -92,7 +102,12 @@ def _tool_candidates(name: str) -> list[Path]:
 
 
 def resolve_bundled_tool(name: str) -> Path | None:
-    """Find a tool shipped inside the RoboStudio distribution."""
+    """Find a tool shipped inside the RoboStudio distribution.
+
+    Resolution is deliberately limited to the two application-owned runtime
+    directories. No PATH search and no user PlatformIO directory are allowed.
+    The returned path is the exact application-owned candidate path.
+    """
     if not name or Path(name).name != name:
         raise ValueError("Tool name must be a simple executable name.")
     for candidate in _tool_candidates(name):
@@ -114,19 +129,18 @@ def python_command(*args: str) -> list[str]:
 
 
 def platformio_command(*args: str) -> list[str]:
-    """Build a PlatformIO command owned by RoboStudio.
-
-    Packaged builds use a bundled ``pio``/``platformio`` executable.  Source
-    development retains ``sys.executable -m platformio`` as a compatibility
-    path.  A frozen build never falls back to PATH or a system Python.
-    """
+    """Build a PlatformIO command without depending on PATH."""
+    bundled_python = resolve_bundled_tool("python")
+    if bundled_python:
+        return [str(bundled_python), "-m", "platformio", *args]
     for name in ("pio", "platformio"):
         bundled = resolve_bundled_tool(name)
         if bundled:
             return [str(bundled), *args]
     if is_frozen():
         raise RuntimePathError(
-            "RoboStudio packaged runtime is missing runtime/bin/pio.exe."
+            "RoboStudio packaged runtime is missing a deployment runtime: "
+            "runtime/bin/python.exe with PlatformIO or runtime/bin/pio.exe."
         )
     return [sys.executable, "-m", "platformio", *args]
 
