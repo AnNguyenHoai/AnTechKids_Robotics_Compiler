@@ -100,7 +100,13 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
 
 
 def validate_distribution_manifest(path: Path) -> dict:
-    """Validate the shipped file list and SHA-256 digests."""
+    """Validate the shipped file list and SHA-256 digests.
+
+    Content integrity is authoritative: when both the recorded size and digest
+    have drifted, report the checksum mismatch rather than masking the content
+    change behind the size check. A pure size-only inconsistency is still
+    reported as size drift for diagnostics.
+    """
     path = Path(path)
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
@@ -116,8 +122,19 @@ def validate_distribution_manifest(path: Path) -> dict:
         target = root / relative
         if not target.is_file():
             raise DistributionPackageError(f"Distribution file is missing: {relative.as_posix()}")
-        if target.stat().st_size != entry.get("size"):
-            raise DistributionPackageError(f"Distribution file size changed: {relative.as_posix()}")
-        if _sha256(target) != entry.get("sha256"):
+
+        actual_size = target.stat().st_size
+        actual_sha256 = _sha256(target)
+        expected_size = entry.get("size")
+        expected_sha256 = entry.get("sha256")
+
+        if actual_sha256 != expected_sha256:
+            if actual_size != expected_size:
+                raise DistributionPackageError(
+                    f"Distribution file checksum mismatch: {relative.as_posix()} "
+                    f"(size changed from {expected_size} to {actual_size})"
+                )
             raise DistributionPackageError(f"Distribution file checksum mismatch: {relative.as_posix()}")
+        if actual_size != expected_size:
+            raise DistributionPackageError(f"Distribution file size changed: {relative.as_posix()}")
     return manifest
