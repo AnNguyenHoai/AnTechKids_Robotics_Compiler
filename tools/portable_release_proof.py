@@ -9,7 +9,7 @@ The gate is intentionally offline: it never installs packages, resolves
 anything from PATH, or contacts a package index. PE imports are checked against
 the files physically present in the artifact; Windows system DLL/API-set names
 are treated as OS dependencies. Text and binary payloads are also scanned for
-host-specific absolute paths that commonly leak from build machines.
+host-specific paths that commonly leak from build machines.
 """
 from __future__ import annotations
 
@@ -17,11 +17,19 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Mapping
+
+# Direct CLI execution starts with ``tools`` on sys.path. Bootstrap the
+# repository root before importing sibling modules; packaged/source imports
+# remain unchanged.
+if __package__ in (None, ""):
+    _repository_root = Path(__file__).resolve().parent.parent
+    if str(_repository_root) not in sys.path:
+        sys.path.insert(0, str(_repository_root))
 
 from tools import release_package
 
@@ -32,9 +40,6 @@ _RUNTIME_BIN = Path("runtime") / "bin"
 _RUNTIME_PLATFORMIO = Path("runtime") / "platformio"
 _RUNTIME_RESOURCES = Path("runtime") / "resources"
 
-# Windows system DLLs and API-set contracts are supplied by the operating
-# system rather than the RoboStudio artifact. Everything else imported by a
-# shipped PE image must be physically present in the artifact.
 _SYSTEM_DLLS = {
     "advapi32.dll", "bcrypt.dll", "combase.dll", "comdlg32.dll", "crypt32.dll",
     "d3d9.dll", "dwmapi.dll", "gdi32.dll", "gdi32full.dll", "imm32.dll",
@@ -44,7 +49,7 @@ _SYSTEM_DLLS = {
     "secur32.dll", "shell32.dll", "shlwapi.dll", "user32.dll", "userenv.dll",
     "uxtheme.dll", "version.dll", "winhttp.dll", "wininet.dll", "winmm.dll",
     "winspool.drv", "ws2_32.dll", "wldap32.dll", "setupapi.dll", "cfgmgr32.dll",
-    "comctl32.dll", "dxgi.dll", "d3d11.dll", "d3dcompiler_47.dll", "opengl32.dll",
+    "comctl32.dll", "dxgi.dll", "d3d11.dll", "d3dcompiler_47.dll",
     "vcruntime140.dll", "vcruntime140_1.dll", "ucrtbase.dll",
 }
 _SYSTEM_DLL_PREFIXES = ("api-ms-win-", "ext-ms-win-")
@@ -149,7 +154,7 @@ def _pe_imports(path: Path) -> list[str]:
     if magic not in (0x10B, 0x20B):
         return []
     data_directory_offset = optional_offset + (96 if magic == 0x10B else 112)
-    import_directory = data_directory_offset + 8  # IMAGE_DIRECTORY_ENTRY_IMPORT
+    import_directory = data_directory_offset + 8
     if import_directory + 8 > len(data):
         return []
     import_rva = int.from_bytes(data[import_directory:import_directory + 4], "little")
@@ -208,8 +213,6 @@ def _validate_zip_members(artifact: Path) -> int:
             if len(names) != len(set(names)):
                 raise PortableReleaseProofError("Release artifact contains duplicate paths")
             for info in archive.infolist():
-                # Reject Unix symlink entries. A release must be physically
-                # relocatable and must not rely on link targets outside the ZIP.
                 mode = (info.external_attr >> 16) & 0o170000
                 if mode == 0o120000:
                     raise PortableReleaseProofError(f"Release artifact contains a symlink: {info.filename}")
@@ -251,7 +254,7 @@ def prove_portable_release(artifact: Path, *, manifest: Path | None = None) -> P
         application_path = root / application
         if not application_path.is_file():
             raise PortableReleaseProofError(f"Packaged application is missing: {application}")
-        python_name = "python.exe" if application_path.suffix.lower() == ".exe" and (root / _RUNTIME_BIN / "python.exe").is_file() else "python"
+        python_name = "python.exe" if sys.platform == "win32" else "python"
         python_path = root / _RUNTIME_BIN / python_name
         if not python_path.is_file():
             raise PortableReleaseProofError(f"Portable Python runtime is missing: {(_RUNTIME_BIN / python_name).as_posix()}")
@@ -278,8 +281,7 @@ def prove_portable_release(artifact: Path, *, manifest: Path | None = None) -> P
                 if _is_system_dependency(dependency):
                     system_count += 1
                     continue
-                packaged_key = dependency.lower()
-                if packaged_key in files:
+                if dependency.lower() in files:
                     packaged_count += 1
                 else:
                     findings.append(DependencyFinding(path.relative_to(root).as_posix(), dependency, "non-system PE dependency is not packaged"))
@@ -337,6 +339,10 @@ def main() -> int:
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    if not report.passed:
+        print("RSD-20-P production portable release proof: FAIL")
+        print(json.dumps(payload, indent=2))
+        return 1
     print("RSD-20-P production portable release proof: PASS")
     print(json.dumps(payload, indent=2))
     return 0
