@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 
 SCHEMA = "antechkids.robostudio.runtime-integrity"
@@ -49,6 +48,14 @@ def _relative_safe(path: str) -> Path:
 
 
 def _component_entries(root: Path, component_root: Path) -> list[dict[str, object]]:
+    """Return the deterministic file inventory for a required directory.
+
+    A component directory may legitimately be empty.  Distribution assembly
+    already validates the required runtime directory layout; RSD-10 must not
+    turn an empty-but-valid directory into a packaging failure merely because
+    there are no file bytes to fingerprint.  The empty inventory has a stable
+    fingerprint and is still protected against later file additions/removals.
+    """
     base = root / component_root
     if not base.is_dir():
         raise RuntimeIntegrityError(f"Missing runtime component: {component_root.as_posix()}")
@@ -63,10 +70,6 @@ def _component_entries(root: Path, component_root: Path) -> list[dict[str, objec
                 "size": path.stat().st_size,
                 "sha256": _sha256_file(path),
             }
-        )
-    if not entries:
-        raise RuntimeIntegrityError(
-            f"Runtime component contains no files: {component_root.as_posix()}"
         )
     return entries
 
@@ -132,7 +135,7 @@ def write_runtime_manifest(root: Path) -> Path:
 def _validate_component(root: Path, name: str, descriptor: dict[str, object]) -> None:
     declared_path = _relative_safe(str(descriptor.get("path", "")))
     entries = descriptor.get("files")
-    if not isinstance(entries, list) or not entries:
+    if not isinstance(entries, list):
         raise RuntimeIntegrityError(f"Runtime integrity manifest has no files for {name}")
 
     actual = _component_entries(root, declared_path)
