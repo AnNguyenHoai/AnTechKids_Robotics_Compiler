@@ -1,9 +1,4 @@
-"""Independent integrity verification for portable RoboStudio releases.
-
-RSD-19 adds a release-side verification boundary. Verification operates on
-an already-built ZIP without extracting it and does not depend on the current
-working directory, source tree, or host runtime.
-"""
+"""Independent integrity verification for portable RoboStudio releases."""
 from __future__ import annotations
 
 import hashlib
@@ -100,13 +95,12 @@ def verify_release_artifact(artifact: Path, release_manifest: Path | None = None
     expected_artifact_sha = str(manifest.get("artifact_sha256", "")).lower()
     if len(expected_artifact_sha) != 64:
         raise ReleaseVerificationError("Release manifest has an invalid artifact checksum")
-    # Verify content identity before filename identity so a renamed/tampered
-    # artifact reports the actual integrity failure deterministically.
+
+    # Content identity is checked first so a renamed/tampered artifact reports
+    # checksum drift rather than masking it with the filename mismatch.
     actual_artifact_sha = _sha256(artifact)
     if actual_artifact_sha != expected_artifact_sha:
         raise ReleaseVerificationError("Release artifact checksum mismatch")
-    if manifest.get("artifact") != artifact.name:
-        raise ReleaseVerificationError("Release manifest does not describe this artifact")
 
     try:
         with zipfile.ZipFile(artifact, "r") as archive:
@@ -145,6 +139,9 @@ def verify_release_artifact(artifact: Path, release_manifest: Path | None = None
     except zipfile.BadZipFile as exc:
         raise ReleaseVerificationError(f"Invalid release ZIP: {artifact}") from exc
 
+    if manifest.get("artifact") != artifact.name:
+        raise ReleaseVerificationError("Release manifest does not describe this artifact")
+
     provenance_validated = False
     if provenance_path.is_file():
         try:
@@ -162,7 +159,6 @@ def verify_or_raise(artifact: Path, release_manifest: Path | None = None, proven
 
 def main() -> int:
     import argparse
-
     parser = argparse.ArgumentParser(description="Verify a portable RoboStudio release artifact")
     parser.add_argument("artifact", type=Path)
     parser.add_argument("--manifest", type=Path)
