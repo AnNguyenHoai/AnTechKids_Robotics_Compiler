@@ -1,4 +1,16 @@
-"""Clean-machine end-to-end execution gate for RoboStudio."""
+"""Clean-machine end-to-end execution gate for RoboStudio.
+
+RSD-01..RSD-12 prove that the portable runtime can be resolved, packaged,
+relocated, and preflighted. This module closes the remaining execution gap by
+actually starting the application-owned Python runtime in an unrelated working
+directory with a hostile host environment.
+
+The gate intentionally does not launch the GUI during automated tests. A GUI
+process is long-lived and requires a display, while the portability property we
+need to prove is at the process boundary: the packaged interpreter starts,
+receives application-owned runtime paths, ignores host Python/PlatformIO state,
+and keeps the caller's working directory external to the application.
+"""
 from __future__ import annotations
 
 import json
@@ -31,13 +43,17 @@ class CleanMachineE2EReport:
 
 
 def _canonical(path: Path) -> Path:
-    """Normalize absolute paths for reliable Windows comparisons.
+    """Return one canonical spelling for an existing filesystem path.
 
-    Do not use ``resolve()`` alone here: a caller can supply an 8.3 path while
-    the child process reports the long path (or vice versa). Windows path
-    equality is case-insensitive and comparisons must use one normalized form.
+    ``abspath``/``normcase`` are not sufficient on Windows: the same directory
+    may be supplied using an 8.3 short path while a child process reports the
+    long path. ``realpath`` asks Windows for the filesystem's final path when
+    the path exists, making equality and containment representation-independent.
+    For paths that do not exist yet it still provides an absolute normalized
+    fallback.
     """
-    return Path(os.path.normcase(os.path.abspath(os.path.expanduser(str(path)))))
+    value = os.path.expanduser(str(path))
+    return Path(os.path.normcase(os.path.realpath(os.path.abspath(value))))
 
 
 def _python_path(root: Path) -> Path:
@@ -107,8 +123,6 @@ def _validate_for_root(root: Path) -> None:
 
 def execute_clean_machine_probe(root: Path, *, cwd: Path, base_env: Mapping[str, str] | None = None, timeout: float = 30.0) -> CleanMachineE2EReport:
     """Start the bundled Python process with an external CWD and clean env."""
-    # Canonicalize at the API boundary. This is essential on Windows because
-    # tempfile paths and child-process paths may use different spellings.
     root = _canonical(Path(root))
     cwd = _canonical(Path(cwd))
     if not cwd.is_dir():
