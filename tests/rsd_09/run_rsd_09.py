@@ -32,6 +32,10 @@ def expect_error(name: str, fn, expected: str) -> None:
 def make_distribution(root: Path) -> Path:
     root.mkdir(parents=True)
     (root / "RoboStudio.exe").write_bytes(b"fake-robo-studio")
+    # RSD-15 makes the application version an explicit release input. Keep the
+    # RSD-09 fixture aligned with the production release contract so this
+    # release-artifact smoke test remains a valid regression test.
+    (root / "VERSION").write_text("0.1.1\n", encoding="utf-8")
     (root / "runtime" / "bin").mkdir(parents=True)
     (root / "runtime" / "bin" / "python.exe").write_bytes(b"portable-python")
     core = root / "runtime" / "platformio"
