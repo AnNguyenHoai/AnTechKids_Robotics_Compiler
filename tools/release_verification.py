@@ -1,10 +1,8 @@
 """Independent integrity verification for portable RoboStudio releases.
 
-RSD-19 adds a release-side verification boundary.  Verification operates on
+RSD-19 adds a release-side verification boundary. Verification operates on
 an already-built ZIP without extracting it and does not depend on the current
-working directory, source tree, or host runtime.  The release manifest remains
-the authoritative inventory for files shipped in the artifact; the optional
-RSD-18 provenance sidecar authenticates the artifact and release manifest.
+working directory, source tree, or host runtime.
 """
 from __future__ import annotations
 
@@ -26,8 +24,6 @@ class ReleaseVerificationError(RuntimeError):
 
 @dataclass(frozen=True)
 class VerificationReport:
-    """Machine-readable verification result."""
-
     artifact: Path
     file_count: int
     artifact_sha256: str
@@ -43,7 +39,6 @@ def _sha256(path: Path) -> str:
 
 
 def _safe_member(name: str) -> bool:
-    """Accept only relative POSIX archive members without traversal."""
     if not name or "\\" in name:
         return False
     path = PurePosixPath(name)
@@ -84,18 +79,8 @@ def _manifest_entries(manifest: dict) -> dict[str, dict]:
     return result
 
 
-def verify_release_artifact(
-    artifact: Path,
-    release_manifest: Path | None = None,
-    provenance: Path | None = None,
-) -> VerificationReport:
-    """Verify the complete release artifact without extracting it.
-
-    The verifier intentionally performs its own ZIP/member checks instead of
-    treating ``release_package.validate_release_artifact`` as the verification
-    boundary.  This prevents a future packaging implementation from silently
-    weakening the release gate.
-    """
+def verify_release_artifact(artifact: Path, release_manifest: Path | None = None, provenance: Path | None = None) -> VerificationReport:
+    """Verify a complete release ZIP and its optional provenance sidecar."""
     artifact = Path(artifact).resolve()
     manifest_path = Path(release_manifest).resolve() if release_manifest else artifact.with_name(release_package.RELEASE_MANIFEST)
     provenance_path = Path(provenance).resolve() if provenance else artifact.with_name(release_provenance.PROVENANCE_MANIFEST)
@@ -110,16 +95,18 @@ def verify_release_artifact(
         raise ReleaseVerificationError("Unsupported release manifest schema")
     if manifest.get("portable") is not True:
         raise ReleaseVerificationError("Release artifact is not declared portable")
-    if manifest.get("artifact") != artifact.name:
-        raise ReleaseVerificationError("Release manifest does not describe this artifact")
 
     entries = _manifest_entries(manifest)
     expected_artifact_sha = str(manifest.get("artifact_sha256", "")).lower()
     if len(expected_artifact_sha) != 64:
         raise ReleaseVerificationError("Release manifest has an invalid artifact checksum")
+    # Verify content identity before filename identity so a renamed/tampered
+    # artifact reports the actual integrity failure deterministically.
     actual_artifact_sha = _sha256(artifact)
     if actual_artifact_sha != expected_artifact_sha:
         raise ReleaseVerificationError("Release artifact checksum mismatch")
+    if manifest.get("artifact") != artifact.name:
+        raise ReleaseVerificationError("Release manifest does not describe this artifact")
 
     try:
         with zipfile.ZipFile(artifact, "r") as archive:
@@ -166,16 +153,10 @@ def verify_release_artifact(
             raise ReleaseVerificationError(f"Release provenance verification failed: {exc}") from exc
         provenance_validated = True
 
-    return VerificationReport(
-        artifact=artifact,
-        file_count=len(entries),
-        artifact_sha256=actual_artifact_sha,
-        provenance_validated=provenance_validated,
-    )
+    return VerificationReport(artifact=artifact, file_count=len(entries), artifact_sha256=actual_artifact_sha, provenance_validated=provenance_validated)
 
 
 def verify_or_raise(artifact: Path, release_manifest: Path | None = None, provenance: Path | None = None) -> VerificationReport:
-    """Explicit alias for callers that want a release-gate style API."""
     return verify_release_artifact(artifact, release_manifest, provenance)
 
 
