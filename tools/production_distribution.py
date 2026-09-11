@@ -1,17 +1,25 @@
 """Build a production RoboStudio distribution from declared release inputs.
 
 RSD-17 is the source-integration boundary between real application/runtime
-artifacts and the generic RSD-07 distribution assembler.  Inputs are explicit
+artifacts and the generic RSD-07 distribution assembler. Inputs are explicit
 paths; this module never discovers tools from PATH, the current working
- directory, or a developer's PlatformIO installation.
+directory, or a developer's PlatformIO installation.
 """
 from __future__ import annotations
 
 import argparse
 import shutil
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+# Direct CLI execution starts with ``tools`` on sys.path. Bootstrap the
+# repository root before importing sibling modules; package imports are unchanged.
+if __package__ in (None, ""):
+    _repository_root = Path(__file__).resolve().parent.parent
+    if str(_repository_root) not in sys.path:
+        sys.path.insert(0, str(_repository_root))
 
 from tools import distribution_package
 
@@ -65,7 +73,10 @@ def _require_directory(path: Path, label: str) -> Path:
 
 
 def _read_version(path: Path) -> str:
-    value = path.read_text(encoding="utf-8").strip()
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ProductionDistributionError(f"Unable to read application VERSION: {path}") from exc
     if not value:
         raise ProductionDistributionError(f"Application VERSION is empty: {path}")
     if "\n" in value or "\r" in value:
@@ -84,7 +95,7 @@ def validate_inputs(inputs: ProductionDistributionInputs) -> str:
 
 
 def _stage_application(executable: Path, version_file: Path, stage: Path) -> Path:
-    """Create an application staging directory with VERSION adjacent to the executable."""
+    """Create application staging with VERSION adjacent to the executable."""
     stage.mkdir(parents=True, exist_ok=True)
     staged_executable = stage / executable.name
     shutil.copy2(executable, staged_executable)
@@ -99,9 +110,8 @@ def build_production_distribution(
     """Assemble a production distribution using the canonical RSD-07 assembler.
 
     The source VERSION may live at repository root while the executable is
-    produced in another build directory.  A temporary application staging
-    directory bridges that layout without changing the generic assembler's
-    contract and without copying any unrelated build/host files.
+    produced in another build directory. A temporary application staging
+    directory bridges that layout without copying unrelated build/host files.
     """
     executable = Path(inputs.executable).expanduser().resolve()
     version_file = Path(inputs.version_file).expanduser().resolve()
@@ -120,14 +130,19 @@ def build_production_distribution(
         )
     )
 
-    if output == executable or executable in output.parents:
-        raise ProductionDistributionError("Distribution output must not be inside the executable source directory.")
-    if output == runtime_bin or runtime_bin in output.parents:
-        raise ProductionDistributionError("Distribution output must not be inside the Python runtime source.")
-    if output == runtime_platformio or runtime_platformio in output.parents:
-        raise ProductionDistributionError("Distribution output must not be inside the PlatformIO runtime source.")
-    if output == runtime_resources or runtime_resources in output.parents:
-        raise ProductionDistributionError("Distribution output must not be inside the resource source.")
+    for source, label in (
+        (executable.parent, "executable source"),
+        (runtime_bin, "Python runtime source"),
+        (runtime_platformio, "PlatformIO runtime source"),
+        (runtime_resources, "resource source"),
+    ):
+        try:
+            output.relative_to(source)
+        except ValueError:
+            continue
+        raise ProductionDistributionError(
+            f"Distribution output must not be inside the {label}: {output}"
+        )
 
     with tempfile.TemporaryDirectory(prefix="robostudio-production-stage-") as temp:
         stage = Path(temp) / "application"
@@ -143,12 +158,14 @@ def build_production_distribution(
                 output,
             )
         except distribution_package.DistributionPackageError as exc:
-            raise ProductionDistributionError(f"Production distribution assembly failed: {exc}") from exc
+            raise ProductionDistributionError(
+                f"Production distribution assembly failed: {exc}"
+            ) from exc
 
     return ProductionDistributionResult(
         distribution_root=output,
         manifest=manifest,
-        application=staged_executable.name,
+        application=executable.name,
         application_version=version,
     )
 
