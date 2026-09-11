@@ -30,13 +30,19 @@ def expect_error(name: str, fn, expected: str) -> None:
 
 
 def make_distribution(root: Path) -> None:
+    """Create a minimal valid distribution fixture, idempotently.
+
+    RSD-06 deliberately calls this helper after mutating individual runtime
+    components. Rebuilding the fixture must restore those components without
+    failing when their parent directories already exist.
+    """
     python = root / runtime_preflight._python_relative_path()
     python.parent.mkdir(parents=True, exist_ok=True)
     python.write_bytes(b"portable-python")
 
     core = root / runtime_preflight.RUNTIME_PLATFORMIO
-    (core / "platforms" / "espressif32").mkdir(parents=True)
-    (core / "packages" / "tool-esptoolpy").mkdir(parents=True)
+    (core / "platforms" / "espressif32").mkdir(parents=True, exist_ok=True)
+    (core / "packages" / "tool-esptoolpy").mkdir(parents=True, exist_ok=True)
     manifest = {
         "schema": "antechkids.robostudio.deployment-runtime",
         "schema_version": 1,
