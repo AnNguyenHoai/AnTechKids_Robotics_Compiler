@@ -120,22 +120,37 @@ def bootstrap_import_path() -> list[Path]:
     return roots
 
 
-def bootstrap(*, apply: bool = True) -> RuntimeContext:
+def bootstrap(*, apply: bool = True, validate_runtime: bool = False) -> RuntimeContext:
     """Bootstrap RoboStudio before the GUI or deployment services are imported.
 
     ``apply=False`` is useful for deterministic tests: it resolves the same
     contract without mutating process environment or ``sys.path``.
+
+    ``validate_runtime=True`` performs the strict RSD-06 packaged-distribution
+    preflight. The check is only meaningful in frozen mode; source development
+    remains intentionally compatible with the existing repository workflow.
     """
     roots = bootstrap_import_path() if apply else [bundle_root(), application_root()]
     env = bootstrap_environment()
     if apply:
         os.environ.update(env)
     root = application_root()
+    frozen = is_frozen()
+    if validate_runtime and frozen:
+        from tools.runtime_preflight import validate_distribution
+
+        try:
+            validate_distribution(root)
+        except Exception as exc:
+            raise RuntimeBootstrapError(
+                "RoboStudio packaged runtime preflight failed: "
+                f"{exc}"
+            ) from exc
     return RuntimeContext(
         application_root=root,
         bundle_root=roots[0],
         user_data_root=runtime_paths.user_data_root(),
-        frozen=is_frozen(),
+        frozen=frozen,
         environment=env,
     )
 
