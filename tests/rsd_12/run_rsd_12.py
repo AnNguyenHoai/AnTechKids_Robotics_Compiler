@@ -33,6 +33,7 @@ def make_inputs(root: Path) -> distribution_package.DistributionInputs:
     root.mkdir(parents=True, exist_ok=True)
     executable = root / "RoboStudio.exe"
     executable.write_bytes(b"fake-robo-studio")
+    (root / "VERSION").write_text("0.1.1\n", encoding="utf-8")
 
     runtime_bin = root / "runtime-bin"
     runtime_bin.mkdir()
