@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the repository's regression and H26/H27/H28/H29 contract test suites."""
+"""Run the repository's regression and H26/H27/H28/H29/RSD contract test suites."""
 
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ def main() -> int:
         ROOT / "tests" / "rsd_05" / "run_rsd_05.py",
         ROOT / "tests" / "rsd_06" / "run_rsd_06.py",
         ROOT / "tests" / "rsd_07" / "run_rsd_07.py",
+        ROOT / "tests" / "rsd_08" / "run_rsd_08.py",
         ROOT / "tests" / "h26_a" / "run_h26_a.py",
         ROOT / "tests" / "h26_b" / "run_h26_b.py",
         ROOT / "tests" / "h26_c" / "run_h26_c.py",
