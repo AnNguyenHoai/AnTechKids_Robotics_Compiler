@@ -31,7 +31,7 @@ class PortableReleaseReport:
     """Machine-readable result of the RSD-12 acceptance gate."""
 
     artifact: Path
-    relocated_root: Path
+    relocation_verified: bool
     file_count: int
     application: str
     build_workspace: Path
@@ -168,8 +168,6 @@ def validate_release_artifact(
         _validate_relocated_runtime(relocated, hostile)
         workspace = _validate_build_isolation(relocated, hostile)
 
-        # RSD-11 guarantees that the portable application has no need to create
-        # a .pio tree. A release containing one is host/source build leakage.
         if (relocated / ".pio").exists() or (relocated / "robot-platform" / ".pio").exists():
             raise PortableReleaseGateError("Portable release contains a source-tree .pio build workspace")
 
@@ -179,7 +177,7 @@ def validate_release_artifact(
 
         return PortableReleaseReport(
             artifact=artifact,
-            relocated_root=relocated,
+            relocation_verified=True,
             file_count=int(release_manifest.get("file_count", 0)),
             application=application,
             build_workspace=workspace,
@@ -200,7 +198,7 @@ def main() -> int:
         "artifact": str(report.artifact),
         "application": report.application,
         "file_count": report.file_count,
-        "relocated": str(report.relocated_root),
+        "relocation_verified": report.relocation_verified,
         "build_workspace": str(report.build_workspace),
     }, indent=2))
     return 0
