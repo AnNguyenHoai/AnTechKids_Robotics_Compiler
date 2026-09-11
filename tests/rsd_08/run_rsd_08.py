@@ -71,12 +71,14 @@ def main() -> int:
                 "PYTHONHOME": "C:\\HostPython",
                 "PYTHONPATH": "C:\\HostProject",
                 "VIRTUAL_ENV": "C:\\HostVenv",
+                "CONDA_PREFIX": "C:\\HostConda",
                 "PIOHOME_DIR": "C:\\HostPlatformIO",
                 "PLATFORMIO_CORE_DIR": "C:\\HostPlatformIO",
                 "PLATFORMIO_PACKAGES_DIR": "C:\\HostPackages",
             }
             env = distribution_launch.clean_machine_environment(root, hostile)
-            check("host Python/PlatformIO variables are removed", all(name not in env for name in distribution_launch._HOST_RUNTIME_VARS))
+            host_only = {"PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX", "PIOHOME_DIR"}
+            check("host-only runtime variables are removed", all(name not in env for name in host_only))
             check("application home is explicit", env["ROBOSTUDIO_HOME"] == str(root))
             check("PlatformIO core is application-owned", env["PLATFORMIO_CORE_DIR"] == str(root / "runtime" / "platformio"))
             check("PlatformIO packages are application-owned", env["PLATFORMIO_PACKAGES_DIR"] == str(root / "runtime" / "platformio" / "packages"))
