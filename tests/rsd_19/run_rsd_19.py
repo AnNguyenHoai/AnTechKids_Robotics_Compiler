@@ -75,6 +75,13 @@ def make_release(base: Path) -> tuple[Path, Path, Path]:
     return artifact, result.manifest, provenance
 
 
+def copy_manifest_with(path: Path, output: Path, **changes: object) -> Path:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.update(changes)
+    output.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return output
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="robostudio-rsd19-") as temp:
         base = Path(temp)
@@ -89,40 +96,54 @@ def main() -> int:
         tampered.write_bytes(artifact.read_bytes() + b"tamper")
         expect_error("artifact checksum drift is rejected", lambda: release_verification.verify_release_artifact(tampered, manifest, provenance), "artifact checksum mismatch")
 
-        manifest_copy = base / "manifest-copy.json"
-        manifest_copy.write_bytes(manifest.read_bytes())
+        manifest_copy = copy_manifest_with(manifest, base / "manifest-copy.json")
         data = json.loads(manifest_copy.read_text(encoding="utf-8"))
         data["files"][0]["sha256"] = "0" * 64
         manifest_copy.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        expect_error("manifest checksum drift is rejected", lambda: release_verification.verify_release_artifact(artifact, manifest_copy, provenance), "artifact")
+        expect_error("manifest file checksum drift is rejected", lambda: release_verification.verify_release_artifact(artifact, manifest_copy), "file checksum mismatch")
+
+        structural_manifest = copy_manifest_with(manifest, base / "structural-manifest.json")
+        structural_data = json.loads(structural_manifest.read_text(encoding="utf-8"))
 
         missing = base / "missing.zip"
         with zipfile.ZipFile(artifact, "r") as src, zipfile.ZipFile(missing, "w") as dst:
             for item in src.infolist():
                 if item.filename != "VERSION":
                     dst.writestr(item, src.read(item))
-        expect_error("missing file is rejected", lambda: release_verification.verify_release_artifact(missing, manifest, provenance), "artifact checksum mismatch")
+        structural_data["artifact_sha256"] = hashlib.sha256(missing.read_bytes()).hexdigest()
+        missing_manifest = base / "missing-manifest.json"
+        missing_manifest.write_text(json.dumps(structural_data, indent=2) + "\n", encoding="utf-8")
+        expect_error("missing file is rejected", lambda: release_verification.verify_release_artifact(missing, missing_manifest), "missing file")
 
         extra = base / "extra.zip"
         shutil.copy2(artifact, extra)
         with zipfile.ZipFile(extra, "a") as archive:
             archive.writestr("unexpected.txt", b"unexpected")
-        expect_error("unexpected file is rejected", lambda: release_verification.verify_release_artifact(extra, manifest, provenance), "artifact checksum mismatch")
+        structural_data["artifact_sha256"] = hashlib.sha256(extra.read_bytes()).hexdigest()
+        extra_manifest = base / "extra-manifest.json"
+        extra_manifest.write_text(json.dumps(structural_data, indent=2) + "\n", encoding="utf-8")
+        expect_error("unexpected file is rejected", lambda: release_verification.verify_release_artifact(extra, extra_manifest), "unexpected file")
 
         unsafe = base / "unsafe.zip"
         with zipfile.ZipFile(unsafe, "w") as archive:
             archive.writestr("../escape.txt", b"escape")
-        expect_error("unsafe archive path is rejected", lambda: release_verification.verify_release_artifact(unsafe, manifest, provenance), "does not describe")
+        unsafe_data = dict(structural_data)
+        unsafe_data["artifact_sha256"] = hashlib.sha256(unsafe.read_bytes()).hexdigest()
+        unsafe_data["files"] = []
+        unsafe_manifest = base / "unsafe-manifest.json"
+        unsafe_manifest.write_text(json.dumps(unsafe_data, indent=2) + "\n", encoding="utf-8")
+        expect_error("unsafe archive path is rejected", lambda: release_verification.verify_release_artifact(unsafe, unsafe_manifest), "unsafe path")
 
         duplicate = base / "duplicate.zip"
         with zipfile.ZipFile(artifact, "r") as src, zipfile.ZipFile(duplicate, "w") as dst:
             for item in src.infolist():
                 dst.writestr(item, src.read(item) if not item.is_dir() else b"")
-            dst.writestr("RoboStudio.exe", b"duplicate")
-        # Duplicate archives must be rejected by the verifier once the artifact
-        # checksum is deliberately aligned with the manifest is not possible;
-        # this case is covered by the explicit structural path test above.
-        check("duplicate archive fixture is created", duplicate.is_file())
+            dst.writestr("RoboStudio.exe", b"fake-robostudio")
+        duplicate_data = dict(structural_data)
+        duplicate_data["artifact_sha256"] = hashlib.sha256(duplicate.read_bytes()).hexdigest()
+        duplicate_manifest = base / "duplicate-manifest.json"
+        duplicate_manifest.write_text(json.dumps(duplicate_data, indent=2) + "\n", encoding="utf-8")
+        expect_error("duplicate archive path is rejected", lambda: release_verification.verify_release_artifact(duplicate, duplicate_manifest), "duplicate paths")
 
         relocated = base / "external" / "RoboStudio-Windows.zip"
         relocated.parent.mkdir()
