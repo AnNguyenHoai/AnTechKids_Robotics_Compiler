@@ -159,10 +159,15 @@ def validate_release_artifact(artifact: Path, manifest: Path | None = None) -> d
         raise ReleasePackageError(f"Unable to load release manifest: {exc}") from exc
     if data.get("schema") != RELEASE_SCHEMA or data.get("schema_version") != RELEASE_SCHEMA_VERSION:
         raise ReleasePackageError("Unsupported release manifest schema")
-    if data.get("artifact") != artifact.name or data.get("portable") is not True:
-        raise ReleasePackageError("Release manifest does not describe this portable artifact")
+
+    # Verify the bytes first. A caller may validate a renamed/copied artifact
+    # against an existing manifest; in that case the integrity failure must be
+    # reported as checksum drift rather than being masked by the filename check.
     if _sha256(artifact) != data.get("artifact_sha256"):
         raise ReleasePackageError("Release artifact checksum mismatch")
+
+    if data.get("artifact") != artifact.name or data.get("portable") is not True:
+        raise ReleasePackageError("Release manifest does not describe this portable artifact")
 
     expected = {str(item.get("path")): item for item in data.get("files", [])}
     try:
