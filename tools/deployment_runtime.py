@@ -8,6 +8,7 @@ output streaming, plus an application-owned PlatformIO runtime environment.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -140,6 +141,71 @@ def platformio_command(*args: str) -> list[str]:
     return resolve_platformio_command(*args)
 
 
+def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
+    """Terminate a deployment process and any children it owns.
+
+    The deployment process is placed in its own process group on supported
+    platforms. On POSIX, the group can therefore be terminated directly. On
+    Windows, ``taskkill /T`` is used as a best-effort process-tree fallback;
+    this is deliberately invoked without a shell so a hostile PATH cannot
+    become a command interpreter boundary.
+    """
+    if process.poll() is not None:
+        return
+
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=5.0,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            return
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except (AttributeError, OSError, ProcessLookupError):
+        try:
+            process.terminate()
+        except OSError:
+            pass
+
+
+def _kill_process_tree(process: subprocess.Popen[str]) -> None:
+    """Force-kill a deployment process group after graceful termination fails."""
+    if process.poll() is not None:
+        return
+
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=5.0,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            return
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except (AttributeError, OSError, ProcessLookupError):
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+
 def run_process(
     command: Sequence[str],
     *,
@@ -148,11 +214,24 @@ def run_process(
     timeout: float = DEFAULT_PROCESS_TIMEOUT_SECONDS,
     on_output: Callable[[str], None] | None = None,
 ) -> ProcessResult:
-    """Run a process, stream combined output, and enforce a hard deadline."""
+    """Run a process, stream combined output, and enforce a hard deadline.
+
+    The child is isolated into a process group so a timeout does not leave a
+    compiler/PlatformIO descendant running after RoboStudio reports failure.
+    Output is retained even for non-zero exits, allowing callers to surface a
+    useful diagnostic without coupling the runner to any UI toolkit.
+    """
     if not command:
         raise ValueError("Deployment command must not be empty.")
     if timeout <= 0:
         raise ValueError("Deployment process timeout must be greater than zero.")
+
+    creationflags = 0
+    start_new_session = False
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        start_new_session = True
 
     try:
         process = subprocess.Popen(
@@ -165,6 +244,8 @@ def run_process(
             encoding="utf-8",
             errors="replace",
             bufsize=1,
+            creationflags=creationflags,
+            start_new_session=start_new_session,
         )
     except OSError as exc:
         raise DeploymentRuntimeError(f"Unable to start deployment command: {exc}") from exc
@@ -188,14 +269,17 @@ def run_process(
     deadline = time.monotonic() + timeout
     while process.poll() is None:
         if time.monotonic() >= deadline:
-            process.terminate()
+            _terminate_process_tree(process)
             try:
                 process.wait(timeout=5.0)
             except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+                _kill_process_tree(process)
+                process.wait(timeout=5.0)
             reader_done.wait(timeout=2.0)
-            raise DeploymentRuntimeError(f"Deployment command timed out after {timeout:.0f}s.")
+            raise DeploymentRuntimeError(
+                f"Deployment command timed out after {timeout:.0f}s. "
+                f"Output: {''.join(output).strip()}"
+            )
         time.sleep(0.05)
 
     reader_done.wait(timeout=2.0)
