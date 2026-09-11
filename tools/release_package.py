@@ -28,11 +28,15 @@ _FORBIDDEN_PARTS = {
     "penv",
     "__pycache__",
 }
+# These markers identify host-owned installation roots.  ``site-packages`` is
+# intentionally not forbidden by itself: it is a valid directory name inside a
+# self-contained Python runtime and can legitimately occur in a generated
+# distribution manifest. Host leakage is rejected when the host installation
+# root itself is embedded in textual metadata.
 _FORBIDDEN_TEXT = (
     "\\AppData\\Local\\Programs\\Python",
     "\\AppData\\Local\\pypoetry",
     "\\.platformio",
-    "site-packages",
     "/home/",
     "/Users/",
 )
@@ -249,7 +253,7 @@ def validate_release_compatibility(manifest: dict, **kwargs) -> release_compatib
 def main() -> int:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Build a portable RoboStudio release ZIP")
+    parser = argparse.ArgumentParser(description="Build and validate a portable RoboStudio release ZIP")
     parser.add_argument("--distribution", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--validate", action="store_true")
@@ -266,7 +270,3 @@ def main() -> int:
     print(f"Manifest: {result.manifest}")
     print(f"SHA-256: {result.sha256}")
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
