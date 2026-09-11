@@ -55,9 +55,26 @@ def user_data_root() -> Path:
 
 
 def resolve_path(*parts: str | os.PathLike[str], writable: bool = False) -> Path:
-    """Resolve an application-owned path without depending on CWD."""
-    root = user_data_root() if writable else application_root()
-    return root.joinpath(*(Path(part) for part in parts)).resolve()
+    """Resolve an application-owned path without depending on CWD.
+
+    ``application_root()`` is intentionally canonicalized because it is the
+    identity used by the general installation contract.  Resource resolution
+    has a separate requirement: when ``ROBOSTUDIO_HOME`` is explicitly
+    supplied, preserve that caller-owned path spelling instead of resolving
+    it again.  This is important for packaged/test layouts on Windows where
+    the parent can be a junction or reparse point.
+
+    Writable paths continue to use ``user_data_root()`` so normal user data
+    remains outside the installation and explicit portable mode remains under
+    the application root.
+    """
+    if writable:
+        root = user_data_root()
+    elif os.environ.get(APPLICATION_HOME_ENV):
+        root = Path(os.environ[APPLICATION_HOME_ENV]).expanduser()
+    else:
+        root = application_root()
+    return root.joinpath(*(Path(part) for part in parts))
 
 
 def _tool_candidates(name: str) -> list[Path]:
@@ -66,7 +83,7 @@ def _tool_candidates(name: str) -> list[Path]:
     if os.name == "nt":
         suffixes = [".exe", ".cmd", ".bat", ""]
     return [
-        application_root() / "runtime" / "bin" / f"{name}{suffix}
+        application_root() / "runtime" / "bin" / f"{name}{suffix}"
         for suffix in suffixes
     ] + [
         application_root() / "runtime" / "tools" / f"{name}{suffix}"
