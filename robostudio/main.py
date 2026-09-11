@@ -6,12 +6,24 @@ RoboStudio MVP - Entry Point
 import sys
 from pathlib import Path
 
-# Keep the repository root importable when RoboStudio is launched directly
-# (`python robostudio/main.py`) or imported by the test runner. Shared tools
-# such as tools.bootstrap_config live at repository scope.
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# Bootstrap before importing PySide6 or application services. In frozen mode
+# PyInstaller may place Python modules under _internal/_MEIPASS while the
+# writable/distributed runtime lives beside the launched executable.
+if getattr(sys, "frozen", False):
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    if str(bundle_root) not in sys.path:
+        sys.path.insert(0, str(bundle_root))
+else:
+    # Keep the repository root importable when RoboStudio is launched directly
+    # (`python robostudio/main.py`) or imported by the test runner. Shared tools
+    # such as tools.bootstrap_config live at repository scope.
+    bundle_root = Path(__file__).resolve().parents[1]
+    if str(bundle_root) not in sys.path:
+        sys.path.insert(0, str(bundle_root))
+
+from tools.runtime_bootstrap import bootstrap
+
+bootstrap()
 
 from PySide6.QtWidgets import QApplication
 from app import RoboStudioApp
