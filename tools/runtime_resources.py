@@ -20,7 +20,13 @@ RESOURCE_MANIFEST_NAME = "runtime-resources.json"
 RESOURCE_SPECS = {
     "target_profiles": Path("robot-isa") / "target_profiles.json",
 }
-SOURCE_RESOURCE_ROOT = Path(__file__).resolve().parents[1] / "packages" / "robot-isa"
+
+# ``RESOURCE_SPECS`` paths are relative to the resource root.  In source mode
+# that root is the repository's ``packages`` directory, not the individual
+# ``packages/robot-isa`` package.  Keeping both roots at the same level is
+# essential: otherwise ``robot-isa`` would be appended twice and legacy
+# deployment-contract tests would fail before capability validation runs.
+SOURCE_RESOURCE_ROOT = Path(__file__).resolve().parents[1] / "packages"
 
 
 class RuntimeResourceError(RuntimeError):
