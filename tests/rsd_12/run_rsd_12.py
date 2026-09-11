@@ -30,6 +30,7 @@ def expect_error(name: str, fn, expected: str) -> None:
 
 
 def make_inputs(root: Path) -> distribution_package.DistributionInputs:
+    root.mkdir(parents=True, exist_ok=True)
     executable = root / "RoboStudio.exe"
     executable.write_bytes(b"fake-robo-studio")
 
@@ -123,13 +124,13 @@ def main() -> int:
                 "checksum",
             )
 
-            # The gate must not alter the release artifact itself during the
-            # relocation/preflight checks.
             before = result.artifact.read_bytes()
             portable_release_gate.validate_release_artifact(result.artifact, result.manifest)
             check("acceptance gate does not mutate release artifact", result.artifact.read_bytes() == before)
-
-            check("application identity is restored after gate", os.environ.get(runtime_paths.APPLICATION_HOME_ENV) == original_env.get(runtime_paths.APPLICATION_HOME_ENV))
+            check(
+                "application identity is restored after gate",
+                os.environ.get(runtime_paths.APPLICATION_HOME_ENV) == original_env.get(runtime_paths.APPLICATION_HOME_ENV),
+            )
 
         print("RSD-12 portable release acceptance checks: PASS")
         return 0
