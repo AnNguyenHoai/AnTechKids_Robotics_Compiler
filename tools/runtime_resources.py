@@ -13,12 +13,7 @@ import os
 from pathlib import Path
 from typing import Iterable
 
-from tools.runtime_paths import (
-    APPLICATION_HOME_ENV,
-    application_root,
-    is_frozen,
-    runtime_root,
-)
+from tools.runtime_paths import APPLICATION_HOME_ENV, application_root, is_frozen
 
 RESOURCE_ROOT_NAME = Path("runtime") / "resources"
 RESOURCE_MANIFEST_NAME = "runtime-resources.json"
@@ -36,12 +31,16 @@ class RuntimeResourceError(RuntimeError):
 def runtime_resource_root() -> Path:
     """Return the application-owned runtime resource root.
 
-    Use the same explicit ``ROBOSTUDIO_HOME`` path identity as the runtime
-    directory rather than rebuilding it through ``application_root()``.  The
-    latter canonicalizes the environment override, which can change the
-    lexical path identity used by packaged/test layouts on Windows.
+    When ``ROBOSTUDIO_HOME`` is explicitly supplied, preserve that exact path
+    identity. ``application_root()`` canonicalizes the override, which is the
+    right behavior for general application identity but not for this resource
+    contract: packaged/test callers may intentionally use a non-canonical
+    application path (for example, a Windows junction or reparse-point path).
     """
-    return runtime_root() / "resources"
+    override = os.environ.get(APPLICATION_HOME_ENV)
+    if override:
+        return Path(override).expanduser() / RESOURCE_ROOT_NAME
+    return application_root() / RESOURCE_ROOT_NAME
 
 
 def _source_resource_root() -> Path:
