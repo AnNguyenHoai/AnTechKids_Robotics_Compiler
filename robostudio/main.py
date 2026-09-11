@@ -23,7 +23,10 @@ else:
 
 from tools.runtime_bootstrap import bootstrap
 
-bootstrap()
+# A packaged executable must never start against a partial runtime. Source
+# development keeps the historical non-frozen behavior; RSD-06 validates the
+# application-owned distribution before the GUI imports any services.
+bootstrap(validate_runtime=True)
 
 from PySide6.QtWidgets import QApplication
 from app import RoboStudioApp
