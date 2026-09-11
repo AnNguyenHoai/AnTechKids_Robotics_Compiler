@@ -67,48 +67,38 @@ def user_data_root() -> Path:
 def resolve_path(*parts: str | os.PathLike[str], writable: bool = False) -> Path:
     """Resolve an application-owned path without depending on CWD.
 
-    Preserve the selected root's path identity. In particular, do not call
-    ``resolve()`` on the joined resource path: packaged resources may live
-    beneath a Windows junction/reparse point and the distribution contract is
-    defined by the application-owned path supplied to this resolver.
+    ``application_root()`` is intentionally canonicalized because it is the
+    identity used by the general installation contract.  Resource resolution
+    has a separate requirement: when ``ROBOSTUDIO_HOME`` is explicitly
+    supplied, preserve that caller-owned path spelling instead of resolving
+    it again.  This is important for packaged/test layouts on Windows where
+    the parent can be a junction or reparse point.
+
+    Writable paths continue to use ``user_data_root()`` so normal user data
+    remains outside the installation and explicit portable mode remains under
+    the application root.
     """
-    root = user_data_root() if writable else application_root()
+    if writable:
+        root = user_data_root()
+    elif os.environ.get(APPLICATION_HOME_ENV):
+        root = Path(os.environ[APPLICATION_HOME_ENV]).expanduser()
+    else:
+        root = application_root()
     return root.joinpath(*(Path(part) for part in parts))
 
 
-def _tool_root() -> Path:
-    """Return the path identity used to locate bundled application tools."""
-    override = os.environ.get(APPLICATION_HOME_ENV)
-    if override:
-        return Path(override).expanduser()
-    return application_root()
-
-
-def _tool_root() -> Path:
-    """Return the path identity used to locate bundled application tools.
-
-    ``application_root()`` intentionally canonicalizes its result for the
-    general application-path contract. For an explicit ``ROBOSTUDIO_HOME``,
-    however, bundled-tool resolution must preserve the caller-supplied path
-    identity. This matters on Windows when the temporary/package parent is a
-    junction or symlink: the file created at the supplied path must be the
-    exact path returned to the caller, not its canonicalized spelling.
-    """
-    override = os.environ.get(APPLICATION_HOME_ENV)
-    if override:
-        return Path(override).expanduser()
-    return application_root()
-
-
 def _tool_candidates(name: str) -> list[Path]:
-    """Return deterministic locations for a bundled executable."""
-    suffixes = (".exe", ".cmd", ".bat", "")
-    runtime = _tool_root() / "runtime"
-    candidates: list[Path] = []
-    for directory in (runtime / "bin", runtime / "tools"):
-        for suffix in suffixes:
-            candidates.append(directory / f"{name}{suffix}")
-    return candidates
+    """Return supported locations for a bundled executable."""
+    suffixes = [""]
+    if os.name == "nt":
+        suffixes = [".exe", ".cmd", ".bat", ""]
+    return [
+        application_root() / "runtime" / "bin" / f"{name}{suffix}"
+        for suffix in suffixes
+    ] + [
+        application_root() / "runtime" / "tools" / f"{name}{suffix}"
+        for suffix in suffixes
+    ]
 
 
 def resolve_bundled_tool(name: str) -> Path | None:
