@@ -30,6 +30,48 @@ def expect_error(name: str, fn, expected: str) -> None:
         raise AssertionError(f"{name}: operation unexpectedly succeeded")
 
 
+def _stage_portable_python(runtime_root: Path) -> None:
+    """Stage a runnable Python installation, not just python.exe.
+
+    On Windows, python.exe is a launcher for python310.dll (or the matching
+    version DLL), and a relocated interpreter also needs its standard library
+    to bootstrap imports such as ``encodings``. Copying only the executable
+    therefore produces STATUS_DLL_NOT_FOUND (0xC0000135) on a clean/hostile
+    PATH. RSD-13 must test the same runtime shape that a real distribution
+    ships.
+    """
+    runtime_bin = runtime_root / "bin"
+    runtime_bin.mkdir(parents=True, exist_ok=True)
+    python_name = "python.exe" if os.name == "nt" else "python"
+    source_python = Path(sys.executable).resolve()
+    shutil.copy2(source_python, runtime_bin / python_name)
+
+    if os.name != "nt":
+        return
+
+    source_root = Path(sys.base_prefix).resolve()
+
+    # The Python runtime DLL is loaded by python.exe before Python can execute
+    # the probe. Keep the copy application-owned so the child does not need
+    # the source installation on PATH.
+    dll_candidates = sorted(source_root.glob("python*.dll"))
+    if not dll_candidates:
+        dll_candidates = sorted(source_python.parent.glob("python*.dll"))
+    for source in dll_candidates:
+        shutil.copy2(source, runtime_bin / source.name)
+
+    # A relocated standard Python installation needs the standard library
+    # relative to the executable prefix. Copying Lib/DLLs also makes this test
+    # meaningful for installations where the interpreter is not embeddable.
+    source_lib = source_root / "Lib"
+    if source_lib.is_dir():
+        shutil.copytree(source_lib, runtime_root / "Lib", dirs_exist_ok=True)
+
+    source_dlls = source_root / "DLLs"
+    if source_dlls.is_dir():
+        shutil.copytree(source_dlls, runtime_root / "DLLs", dirs_exist_ok=True)
+
+
 def make_distribution(root: Path) -> None:
     (root / "runtime" / "bin").mkdir(parents=True)
     (root / "runtime" / "platformio" / "platforms").mkdir(parents=True)
@@ -59,7 +101,7 @@ def make_distribution(root: Path) -> None:
     )
     # Use the real interpreter as the portable runtime so this suite executes
     # an actual child process while remaining independent of PySide6/display.
-    shutil.copy2(sys.executable, root / "runtime" / "bin" / python_name)
+    _stage_portable_python(root / "runtime")
 
 
 def main() -> int:
@@ -102,7 +144,7 @@ def main() -> int:
                 lambda: clean_machine_e2e.execute_clean_machine_probe(distribution, cwd=external),
                 "portable Python",
             )
-            shutil.copy2(sys.executable, python)
+            _stage_portable_python(distribution / "runtime")
             expect_error(
                 "application-root CWD is rejected",
                 lambda: clean_machine_e2e.execute_clean_machine_probe(distribution, cwd=distribution),
