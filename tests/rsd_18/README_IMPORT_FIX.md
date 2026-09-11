@@ -1,0 +1,1 @@
+RSD-18 import fix: `release_package.py` now uses the valid `annotations` future feature name.
