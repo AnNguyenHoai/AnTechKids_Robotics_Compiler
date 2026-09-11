@@ -3,6 +3,7 @@ BuildWorker – non‑blocking build using QProcess
 """
 
 import os
+from pathlib import Path
 from PySide6.QtCore import QObject, QProcess, Signal, QByteArray
 
 
@@ -28,10 +29,18 @@ class BuildWorker(QObject):
 
     def start(self):
         """Start the build process."""
-        # Set environment
         env_list = [f"{k}={v}" for k, v in self.env.items()]
         self.process.setEnvironment(env_list)
-        self.process.setWorkingDirectory(os.getcwd())
+        # Only a packaged runtime changes the build working directory. Source
+        # development retains the historical CWD behavior for compatibility.
+        if self.env.get("ROBOSTUDIO_RUNTIME_MODE") == "packaged":
+            working_directory = self.env.get("ROBOSTUDIO_HOME")
+            if working_directory:
+                self.process.setWorkingDirectory(str(Path(working_directory)))
+            else:
+                self.process.setWorkingDirectory(os.getcwd())
+        else:
+            self.process.setWorkingDirectory(os.getcwd())
         self.process.start(self.command[0], self.command[1:])
 
     def _on_stdout(self):
