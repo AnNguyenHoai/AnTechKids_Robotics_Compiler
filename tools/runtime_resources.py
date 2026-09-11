@@ -130,8 +130,9 @@ def validate_resource_manifest(path: Path | None = None) -> dict:
             raise RuntimeResourceError(f"Runtime resource escapes application resource root: {name}") from exc
         if not resource.is_file():
             raise RuntimeResourceError(f"Runtime resource is missing: {resource}")
+        actual_sha256 = sha256_file(resource)
+        if actual_sha256 != entry.get("sha256"):
+            raise RuntimeResourceError(f"Runtime resource checksum mismatch: {name}")
         if resource.stat().st_size != entry.get("size"):
             raise RuntimeResourceError(f"Runtime resource size changed: {name}")
-        if sha256_file(resource) != entry.get("sha256"):
-            raise RuntimeResourceError(f"Runtime resource checksum mismatch: {name}")
     return manifest
