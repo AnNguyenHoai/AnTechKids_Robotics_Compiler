@@ -70,10 +70,26 @@ def resolve_path(*parts: str | os.PathLike[str], writable: bool = False) -> Path
     return root.joinpath(*(Path(part) for part in parts)).resolve()
 
 
+def _tool_root() -> Path:
+    """Return the path identity used to locate bundled application tools.
+
+    ``application_root()`` intentionally canonicalizes its result for the
+    general application-path contract. For an explicit ``ROBOSTUDIO_HOME``,
+    however, bundled-tool resolution must preserve the caller-supplied path
+    identity. This matters on Windows when the temporary/package parent is a
+    junction or symlink: the file created at the supplied path must be the
+    exact path returned to the caller, not its canonicalized spelling.
+    """
+    override = os.environ.get(APPLICATION_HOME_ENV)
+    if override:
+        return Path(override).expanduser()
+    return application_root()
+
+
 def _tool_candidates(name: str) -> list[Path]:
     """Return deterministic locations for a bundled executable."""
     suffixes = (".exe", ".cmd", ".bat", "")
-    runtime = runtime_root()
+    runtime = _tool_root() / "runtime"
     candidates: list[Path] = []
     for directory in (runtime / "bin", runtime / "tools"):
         for suffix in suffixes:
