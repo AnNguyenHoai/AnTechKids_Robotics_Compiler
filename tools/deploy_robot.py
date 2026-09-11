@@ -41,6 +41,7 @@ from tools.deployment_runtime import (
     platformio_command,
     run_process,
 )
+from tools import build_isolation
 
 # H27-B0 compatibility contract: source development may invoke PlatformIO as
 # [sys.executable, "-m", "platformio"]. Packaged deployments are resolved by
@@ -142,11 +143,12 @@ def validate_bootstrap_config(path: Path) -> dict:
 
 def flash_bootstrap(config_path: Path, port: str | None) -> int:
     config = validate_bootstrap_config(config_path.resolve())
-    env = deployment_runtime_environment(os.environ.copy())
+    env = deployment_runtime_environment(os.environ.copy(), project_name="bootstrap")
     env["ROBOT_BOOTSTRAP_CONFIG"] = str(config_path.resolve())
     env["ROBOT_WIFI_SSID"] = str(config["wifi"]["ssid"])
     env["ROBOT_WIFI_PASSWORD"] = str(config["wifi"].get("password", ""))
     env["ROBOT_OTA_PASSWORD"] = str(config["ota"]["password"])
+    build_isolation.prepare_build_workspace("bootstrap")
 
     command = platformio_command("run", "-e", "esp32dev_bootstrap", "-t", "upload")
     if port:
@@ -323,7 +325,9 @@ def main() -> int:
         previous_header = _copy_program_header_safely(header, platform_header)
         print(f"Validated deployment manifest: {manifest_path}")
         print(f"Capabilities: {', '.join(capabilities)}")
-        env = deployment_runtime_environment(os.environ.copy())
+        build_isolation.prepare_build_workspace(project_name)
+        env = deployment_runtime_environment(os.environ.copy(), project_name=project_name)
+        print(f"Isolated PlatformIO workspace: {env[build_isolation.PLATFORMIO_WORKSPACE_DIR_ENV]}")
         if wifi_ssid:
             env["ROBOT_WIFI_SSID"] = wifi_ssid
             env["ROBOT_WIFI_PASSWORD"] = wifi_password
@@ -337,14 +341,17 @@ def main() -> int:
         else:
             preflight_robot(args.robot)
             run(platformio_command("run", "-e", "esp32dev_ota"), cwd=PLATFORM, env=env, timeout=args.process_timeout)
-            firmware = PLATFORM / ".pio" / "build" / "esp32dev_ota" / "firmware.bin"
+            firmware = build_isolation.firmware_path(project_name, "esp32dev_ota")
             http_ota_upload(args.robot, ota_password, firmware)
             health = wait_for_robot(args.robot, timeout=args.verify_timeout)
             print(f"Robot READY: {health.get('hostname')} @ {health.get('ip')}")
     except Exception:
         _restore_program_header(platform_header, previous_header)
         raise
-    firmware = PLATFORM / ".pio" / "build" / ("esp32dev_ota" if args.mode == "ota" else "esp32dev") / "firmware.bin"
+    firmware = build_isolation.firmware_path(
+        project_name,
+        "esp32dev_ota" if args.mode == "ota" else "esp32dev",
+    )
     if firmware.is_file():
         manifest_dict["artifacts"]["firmware"] = {"path": str(firmware), "size": firmware.stat().st_size, "sha256": sha256_file(firmware)}
         manifest_path.write_text(json.dumps(manifest_dict, indent=2) + "\n", encoding="utf-8")
