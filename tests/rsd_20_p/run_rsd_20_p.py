@@ -111,8 +111,7 @@ def _make_distribution(root: Path, *, imported_dll: str | None = None, include_d
             "portable": True,
             "runtime_root": "runtime",
             "files": files,
-        }, indent=2) + "\n", encoding="utf-8"
-    )
+        }, indent=2) + "\n", encoding="utf-8")
     return root
 
 
@@ -149,7 +148,7 @@ def main() -> int:
         expect_error(
             "host-specific absolute path is rejected",
             lambda: portable_release_proof.prove_portable_release(host_artifact),
-            "host-specific absolute path",
+            "host-specific path",
         )
 
         symlink_artifact = base / "release" / "symlink.zip"
