@@ -52,10 +52,11 @@ def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
 
     The runnable fixture must behave like an application-owned Python runtime
     after relocation. Copy the interpreter's native support files and standard
-    library, not only ``python.exe`` and ``python*.dll``. On Windows also use a
-    local ``python._pth`` file when the source installation does not provide one
-    so registry/environment module search cannot silently reintroduce a host
-    dependency during the clean-machine acceptance probe.
+    library, not only ``python.exe`` and ``python*.dll``. On Windows use the
+    interpreter-specific ``pythonXY._pth`` name so CPython actually enables its
+    isolated-path mode. If the source installation has no ``._pth`` file, create
+    one with only the packaged standard-library path; this prevents registry and
+    environment module search from silently reintroducing host dependencies.
     """
     runtime_bin = runtime_root / "bin"
     runtime_bin.mkdir(parents=True, exist_ok=True)
@@ -64,8 +65,10 @@ def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
         (runtime_bin / python_name).write_bytes(_minimal_pe())
         return
 
-    source_python = Path(sys.executable).resolve()
     source_root = Path(sys.base_prefix).resolve()
+    source_python = source_root / python_name
+    if not source_python.is_file():
+        source_python = Path(sys.executable).resolve()
     shutil.copy2(source_python, runtime_bin / python_name)
 
     if os.name != "nt":
@@ -95,12 +98,15 @@ def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
             ignore=shutil.ignore_patterns("__pycache__", "test", "tests"),
         )
 
-    pth_candidates = list(source_root.glob("python*._pth"))
+    pth_candidates = sorted(source_root.glob("python*._pth"))
     if pth_candidates:
-        for source in sorted(pth_candidates):
+        for source in pth_candidates:
             shutil.copy2(source, runtime_bin / source.name)
     else:
-        (runtime_bin / "python._pth").write_text("..\\Lib\n", encoding="utf-8")
+        # CPython only recognizes the interpreter-specific name (for example
+        # python310._pth), not a generic python._pth file.
+        versioned_name = f"python{sys.version_info.major}{sys.version_info.minor}._pth"
+        (runtime_bin / versioned_name).write_text("..\\Lib\n", encoding="utf-8")
 
 
 def _minimal_pe(import_name: str | None = None) -> bytes:
