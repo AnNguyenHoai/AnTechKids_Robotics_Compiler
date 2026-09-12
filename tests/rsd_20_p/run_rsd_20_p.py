@@ -58,7 +58,15 @@ def expect_rejected(name: str, fn, expected: str) -> None:
 
 
 def _copy_portable_python(runtime_root: Path) -> None:
-    """Stage a runnable interpreter and its application-owned standard library."""
+    """Stage a small runnable interpreter closure for the acceptance probe.
+
+    RSD-20-P must prove the release's application-owned runtime, but the test
+    fixture must not turn the entire developer Python installation into a
+    release.  Copying the full ``DLLs`` directory introduces optional CPython
+    extension modules whose transitive native dependencies are outside this
+    minimal acceptance fixture.  The probe only needs the interpreter,
+    CPython's core DLLs, and the standard-library Python modules it imports.
+    """
     runtime_bin = runtime_root / "bin"
     runtime_bin.mkdir(parents=True, exist_ok=True)
     python_name = "python.exe" if os.name == "nt" else "python"
@@ -69,10 +77,9 @@ def _copy_portable_python(runtime_root: Path) -> None:
     if os.name != "nt":
         return
 
-    # A real Windows interpreter is required because RSD-16 acceptance starts
-    # the packaged runtime in a relocated directory. Keep the fixture self-
-    # contained by packaging the interpreter DLL and standard library rather
-    # than placing a fake executable in runtime/bin.
+    # Keep only the CPython runtime DLLs installed alongside python.exe.
+    # Optional extension modules from <prefix>/DLLs are deliberately excluded
+    # because the clean-machine probe does not import them.
     for source in sorted(source_root.glob("python*.dll")):
         shutil.copy2(source, runtime_bin / source.name)
 
@@ -81,15 +88,6 @@ def _copy_portable_python(runtime_root: Path) -> None:
         shutil.copytree(
             source_lib,
             runtime_root / "Lib",
-            dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns("__pycache__"),
-        )
-
-    source_dlls = source_root / "DLLs"
-    if source_dlls.is_dir():
-        shutil.copytree(
-            source_dlls,
-            runtime_root / "DLLs",
             dirs_exist_ok=True,
             ignore=shutil.ignore_patterns("__pycache__"),
         )
