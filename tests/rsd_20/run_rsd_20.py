@@ -3,14 +3,12 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
 
-# When this file is executed directly (`python tests/rsd_20/run_rsd_20.py`),
-# Python places tests/rsd_20 on sys.path rather than the repository root.
-# Bootstrap the root before importing the shared RSD-20-P fixtures.
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -75,6 +73,33 @@ def main() -> int:
         with zipfile.ZipFile(output / "RoboStudio-1.2.3-Windows.zip") as archive:
             names = set(archive.namelist())
         check("build packages executable-local PE dependency", "Qt6Core.dll" in names)
+
+        evidence = base / "release-acceptance.json"
+        code, stdout, stderr = capture_main([
+            "accept", str(artifact), "--report", str(evidence)
+        ])
+        check("accept command succeeds", code == 0)
+        check("accept reports PASS", "RSD-20 accept: PASS" in stdout)
+        check("accept verifies executable", "Executable verified: True" in stdout)
+        check("accept verifies environment", "Environment verified: True" in stdout)
+        check("accept writes evidence", evidence.is_file())
+        check("accept failure text is empty", not stderr)
+        evidence_payload = json.loads(evidence.read_text(encoding="utf-8"))
+        check("evidence has stable schema", evidence_payload["schema"] == "antechkids.robostudio.release-acceptance-evidence")
+        check("evidence records artifact checksum", evidence_payload["artifact_sha256"])
+        check("evidence records relocation gate", evidence_payload["checks"]["relocation_verified"] is True)
+        check("evidence records external CWD gate", evidence_payload["checks"]["external_cwd_verified"] is True)
+        check("evidence records environment gate", evidence_payload["checks"]["environment_verified"] is True)
+        check("evidence omits temporary extraction path", "relocated_root" not in evidence_payload)
+
+        code, stdout, stderr = capture_main(["accept", str(artifact), "--json"])
+        check("accept JSON succeeds", code == 0)
+        payload = json.loads(stdout)
+        check("accept JSON is machine-readable", payload["schema"] == "antechkids.robostudio.clean-machine-release-acceptance")
+        check("accept JSON verifies relocation", payload["relocation_verified"] is True)
+        check("accept JSON verifies external CWD", payload["external_cwd_verified"] is True)
+        check("accept JSON verifies environment", payload["environment_verified"] is True)
+        check("accept JSON failure text is empty", not stderr)
 
     print("RSD-20 release CLI checks: PASS")
     return 0

@@ -34,7 +34,15 @@ This validates the release artifact and runs the RSD-20-P portable proof. Exit c
 python -m tools.release_cli inspect <RoboStudio-<version>-Windows.zip>
 ```
 
-This validates the release package and prints its manifest metadata. `--json` is available on all commands for machine-readable output.
+This validates the release package and prints its manifest metadata.
+
+### Accept
+
+```powershell
+python -m tools.release_cli accept <RoboStudio-<version>-Windows.zip>
+```
+
+This runs the final automated clean-machine acceptance boundary defined by RSD-16: validate the release, relocate it to a fresh temporary directory, execute the application-owned portable Python runtime from an external working directory, and prove hostile host Python/PlatformIO settings do not replace the packaged runtime. `--timeout` controls the bounded runtime probe and `--json` emits the machine-readable acceptance report.
 
 ## Release contract
 
@@ -44,7 +52,11 @@ production inputs
     -> RSD-09 deterministic ZIP
     -> RSD-18 provenance
     -> RSD-20-P dependency/portability proof
-    -> release-ready artifact
+    -> RSD-20 release CLI
+    -> RSD-16 automated clean-machine acceptance
+    -> hardware / OTA qualification
 ```
 
 The CLI intentionally does not install packages, download runtimes, mutate the developer's environment, or fall back to host Python/PlatformIO. A missing required input is a release failure.
+
+Automated acceptance does not replace the final human qualification of the actual shipped ZIP: GUI startup, USB/serial hardware, firmware upload, and OTA remain environment-specific release gates.
