@@ -223,3 +223,29 @@ def main() -> int:
             lambda: portable_release_proof.prove_portable_release(missing_artifact),
             "non-system PE dependency is not packaged",
         )
+
+        host_leak = _make_distribution(base / "host-leak", host_path=True)
+        host_artifact = _build_release(host_leak, base, "host-leak")
+        expect_rejected(
+            "host-specific absolute path is rejected",
+            lambda: portable_release_proof.prove_portable_release(host_artifact),
+            "host-specific path",
+        )
+
+        symlink_artifact = base / "release" / "symlink.zip"
+        with zipfile.ZipFile(symlink_artifact, "w") as archive:
+            info = zipfile.ZipInfo("link")
+            info.external_attr = 0o120777 << 16
+            archive.writestr(info, b"target")
+        expect_error(
+            "symlink member is rejected",
+            lambda: portable_release_proof._validate_zip_members(symlink_artifact),
+            "symlink",
+        )
+
+    print("RSD-20-P production portable release proof checks: PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
