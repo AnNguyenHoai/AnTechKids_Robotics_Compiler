@@ -183,9 +183,9 @@ def assemble_release(inputs: ProductionReleaseInputs, output_root: Path) -> dict
         }
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         return report
-    except (production_distribution.ProductionDistributionError, release_package.ReleasePackageError,
-            release_provenance.ReleaseProvenanceError if hasattr(release_provenance, "ReleaseProvenanceError") else ValueError,
-            portable_release_proof.PortableReleaseProofError, ValueError) as exc:
+    except Exception as exc:
+        if isinstance(exc, ProductionReleaseAssemblyError):
+            raise
         raise ProductionReleaseAssemblyError(str(exc)) from exc
 
 
