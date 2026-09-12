@@ -48,6 +48,7 @@ def main() -> int:
         ROOT / "tests" / "rsd_20_p" / "run_rsd_20_p.py",
         ROOT / "tests" / "rsd_20_p1" / "run_rsd_20_p1.py",
         ROOT / "tests" / "rsd_20" / "run_rsd_20.py",
+        ROOT / "tests" / "rsd_21" / "run_rsd_21.py",
         ROOT / "tests" / "h26_a" / "run_h26_a.py",
         ROOT / "tests" / "h26_b" / "run_h26_b.py",
         ROOT / "tests" / "h26_c" / "run_h26_c.py",
