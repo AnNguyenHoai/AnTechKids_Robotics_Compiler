@@ -193,6 +193,27 @@ def _packaged_files(root: Path) -> dict[str, Path]:
     return {p.relative_to(root).as_posix().lower(): p for p in root.rglob("*") if p.is_file()}
 
 
+def _packaged_dependency(source: Path, dependency: str, files: dict[str, Path], root: Path) -> bool:
+    """Resolve a PE import against application-owned files in the release.
+
+    PE imports are bare module names, while the release inventory uses paths
+    relative to the application root. A dependency such as ``python310.dll``
+    imported by ``runtime/bin/python.exe`` is therefore represented as
+    ``runtime/bin/python310.dll`` in the package. Resolve the import relative
+    to its importer first, matching Windows' application-local DLL lookup,
+    then allow a unique packaged basename for legacy layouts.
+    """
+    dependency_name = Path(dependency).name.lower()
+    sibling = source.parent / dependency_name
+    if sibling.is_file():
+        return True
+
+    matches = [path for path in files.values() if path.name.lower() == dependency_name]
+    if len(matches) == 1:
+        return True
+    return False
+
+
 def _validate_zip_members(artifact: Path) -> int:
     try:
         with zipfile.ZipFile(artifact) as archive:
@@ -260,7 +281,7 @@ def prove_portable_release(artifact: Path, *, manifest: Path | None = None) -> P
                 dependencies.add(key)
                 if _is_system_dependency(dependency):
                     system_count += 1
-                elif dependency.lower() in files:
+                elif _packaged_dependency(path, dependency, files, root):
                     packaged_count += 1
                 else:
                     findings.append(DependencyFinding(rel, dependency, "non-system PE dependency is not packaged"))
@@ -286,26 +307,27 @@ def report_to_dict(report: PortableReleaseProofReport) -> dict[str, object]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Prove a RoboStudio release is portable and dependency-closed")
-    parser.add_argument("--artifact", required=True, type=Path)
+    parser = argparse.ArgumentParser(description="Prove a RoboStudio release has portable dependency closure")
+    parser.add_argument("artifact", type=Path)
     parser.add_argument("--manifest", type=Path)
-    parser.add_argument("--report", type=Path)
+    parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args()
     try:
         report = prove_portable_release(args.artifact, manifest=args.manifest)
     except PortableReleaseProofError as exc:
-        print(f"RSD-20-P production portable release proof: FAIL: {exc}")
+        print(f"RSD-20-P portable release proof: FAIL: {exc}")
         return 1
-    payload = report_to_dict(report)
-    if args.report:
-        args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    print("RSD-20-P production portable release proof: " + ("PASS" if report.passed else "FAIL"))
-    if not report.passed:
-        print(json.dumps(payload, indent=2))
-        return 1
-    print(json.dumps(payload, indent=2))
-    return 0
+    if args.as_json:
+        print(json.dumps(report_to_dict(report), indent=2))
+    else:
+        print(f"RSD-20-P portable release proof: {'PASS' if report.passed else 'FAIL'}")
+        print(f"Artifact: {report.artifact}")
+        print(f"Dependencies: {report.dependency_count}")
+        print(f"Packaged dependencies: {report.packaged_dependency_count}")
+        print(f"System dependencies: {report.system_dependency_count}")
+        for finding in report.findings:
+            print(f"Finding: {finding.source}: {finding.dependency}: {finding.reason}")
+    return 0 if report.passed else 1
 
 
 if __name__ == "__main__":
