@@ -31,16 +31,6 @@ def expect_error(name: str, fn, expected: str) -> None:
         raise AssertionError(f"{name}: operation unexpectedly succeeded")
 
 
-def expect_failed_report(name: str, fn, expected: str) -> None:
-    """Assert a proof report rejects the artifact without requiring an exception."""
-    report = fn()
-    check(name, not report.passed)
-    check(
-        f"{name}: expected finding",
-        any(expected.lower() in finding.reason.lower() for finding in report.findings),
-    )
-
-
 def expect_rejected(name: str, fn, expected: str) -> None:
     """Assert rejection regardless of whether it is a report failure or hard error."""
     try:
@@ -196,6 +186,13 @@ def main() -> int:
         check("system/non-packaged dependency findings are absent", not report.findings)
         check("release file count is recorded", report.file_count > 0)
         check("report is machine-readable", portable_release_proof.report_to_dict(report)["status"] == "PASS")
+
+        # Native binaries can contain compiler/build metadata from the machine
+        # used to produce them. That is not a runtime path dependency; textual
+        # release metadata remains subject to the host-path gate.
+        binary_metadata = base / "binary-metadata.bin"
+        binary_metadata.write_bytes(b"compiled on C:\\Users\\Builder\\Python\\python.exe\0")
+        check("binary build metadata is not treated as a host path", not portable_release_proof._scan_host_paths(binary_metadata))
 
         missing_distribution = _make_distribution(base / "missing", imported_dll="Qt6Core.dll", include_dependency=False)
         missing_artifact = _build_release(missing_distribution, base, "missing")

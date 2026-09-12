@@ -44,6 +44,7 @@ _HOST_PATH_PATTERNS = (
     re.compile(rb"(?i)[\\/]home[\\/]+"),
     re.compile(rb"(?i)[\\/]users[\\/]+"),
 )
+_TEXT_EXTENSIONS = (".json", ".txt", ".cfg", ".ini", ".toml", ".yaml", ".yml")
 
 
 class PortableReleaseProofError(RuntimeError):
@@ -135,7 +136,6 @@ def _pe_imports(path: Path) -> list[str]:
     magic = int.from_bytes(data[optional:optional + 2], "little")
     if magic not in (0x10B, 0x20B):
         return []
-    # DataDirectory starts at +96 (PE32) / +112 (PE32+). Entry 1 is Import.
     directory = optional + (96 if magic == 0x10B else 112)
     import_entry = directory + 8
     if import_entry + 8 > len(data):
@@ -171,6 +171,17 @@ def _is_pe(path: Path) -> bool:
 
 
 def _scan_host_paths(path: Path) -> list[str]:
+    """Scan textual release metadata for host-specific absolute paths.
+
+    Native binaries can legitimately contain build/debug metadata strings such
+    as the path of the machine used to build CPython or another third-party
+    binary. Those strings are not runtime filesystem dependencies. Dependency
+    closure for PE files is handled separately by ``_pe_imports``; path
+    portability is therefore checked only for text/configuration payloads,
+    matching the release-package host-path policy.
+    """
+    if path.suffix.lower() not in _TEXT_EXTENSIONS:
+        return []
     try:
         data = path.read_bytes()
     except OSError as exc:
