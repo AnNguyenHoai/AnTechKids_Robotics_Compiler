@@ -79,6 +79,15 @@ def main() -> int:
         check("acceptance evidence is PASS", acceptance_payload["status"] == "PASS")
         check("qualification records acceptance", json.loads((base / "qualification-acceptance.json").read_text(encoding="utf-8"))["acceptance"]["performed"] is True)
 
+        # Explicitly pass the decoded manifest dictionary through the public
+        # validation path before qualification. This documents the contract:
+        # validate_release_artifact() returns data, while portable proof receives
+        # the manifest sidecar path.
+        manifest_path = artifact.with_name("release-manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        check("release manifest sidecar exists", manifest_path.is_file())
+        check("release manifest is machine-readable", isinstance(manifest, dict))
+
         # Tampering with the sidecar must fail closed. The release ZIP itself is
         # intentionally untouched; qualification must never silently regenerate
         # provenance to make a mismatched artifact pass.
