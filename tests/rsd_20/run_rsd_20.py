@@ -3,8 +3,16 @@ from __future__ import annotations
 
 import contextlib
 import io
+import sys
 import tempfile
 from pathlib import Path
+
+# When this file is executed directly (`python tests/rsd_20/run_rsd_20.py`),
+# Python places tests/rsd_20 on sys.path rather than the repository root.
+# Bootstrap the root before importing the shared RSD-20-P fixtures.
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from tests.rsd_20_p.run_rsd_20_p import _build_release, _make_distribution
 from tools import release_cli
