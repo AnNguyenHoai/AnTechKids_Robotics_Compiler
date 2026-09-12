@@ -49,13 +49,19 @@ def qualify_release(
     """Qualify a production release without modifying the artifact."""
     artifact = _resolve_file(artifact, "release artifact")
 
+    manifest_path = artifact.with_name(release_package.RELEASE_MANIFEST)
+    manifest_path = _resolve_file(manifest_path, "release manifest")
     try:
-        manifest = release_package.validate_release_artifact(artifact)
+        manifest = release_package.validate_release_artifact(artifact, manifest_path)
     except release_package.ReleasePackageError as exc:
         raise ProductionReleaseQualificationError(f"RSD-20 integrity/structure validation failed: {exc}") from exc
 
+    # validate_release_artifact() returns the decoded manifest dictionary, but
+    # portable_release_proof.prove_portable_release() intentionally accepts a
+    # filesystem path for its manifest sidecar. Keep that boundary explicit so
+    # RSD-21 never passes the decoded JSON object into Path().
     try:
-        proof = portable_release_proof.prove_portable_release(artifact, manifest=manifest)
+        proof = portable_release_proof.prove_portable_release(artifact, manifest=manifest_path)
     except portable_release_proof.PortableReleaseProofError as exc:
         raise ProductionReleaseQualificationError(f"RSD-20 portable proof failed: {exc}") from exc
     if not proof.passed:
@@ -68,7 +74,7 @@ def qualify_release(
         provenance_payload = release_provenance.validate_provenance(
             provenance_path,
             artifact,
-            artifact.with_name("release-manifest.json"),
+            manifest_path,
         )
     except (OSError, ValueError) as exc:
         raise ProductionReleaseQualificationError(f"Release provenance validation failed: {exc}") from exc
