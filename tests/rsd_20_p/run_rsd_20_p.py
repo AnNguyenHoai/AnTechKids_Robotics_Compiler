@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import sys
 import tempfile
 import zipfile
@@ -55,6 +57,44 @@ def expect_rejected(name: str, fn, expected: str) -> None:
     )
 
 
+def _copy_portable_python(runtime_root: Path) -> None:
+    """Stage a runnable interpreter and its application-owned standard library."""
+    runtime_bin = runtime_root / "bin"
+    runtime_bin.mkdir(parents=True, exist_ok=True)
+    python_name = "python.exe" if os.name == "nt" else "python"
+    source_root = Path(sys.base_prefix).resolve()
+    source_python = Path(sys.executable).resolve()
+    shutil.copy2(source_python, runtime_bin / python_name)
+
+    if os.name != "nt":
+        return
+
+    # A real Windows interpreter is required because RSD-16 acceptance starts
+    # the packaged runtime in a relocated directory. Keep the fixture self-
+    # contained by packaging the interpreter DLL and standard library rather
+    # than placing a fake executable in runtime/bin.
+    for source in sorted(source_root.glob("python*.dll")):
+        shutil.copy2(source, runtime_bin / source.name)
+
+    source_lib = source_root / "Lib"
+    if source_lib.is_dir():
+        shutil.copytree(
+            source_lib,
+            runtime_root / "Lib",
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+
+    source_dlls = source_root / "DLLs"
+    if source_dlls.is_dir():
+        shutil.copytree(
+            source_dlls,
+            runtime_root / "DLLs",
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+
+
 def _minimal_pe(import_name: str | None = None) -> bytes:
     """Create a tiny valid PE image containing one optional DLL import."""
     pe_offset = 0x80
@@ -95,9 +135,7 @@ def _make_distribution(root: Path, *, imported_dll: str | None = None, include_d
     (root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
 
     runtime = root / "runtime"
-    runtime_bin = runtime / "bin"
-    runtime_bin.mkdir(parents=True)
-    (runtime_bin / ("python.exe" if sys.platform == "win32" else "python")).write_bytes(b"portable-python")
+    _copy_portable_python(runtime)
 
     platformio = runtime / "platformio"
     (platformio / "platforms" / "espressif32").mkdir(parents=True)
