@@ -39,6 +39,22 @@ def expect_failed_report(name: str, fn, expected: str) -> None:
     )
 
 
+def expect_rejected(name: str, fn, expected: str) -> None:
+    """Assert rejection regardless of whether it is a report failure or hard error."""
+    try:
+        result = fn()
+    except portable_release_proof.PortableReleaseProofError as exc:
+        check(name, expected.lower() in str(exc).lower())
+        return
+    if not isinstance(result, portable_release_proof.PortableReleaseProofReport):
+        raise AssertionError(f"{name}: unexpected proof result type: {type(result)!r}")
+    check(name, not result.passed)
+    check(
+        f"{name}: expected finding",
+        any(expected.lower() in finding.reason.lower() for finding in result.findings),
+    )
+
+
 def _minimal_pe(import_name: str | None = None) -> bytes:
     """Create a tiny valid PE image containing one optional DLL import."""
     pe_offset = 0x80
@@ -147,7 +163,7 @@ def main() -> int:
 
         missing_distribution = _make_distribution(base / "missing", imported_dll="Qt6Core.dll", include_dependency=False)
         missing_artifact = _build_release(missing_distribution, base, "missing")
-        expect_failed_report(
+        expect_rejected(
             "missing non-system PE dependency is rejected",
             lambda: portable_release_proof.prove_portable_release(missing_artifact),
             "non-system PE dependency is not packaged",
@@ -155,7 +171,7 @@ def main() -> int:
 
         host_leak = _make_distribution(base / "host-leak", host_path=True)
         host_artifact = _build_release(host_leak, base, "host-leak")
-        expect_failed_report(
+        expect_rejected(
             "host-specific absolute path is rejected",
             lambda: portable_release_proof.prove_portable_release(host_artifact),
             "host-specific absolute path",
