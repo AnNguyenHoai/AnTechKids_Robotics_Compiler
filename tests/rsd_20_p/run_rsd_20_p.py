@@ -174,7 +174,7 @@ def main() -> int:
         expect_rejected(
             "host-specific absolute path is rejected",
             lambda: portable_release_proof.prove_portable_release(host_artifact),
-            "host-specific absolute path",
+            "host-specific path",
         )
 
         symlink_artifact = base / "release" / "symlink.zip"
