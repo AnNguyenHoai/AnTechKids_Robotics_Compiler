@@ -22,6 +22,8 @@ from tools import clean_machine_e2e, release_package
 
 SCHEMA = "antechkids.robostudio.clean-machine-release-acceptance"
 SCHEMA_VERSION = 1
+EVIDENCE_SCHEMA = "antechkids.robostudio.release-acceptance-evidence"
+EVIDENCE_SCHEMA_VERSION = 1
 
 
 class ReleaseAcceptanceError(RuntimeError):
@@ -127,7 +129,7 @@ def accept_release(
         _validate_identity(relocated, manifest)
 
         try:
-            report = clean_machine_e2e.execute_clean_machine_probe(
+            runtime_report = clean_machine_e2e.execute_clean_machine_probe(
                 relocated,
                 cwd=external_cwd,
                 base_env=hostile,
@@ -146,10 +148,10 @@ def accept_release(
             artifact_sha256=str(manifest.get("artifact_sha256", "")),
             relocated_root=relocated,
             external_cwd=external_cwd,
-            portable_python=report.python,
-            execution_returncode=report.returncode,
-            executable_verified=report.executable_verified,
-            environment_verified=report.environment_verified,
+            portable_python=runtime_report.python,
+            execution_returncode=runtime_report.returncode,
+            executable_verified=runtime_report.executable_verified,
+            environment_verified=runtime_report.environment_verified,
         )
 
 
@@ -171,13 +173,50 @@ def report_to_dict(report: ReleaseAcceptanceReport) -> dict[str, object]:
     }
 
 
+def evidence_to_dict(report: ReleaseAcceptanceReport) -> dict[str, object]:
+    """Serialize stable acceptance evidence suitable for release handoff.
+
+    The evidence deliberately omits temporary extraction/CWD paths and the
+    injected host environment. Those values are test mechanics, not portable
+    release identity. The artifact checksum and boolean gates are the durable
+    evidence that can be copied with the release.
+    """
+    return {
+        "schema": EVIDENCE_SCHEMA,
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
+        "status": "PASS",
+        "artifact": report.artifact.name,
+        "application": report.application,
+        "application_version": report.application_version,
+        "artifact_sha256": report.artifact_sha256,
+        "checks": {
+            "relocation_verified": True,
+            "external_cwd_verified": True,
+            "executable_verified": report.executable_verified,
+            "environment_verified": report.environment_verified,
+            "execution_returncode": report.execution_returncode,
+        },
+    }
+
+
+def write_evidence(report: ReleaseAcceptanceReport, path: Path) -> Path:
+    """Write stable, portable acceptance evidence next to a release artifact."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(evidence_to_dict(report), indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Accept a portable RoboStudio release on a clean-machine boundary")
     parser.add_argument("--artifact", required=True, type=Path)
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument("--report", type=Path, help="write stable acceptance evidence to this path")
     args = parser.parse_args()
 
     report = accept_release(args.artifact, timeout=args.timeout)
+    if args.report:
+        write_evidence(report, args.report)
     print("RSD-16 clean-machine release acceptance: PASS")
     print(json.dumps(report_to_dict(report), indent=2))
     return 0
