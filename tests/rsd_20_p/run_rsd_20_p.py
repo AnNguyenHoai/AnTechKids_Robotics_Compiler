@@ -29,6 +29,16 @@ def expect_error(name: str, fn, expected: str) -> None:
         raise AssertionError(f"{name}: operation unexpectedly succeeded")
 
 
+def expect_failed_report(name: str, fn, expected: str) -> None:
+    """Assert a proof report rejects the artifact without requiring an exception."""
+    report = fn()
+    check(name, not report.passed)
+    check(
+        f"{name}: expected finding",
+        any(expected.lower() in finding.reason.lower() for finding in report.findings),
+    )
+
+
 def _minimal_pe(import_name: str | None = None) -> bytes:
     """Create a tiny valid PE image containing one optional DLL import."""
     pe_offset = 0x80
@@ -111,8 +121,7 @@ def _make_distribution(root: Path, *, imported_dll: str | None = None, include_d
             "portable": True,
             "runtime_root": "runtime",
             "files": files,
-        }, indent=2) + "\n", encoding="utf-8"
-    )
+        }, indent=2) + "\n", encoding="utf-8")
     return root
 
 
@@ -138,7 +147,7 @@ def main() -> int:
 
         missing_distribution = _make_distribution(base / "missing", imported_dll="Qt6Core.dll", include_dependency=False)
         missing_artifact = _build_release(missing_distribution, base, "missing")
-        expect_error(
+        expect_failed_report(
             "missing non-system PE dependency is rejected",
             lambda: portable_release_proof.prove_portable_release(missing_artifact),
             "non-system PE dependency is not packaged",
@@ -146,7 +155,7 @@ def main() -> int:
 
         host_leak = _make_distribution(base / "host-leak", host_path=True)
         host_artifact = _build_release(host_leak, base, "host-leak")
-        expect_error(
+        expect_failed_report(
             "host-specific absolute path is rejected",
             lambda: portable_release_proof.prove_portable_release(host_artifact),
             "host-specific absolute path",
