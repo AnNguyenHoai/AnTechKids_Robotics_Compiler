@@ -5,6 +5,7 @@ import contextlib
 import io
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 # When this file is executed directly (`python tests/rsd_20/run_rsd_20.py`),
@@ -69,6 +70,10 @@ def main() -> int:
         check("build creates portable proof", (output / "portable-release-proof.json").is_file())
         check("build creates assembly report", (output / "release-assembly-report.json").is_file())
         check("build failure text is empty", not stderr)
+
+        with zipfile.ZipFile(output / "RoboStudio-1.2.3-Windows.zip") as archive:
+            names = set(archive.namelist())
+        check("build packages executable-local PE dependency", "Qt6Core.dll" in names)
 
     print("RSD-20 release CLI checks: PASS")
     return 0
