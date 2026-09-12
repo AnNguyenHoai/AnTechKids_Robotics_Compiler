@@ -33,6 +33,7 @@ def make_inputs(root: Path) -> production_distribution.ProductionDistributionInp
     executable = root / "app-build" / "RoboStudio.exe"
     executable.parent.mkdir(parents=True)
     executable.write_bytes(b"production-executable")
+    (executable.parent / "Qt6Core.dll").write_bytes(b"application-local-dll")
 
     version = root / "VERSION"
     version.write_text("7.2.0\n", encoding="utf-8")
@@ -100,6 +101,7 @@ def main() -> int:
 
         check("production distribution is created", result.distribution_root.is_dir())
         check("application is copied", (output / "RoboStudio.exe").is_file())
+        check("application-local DLL is copied", (output / "Qt6Core.dll").is_file())
         check("repository VERSION is integrated", (output / "VERSION").read_text(encoding="utf-8").strip() == "7.2.0")
         check("portable Python is included", (output / "runtime" / "bin" / "python.exe").is_file())
         check("PlatformIO runtime is included", (output / "runtime" / "platformio" / "deployment-runtime.json").is_file())
@@ -109,6 +111,7 @@ def main() -> int:
         manifest = json.loads(result.manifest.read_text(encoding="utf-8"))
         check("distribution manifest records application", manifest["application"] == "RoboStudio.exe")
         check("distribution manifest records portability", manifest["portable"] is True)
+        check("distribution manifest records application-local DLL", any(item["path"] == "Qt6Core.dll" for item in manifest["files"]))
         check("distribution VERSION is not source-relative", Path(manifest["files"][0]["path"]).is_absolute() is False)
 
         missing_version = production_distribution.ProductionDistributionInputs(

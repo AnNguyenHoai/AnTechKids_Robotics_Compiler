@@ -69,6 +69,22 @@ def _copy_application_metadata(executable: Path, output: Path) -> None:
         shutil.copy2(version, output / runtime_integrity.APPLICATION_VERSION_FILE)
 
 
+def _copy_application_dependencies(executable: Path, output: Path) -> None:
+    """Copy only regular DLLs colocated with the production executable.
+
+    Windows GUI applications may have application-local PE dependencies next
+    to the executable. Omitting them makes the release structurally portable
+    but not actually runnable on a clean machine. Keep the boundary narrow:
+    only regular files directly beside the declared executable are copied;
+    unrelated build output, directories, and host virtual environments are
+    never swept into the distribution. RSD-19/RSD-20-P remain authoritative
+    over the contents after staging.
+    """
+    for dependency in sorted(executable.parent.glob("*.dll"), key=lambda item: item.name.lower()):
+        if dependency.is_file():
+            shutil.copy2(dependency, output / dependency.name)
+
+
 def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
     """Build a clean distribution and return its distribution manifest."""
     output = Path(output)
@@ -82,6 +98,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
     if not executable.is_file():
         raise DistributionPackageError(f"Missing RoboStudio executable: {executable}")
     shutil.copy2(executable, output / executable.name)
+    _copy_application_dependencies(executable, output)
     _copy_application_metadata(executable, output)
 
     _copy_tree(inputs.runtime_bin, output / runtime_preflight.RUNTIME_BIN, "portable Python")
