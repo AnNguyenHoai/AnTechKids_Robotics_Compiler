@@ -34,6 +34,10 @@ def capture_main(argv: list[str]) -> tuple[int, str, str]:
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="robostudio-rsd20-") as temp:
         base = Path(temp)
+        # The verify/build fixture is intentionally static: it proves release
+        # packaging and PE closure without depending on whichever Python happens
+        # to be installed on the developer machine. RSD-16 acceptance below gets
+        # a separate real interpreter fixture because it actually executes it.
         distribution = _make_distribution(base / "distribution", imported_dll="Qt6Core.dll")
         artifact = _build_release(distribution, base, "RoboStudio-1.2.3-Windows")
 
@@ -73,9 +77,22 @@ def main() -> int:
             names = set(archive.namelist())
         check("build packages executable-local PE dependency", "Qt6Core.dll" in names)
 
+        # Clean-machine acceptance is an execution test, so use a real Python
+        # runtime only for this artifact. It remains independent of the host's
+        # PATH/environment because release_acceptance launches the packaged
+        # interpreter by absolute path.
+        acceptance_distribution = _make_distribution(
+            base / "acceptance-distribution",
+            imported_dll="Qt6Core.dll",
+            runnable_python=True,
+        )
+        acceptance_artifact = _build_release(
+            acceptance_distribution, base, "RoboStudio-1.2.3-Windows-acceptance"
+        )
+
         evidence = base / "release-acceptance.json"
         code, stdout, stderr = capture_main([
-            "accept", str(artifact), "--report", str(evidence)
+            "accept", str(acceptance_artifact), "--report", str(evidence)
         ])
         check("accept command succeeds", code == 0)
         check("accept reports PASS", "RSD-20 accept: PASS" in stdout)
@@ -91,7 +108,7 @@ def main() -> int:
         check("evidence records environment gate", evidence_payload["checks"]["environment_verified"] is True)
         check("evidence omits temporary extraction path", "relocated_root" not in evidence_payload)
 
-        code, stdout, stderr = capture_main(["accept", str(artifact), "--json"])
+        code, stdout, stderr = capture_main(["accept", str(acceptance_artifact), "--json"])
         check("accept JSON succeeds", code == 0)
         payload = json.loads(stdout)
         check("accept JSON is machine-readable", payload["schema"] == "antechkids.robostudio.clean-machine-release-acceptance")
