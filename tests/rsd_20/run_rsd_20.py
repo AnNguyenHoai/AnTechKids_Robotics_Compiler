@@ -73,12 +73,23 @@ def main() -> int:
             names = set(archive.namelist())
         check("build packages executable-local PE dependency", "Qt6Core.dll" in names)
 
-        code, stdout, stderr = capture_main(["accept", str(artifact)])
+        evidence = base / "release-acceptance.json"
+        code, stdout, stderr = capture_main([
+            "accept", str(artifact), "--report", str(evidence)
+        ])
         check("accept command succeeds", code == 0)
         check("accept reports PASS", "RSD-20 accept: PASS" in stdout)
         check("accept verifies executable", "Executable verified: True" in stdout)
         check("accept verifies environment", "Environment verified: True" in stdout)
+        check("accept writes evidence", evidence.is_file())
         check("accept failure text is empty", not stderr)
+        evidence_payload = json.loads(evidence.read_text(encoding="utf-8"))
+        check("evidence has stable schema", evidence_payload["schema"] == "antechkids.robostudio.release-acceptance-evidence")
+        check("evidence records artifact checksum", evidence_payload["artifact_sha256"])
+        check("evidence records relocation gate", evidence_payload["checks"]["relocation_verified"] is True)
+        check("evidence records external CWD gate", evidence_payload["checks"]["external_cwd_verified"] is True)
+        check("evidence records environment gate", evidence_payload["checks"]["environment_verified"] is True)
+        check("evidence omits temporary extraction path", "relocated_root" not in evidence_payload)
 
         code, stdout, stderr = capture_main(["accept", str(artifact), "--json"])
         check("accept JSON succeeds", code == 0)

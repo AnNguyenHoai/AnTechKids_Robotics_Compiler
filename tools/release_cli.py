@@ -44,6 +44,7 @@ def _build_parser() -> argparse.ArgumentParser:
     accept = sub.add_parser("accept", help="run final automated clean-machine release acceptance")
     accept.add_argument("artifact", type=Path)
     accept.add_argument("--timeout", type=float, default=30.0)
+    accept.add_argument("--report", type=Path, help="write stable acceptance evidence to this path")
     accept.add_argument("--json", action="store_true", dest="as_json")
     return parser
 
@@ -114,10 +115,13 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 def _cmd_accept(args: argparse.Namespace) -> int:
     try:
         report = release_acceptance.accept_release(args.artifact, timeout=args.timeout)
-    except release_acceptance.ReleaseAcceptanceError as exc:
+        evidence_path = release_acceptance.write_evidence(report, args.report) if args.report else None
+    except (release_acceptance.ReleaseAcceptanceError, OSError) as exc:
         print(f"RSD-20 accept: FAIL: {exc}", file=sys.stderr)
         return 1
     payload = release_acceptance.report_to_dict(report)
+    if evidence_path is not None:
+        payload["evidence_report"] = str(evidence_path.resolve())
     if args.as_json:
         print(json.dumps(payload, indent=2))
     else:
@@ -132,6 +136,8 @@ def _cmd_accept(args: argparse.Namespace) -> int:
         print(f"Execution return code: {report.execution_returncode}")
         print(f"Executable verified: {report.executable_verified}")
         print(f"Environment verified: {report.environment_verified}")
+        if evidence_path is not None:
+            print(f"Acceptance evidence: {evidence_path.resolve()}")
     return 0
 
 
