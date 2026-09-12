@@ -1,9 +1,0 @@
-{
-  "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\015_led_3c_test\\015_led_3c_test.rewrite.py",
-  "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\015_led_3c_test\\program.h",
-  "compile_time_seconds": 0.0010318756103515625,
-  "instruction_count": 5,
-  "variable_count": 3,
-  "temp_count": 3,
-  "function_count": 1
-}

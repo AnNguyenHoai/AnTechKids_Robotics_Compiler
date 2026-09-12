@@ -1,9 +1,0 @@
-{
-  "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\010_real_ultra_motor\\010_real_ultra_motor.rewrite.py",
-  "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\010_real_ultra_motor\\program.h",
-  "compile_time_seconds": 0.020343542098999023,
-  "instruction_count": 10,
-  "variable_count": 6,
-  "temp_count": 4,
-  "function_count": 1
-}

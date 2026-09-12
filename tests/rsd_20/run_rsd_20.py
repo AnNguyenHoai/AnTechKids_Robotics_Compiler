@@ -63,7 +63,8 @@ def main() -> int:
             "--source-revision", "test-revision",
             "--output", str(output),
         ])
-        check("build command succeeds", code == 0)
+        if code != 0:
+            raise AssertionError(f"build command failed:\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
         check("build reports PASS", "RSD-20 release: PASS" in stdout)
         check("build creates ZIP", (output / "RoboStudio-1.2.3-Windows.zip").is_file())
         check("build creates provenance", (output / "release-provenance.json").is_file())

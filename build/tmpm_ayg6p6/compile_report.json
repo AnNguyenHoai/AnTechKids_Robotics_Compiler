@@ -1,9 +1,0 @@
-{
-  "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\tmpm_ayg6p6\\tmpm_ayg6p6.rewrite.py",
-  "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\tmpm_ayg6p6\\program.h",
-  "compile_time_seconds": 0.06775903701782227,
-  "instruction_count": 60,
-  "variable_count": 30,
-  "temp_count": 29,
-  "function_count": 1
-}

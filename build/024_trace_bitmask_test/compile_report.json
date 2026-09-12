@@ -1,9 +1,0 @@
-{
-  "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\024_trace_bitmask_test\\024_trace_bitmask_test.rewrite.py",
-  "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\024_trace_bitmask_test\\program.h",
-  "compile_time_seconds": 0.021462678909301758,
-  "instruction_count": 21,
-  "variable_count": 14,
-  "temp_count": 12,
-  "function_count": 0
-}

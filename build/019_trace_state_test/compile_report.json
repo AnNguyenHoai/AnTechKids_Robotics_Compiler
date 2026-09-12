@@ -1,9 +1,0 @@
-{
-  "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\019_trace_state_test\\019_trace_state_test.rewrite.py",
-  "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\019_trace_state_test\\program.h",
-  "compile_time_seconds": 0.02146768569946289,
-  "instruction_count": 14,
-  "variable_count": 8,
-  "temp_count": 8,
-  "function_count": 0
-}

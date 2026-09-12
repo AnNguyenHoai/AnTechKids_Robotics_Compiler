@@ -34,3 +34,9 @@ TEST 12 — Forward → STOP → Ultra
 
 6/9:
       - đã yêu cầu GPT fix, chưa merge vào codebase. Tiếp theo cần làm theo hướng dẫn GPT để test và flash được qua OTA. Sau khi quay lại merge PR46
+
+7/9/2026:
+      - Đã làm xong H29 D, đã merge xong PR74. Tất cả test case đã pass, tiếp theo cần audit và làm tiếp
+
+11/9:
+      - Chưa merge PR112, tiếp cần merge 112 và pull về chạy lại test

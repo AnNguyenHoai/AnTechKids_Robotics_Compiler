@@ -1,9 +1,0 @@
-forward(80)
-wait(2000)
-while True:
-    dist = read_ultrasonic()
-    if dist > 0:
-        set_3c_led(1, 1)
-    else:
-        set_3c_led(1, 0)
-    wait(200)

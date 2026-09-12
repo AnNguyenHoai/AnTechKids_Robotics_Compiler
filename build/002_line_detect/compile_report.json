@@ -1,9 +1,0 @@
-{
-  "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\002_line_detect\\002_line_detect.rewrite.py",
-  "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\002_line_detect\\program.h",
-  "compile_time_seconds": 0.021466970443725586,
-  "instruction_count": 12,
-  "variable_count": 6,
-  "temp_count": 6,
-  "function_count": 0
-}
