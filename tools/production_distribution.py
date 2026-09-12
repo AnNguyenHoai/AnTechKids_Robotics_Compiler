@@ -95,11 +95,23 @@ def validate_inputs(inputs: ProductionDistributionInputs) -> str:
 
 
 def _stage_application(executable: Path, version_file: Path, stage: Path) -> Path:
-    """Create application staging with VERSION adjacent to the executable."""
+    """Stage the executable, VERSION, and application-local DLL dependencies.
+
+    Windows production builds commonly place non-system DLLs beside the main
+    executable. RSD-17 must preserve those application-local dependencies while
+    still avoiding a wholesale copy of the build directory. Only regular DLL
+    files directly beside the executable are staged; the downstream release
+    integrity and portability gates remain authoritative for every copied file.
+    """
     stage.mkdir(parents=True, exist_ok=True)
     staged_executable = stage / executable.name
     shutil.copy2(executable, staged_executable)
     shutil.copy2(version_file, stage / DEFAULT_VERSION_FILE)
+
+    for dependency in sorted(executable.parent.glob("*.dll"), key=lambda item: item.name.lower()):
+        if dependency.is_file():
+            shutil.copy2(dependency, stage / dependency.name)
+
     return staged_executable
 
 
