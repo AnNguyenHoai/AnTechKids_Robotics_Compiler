@@ -48,14 +48,14 @@ def expect_rejected(name: str, fn, expected: str) -> None:
 
 
 def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
-    """Stage either a static PE probe fixture or a real CPython acceptance runtime.
+    """Stage a static PE fixture or a self-contained runnable CPython runtime.
 
-    RSD-20-P itself proves ZIP structure and PE dependency closure. Its positive
-    fixture therefore uses a dependency-free PE placeholder for the packaged
-    Python entrypoint. RSD-16 clean-machine execution is a separate concern and
-    gets a real interpreter from the same helper when requested by RSD-20.
-    This prevents a developer Python installation from becoming an accidental
-    portability requirement for the static proof suite.
+    The runnable fixture must behave like an application-owned Python runtime
+    after relocation. Copy the interpreter's native support files and standard
+    library, not only ``python.exe`` and ``python*.dll``. On Windows also use a
+    local ``python._pth`` file when the source installation does not provide one
+    so registry/environment module search cannot silently reintroduce a host
+    dependency during the clean-machine acceptance probe.
     """
     runtime_bin = runtime_root / "bin"
     runtime_bin.mkdir(parents=True, exist_ok=True)
@@ -64,8 +64,8 @@ def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
         (runtime_bin / python_name).write_bytes(_minimal_pe())
         return
 
-    source_root = Path(sys.base_prefix).resolve()
     source_python = Path(sys.executable).resolve()
+    source_root = Path(sys.base_prefix).resolve()
     shutil.copy2(source_python, runtime_bin / python_name)
 
     if os.name != "nt":
@@ -73,6 +73,18 @@ def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
 
     for source in sorted(source_root.glob("python*.dll")):
         shutil.copy2(source, runtime_bin / source.name)
+
+    source_dlls = source_root / "DLLs"
+    if source_dlls.is_dir():
+        shutil.copytree(
+            source_dlls,
+            runtime_root / "DLLs",
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__", "test", "tests"),
+        )
+
+    for source in sorted(source_root.glob("python*.zip")):
+        shutil.copy2(source, runtime_root / source.name)
 
     source_lib = source_root / "Lib"
     if source_lib.is_dir():
@@ -82,6 +94,13 @@ def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
             dirs_exist_ok=True,
             ignore=shutil.ignore_patterns("__pycache__", "test", "tests"),
         )
+
+    pth_candidates = list(source_root.glob("python*._pth"))
+    if pth_candidates:
+        for source in sorted(pth_candidates):
+            shutil.copy2(source, runtime_bin / source.name)
+    else:
+        (runtime_bin / "python._pth").write_text("..\\Lib\n", encoding="utf-8")
 
 
 def _minimal_pe(import_name: str | None = None) -> bytes:
@@ -140,8 +159,7 @@ def _make_distribution(root: Path, *, imported_dll: str | None = None, include_d
                 "python": "runtime/bin/python.exe" if sys.platform == "win32" else "runtime/bin/python",
             },
             "platformio_core": {"required_directories": ["platforms", "packages"]},
-        }, indent=2) + "\n", encoding="utf-8"
-    )
+        }, indent=2) + "\n", encoding="utf-8")
 
     resources = runtime / "resources" / "robot-isa"
     resources.mkdir(parents=True)
