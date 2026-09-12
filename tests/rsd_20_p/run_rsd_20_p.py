@@ -47,19 +47,23 @@ def expect_rejected(name: str, fn, expected: str) -> None:
     )
 
 
-def _copy_portable_python(runtime_root: Path) -> None:
-    """Stage a small runnable interpreter closure for the acceptance probe.
+def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
+    """Stage either a static PE probe fixture or a real CPython acceptance runtime.
 
-    RSD-20-P must prove the release's application-owned runtime, but the test
-    fixture must not turn the entire developer Python installation into a
-    release.  Copying the full ``DLLs`` directory introduces optional CPython
-    extension modules whose transitive native dependencies are outside this
-    minimal acceptance fixture.  The probe only needs the interpreter,
-    CPython's core DLLs, and the standard-library Python modules it imports.
+    RSD-20-P itself proves ZIP structure and PE dependency closure. Its positive
+    fixture therefore uses a dependency-free PE placeholder for the packaged
+    Python entrypoint. RSD-16 clean-machine execution is a separate concern and
+    gets a real interpreter from the same helper when requested by RSD-20.
+    This prevents a developer Python installation from becoming an accidental
+    portability requirement for the static proof suite.
     """
     runtime_bin = runtime_root / "bin"
     runtime_bin.mkdir(parents=True, exist_ok=True)
     python_name = "python.exe" if os.name == "nt" else "python"
+    if not runnable:
+        (runtime_bin / python_name).write_bytes(_minimal_pe())
+        return
+
     source_root = Path(sys.base_prefix).resolve()
     source_python = Path(sys.executable).resolve()
     shutil.copy2(source_python, runtime_bin / python_name)
@@ -67,9 +71,6 @@ def _copy_portable_python(runtime_root: Path) -> None:
     if os.name != "nt":
         return
 
-    # Keep only the CPython runtime DLLs installed alongside python.exe.
-    # Optional extension modules from <prefix>/DLLs are deliberately excluded
-    # because the clean-machine probe does not import them.
     for source in sorted(source_root.glob("python*.dll")):
         shutil.copy2(source, runtime_bin / source.name)
 
@@ -79,7 +80,7 @@ def _copy_portable_python(runtime_root: Path) -> None:
             source_lib,
             runtime_root / "Lib",
             dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns("__pycache__"),
+            ignore=shutil.ignore_patterns("__pycache__", "test", "tests"),
         )
 
 
@@ -116,14 +117,14 @@ def _minimal_pe(import_name: str | None = None) -> bytes:
     return bytes(data)
 
 
-def _make_distribution(root: Path, *, imported_dll: str | None = None, include_dependency: bool = True, host_path: bool = False) -> Path:
+def _make_distribution(root: Path, *, imported_dll: str | None = None, include_dependency: bool = True, host_path: bool = False, runnable_python: bool = False) -> Path:
     root.mkdir(parents=True)
     executable = root / "RoboStudio.exe"
     executable.write_bytes(_minimal_pe(imported_dll))
     (root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
 
     runtime = root / "runtime"
-    _copy_portable_python(runtime)
+    _copy_portable_python(runtime, runnable=runnable_python)
 
     platformio = runtime / "platformio"
     (platformio / "platforms" / "espressif32").mkdir(parents=True)
@@ -175,7 +176,7 @@ def _build_release(distribution: Path, base: Path, name: str) -> Path:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="robostudio-rsd20p-") as temp:
+    with tempfile.TemporaryDirectory(prefix="robostudio-rsd20p-" ) as temp:
         base = Path(temp)
 
         valid_distribution = _make_distribution(base / "valid", imported_dll="Qt6Core.dll")
@@ -187,9 +188,6 @@ def main() -> int:
         check("release file count is recorded", report.file_count > 0)
         check("report is machine-readable", portable_release_proof.report_to_dict(report)["status"] == "PASS")
 
-        # Native binaries can contain compiler/build metadata from the machine
-        # used to produce them. That is not a runtime path dependency; textual
-        # release metadata remains subject to the host-path gate.
         binary_metadata = base / "binary-metadata.bin"
         binary_metadata.write_bytes(b"compiled on C:\\Users\\Builder\\Python\\python.exe\0")
         check("binary build metadata is not treated as a host path", not portable_release_proof._scan_host_paths(binary_metadata))
