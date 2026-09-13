@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tests.rsd_20_p.run_rsd_20_p import _build_release, _make_distribution
-from tools import production_release_qualification, release_provenance
+from tools import production_release_qualification, release_provenance, target_machine_qualification
 
 
 def check(name: str, condition: bool) -> None:
@@ -23,25 +23,17 @@ def check(name: str, condition: bool) -> None:
 
 
 def capture(argv: list[str]) -> tuple[int, str, str]:
-    stdout = io.StringIO()
-    stderr = io.StringIO()
+    stdout = io.StringIO(); stderr = io.StringIO()
     with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
         code = production_release_qualification.main(argv)
     return code, stdout.getvalue(), stderr.getvalue()
 
 
 def _build_qualified_release(distribution: Path, base: Path, name: str) -> tuple[Path, Path]:
-    """Build the release fixture and its required provenance sidecar."""
     artifact = _build_release(distribution, base, name)
     manifest = artifact.with_name("release-manifest.json")
     provenance = artifact.with_name(release_provenance.PROVENANCE_MANIFEST)
-    release_provenance.write_provenance(
-        distribution,
-        manifest,
-        artifact,
-        provenance,
-        source_revision="rsd-21-test-revision",
-    )
+    release_provenance.write_provenance(distribution, manifest, artifact, provenance, source_revision="rsd-21-test-revision")
     return artifact, provenance
 
 
@@ -51,9 +43,7 @@ def main() -> int:
         distribution = _make_distribution(base / "distribution", imported_dll="Qt6Core.dll")
         artifact, provenance = _build_qualified_release(distribution, base, "RoboStudio-1.2.3-Windows")
         report = base / "qualification.json"
-        code, stdout, stderr = capture([
-            str(artifact), "--provenance", str(provenance), "--report", str(report),
-        ])
+        code, stdout, stderr = capture([str(artifact), "--provenance", str(provenance), "--report", str(report)])
         check("qualification command succeeds", code == 0)
         check("qualification reports PASS", "RSD-21 production release qualification: PASS" in stdout)
         check("qualification failure text is empty", not stderr)
@@ -67,20 +57,25 @@ def main() -> int:
         check("deterministic ZIP is verified", payload["provenance"]["deterministic_zip_verified"] is True)
         check("acceptance is not claimed when not run", payload["acceptance"]["performed"] is False)
 
-        acceptance_distribution = _make_distribution(base / "acceptance-distribution", imported_dll="Qt6Core.dll", runnable_python=True)
-        acceptance_artifact, acceptance_provenance = _build_qualified_release(acceptance_distribution, base, "RoboStudio-1.2.3-Windows-acceptance")
-        acceptance_evidence = base / "acceptance.json"
-        code, _, stderr = capture([
-            str(acceptance_artifact), "--provenance", str(acceptance_provenance),
-            "--run-acceptance", "--acceptance-report", str(acceptance_evidence),
-            "--report", str(base / "qualification-acceptance.json"),
+        # RSD-21 follows the production boundary: Python/PlatformIO are target
+        # machine prerequisites, not bundled runtime acceptance requirements.
+        acceptance_report = base / "target-machine-acceptance.json"
+        qualified_report = base / "qualification-target-machine.json"
+        code, stdout, stderr = capture([
+            str(artifact), "--provenance", str(provenance), "--target-machine",
+            "--prerequisite-scope", target_machine_qualification.target_machine_prerequisites.RequirementScope.COMPILE.value,
+            "--acceptance-report", str(acceptance_report), "--report", str(qualified_report),
         ])
-        check("qualification with clean-machine acceptance succeeds", code == 0)
-        check("acceptance evidence exists", acceptance_evidence.is_file())
-        check("acceptance failure text is empty", not stderr)
-        acceptance_payload = json.loads(acceptance_evidence.read_text(encoding="utf-8"))
-        check("acceptance evidence is PASS", acceptance_payload["status"] == "PASS")
-        check("qualification records acceptance", json.loads((base / "qualification-acceptance.json").read_text(encoding="utf-8"))["acceptance"]["performed"] is True)
+        check("qualification with target-machine prerequisites succeeds", code == 0)
+        check("target-machine qualification reports PASS", "RSD-21 production release qualification: PASS" in stdout)
+        check("target-machine qualification failure text is empty", not stderr)
+        check("target-machine evidence exists", acceptance_report.is_file())
+        target_payload = json.loads(acceptance_report.read_text(encoding="utf-8"))
+        check("target-machine evidence is machine-readable", target_payload["schema"] == target_machine_qualification.SCHEMA)
+        check("target-machine evidence is PASS", target_payload["passed"] is True)
+        qualified_payload = json.loads(qualified_report.read_text(encoding="utf-8"))
+        check("qualification records target-machine validation", qualified_payload["target_machine"]["performed"] is True)
+        check("qualification does not claim bundled acceptance", qualified_payload["acceptance"]["performed"] is False)
 
         manifest_path = artifact.with_name("release-manifest.json")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
