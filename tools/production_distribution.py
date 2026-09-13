@@ -86,28 +86,9 @@ def validate_inputs(inputs: ProductionDistributionInputs, output: Path | None = 
     return version
 
 
-def _stage_application(executable: Path, version_file: Path, stage: Path) -> Path:
-    """Stage the executable, VERSION, and colocated application DLLs."""
-    stage.mkdir(parents=True, exist_ok=True)
-    staged_executable = stage / executable.name
-    shutil.copy2(executable, staged_executable)
-    shutil.copy2(version_file, stage / DEFAULT_VERSION_FILE)
-    for dependency in sorted(executable.parent.glob("*.dll"), key=lambda item: item.name.lower()):
-        if dependency.is_file():
-            shutil.copy2(dependency, stage / dependency.name)
-    return staged_executable
-
-
-def _write_launcher(output: Path, executable_name: str) -> None:
-    """Write the user-facing Windows entry point beside RoboStudio.exe.
-
-    The launcher resolves the application relative to its own location and makes
-    that directory the process working directory. It therefore works when the
-    release directory is copied to another machine/path and does not require
-    PATH, PYTHONPATH, a repository checkout, or a developer-specific cwd.
-    """
-    launcher = output / LAUNCHER_NAME
-    content = (
+def _launcher_text(executable_name: str) -> str:
+    """Return the relocation-safe Windows launcher contents."""
+    return (
         "@echo off\r\n"
         "setlocal\r\n"
         "pushd \"%~dp0\"\r\n"
@@ -121,7 +102,19 @@ def _write_launcher(output: Path, executable_name: str) -> None:
         "popd\r\n"
         "exit /b %exit_code%\r\n"
     )
-    launcher.write_text(content, encoding="utf-8")
+
+
+def _stage_application(executable: Path, version_file: Path, stage: Path) -> Path:
+    """Stage the executable, launcher, VERSION, and colocated application DLLs."""
+    stage.mkdir(parents=True, exist_ok=True)
+    staged_executable = stage / executable.name
+    shutil.copy2(executable, staged_executable)
+    shutil.copy2(version_file, stage / DEFAULT_VERSION_FILE)
+    (stage / LAUNCHER_NAME).write_text(_launcher_text(executable.name), encoding="utf-8")
+    for dependency in sorted(executable.parent.glob("*.dll"), key=lambda item: item.name.lower()):
+        if dependency.is_file():
+            shutil.copy2(dependency, stage / dependency.name)
+    return staged_executable
 
 
 def build_production_distribution(inputs: ProductionDistributionInputs, output: Path) -> ProductionDistributionResult:
@@ -141,6 +134,7 @@ def build_production_distribution(inputs: ProductionDistributionInputs, output: 
                     executable=staged_executable,
                     runtime_resources=runtime_resources,
                     production_boundary=True,
+                    launcher=stage / LAUNCHER_NAME,
                 ),
                 output,
             )
@@ -149,22 +143,6 @@ def build_production_distribution(inputs: ProductionDistributionInputs, output: 
                 f"Production distribution assembly failed: {exc}"
             ) from exc
 
-    _write_launcher(output, executable.name)
-    # Rebuild the manifest after adding the launcher so the launcher is part of
-    # the signed/checksummed production distribution boundary.
-    try:
-        manifest = distribution_package.assemble_distribution(
-            distribution_package.DistributionInputs(
-                executable=output / executable.name,
-                runtime_resources=output / "runtime" / "resources",
-                production_boundary=True,
-            ),
-            output,
-        )
-    except distribution_package.DistributionPackageError as exc:
-        raise ProductionDistributionError(
-            f"Production distribution manifest refresh failed: {exc}"
-        ) from exc
     return ProductionDistributionResult(output, manifest, executable.name, version)
 
 
