@@ -159,8 +159,9 @@ def build_production_distribution(inputs: ProductionDistributionInputs, output: 
     with tempfile.TemporaryDirectory(prefix="robostudio-production-stage-") as temp:
         stage = Path(temp) / "application"
         staged_executable = _stage_application(executable, version_file, stage)
+        compiler_stage = None
         if inputs.compiler_root is not None:
-            _stage_compiler(Path(inputs.compiler_root), stage)
+            compiler_stage = _stage_compiler(Path(inputs.compiler_root), stage)
         try:
             manifest = distribution_package.assemble_distribution(
                 distribution_package.DistributionInputs(
@@ -168,6 +169,7 @@ def build_production_distribution(inputs: ProductionDistributionInputs, output: 
                     runtime_resources=runtime_resources,
                     production_boundary=True,
                     launcher=stage / LAUNCHER_NAME,
+                    compiler_root=compiler_stage,
                 ),
                 output,
             )
