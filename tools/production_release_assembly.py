@@ -2,8 +2,8 @@
 
 RSD-21.3 makes the release boundary executable: the production artifact contains
 RoboStudio, the application-owned compiler/resources/dependencies, and release
-metadata. Python and PlatformIO are target-machine prerequisites and are not
-accepted as production assembly inputs.
+metadata. Python and PlatformIO are target-machine prerequisites and are never
+copied into the production artifact.
 """
 from __future__ import annotations
 
@@ -40,6 +40,11 @@ class ProductionReleaseInputs:
     runtime_resources: Path
     version_file: Path
     source_revision: str
+    # Deprecated compatibility inputs. RSD-21.3 deliberately ignores these;
+    # keeping them optional lets older automation invoke the CLI while the
+    # production boundary prevents the directories from entering the ZIP.
+    runtime_bin: Path | None = None
+    runtime_platformio: Path | None = None
 
 
 def repository_root() -> Path:
@@ -79,14 +84,9 @@ def _source_revision(explicit: str | None) -> str:
     if env:
         return env
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=repository_root(), check=True,
-            capture_output=True, text=True,
-        )
+        result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repository_root(), check=True, capture_output=True, text=True)
     except (OSError, subprocess.CalledProcessError) as exc:
-        raise ProductionReleaseAssemblyError(
-            "Source revision is required when Git is unavailable; pass --source-revision."
-        ) from exc
+        raise ProductionReleaseAssemblyError("Source revision is required when Git is unavailable; pass --source-revision.") from exc
     revision = result.stdout.strip()
     if not revision:
         raise ProductionReleaseAssemblyError("Unable to determine source revision; pass --source-revision.")
@@ -94,7 +94,7 @@ def _source_revision(explicit: str | None) -> str:
 
 
 def validate_inputs(inputs: ProductionReleaseInputs, output_root: Path) -> str:
-    """Validate application-owned production inputs before output mutation."""
+    """Validate only application-owned production inputs."""
     executable = _require_file(inputs.executable, "RoboStudio executable")
     resources = _require_directory(inputs.runtime_resources, "application resources")
     version = _read_version(inputs.version_file)
@@ -104,9 +104,7 @@ def validate_inputs(inputs: ProductionReleaseInputs, output_root: Path) -> str:
             output_root.relative_to(source)
         except ValueError:
             continue
-        raise ProductionReleaseAssemblyError(
-            f"Release output must not be inside an input source: {output_root}"
-        )
+        raise ProductionReleaseAssemblyError(f"Release output must not be inside an input source: {output_root}")
     return version
 
 
@@ -119,7 +117,6 @@ def assemble_release(inputs: ProductionReleaseInputs, output_root: Path) -> dict
     artifact = output_root / f"RoboStudio-{version}-Windows.zip"
     proof_report = output_root / PROOF_REPORT_NAME
     report_path = output_root / REPORT_NAME
-
     try:
         distribution = production_distribution.build_production_distribution(
             production_distribution.ProductionDistributionInputs(
@@ -130,35 +127,20 @@ def assemble_release(inputs: ProductionReleaseInputs, output_root: Path) -> dict
             distribution_root,
         )
         release = release_package.build_release(distribution.distribution_root, artifact)
-        provenance = release_provenance.write_provenance(
-            distribution.distribution_root,
-            release.manifest,
-            release.artifact,
-            artifact.with_name(release_provenance.PROVENANCE_MANIFEST),
-            source_revision=inputs.source_revision,
-        )
+        provenance = release_provenance.write_provenance(distribution.distribution_root, release.manifest, release.artifact, artifact.with_name(release_provenance.PROVENANCE_MANIFEST), source_revision=inputs.source_revision)
         proof = portable_release_proof.prove_portable_release(release.artifact, manifest=release.manifest)
         if not proof.passed:
             raise ProductionReleaseAssemblyError("Portable release proof failed; artifact is not release-ready.")
         proof_payload = portable_release_proof.report_to_dict(proof)
         proof_report.write_text(json.dumps(proof_payload, indent=2) + "\n", encoding="utf-8")
         report = {
-            "schema": REPORT_SCHEMA,
-            "schema_version": REPORT_SCHEMA_VERSION,
-            "status": "PASS",
-            "portable": True,
-            "artifact_model": "RoboStudio + Compiler",
-            "host_prerequisites_packaged": False,
-            "application": distribution.application,
-            "application_version": distribution.application_version,
-            "source_revision": inputs.source_revision,
-            "distribution": str(distribution.distribution_root),
-            "artifact": str(release.artifact),
-            "artifact_sha256": release.sha256,
-            "release_manifest": str(release.manifest),
-            "release_provenance": str(provenance),
-            "portable_proof_report": str(proof_report),
-            "proof": proof_payload,
+            "schema": REPORT_SCHEMA, "schema_version": REPORT_SCHEMA_VERSION, "status": "PASS", "portable": True,
+            "artifact_model": "RoboStudio + Compiler", "host_prerequisites_packaged": False,
+            "application": distribution.application, "application_version": distribution.application_version,
+            "source_revision": inputs.source_revision, "distribution": str(distribution.distribution_root),
+            "artifact": str(release.artifact), "artifact_sha256": release.sha256,
+            "release_manifest": str(release.manifest), "release_provenance": str(provenance),
+            "portable_proof_report": str(proof_report), "proof": proof_payload,
         }
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         return report
@@ -169,8 +151,11 @@ def assemble_release(inputs: ProductionReleaseInputs, output_root: Path) -> dict
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build a production RoboStudio ZIP without bundling host prerequisites")
+    parser = argparse.ArgumentParser(description="Build a production RoboStudio release without bundling host prerequisites")
     parser.add_argument("--executable", required=True, type=Path)
+    # Kept for CLI compatibility; production assembly never packages these.
+    parser.add_argument("--runtime-bin", required=False, type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--runtime-platformio", required=False, type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--runtime-resources", required=True, type=Path)
     parser.add_argument("--version-file", type=Path, default=repository_root() / "VERSION")
     parser.add_argument("--source-revision", type=str)
@@ -178,13 +163,11 @@ def main() -> int:
     args = parser.parse_args()
     try:
         revision = _source_revision(args.source_revision)
-        report = assemble_release(
-            ProductionReleaseInputs(args.executable, args.runtime_resources, args.version_file, revision), args.output
-        )
+        report = assemble_release(ProductionReleaseInputs(args.executable, args.runtime_resources, args.version_file, revision, args.runtime_bin, args.runtime_platformio), args.output)
     except ProductionReleaseAssemblyError as exc:
-        print(f"RSD-21.3 production release assembly: FAIL: {exc}", file=sys.stderr)
+        print(f"RSD-20-P.1 production release assembly: FAIL: {exc}", file=sys.stderr)
         return 1
-    print("RSD-21.3 production release assembly: PASS")
+    print("RSD-20-P.1 production release assembly: PASS")
     print(f"Artifact: {report['artifact']}")
     print(f"SHA-256: {report['artifact_sha256']}")
     print(f"Release manifest: {report['release_manifest']}")
