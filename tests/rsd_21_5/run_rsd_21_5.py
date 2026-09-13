@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 # This test is intentionally executable directly from the repository root:
@@ -66,10 +68,6 @@ def main() -> int:
         artifact, source = _make_test_artifact(root)
         output = root / "compile-output" / "program.bytecode"
 
-        # production_e2e executes commands with cwd set to the extracted
-        # application's directory. Keep the command executable-local and avoid
-        # repository/source-tree fallbacks. The source/output are explicit host
-        # inputs, matching the target-machine contract.
         result = production_e2e.evaluate_production_artifact(
             artifact=artifact,
             source=source,
