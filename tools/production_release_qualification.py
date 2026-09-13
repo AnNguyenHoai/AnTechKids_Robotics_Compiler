@@ -49,10 +49,11 @@ def qualify_release(
 ) -> dict[str, Any]:
     """Qualify a production release without modifying the artifact.
 
-    ``target_machine=True`` switches the acceptance boundary from the legacy
-    bundled-runtime RSD-16 probe to the target-machine prerequisite contract.
-    This is the production-user model: the release supplies RoboStudio and its
-    application-owned compiler; the target host supplies declared tooling.
+    ``target_machine=True`` selects the real production-user acceptance model:
+    the ZIP is validated for release integrity/provenance and the target host
+    is checked against the declared prerequisite contract. The legacy
+    bundled-runtime portable proof is deliberately not a prerequisite in this
+    mode because Python/PlatformIO are supplied by the target machine.
     """
     artifact = _resolve_file(artifact, "release artifact")
 
@@ -63,12 +64,14 @@ def qualify_release(
     except release_package.ReleasePackageError as exc:
         raise ProductionReleaseQualificationError(f"RSD-20 integrity/structure validation failed: {exc}") from exc
 
-    try:
-        proof = portable_release_proof.prove_portable_release(artifact, manifest=manifest_path)
-    except portable_release_proof.PortableReleaseProofError as exc:
-        raise ProductionReleaseQualificationError(f"RSD-20 portable proof failed: {exc}") from exc
-    if not proof.passed:
-        raise ProductionReleaseQualificationError("RSD-20 portable proof failed; artifact is not release-ready")
+    proof = None
+    if not target_machine:
+        try:
+            proof = portable_release_proof.prove_portable_release(artifact, manifest=manifest_path)
+        except portable_release_proof.PortableReleaseProofError as exc:
+            raise ProductionReleaseQualificationError(f"RSD-20 portable proof failed: {exc}") from exc
+        if not proof.passed:
+            raise ProductionReleaseQualificationError("RSD-20 portable proof failed; artifact is not release-ready")
 
     provenance_path = _sidecar(
         artifact, provenance, release_provenance.PROVENANCE_MANIFEST, "release provenance"
@@ -124,9 +127,10 @@ def qualify_release(
         "application_version": manifest.get("application_version"),
         "file_count": manifest.get("file_count"),
         "portable_dependency_closure": {
-            "passed": proof.passed,
-            "packaged_dependency_count": proof.packaged_dependency_count,
-            "finding_count": len(proof.findings),
+            "required": not target_machine,
+            "passed": proof.passed if proof is not None else None,
+            "packaged_dependency_count": proof.packaged_dependency_count if proof is not None else None,
+            "finding_count": len(proof.findings) if proof is not None else 0,
         },
         "provenance": {
             "path": provenance_path.name,
@@ -192,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         print("RSD-21 production release qualification: PASS")
         print(f"Artifact: {args.artifact.resolve()}")
         print(f"SHA-256: {report['artifact_sha256']}")
+        print(f"Portable dependency closure required: {report['portable_dependency_closure']['required']}")
         print(f"Portable dependency closure: {report['portable_dependency_closure']['passed']}")
         print(f"Provenance verified: {report['provenance']['artifact_sha256_verified']}")
         print(f"Deterministic ZIP verified: {report['provenance']['deterministic_zip_verified']}")
