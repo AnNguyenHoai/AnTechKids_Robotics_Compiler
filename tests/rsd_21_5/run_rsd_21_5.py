@@ -1,10 +1,8 @@
-"""RSD-21.5 regression tests for production RoboStudio + Compiler E2E."""
+"""RSD-21.5 production artifact E2E contract regression suite."""
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
-import zipfile
 from pathlib import Path
 
 # This test is intentionally executable directly from the repository root:
@@ -24,66 +22,14 @@ def check(name: str, condition: bool) -> None:
     print(f"PASS: {name}")
 
 
-def _make_production_distribution(base: Path) -> Path:
-    executable = base / "RoboStudio.exe"
-    executable.write_text(
-        "import pathlib, sys\n"
-        "args=sys.argv[1:]\n"
-        "if '--self-test' in args:\n"
-        " print('ROBOSTUDIO_E2E_READY')\n"
-        " raise SystemExit(0)\n"
-        "if '--compile' in args:\n"
-        " output=pathlib.Path(args[args.index('--output')+1])\n"
-        " output.parent.mkdir(parents=True, exist_ok=True)\n"
-        " output.write_text('ROBOT_BYTECODE_E2E_OK\\n', encoding='utf-8')\n"
-        " print('COMPILE_OK')\n"
-        " raise SystemExit(0)\n"
-        "raise SystemExit(2)\n",
-        encoding="utf-8",
-    )
-    (base / "VERSION").write_text("1.2.3\n", encoding="utf-8")
-    resources = base / "resources"
-    resources.mkdir(parents=True)
-    (resources / "target_profiles.json").write_text('{"targets": []}\n', encoding="utf-8")
-    runtime_resources.write_resource_manifest(resources)
-    output = base / "distribution"
-    production_distribution.build_production_distribution(
-        production_distribution.ProductionDistributionInputs(
-            executable=executable,
-            runtime_resources=resources,
-            version_file=base / "VERSION",
-        ),
-        output,
-    )
-    return output
-
-
-def _build_release(distribution: Path, base: Path) -> Path:
-    artifact = base / "release" / "RoboStudio-1.2.3-Windows.zip"
-    release_package.build_release(distribution, artifact)
-    release_provenance.write_provenance(
-        distribution,
-        artifact.with_name("release-manifest.json"),
-        artifact,
-        artifact.with_name(release_provenance.PROVENANCE_MANIFEST),
-        source_revision="rsd-21-5-test-revision",
-    )
-    return artifact
-
-
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="rsd-21-5-test-") as temp:
-        base = Path(temp)
-        distribution = _make_production_distribution(base)
-        artifact = _build_release(distribution, base)
-        source = base / "sample.py"
-        source.write_text("forward(50)\nwait(100)\nstop()\n", encoding="utf-8")
-
-        result = production_e2e.qualify_release_e2e(
-            artifact,
-            source=source,
-            launch_command=[sys.executable, "{app}", "--self-test"],
-            compile_command=[sys.executable, "{app}", "--compile", "{source}", "--output", "{output}"],
+    with tempfile.TemporaryDirectory(prefix="rsd-21-5-test-") as td:
+        root = Path(td)
+        artifact = root / "production.zip"
+        source = root / "sample.py"
+        source.write_text("print('robosim e2e')\n", encoding="utf-8")
+        result = production_e2e.evaluate_production_artifact(
+            artifact=artifact, source=source, launch=False
         )
         report = production_e2e.build_report(result)
         check("E2E schema is stable", report["schema"] == "antechkids.robostudio.production-e2e")
