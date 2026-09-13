@@ -7,11 +7,15 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+# This test is intentionally executable directly from the repository root:
+#   python tests\\rsd_21_5\\run_rsd_21_5.py
+# Python puts tests/rsd_21_5 on sys.path for that invocation, not the repository
+# root. Add the repository root before importing project packages.
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import distribution_package, production_e2e, production_distribution, release_package, release_provenance, runtime_resources
+from tools import production_e2e, production_distribution, release_package, release_provenance, runtime_resources
 
 
 def check(name: str, condition: bool) -> None:
@@ -95,7 +99,7 @@ def main() -> int:
         check("E2E report is JSON serializable", bool(json.dumps(report)))
 
         with zipfile.ZipFile(artifact) as archive:
-            names = archive.namelist()
+            names = set(archive.namelist())
         check("production ZIP contains RoboStudio", "RoboStudio.exe" in names)
         check("production ZIP contains compiler resources", any(name.startswith("runtime/resources/") for name in names))
         check("production ZIP does not contain Python", not any("python" in name.lower() for name in names))
