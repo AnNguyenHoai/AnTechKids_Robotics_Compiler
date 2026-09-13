@@ -136,11 +136,16 @@ def evaluate_production_artifact(
 
         started = compiled = False
         output = root / "e2e-output" / "program.bytecode"
+        # The output contract is an explicit path inside the extracted production
+        # artifact. Create it before process execution so real compilers that
+        # require the destination directory to exist cannot silently skip output.
+        output.parent.mkdir(parents=True, exist_ok=True)
         evidence = {
             "robostudio": str(app.relative_to(root)),
             "source": str(source),
             "launch_requested": launch,
             "target_cwd": str(app.parent),
+            "compiler_output_contract": str(output.relative_to(root)),
         }
 
         if launch and launch_command:
