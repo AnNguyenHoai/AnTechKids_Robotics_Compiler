@@ -18,6 +18,7 @@ from tools import distribution_package
 PRODUCTION_SCHEMA = "antechkids.robostudio.production-distribution"
 PRODUCTION_SCHEMA_VERSION = 2
 DEFAULT_VERSION_FILE = "VERSION"
+LAUNCHER_NAME = "RoboStudio.cmd"
 
 
 class ProductionDistributionError(RuntimeError):
@@ -85,12 +86,31 @@ def validate_inputs(inputs: ProductionDistributionInputs, output: Path | None = 
     return version
 
 
+def _launcher_text(executable_name: str) -> str:
+    """Return the relocation-safe Windows launcher contents."""
+    return (
+        "@echo off\r\n"
+        "setlocal\r\n"
+        "pushd \"%~dp0\"\r\n"
+        f'if not exist "{executable_name}" (\r\n'
+        f'  echo RoboStudio executable not found: "%~dp0{executable_name}" 1>&2\r\n'
+        "  popd\r\n"
+        "  exit /b 1\r\n"
+        ")\r\n"
+        f'"%~dp0{executable_name}" %*\r\n'
+        "set ""exit_code=%ERRORLEVEL%""\r\n"
+        "popd\r\n"
+        "exit /b %exit_code%\r\n"
+    )
+
+
 def _stage_application(executable: Path, version_file: Path, stage: Path) -> Path:
-    """Stage the executable, VERSION, and colocated application DLLs."""
+    """Stage the executable, launcher, VERSION, and colocated application DLLs."""
     stage.mkdir(parents=True, exist_ok=True)
     staged_executable = stage / executable.name
     shutil.copy2(executable, staged_executable)
     shutil.copy2(version_file, stage / DEFAULT_VERSION_FILE)
+    (stage / LAUNCHER_NAME).write_text(_launcher_text(executable.name), encoding="utf-8")
     for dependency in sorted(executable.parent.glob("*.dll"), key=lambda item: item.name.lower()):
         if dependency.is_file():
             shutil.copy2(dependency, stage / dependency.name)
@@ -114,6 +134,7 @@ def build_production_distribution(inputs: ProductionDistributionInputs, output: 
                     executable=staged_executable,
                     runtime_resources=runtime_resources,
                     production_boundary=True,
+                    launcher=stage / LAUNCHER_NAME,
                 ),
                 output,
             )
@@ -139,13 +160,14 @@ def main() -> int:
             ProductionDistributionInputs(args.executable, args.runtime_resources, args.version_file), args.output
         )
     except ProductionDistributionError as exc:
-        print(f"RSD-21.3 production distribution: FAIL: {exc}", file=sys.stderr)
+        print(f"RSD-21.6 production distribution: FAIL: {exc}", file=sys.stderr)
         return 1
-    print("RSD-21.3 production distribution: PASS")
+    print("RSD-21.6 production distribution: PASS")
     print(f"Distribution: {result.distribution_root}")
     print(f"Manifest: {result.manifest}")
     print(f"Application: {result.application}")
     print(f"Application version: {result.application_version}")
+    print(f"Launcher: {result.distribution_root / LAUNCHER_NAME}")
     return 0
 
 
