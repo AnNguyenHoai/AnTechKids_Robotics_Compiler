@@ -95,6 +95,13 @@ def qualify_release(
         except target_machine_qualification.TargetMachineQualificationError as exc:
             raise ProductionReleaseQualificationError(f"RSD-21.4 target-machine qualification failed: {exc}") from exc
         target_machine_payload = target_machine_qualification.to_dict(target_report)
+        # ``--acceptance-report`` is retained as the CLI evidence output path
+        # for backward compatibility. In target-machine mode the evidence is
+        # the prerequisite qualification report, not legacy bundled-runtime
+        # acceptance evidence. Persist it whenever the caller requested a
+        # report so the CLI contract and machine-readable evidence agree.
+        if acceptance_report is not None:
+            target_machine_qualification.write_report(target_report, acceptance_report)
     elif run_acceptance:
         try:
             acceptance = release_acceptance.accept_release(artifact, timeout=timeout)
