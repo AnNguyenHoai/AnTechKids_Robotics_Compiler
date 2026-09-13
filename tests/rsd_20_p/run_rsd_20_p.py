@@ -52,11 +52,11 @@ def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
 
     The runnable fixture must behave like an application-owned Python runtime
     after relocation. Copy the interpreter's native support files and standard
-    library, not only ``python.exe`` and ``python*.dll``. On Windows use the
-    interpreter-specific ``pythonXY._pth`` name so CPython actually enables its
-    isolated-path mode. If the source installation has no ``._pth`` file, create
-    one with only the packaged standard-library path; this prevents registry and
-    environment module search from silently reintroducing host dependencies.
+    library, not only ``python.exe`` and ``python*.dll``. On Windows create a
+    deterministic interpreter-specific ``pythonXY._pth`` file instead of
+    copying an installation-specific one. This keeps module resolution inside
+    the staged runtime and prevents source-machine paths from leaking into the
+    relocated acceptance fixture.
     """
     runtime_bin = runtime_root / "bin"
     runtime_bin.mkdir(parents=True, exist_ok=True)
@@ -98,15 +98,13 @@ def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
             ignore=shutil.ignore_patterns("__pycache__", "test", "tests"),
         )
 
-    pth_candidates = sorted(source_root.glob("python*._pth"))
-    if pth_candidates:
-        for source in pth_candidates:
-            shutil.copy2(source, runtime_bin / source.name)
-    else:
-        # CPython only recognizes the interpreter-specific name (for example
-        # python310._pth), not a generic python._pth file.
-        versioned_name = f"python{sys.version_info.major}{sys.version_info.minor}._pth"
-        (runtime_bin / versioned_name).write_text("..\\Lib\n", encoding="utf-8")
+    # Never copy an installation-specific ._pth file. Embeddable Python files
+    # commonly contain paths relative to their original layout (for example
+    # pythonXY.zip), and a regular installation may contain site-package paths.
+    # Both layouts become incorrect once the interpreter is moved to
+    # runtime/bin. Generate the only path this fixture needs instead.
+    versioned_name = f"python{sys.version_info.major}{sys.version_info.minor}._pth"
+    (runtime_bin / versioned_name).write_text("..\\Lib\n", encoding="utf-8")
 
 
 def _minimal_pe(import_name: str | None = None) -> bytes:
