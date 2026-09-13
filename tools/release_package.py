@@ -1,14 +1,16 @@
-"""Build and validate a portable RoboStudio release artifact.
+"""Build and validate deterministic RoboStudio release artifacts.
 
-RSD-07 assembles a distribution directory and RSD-08 defines clean-machine
-launch semantics. This module adds the release boundary: create a reproducible
-ZIP artifact from an already validated distribution, reject host-specific
-content, and validate the artifact without extracting it into the current
-working directory.
+Production artifacts contain RoboStudio + Compiler and application-owned
+resources/dependencies. Python and PlatformIO are target-machine prerequisites
+and are not required to exist in a production distribution.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
+import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -16,12 +18,7 @@ if __package__ in (None, ""):
     if str(_repository_root) not in sys.path:
         sys.path.insert(0, str(_repository_root))
 
-import hashlib
-import json
-import zipfile
-from dataclasses import dataclass
-
-from tools import distribution_package, release_compatibility, runtime_integrity, runtime_preflight
+from tools import distribution_package, production_artifact_boundary, release_compatibility, runtime_integrity
 
 RELEASE_MANIFEST = "release-manifest.json"
 RELEASE_SCHEMA = "antechkids.robostudio.release"
@@ -29,7 +26,7 @@ RELEASE_SCHEMA_VERSION = 1
 ARTIFACT_SUFFIX = ".zip"
 DETERMINISTIC_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
-_FORBIDDEN_PARTS = {".git", ".pio", "penv", "__pycache__"}
+_FORBIDDEN_PARTS = {".git", ".pio", "penv", "__pycache__", ".venv"}
 _FORBIDDEN_TEXT = (
     "\\AppData\\Local\\Programs\\Python",
     "\\AppData\\Local\\pypoetry",
@@ -45,8 +42,6 @@ class ReleasePackageError(RuntimeError):
 
 @dataclass(frozen=True)
 class ReleaseArtifact:
-    """Metadata for a validated release ZIP."""
-
     artifact: Path
     manifest: Path
     file_count: int
@@ -82,7 +77,6 @@ def _reject_forbidden_text(data: bytes, name: str) -> None:
 
 
 def _archive_entries(root: Path) -> tuple[list[tuple[Path, str]], list[str]]:
-    """Return file entries and explicit empty-directory entries."""
     files: list[tuple[Path, str]] = []
     directories: list[str] = []
     for path in sorted(root.rglob("*")):
@@ -101,36 +95,26 @@ def _archive_entries(root: Path) -> tuple[list[tuple[Path, str]], list[str]]:
 
 
 def _zip_info(name: str, *, directory: bool = False) -> zipfile.ZipInfo:
-    """Create ZIP metadata that is independent of host filesystem metadata."""
     info = zipfile.ZipInfo(name, DETERMINISTIC_ZIP_TIMESTAMP)
     info.create_system = 3
     info.create_version = 20
     info.extract_version = 20
     info.flag_bits = 0x800
     info.compress_type = zipfile.ZIP_DEFLATED
-    if directory:
-        info.external_attr = 0o40775 << 16 | 0x10
-    else:
-        info.external_attr = 0o100644 << 16
+    info.external_attr = (0o40775 << 16 | 0x10) if directory else (0o100644 << 16)
     return info
 
 
 def _write_deterministic_zip(artifact: Path, files: list[tuple[Path, str]], directories: list[str]) -> None:
-    """Write a stable ZIP: sorted paths, fixed timestamps and fixed metadata."""
     with zipfile.ZipFile(artifact, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for relative in directories:
             archive.writestr(_zip_info(relative, directory=True), b"", compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
         for source, relative in files:
-            archive.writestr(
-                _zip_info(relative),
-                source.read_bytes(),
-                compress_type=zipfile.ZIP_DEFLATED,
-                compresslevel=9,
-            )
+            archive.writestr(_zip_info(relative), source.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
 
 
 def build_release(distribution_root: Path, artifact: Path) -> ReleaseArtifact:
-    """Validate a distribution and package it as a reproducible portable ZIP."""
+    """Validate a distribution and package it as a reproducible ZIP."""
     root = Path(distribution_root).resolve()
     artifact = Path(artifact).resolve()
     if not root.is_dir():
@@ -139,10 +123,15 @@ def build_release(distribution_root: Path, artifact: Path) -> ReleaseArtifact:
         raise ReleasePackageError("Release artifact must not be created inside the distribution directory.")
 
     try:
-        runtime_preflight.validate_distribution(root)
         distribution_manifest = distribution_package.validate_distribution_manifest(
             root / distribution_package.DISTRIBUTION_MANIFEST
         )
+        if distribution_manifest.get("production_boundary") is True:
+            production_artifact_boundary.validate_distribution_root(root)
+        else:
+            # Legacy distributions retain the historical runtime preflight.
+            from tools import runtime_preflight
+            runtime_preflight.validate_distribution(root)
     except Exception as exc:
         raise ReleasePackageError(f"Distribution validation failed: {exc}") from exc
 
@@ -173,6 +162,8 @@ def build_release(distribution_root: Path, artifact: Path) -> ReleaseArtifact:
         "schema_version": RELEASE_SCHEMA_VERSION,
         "artifact": artifact.name,
         "portable": True,
+        "artifact_model": distribution_manifest.get("artifact_model"),
+        "production_boundary": distribution_manifest.get("production_boundary", False),
         "application": distribution_manifest.get("application"),
         "application_version": application_version,
         "distribution_manifest": distribution_package.DISTRIBUTION_MANIFEST,
@@ -197,18 +188,18 @@ def validate_release_artifact(artifact: Path, manifest: Path | None = None) -> d
         raise ReleasePackageError(f"Release artifact not found: {artifact}")
     if not manifest_path.is_file():
         raise ReleasePackageError(f"Release manifest not found: {manifest_path}")
-
     try:
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ReleasePackageError(f"Unable to load release manifest: {manifest_path}") from exc
     if data.get("schema") != RELEASE_SCHEMA or data.get("schema_version") != RELEASE_SCHEMA_VERSION:
         raise ReleasePackageError("Unsupported release manifest schema")
-
     if _sha256(artifact) != data.get("artifact_sha256"):
         raise ReleasePackageError("Release artifact checksum mismatch")
     if data.get("artifact") != artifact.name or data.get("portable") is not True:
         raise ReleasePackageError("Release manifest does not describe this portable artifact")
+    if data.get("production_boundary") is True and data.get("artifact_model") != "RoboStudio + Compiler":
+        raise ReleasePackageError("Production release has an invalid artifact model")
 
     try:
         compatibility = release_compatibility.read_compatibility(data)
@@ -217,9 +208,9 @@ def validate_release_artifact(artifact: Path, manifest: Path | None = None) -> d
     if data.get("application_version") != compatibility.application_version:
         raise ReleasePackageError("Release manifest application version disagrees with compatibility contract")
     if compatibility.runtime_integrity_schema_version != runtime_integrity.SCHEMA_VERSION:
-        raise ReleasePackageError("Release is incompatible with runtime integrity schema " f"{runtime_integrity.SCHEMA_VERSION}")
+        raise ReleasePackageError(f"Release is incompatible with runtime integrity schema {runtime_integrity.SCHEMA_VERSION}")
     if compatibility.distribution_schema_version != distribution_package.SCHEMA_VERSION:
-        raise ReleasePackageError("Release is incompatible with distribution schema " f"{distribution_package.SCHEMA_VERSION}")
+        raise ReleasePackageError(f"Release is incompatible with distribution schema {distribution_package.SCHEMA_VERSION}")
     if compatibility.release_schema_version != RELEASE_SCHEMA_VERSION:
         raise ReleasePackageError(f"Release is incompatible with release schema {RELEASE_SCHEMA_VERSION}")
 
@@ -252,7 +243,6 @@ def validate_release_artifact(artifact: Path, manifest: Path | None = None) -> d
 
 
 def validate_release_compatibility(manifest: dict, **kwargs) -> release_compatibility.Compatibility:
-    """Public compatibility validation API for launch/update gates."""
     try:
         return release_compatibility.validate_compatibility(manifest, **kwargs)
     except release_compatibility.ReleaseCompatibilityError as exc:
@@ -261,7 +251,6 @@ def validate_release_compatibility(manifest: dict, **kwargs) -> release_compatib
 
 def main() -> int:
     import argparse
-
     parser = argparse.ArgumentParser(description="Build and validate a portable RoboStudio release ZIP")
     parser.add_argument("--distribution", required=False, type=Path)
     parser.add_argument("--output", required=False, type=Path)
