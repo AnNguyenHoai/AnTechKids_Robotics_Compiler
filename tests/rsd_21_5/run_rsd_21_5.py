@@ -67,20 +67,19 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="rsd-21-5-test-") as td:
         root = Path(td)
         artifact, source = _make_test_artifact(root)
-        output = root / "compile-output" / "program.bytecode"
 
         result = production_e2e.evaluate_production_artifact(
             artifact=artifact,
             source=source,
             launch=True,
-            launch_command=[sys.executable, "RoboStudio.exe", "--self-test"],
+            launch_command=[sys.executable, "{app}", "--self-test"],
             compile_command=[
                 sys.executable,
-                "RoboStudio.exe",
+                "{app}",
                 "--compile",
-                str(source),
+                "{source}",
                 "--output",
-                str(output),
+                "{output}",
             ],
         )
         report = result.to_dict()
