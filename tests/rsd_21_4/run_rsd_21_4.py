@@ -1,8 +1,6 @@
 """RSD-21.4 target-machine-aware qualification checks."""
 from __future__ import annotations
 
-import contextlib
-import io
 import json
 import sys
 from pathlib import Path
@@ -52,7 +50,9 @@ def main() -> int:
 
     hardware_items = target_machine_prerequisites.for_scope("hardware")
     hardware_names = {item.name for item in hardware_items}
+    hardware_python = next(item for item in hardware_items if item.name == "Python")
     check("hardware scope includes Python", "Python" in hardware_names)
+    check("hardware scope requires Python", target_machine_prerequisites.RequirementScope.HARDWARE in hardware_python.required_for)
     check("hardware scope includes PlatformIO", "PlatformIO Core" in hardware_names)
     check("hardware scope includes driver", "ESP32/USB driver" in hardware_names)
     check("hardware driver is explicitly manual", next(i for i in hardware_items if i.name == "ESP32/USB driver").kind is target_machine_prerequisites.PrerequisiteKind.DRIVER)
