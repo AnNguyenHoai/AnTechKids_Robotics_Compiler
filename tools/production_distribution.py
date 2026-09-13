@@ -18,6 +18,7 @@ from tools import distribution_package
 PRODUCTION_SCHEMA = "antechkids.robostudio.production-distribution"
 PRODUCTION_SCHEMA_VERSION = 2
 DEFAULT_VERSION_FILE = "VERSION"
+LAUNCHER_NAME = "RoboStudio.cmd"
 
 
 class ProductionDistributionError(RuntimeError):
@@ -97,6 +98,32 @@ def _stage_application(executable: Path, version_file: Path, stage: Path) -> Pat
     return staged_executable
 
 
+def _write_launcher(output: Path, executable_name: str) -> None:
+    """Write the user-facing Windows entry point beside RoboStudio.exe.
+
+    The launcher resolves the application relative to its own location and makes
+    that directory the process working directory. It therefore works when the
+    release directory is copied to another machine/path and does not require
+    PATH, PYTHONPATH, a repository checkout, or a developer-specific cwd.
+    """
+    launcher = output / LAUNCHER_NAME
+    content = (
+        "@echo off\r\n"
+        "setlocal\r\n"
+        "pushd \"%~dp0\"\r\n"
+        f'if not exist "{executable_name}" (\r\n'
+        f'  echo RoboStudio executable not found: "%~dp0{executable_name}" 1>&2\r\n'
+        "  popd\r\n"
+        "  exit /b 1\r\n"
+        ")\r\n"
+        f'"%~dp0{executable_name}" %*\r\n'
+        "set ""exit_code=%ERRORLEVEL%""\r\n"
+        "popd\r\n"
+        "exit /b %exit_code%\r\n"
+    )
+    launcher.write_text(content, encoding="utf-8")
+
+
 def build_production_distribution(inputs: ProductionDistributionInputs, output: Path) -> ProductionDistributionResult:
     """Assemble the application-owned production distribution."""
     output = Path(output).expanduser().resolve()
@@ -122,6 +149,22 @@ def build_production_distribution(inputs: ProductionDistributionInputs, output: 
                 f"Production distribution assembly failed: {exc}"
             ) from exc
 
+    _write_launcher(output, executable.name)
+    # Rebuild the manifest after adding the launcher so the launcher is part of
+    # the signed/checksummed production distribution boundary.
+    try:
+        manifest = distribution_package.assemble_distribution(
+            distribution_package.DistributionInputs(
+                executable=output / executable.name,
+                runtime_resources=output / "runtime" / "resources",
+                production_boundary=True,
+            ),
+            output,
+        )
+    except distribution_package.DistributionPackageError as exc:
+        raise ProductionDistributionError(
+            f"Production distribution manifest refresh failed: {exc}"
+        ) from exc
     return ProductionDistributionResult(output, manifest, executable.name, version)
 
 
@@ -139,13 +182,14 @@ def main() -> int:
             ProductionDistributionInputs(args.executable, args.runtime_resources, args.version_file), args.output
         )
     except ProductionDistributionError as exc:
-        print(f"RSD-21.3 production distribution: FAIL: {exc}", file=sys.stderr)
+        print(f"RSD-21.6 production distribution: FAIL: {exc}", file=sys.stderr)
         return 1
-    print("RSD-21.3 production distribution: PASS")
+    print("RSD-21.6 production distribution: PASS")
     print(f"Distribution: {result.distribution_root}")
     print(f"Manifest: {result.manifest}")
     print(f"Application: {result.application}")
     print(f"Application version: {result.application_version}")
+    print(f"Launcher: {result.distribution_root / LAUNCHER_NAME}")
     return 0
 
 
