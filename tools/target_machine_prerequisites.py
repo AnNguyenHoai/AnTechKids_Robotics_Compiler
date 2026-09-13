@@ -45,16 +45,15 @@ class TargetMachinePrerequisite:
     packaged: bool = False
 
 
-# Keep versions conservative until the project toolchain pins exact versions.
-# The contract records the minimum supported runtime/tool major line rather
-# than silently inheriting whatever happens to be installed on the developer
-# machine. Exact versions can be tightened here as the production toolchain is
-# formally pinned.
+# Python is required whenever the production application is used to compile
+# or deploy robot programs. Hardware scope is intentionally cumulative with
+# compile scope: a hardware target must also be able to compile the program
+# before PlatformIO/USB deployment is attempted.
 PREREQUISITES: tuple[TargetMachinePrerequisite, ...] = (
     TargetMachinePrerequisite(
         name="Python",
         kind=PrerequisiteKind.RUNTIME,
-        required_for=(RequirementScope.COMPILE,),
+        required_for=(RequirementScope.COMPILE, RequirementScope.HARDWARE),
         command=("python", "--version"),
         version_policy=">=3.10",
         install_note="Install a supported 64-bit Python 3.10+ release and ensure the python command is available to the target user.",
