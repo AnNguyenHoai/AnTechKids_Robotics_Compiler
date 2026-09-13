@@ -1,10 +1,4 @@
-"""Build a production RoboStudio distribution from declared release inputs.
-
-RSD-17 is the source-integration boundary between real application/runtime
-artifacts and the generic RSD-07 distribution assembler. Inputs are explicit
-paths; this module never discovers tools from PATH, the current working
-directory, or a developer's PlatformIO installation.
-"""
+"""Build a production RoboStudio distribution within the RSD-21 release boundary."""
 from __future__ import annotations
 
 import argparse
@@ -14,8 +8,6 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-# Direct CLI execution starts with ``tools`` on sys.path. Bootstrap the
-# repository root before importing sibling modules; package imports are unchanged.
 if __package__ in (None, ""):
     _repository_root = Path(__file__).resolve().parent.parent
     if str(_repository_root) not in sys.path:
@@ -24,7 +16,7 @@ if __package__ in (None, ""):
 from tools import distribution_package
 
 PRODUCTION_SCHEMA = "antechkids.robostudio.production-distribution"
-PRODUCTION_SCHEMA_VERSION = 1
+PRODUCTION_SCHEMA_VERSION = 2
 DEFAULT_VERSION_FILE = "VERSION"
 
 
@@ -34,19 +26,15 @@ class ProductionDistributionError(RuntimeError):
 
 @dataclass(frozen=True)
 class ProductionDistributionInputs:
-    """Explicit source artifacts used to assemble the production distribution."""
+    """Explicit application-owned inputs used for production assembly."""
 
     executable: Path
-    runtime_bin: Path
-    runtime_platformio: Path
     runtime_resources: Path
     version_file: Path
 
 
 @dataclass(frozen=True)
 class ProductionDistributionResult:
-    """Result of production distribution assembly."""
-
     distribution_root: Path
     manifest: Path
     application: str
@@ -54,7 +42,6 @@ class ProductionDistributionResult:
 
 
 def repository_root() -> Path:
-    """Return the source repository root without consulting the caller CWD."""
     return Path(__file__).resolve().parents[1]
 
 
@@ -73,88 +60,50 @@ def _require_directory(path: Path, label: str) -> Path:
 
 
 def _read_version(path: Path) -> str:
-    try:
-        value = path.read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        raise ProductionDistributionError(f"Unable to read application VERSION: {path}") from exc
-    if not value:
-        raise ProductionDistributionError(f"Application VERSION is empty: {path}")
-    if "\n" in value or "\r" in value:
-        raise ProductionDistributionError(f"Application VERSION must be a single line: {path}")
+    path = _require_file(path, "application VERSION file")
+    value = path.read_text(encoding="utf-8").strip()
+    if not value or "\n" in value or "\r" in value:
+        raise ProductionDistributionError(f"Invalid application VERSION: {path}")
     return value
 
 
-def validate_inputs(inputs: ProductionDistributionInputs) -> str:
-    """Validate all production inputs and return the declared application version."""
-    _require_file(inputs.executable, "RoboStudio executable")
-    _require_file(inputs.version_file, "application VERSION file")
-    _require_directory(inputs.runtime_bin, "portable Python runtime")
-    _require_directory(inputs.runtime_platformio, "application-owned PlatformIO runtime")
-    _require_directory(inputs.runtime_resources, "runtime resources")
-    return _read_version(Path(inputs.version_file).expanduser().resolve())
+def validate_inputs(inputs: ProductionDistributionInputs, output: Path | None = None) -> str:
+    """Validate only application-owned production inputs."""
+    executable = _require_file(inputs.executable, "RoboStudio executable")
+    resources = _require_directory(inputs.runtime_resources, "application resources")
+    version = _read_version(inputs.version_file)
+    if output is not None:
+        output = Path(output).expanduser().resolve()
+        for source in (executable.parent, resources):
+            try:
+                output.relative_to(source)
+            except ValueError:
+                continue
+            raise ProductionDistributionError(
+                f"Distribution output must not be inside an input source: {output}"
+            )
+    return version
 
 
 def _stage_application(executable: Path, version_file: Path, stage: Path) -> Path:
-    """Stage the executable, VERSION, and application-local DLL dependencies.
-
-    Windows production builds commonly place non-system DLLs beside the main
-    executable. RSD-17 must preserve those application-local dependencies while
-    still avoiding a wholesale copy of the build directory. Only regular DLL
-    files directly beside the executable are staged; the downstream release
-    integrity and portability gates remain authoritative for every copied file.
-    """
+    """Stage the executable, VERSION, and colocated application DLLs."""
     stage.mkdir(parents=True, exist_ok=True)
     staged_executable = stage / executable.name
     shutil.copy2(executable, staged_executable)
     shutil.copy2(version_file, stage / DEFAULT_VERSION_FILE)
-
     for dependency in sorted(executable.parent.glob("*.dll"), key=lambda item: item.name.lower()):
         if dependency.is_file():
             shutil.copy2(dependency, stage / dependency.name)
-
     return staged_executable
 
 
-def build_production_distribution(
-    inputs: ProductionDistributionInputs,
-    output: Path,
-) -> ProductionDistributionResult:
-    """Assemble a production distribution using the canonical RSD-07 assembler.
-
-    The source VERSION may live at repository root while the executable is
-    produced in another build directory. A temporary application staging
-    directory bridges that layout without copying unrelated build/host files.
-    """
+def build_production_distribution(inputs: ProductionDistributionInputs, output: Path) -> ProductionDistributionResult:
+    """Assemble the application-owned production distribution."""
+    output = Path(output).expanduser().resolve()
     executable = Path(inputs.executable).expanduser().resolve()
     version_file = Path(inputs.version_file).expanduser().resolve()
-    runtime_bin = Path(inputs.runtime_bin).expanduser().resolve()
-    runtime_platformio = Path(inputs.runtime_platformio).expanduser().resolve()
     runtime_resources = Path(inputs.runtime_resources).expanduser().resolve()
-    output = Path(output).expanduser().resolve()
-
-    version = validate_inputs(
-        ProductionDistributionInputs(
-            executable=executable,
-            runtime_bin=runtime_bin,
-            runtime_platformio=runtime_platformio,
-            runtime_resources=runtime_resources,
-            version_file=version_file,
-        )
-    )
-
-    for source, label in (
-        (executable.parent, "executable source"),
-        (runtime_bin, "Python runtime source"),
-        (runtime_platformio, "PlatformIO runtime source"),
-        (runtime_resources, "resource source"),
-    ):
-        try:
-            output.relative_to(source)
-        except ValueError:
-            continue
-        raise ProductionDistributionError(
-            f"Distribution output must not be inside the {label}: {output}"
-        )
+    version = validate_inputs(inputs, output)
 
     with tempfile.TemporaryDirectory(prefix="robostudio-production-stage-") as temp:
         stage = Path(temp) / "application"
@@ -163,9 +112,8 @@ def build_production_distribution(
             manifest = distribution_package.assemble_distribution(
                 distribution_package.DistributionInputs(
                     executable=staged_executable,
-                    runtime_bin=runtime_bin,
-                    runtime_platformio=runtime_platformio,
                     runtime_resources=runtime_resources,
+                    production_boundary=True,
                 ),
                 output,
             )
@@ -174,37 +122,26 @@ def build_production_distribution(
                 f"Production distribution assembly failed: {exc}"
             ) from exc
 
-    return ProductionDistributionResult(
-        distribution_root=output,
-        manifest=manifest,
-        application=executable.name,
-        application_version=version,
-    )
+    return ProductionDistributionResult(output, manifest, executable.name, version)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Assemble a production RoboStudio distribution from explicit application/runtime inputs"
+        description="Assemble a production RoboStudio distribution without bundling host prerequisites"
     )
     parser.add_argument("--executable", required=True, type=Path)
-    parser.add_argument("--runtime-bin", required=True, type=Path)
-    parser.add_argument("--runtime-platformio", required=True, type=Path)
     parser.add_argument("--runtime-resources", required=True, type=Path)
     parser.add_argument("--version-file", type=Path, default=repository_root() / DEFAULT_VERSION_FILE)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-
-    result = build_production_distribution(
-        ProductionDistributionInputs(
-            executable=args.executable,
-            runtime_bin=args.runtime_bin,
-            runtime_platformio=args.runtime_platformio,
-            runtime_resources=args.runtime_resources,
-            version_file=args.version_file,
-        ),
-        args.output,
-    )
-    print("RSD-17 production distribution: PASS")
+    try:
+        result = build_production_distribution(
+            ProductionDistributionInputs(args.executable, args.runtime_resources, args.version_file), args.output
+        )
+    except ProductionDistributionError as exc:
+        print(f"RSD-21.3 production distribution: FAIL: {exc}", file=sys.stderr)
+        return 1
+    print("RSD-21.3 production distribution: PASS")
     print(f"Distribution: {result.distribution_root}")
     print(f"Manifest: {result.manifest}")
     print(f"Application: {result.application}")

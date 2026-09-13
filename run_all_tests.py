@@ -2,13 +2,10 @@
 """Run the repository's regression and H26/H27/H28/H29/RSD contract test suites."""
 
 from __future__ import annotations
-
 import subprocess
 import sys
 from pathlib import Path
-
 ROOT = Path(__file__).resolve().parent
-
 
 def run_script(script_path: Path) -> bool:
     print(f"\n=== Running {script_path.relative_to(ROOT)} ===")
@@ -18,7 +15,6 @@ def run_script(script_path: Path) -> bool:
         return False
     print(f"PASS: {script_path.relative_to(ROOT)}")
     return True
-
 
 def main() -> int:
     tests = [
@@ -49,6 +45,8 @@ def main() -> int:
         ROOT / "tests" / "rsd_20_p1" / "run_rsd_20_p1.py",
         ROOT / "tests" / "rsd_20" / "run_rsd_20.py",
         ROOT / "tests" / "rsd_21" / "run_rsd_21.py",
+        ROOT / "tests" / "rsd_21_2" / "run_rsd_21_2.py",
+        ROOT / "tests" / "rsd_21_3" / "run_rsd_21_3.py",
         ROOT / "tests" / "h26_a" / "run_h26_a.py",
         ROOT / "tests" / "h26_b" / "run_h26_b.py",
         ROOT / "tests" / "h26_c" / "run_h26_c.py",
@@ -76,15 +74,11 @@ def main() -> int:
     missing = [path.relative_to(ROOT) for path in tests if not path.exists()]
     if missing:
         print("Missing required test runner(s):", file=sys.stderr)
-        for path in missing:
-            print(f"  - {path}", file=sys.stderr)
+        for path in missing: print(f"  - {path}", file=sys.stderr)
         return 2
     for test in tests:
-        if not run_script(test):
-            return 1
+        if not run_script(test): return 1
     print("\nALL TESTS PASSED")
     return 0
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__ == "__main__": raise SystemExit(main())
