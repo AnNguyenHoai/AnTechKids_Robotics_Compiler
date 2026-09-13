@@ -95,18 +95,14 @@ def validate_inputs(inputs: ProductionReleaseInputs, output_root: Path) -> str:
     """Validate all application-owned production inputs before assembly."""
     executable = _require_file(inputs.executable, "RoboStudio executable")
     resources = _require_directory(inputs.runtime_resources, "application resources")
+    compiler = _require_directory(inputs.compiler_root, "application-owned compiler")
+    if not (compiler / "main.py").is_file() or not (compiler / "compiler").is_dir():
+        raise ProductionReleaseAssemblyError(
+            "Application-owned compiler must contain main.py and compiler/"
+        )
     version = _read_version(inputs.version_file)
-    if inputs.compiler_root is not None:
-        compiler_root = _require_directory(inputs.compiler_root, "application-owned compiler")
-        if not (compiler_root / "main.py").is_file() or not (compiler_root / "compiler").is_dir():
-            raise ProductionReleaseAssemblyError(
-                "Application-owned compiler must contain main.py and compiler/"
-            )
     output_root = _resolve(output_root)
-    sources = [executable.parent, resources]
-    if inputs.compiler_root is not None:
-        sources.append(_resolve(inputs.compiler_root))
-    for source in sources:
+    for source in (executable.parent, resources, compiler):
         try:
             output_root.relative_to(source)
         except ValueError:
@@ -130,18 +126,12 @@ def assemble_release(inputs: ProductionReleaseInputs, output_root: Path) -> dict
                 executable=_resolve(inputs.executable),
                 runtime_resources=_resolve(inputs.runtime_resources),
                 version_file=_resolve(inputs.version_file),
-                compiler_root=_resolve(inputs.compiler_root) if inputs.compiler_root is not None else None,
+                compiler_root=_resolve(inputs.compiler_root),
             ),
             distribution_root,
         )
         release = release_package.build_release(distribution.distribution_root, artifact)
-        provenance = release_provenance.write_provenance(
-            distribution.distribution_root,
-            release.manifest,
-            release.artifact,
-            artifact.with_name(release_provenance.PROVENANCE_MANIFEST),
-            source_revision=inputs.source_revision,
-        )
+        provenance = release_provenance.write_provenance(distribution.distribution_root, release.manifest, release.artifact, artifact.with_name(release_provenance.PROVENANCE_MANIFEST), source_revision=inputs.source_revision)
         proof = portable_release_proof.prove_portable_release(release.artifact, manifest=release.manifest)
         if not proof.passed:
             raise ProductionReleaseAssemblyError("Portable release proof failed; artifact is not release-ready.")
@@ -154,7 +144,7 @@ def assemble_release(inputs: ProductionReleaseInputs, output_root: Path) -> dict
             "portable": True,
             "artifact_model": "RoboStudio + Compiler",
             "host_prerequisites_packaged": False,
-            "compiler": "compiler/main.py" if inputs.compiler_root is not None else None,
+            "compiler": "compiler/main.py",
             "application": distribution.application,
             "application_version": distribution.application_version,
             "source_revision": inputs.source_revision,
@@ -177,7 +167,7 @@ def assemble_release(inputs: ProductionReleaseInputs, output_root: Path) -> dict
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build a production RoboStudio release with the application-owned compiler")
     parser.add_argument("--executable", required=True, type=Path)
-    parser.add_argument("--compiler-root", required=False, type=Path, help="application-owned compiler root containing main.py and compiler/")
+    parser.add_argument("--compiler-root", required=True, type=Path, help="application-owned compiler root containing main.py and compiler/")
     parser.add_argument("--runtime-bin", required=False, type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--runtime-platformio", required=False, type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--runtime-resources", required=True, type=Path)
