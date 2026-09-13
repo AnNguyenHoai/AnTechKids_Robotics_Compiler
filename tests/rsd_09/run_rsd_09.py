@@ -33,15 +33,14 @@ def make_distribution(root: Path) -> Path:
     root.mkdir(parents=True)
     (root / "RoboStudio.exe").write_bytes(b"fake-robo-studio")
     # RSD-15 makes the application version an explicit release input. Keep the
-    # RSD-09 fixture aligned with the production release contract so this
-    # release-artifact smoke test remains a valid regression test.
+    # RSD-09 fixture aligned with the current distribution manifest contract.
     (root / "VERSION").write_text("0.1.1\n", encoding="utf-8")
     (root / "runtime" / "bin").mkdir(parents=True)
     (root / "runtime" / "bin" / "python.exe").write_bytes(b"portable-python")
     core = root / "runtime" / "platformio"
     (core / "platforms" / "espressif32").mkdir(parents=True)
     (core / "packages" / "tool-esptoolpy").mkdir(parents=True)
-    (core / "deployment-runtime.json").write_text(
+    (root / "runtime" / "platformio" / "deployment-runtime.json").write_text(
         json.dumps(
             {
                 "schema": "antechkids.robostudio.deployment-runtime",
@@ -72,10 +71,12 @@ def make_distribution(root: Path) -> Path:
     (root / distribution_package.DISTRIBUTION_MANIFEST).write_text(
         json.dumps(
             {
-                "schema": "antechkids.robostudio.distribution",
-                "schema_version": 1,
+                "schema": distribution_package.SCHEMA,
+                "schema_version": distribution_package.SCHEMA_VERSION,
                 "application": "RoboStudio.exe",
                 "portable": True,
+                "artifact_model": "legacy-runtime",
+                "production_boundary": False,
                 "runtime_root": "runtime",
                 "files": [
                     {"path": "RoboStudio.exe", "size": 16, "sha256": ""},
@@ -84,12 +85,11 @@ def make_distribution(root: Path) -> Path:
         ),
         encoding="utf-8",
     )
-    # Generate the authoritative distribution manifest using the existing
-    # assembly API so RSD-09 tests the same contract used by releases.
-    from tools import distribution_package as dp
-    manifest = json.loads((root / dp.DISTRIBUTION_MANIFEST).read_text(encoding="utf-8"))
-    manifest["files"] = dp._file_entries(root)
-    (root / dp.DISTRIBUTION_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    # Generate the authoritative file list while preserving the legacy-runtime
+    # fixture semantics. This keeps RSD-09 aligned with the current schema.
+    manifest = json.loads((root / distribution_package.DISTRIBUTION_MANIFEST).read_text(encoding="utf-8"))
+    manifest["files"] = distribution_package._file_entries(root)
+    (root / distribution_package.DISTRIBUTION_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return root
 
 
