@@ -36,6 +36,32 @@ def _copy_tree(source: Path, destination: Path, label: str) -> None:
             shutil.copytree(item, target, dirs_exist_ok=True)
         elif item.is_file(): shutil.copy2(item, target)
 
+def _normalize_production_resources(destination: Path) -> None:
+    """Normalize supported source layouts to the canonical production layout.
+
+    The packaged runtime contract keeps target profiles under ``robot-isa``.
+    Some callers provide a small application-resource root with
+    ``target_profiles.json`` directly at its top level. Accept that input form
+    at the assembly boundary and move it into the canonical namespace before
+    generating the runtime-resource manifest. This keeps validation strict
+    while making production assembly independent of the caller's staging
+    layout.
+    """
+    canonical = destination / "robot-isa" / "target_profiles.json"
+    legacy = destination / "target_profiles.json"
+    if canonical.is_file():
+        if legacy.exists():
+            if legacy.is_dir():
+                raise DistributionPackageError(
+                    "Conflicting production resource layouts: target_profiles.json"
+                )
+            legacy.unlink()
+        return
+    if legacy.is_file():
+        canonical.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy), str(canonical))
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -85,8 +111,10 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
             raise DistributionPackageError("Production artifact boundary forbids bundled Python and PlatformIO inputs")
         if inputs.runtime_resources is None: raise DistributionPackageError("Production artifact assembly requires application resources")
         _copy_launcher(inputs.launcher, output)
-        _copy_tree(Path(inputs.runtime_resources), output / "runtime" / "resources", "application resources")
-        runtime_resources.write_resource_manifest(output / "runtime" / "resources")
+        resource_output = output / "runtime" / "resources"
+        _copy_tree(Path(inputs.runtime_resources), resource_output, "application resources")
+        _normalize_production_resources(resource_output)
+        runtime_resources.write_resource_manifest(resource_output)
         try: production_artifact_boundary.validate_distribution_root(output); production_artifact_boundary.write_boundary_manifest(output)
         except production_artifact_boundary.ProductionArtifactBoundaryError as exc: raise DistributionPackageError(f"Production artifact boundary validation failed: {exc}") from exc
         portable, runtime_root = False, "runtime"
