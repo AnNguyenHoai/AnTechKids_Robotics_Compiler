@@ -1,9 +1,9 @@
 """Assemble the production RoboStudio release artifact.
 
-RSD-21.3 makes the release boundary executable: the production artifact contains
-RoboStudio, the application-owned compiler/resources/dependencies, and release
-metadata. Python and PlatformIO are target-machine prerequisites and are never
-copied into the production artifact.
+RSD-21.7 makes the application-owned compiler an explicit production release
+input. The resulting ZIP contains RoboStudio, the real compiler, application
+resources/dependencies, and release metadata. Python and PlatformIO remain
+external target-machine prerequisites.
 """
 from __future__ import annotations
 
@@ -40,11 +40,9 @@ class ProductionReleaseInputs:
     runtime_resources: Path
     version_file: Path
     source_revision: str
-    # Deprecated compatibility inputs. RSD-21.3 deliberately ignores these;
-    # keeping them optional lets older automation invoke the CLI while the
-    # production boundary prevents the directories from entering the ZIP.
     runtime_bin: Path | None = None
     runtime_platformio: Path | None = None
+    compiler_root: Path | None = None
 
 
 def repository_root() -> Path:
@@ -94,12 +92,21 @@ def _source_revision(explicit: str | None) -> str:
 
 
 def validate_inputs(inputs: ProductionReleaseInputs, output_root: Path) -> str:
-    """Validate only application-owned production inputs."""
+    """Validate all application-owned production inputs before assembly."""
     executable = _require_file(inputs.executable, "RoboStudio executable")
     resources = _require_directory(inputs.runtime_resources, "application resources")
     version = _read_version(inputs.version_file)
+    if inputs.compiler_root is not None:
+        compiler_root = _require_directory(inputs.compiler_root, "application-owned compiler")
+        if not (compiler_root / "main.py").is_file() or not (compiler_root / "compiler").is_dir():
+            raise ProductionReleaseAssemblyError(
+                "Application-owned compiler must contain main.py and compiler/"
+            )
     output_root = _resolve(output_root)
-    for source in (executable.parent, resources):
+    sources = [executable.parent, resources]
+    if inputs.compiler_root is not None:
+        sources.append(_resolve(inputs.compiler_root))
+    for source in sources:
         try:
             output_root.relative_to(source)
         except ValueError:
@@ -123,24 +130,41 @@ def assemble_release(inputs: ProductionReleaseInputs, output_root: Path) -> dict
                 executable=_resolve(inputs.executable),
                 runtime_resources=_resolve(inputs.runtime_resources),
                 version_file=_resolve(inputs.version_file),
+                compiler_root=_resolve(inputs.compiler_root) if inputs.compiler_root is not None else None,
             ),
             distribution_root,
         )
         release = release_package.build_release(distribution.distribution_root, artifact)
-        provenance = release_provenance.write_provenance(distribution.distribution_root, release.manifest, release.artifact, artifact.with_name(release_provenance.PROVENANCE_MANIFEST), source_revision=inputs.source_revision)
+        provenance = release_provenance.write_provenance(
+            distribution.distribution_root,
+            release.manifest,
+            release.artifact,
+            artifact.with_name(release_provenance.PROVENANCE_MANIFEST),
+            source_revision=inputs.source_revision,
+        )
         proof = portable_release_proof.prove_portable_release(release.artifact, manifest=release.manifest)
         if not proof.passed:
             raise ProductionReleaseAssemblyError("Portable release proof failed; artifact is not release-ready.")
         proof_payload = portable_release_proof.report_to_dict(proof)
         proof_report.write_text(json.dumps(proof_payload, indent=2) + "\n", encoding="utf-8")
         report = {
-            "schema": REPORT_SCHEMA, "schema_version": REPORT_SCHEMA_VERSION, "status": "PASS", "portable": True,
-            "artifact_model": "RoboStudio + Compiler", "host_prerequisites_packaged": False,
-            "application": distribution.application, "application_version": distribution.application_version,
-            "source_revision": inputs.source_revision, "distribution": str(distribution.distribution_root),
-            "artifact": str(release.artifact), "artifact_sha256": release.sha256,
-            "release_manifest": str(release.manifest), "release_provenance": str(provenance),
-            "portable_proof_report": str(proof_report), "proof": proof_payload,
+            "schema": REPORT_SCHEMA,
+            "schema_version": REPORT_SCHEMA_VERSION,
+            "status": "PASS",
+            "portable": True,
+            "artifact_model": "RoboStudio + Compiler",
+            "host_prerequisites_packaged": False,
+            "compiler": "compiler/main.py" if inputs.compiler_root is not None else None,
+            "application": distribution.application,
+            "application_version": distribution.application_version,
+            "source_revision": inputs.source_revision,
+            "distribution": str(distribution.distribution_root),
+            "artifact": str(release.artifact),
+            "artifact_sha256": release.sha256,
+            "release_manifest": str(release.manifest),
+            "release_provenance": str(provenance),
+            "portable_proof_report": str(proof_report),
+            "proof": proof_payload,
         }
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         return report
@@ -151,9 +175,9 @@ def assemble_release(inputs: ProductionReleaseInputs, output_root: Path) -> dict
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build a production RoboStudio release without bundling host prerequisites")
+    parser = argparse.ArgumentParser(description="Build a production RoboStudio release with the application-owned compiler")
     parser.add_argument("--executable", required=True, type=Path)
-    # Kept for CLI compatibility; production assembly never packages these.
+    parser.add_argument("--compiler-root", required=False, type=Path, help="application-owned compiler root containing main.py and compiler/")
     parser.add_argument("--runtime-bin", required=False, type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--runtime-platformio", required=False, type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--runtime-resources", required=True, type=Path)
@@ -163,16 +187,28 @@ def main() -> int:
     args = parser.parse_args()
     try:
         revision = _source_revision(args.source_revision)
-        report = assemble_release(ProductionReleaseInputs(args.executable, args.runtime_resources, args.version_file, revision, args.runtime_bin, args.runtime_platformio), args.output)
+        report = assemble_release(
+            ProductionReleaseInputs(
+                args.executable,
+                args.runtime_resources,
+                args.version_file,
+                revision,
+                args.runtime_bin,
+                args.runtime_platformio,
+                args.compiler_root,
+            ),
+            args.output,
+        )
     except ProductionReleaseAssemblyError as exc:
-        print(f"RSD-20-P.1 production release assembly: FAIL: {exc}", file=sys.stderr)
+        print(f"RSD-21.7 production release assembly: FAIL: {exc}", file=sys.stderr)
         return 1
-    print("RSD-20-P.1 production release assembly: PASS")
+    print("RSD-21.7 production release assembly: PASS")
     print(f"Artifact: {report['artifact']}")
     print(f"SHA-256: {report['artifact_sha256']}")
     print(f"Release manifest: {report['release_manifest']}")
     print(f"Provenance: {report['release_provenance']}")
     print(f"Proof: {report['portable_proof_report']}")
+    print(f"Compiler: {report['compiler']}")
     print(f"Assembly report: {Path(args.output).resolve() / REPORT_NAME}")
     return 0
 
