@@ -24,6 +24,7 @@ class DistributionInputs:
     runtime_platformio: Path | None = None
     runtime_resources: Path | None = None
     production_boundary: bool = False
+    launcher: Path | None = None
 
 def _copy_tree(source: Path, destination: Path, label: str) -> None:
     if not source.is_dir(): raise DistributionPackageError(f"Missing distribution input {label}: {source}")
@@ -53,6 +54,16 @@ def _copy_application_dependencies(executable: Path, output: Path) -> None:
     for dependency in sorted(executable.parent.glob("*.dll"), key=lambda item: item.name.lower()):
         if dependency.is_file(): shutil.copy2(dependency, output / dependency.name)
 
+def _copy_launcher(launcher: Path | None, output: Path) -> None:
+    if launcher is None:
+        return
+    launcher = Path(launcher).resolve()
+    if not launcher.is_file():
+        raise DistributionPackageError(f"Missing production launcher: {launcher}")
+    if launcher.suffix.lower() not in {".cmd", ".bat"}:
+        raise DistributionPackageError(f"Unsupported production launcher type: {launcher.name}")
+    shutil.copy2(launcher, output / launcher.name)
+
 def _validate_legacy_runtime_inputs(inputs: DistributionInputs) -> None:
     if inputs.runtime_bin is None or inputs.runtime_platformio is None or inputs.runtime_resources is None:
         raise DistributionPackageError("Legacy distribution assembly requires runtime_bin, runtime_platformio, and runtime_resources")
@@ -73,6 +84,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
         if inputs.runtime_bin is not None or inputs.runtime_platformio is not None:
             raise DistributionPackageError("Production artifact boundary forbids bundled Python and PlatformIO inputs")
         if inputs.runtime_resources is None: raise DistributionPackageError("Production artifact assembly requires application resources")
+        _copy_launcher(inputs.launcher, output)
         _copy_tree(Path(inputs.runtime_resources), output / "runtime" / "resources", "application resources")
         runtime_resources.write_resource_manifest(output / "runtime" / "resources")
         try: production_artifact_boundary.validate_distribution_root(output); production_artifact_boundary.write_boundary_manifest(output)
