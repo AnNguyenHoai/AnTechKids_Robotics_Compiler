@@ -19,6 +19,8 @@ PRODUCTION_SCHEMA = "antechkids.robostudio.production-distribution"
 PRODUCTION_SCHEMA_VERSION = 2
 DEFAULT_VERSION_FILE = "VERSION"
 LAUNCHER_NAME = "RoboStudio.cmd"
+COMPILER_ROOT_NAME = "compiler"
+COMPILER_ENTRY_NAME = "main.py"
 
 
 class ProductionDistributionError(RuntimeError):
@@ -32,6 +34,7 @@ class ProductionDistributionInputs:
     executable: Path
     runtime_resources: Path
     version_file: Path
+    compiler_root: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -69,13 +72,26 @@ def _read_version(path: Path) -> str:
 
 
 def validate_inputs(inputs: ProductionDistributionInputs, output: Path | None = None) -> str:
-    """Validate only application-owned production inputs."""
+    """Validate application-owned production inputs."""
     executable = _require_file(inputs.executable, "RoboStudio executable")
     resources = _require_directory(inputs.runtime_resources, "application resources")
     version = _read_version(inputs.version_file)
+    if inputs.compiler_root is not None:
+        compiler_root = _require_directory(inputs.compiler_root, "application-owned compiler")
+        if not (compiler_root / COMPILER_ENTRY_NAME).is_file():
+            raise ProductionDistributionError(
+                f"Compiler entry point is missing: {compiler_root / COMPILER_ENTRY_NAME}"
+            )
+        if not (compiler_root / "compiler").is_dir():
+            raise ProductionDistributionError(
+                f"Compiler package is missing: {compiler_root / 'compiler'}"
+            )
     if output is not None:
         output = Path(output).expanduser().resolve()
-        for source in (executable.parent, resources):
+        sources = [executable.parent, resources]
+        if inputs.compiler_root is not None:
+            sources.append(Path(inputs.compiler_root).expanduser().resolve())
+        for source in sources:
             try:
                 output.relative_to(source)
             except ValueError:
@@ -117,17 +133,34 @@ def _stage_application(executable: Path, version_file: Path, stage: Path) -> Pat
     return staged_executable
 
 
+def _stage_compiler(compiler_root: Path, stage: Path) -> Path:
+    """Stage the real application-owned Python compiler without developer state."""
+    source = _require_directory(compiler_root, "application-owned compiler")
+    destination = stage / COMPILER_ROOT_NAME
+    if destination.exists():
+        raise ProductionDistributionError(f"Compiler staging path already exists: {destination}")
+    shutil.copytree(
+        source,
+        destination,
+        ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".git", ".venv", ".pio", "penv"),
+    )
+    return destination
+
+
 def build_production_distribution(inputs: ProductionDistributionInputs, output: Path) -> ProductionDistributionResult:
     """Assemble the application-owned production distribution."""
     output = Path(output).expanduser().resolve()
     executable = Path(inputs.executable).expanduser().resolve()
     version_file = Path(inputs.version_file).expanduser().resolve()
     runtime_resources = Path(inputs.runtime_resources).expanduser().resolve()
-    version = validate_inputs(inputs, output)
+    validate_inputs(inputs, output)
+    version = _read_version(version_file)
 
     with tempfile.TemporaryDirectory(prefix="robostudio-production-stage-") as temp:
         stage = Path(temp) / "application"
         staged_executable = _stage_application(executable, version_file, stage)
+        if inputs.compiler_root is not None:
+            _stage_compiler(Path(inputs.compiler_root), stage)
         try:
             manifest = distribution_package.assemble_distribution(
                 distribution_package.DistributionInputs(
@@ -151,23 +184,26 @@ def main() -> int:
         description="Assemble a production RoboStudio distribution without bundling host prerequisites"
     )
     parser.add_argument("--executable", required=True, type=Path)
+    parser.add_argument("--compiler-root", required=False, type=Path, help="application-owned compiler source root containing main.py and compiler/")
     parser.add_argument("--runtime-resources", required=True, type=Path)
     parser.add_argument("--version-file", type=Path, default=repository_root() / DEFAULT_VERSION_FILE)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     try:
         result = build_production_distribution(
-            ProductionDistributionInputs(args.executable, args.runtime_resources, args.version_file), args.output
+            ProductionDistributionInputs(args.executable, args.runtime_resources, args.version_file, args.compiler_root), args.output
         )
     except ProductionDistributionError as exc:
-        print(f"RSD-21.6 production distribution: FAIL: {exc}", file=sys.stderr)
+        print(f"RSD-21.7 production distribution: FAIL: {exc}", file=sys.stderr)
         return 1
-    print("RSD-21.6 production distribution: PASS")
+    print("RSD-21.7 production distribution: PASS")
     print(f"Distribution: {result.distribution_root}")
     print(f"Manifest: {result.manifest}")
     print(f"Application: {result.application}")
     print(f"Application version: {result.application_version}")
     print(f"Launcher: {result.distribution_root / LAUNCHER_NAME}")
+    if args.compiler_root:
+        print(f"Compiler: {result.distribution_root / COMPILER_ROOT_NAME / COMPILER_ENTRY_NAME}")
     return 0
 
 
