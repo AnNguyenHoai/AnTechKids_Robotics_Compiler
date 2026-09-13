@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
-import zipfile
 from pathlib import Path
 
+# This test is intentionally executable directly from the repository root:
+#   python tests\\rsd_21_5\\run_rsd_21_5.py
+# Python puts tests/rsd_21_5 on sys.path for that invocation, not the repository
+# root. Add the repository root before importing project packages.
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
