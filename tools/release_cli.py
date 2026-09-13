@@ -11,13 +11,13 @@ if __package__ in (None, ""):
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
-from tools import portable_release_proof, production_release_assembly, release_acceptance, release_package
+from tools import portable_release_proof, production_release_assembly, release_acceptance, release_package, target_machine_qualification
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m tools.release_cli",
-        description="Build and verify a production-portable RoboStudio release.",
+        description="Build and verify a production RoboStudio release.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -41,10 +41,12 @@ def _build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("--manifest", type=Path)
     inspect.add_argument("--json", action="store_true", dest="as_json")
 
-    accept = sub.add_parser("accept", help="run final automated clean-machine release acceptance")
+    accept = sub.add_parser("accept", help="run release acceptance")
     accept.add_argument("artifact", type=Path)
     accept.add_argument("--timeout", type=float, default=30.0)
     accept.add_argument("--report", type=Path, help="write stable acceptance evidence to this path")
+    accept.add_argument("--target-machine", action="store_true", help="validate the target host prerequisites instead of the legacy bundled-runtime probe")
+    accept.add_argument("--prerequisite-scope", choices=[scope.value for scope in target_machine_qualification.target_machine_prerequisites.RequirementScope], default="compile")
     accept.add_argument("--json", action="store_true", dest="as_json")
     return parser
 
@@ -113,6 +115,31 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 
 
 def _cmd_accept(args: argparse.Namespace) -> int:
+    if args.target_machine:
+        try:
+            report = target_machine_qualification.require_target_machine(scope=args.prerequisite_scope)
+            payload = target_machine_qualification.to_dict(report)
+            if args.report:
+                target_machine_qualification.write_report(report, args.report)
+            if args.as_json:
+                print(json.dumps(payload, indent=2))
+            else:
+                print("RSD-21.4 target-machine qualification: PASS")
+                print(f"Scope: {report.scope}")
+                for item in report.prerequisites:
+                    status = item.validation
+                    if item.version_output:
+                        status = f"{status}: {item.version_output}"
+                    print(f"{item.name}: {status}")
+                if report.manual_checks_required:
+                    print("Manual checks remain for hardware-specific prerequisites.")
+                if args.report:
+                    print(f"Target-machine qualification report: {args.report.resolve()}")
+            return 0
+        except target_machine_qualification.TargetMachineQualificationError as exc:
+            print(f"RSD-21.4 target-machine qualification: FAIL: {exc}", file=sys.stderr)
+            return 1
+
     try:
         report = release_acceptance.accept_release(args.artifact, timeout=args.timeout)
         evidence_path = release_acceptance.write_evidence(report, args.report) if args.report else None
