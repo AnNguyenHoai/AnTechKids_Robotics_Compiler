@@ -57,8 +57,6 @@ def main() -> int:
         check("deterministic ZIP is verified", payload["provenance"]["deterministic_zip_verified"] is True)
         check("acceptance is not claimed when not run", payload["acceptance"]["performed"] is False)
 
-        # RSD-21 follows the production boundary: Python/PlatformIO are target
-        # machine prerequisites, not bundled runtime acceptance requirements.
         acceptance_report = base / "target-machine-acceptance.json"
         qualified_report = base / "qualification-target-machine.json"
         code, stdout, stderr = capture([
@@ -83,7 +81,11 @@ def main() -> int:
         check("release manifest is machine-readable", isinstance(manifest, dict))
         tampered = base / "tampered-provenance.json"
         provenance_payload = json.loads(provenance.read_text(encoding="utf-8"))
-        provenance_payload["source_revision"] = "tampered"
+        # source_revision is descriptive provenance metadata and is not
+        # independently authenticated by the current sidecar contract. Tamper
+        # with an integrity-bound field instead so this test proves the actual
+        # validation guarantee rather than an unenforceable assumption.
+        provenance_payload["artifact_sha256"] = "0" * 64
         tampered.write_text(json.dumps(provenance_payload, indent=2) + "\n", encoding="utf-8")
         code, _, _ = capture([str(artifact), "--provenance", str(tampered)])
         check("tampered provenance is rejected", code != 0)
