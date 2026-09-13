@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+import sys
 
 # This test is intentionally executable directly from the repository root:
 #   python tests\\rsd_21_5\\run_rsd_21_5.py
