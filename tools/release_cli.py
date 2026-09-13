@@ -32,7 +32,7 @@ def _build_parser() -> argparse.ArgumentParser:
     accept = sub.add_parser("accept", help="run release acceptance")
     accept.add_argument("artifact", type=Path); accept.add_argument("--timeout", type=float, default=30.0); accept.add_argument("--report", type=Path)
     accept.add_argument("--target-machine", action="store_true", help="validate target host prerequisites instead of legacy bundled-runtime acceptance")
-    accept.add_argument("--prerequisite-scope", choices=[scope.value for scope in target_machine_qualification.target_machine_qualification.target_machine_prerequisites.RequirementScope] if False else [scope.value for scope in target_machine_qualification.target_machine_prerequisites.RequirementScope], default="compile")
+    accept.add_argument("--prerequisite-scope", choices=[scope.value for scope in target_machine_qualification.target_machine_prerequisites.RequirementScope], default="compile")
     accept.add_argument("--json", action="store_true", dest="as_json")
     e2e = sub.add_parser("e2e", help="run RoboStudio startup and compiler E2E against an extracted production ZIP")
     e2e.add_argument("artifact", type=Path)
@@ -50,7 +50,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
         revision = production_release_assembly._source_revision(args.source_revision)
         report = production_release_assembly.assemble_release(production_release_assembly.ProductionReleaseInputs(args.executable, args.runtime_resources, args.version_file, revision, args.runtime_bin, args.runtime_platformio, args.compiler_root), args.output)
     except production_release_assembly.ProductionReleaseAssemblyError as exc:
-        print(f"RSD-20 build: FAIL: {exc}", file=sys.stderr); return 1
+        print(f"RSD-21.7 build: FAIL: {exc}", file=sys.stderr); return 1
     if args.as_json: print(json.dumps(report, indent=2))
     else:
         print("RSD-21.7 release: PASS")
