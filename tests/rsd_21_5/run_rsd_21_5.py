@@ -5,7 +5,15 @@ import json
 import tempfile
 from pathlib import Path
 
-from tools import production_e2e
+# This test is intentionally executable directly from the repository root:
+#   python tests\\rsd_21_5\\run_rsd_21_5.py
+# Python puts tests/rsd_21_5 on sys.path for that invocation, not the repository
+# root. Add the repository root before importing project packages.
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools import production_e2e, production_distribution, release_package, release_provenance, runtime_resources
 
 
 def check(name: str, condition: bool) -> None:
@@ -23,13 +31,27 @@ def main() -> int:
         result = production_e2e.evaluate_production_artifact(
             artifact=artifact, source=source, launch=False
         )
-        payload = result.to_dict()
-        check("E2E report is machine-readable", json.loads(json.dumps(payload)) == payload)
-        check("E2E report has PASS/FAIL status", payload["status"] in {"PASS", "FAIL"})
-        check("E2E identifies production artifact", payload["artifact"] == str(artifact))
-        check("target prerequisites remain external", payload["target_machine_prerequisites"] is True)
-        check("source-tree execution is forbidden", payload["source_tree_execution"] is False)
-    print("PASS: RSD-21.5 contract regression suite")
+        report = production_e2e.build_report(result)
+        check("E2E schema is stable", report["schema"] == "antechkids.robostudio.production-e2e")
+        check("E2E schema version is stable", report["schema_version"] == 1)
+        check("production artifact is the system under test", report["artifact"] == artifact.name)
+        check("RoboStudio starts from extracted release", report["robostudio"]["started"] is True)
+        check("RoboStudio startup marker is captured", "ROBOSTUDIO_E2E_READY" in report["robostudio"]["stdout"])
+        check("Compiler executes through packaged application", report["compiler"]["executed"] is True)
+        check("Compiler output is produced", report["compiler"]["output_produced"] is True)
+        check("E2E result is PASS", report["status"] == "PASS")
+        check("E2E is target-machine scoped", report["target_machine"] is True)
+        check("host prerequisites remain external", report["host_prerequisites_packaged"] is False)
+        check("E2E report is JSON serializable", bool(json.dumps(report)))
+
+        with zipfile.ZipFile(artifact) as archive:
+            names = set(archive.namelist())
+        check("production ZIP contains RoboStudio", "RoboStudio.exe" in names)
+        check("production ZIP contains compiler resources", any(name.startswith("runtime/resources/") for name in names))
+        check("production ZIP does not contain Python", not any("python" in name.lower() for name in names))
+        check("production ZIP does not contain PlatformIO", not any("platformio" in name.lower() for name in names))
+
+    print("RSD-21.5 RoboStudio + Compiler E2E checks: PASS")
     return 0
 
 
