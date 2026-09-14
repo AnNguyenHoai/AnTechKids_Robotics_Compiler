@@ -71,7 +71,10 @@ def _copy_compiler(compiler_root:Path|None,frontend_root:Path|None,output:Path)-
     if frontend_root is not None:
         frontend=Path(frontend_root).resolve()
         if not frontend.is_dir(): raise DistributionPackageError(f"Missing RoboSim frontend: {frontend}")
-        shutil.copytree(frontend,destination/"frontend",ignore=shutil.ignore_patterns("__pycache__",".pytest_cache",".git",".venv",".pio","penv"))
+        frontend_destination=destination/"frontend"
+        if frontend_destination.exists():
+            raise DistributionPackageError(f"Compiler source already contains frontend payload: {frontend_destination}")
+        shutil.copytree(frontend,frontend_destination,ignore=shutil.ignore_patterns("__pycache__",".pytest_cache",".git",".venv",".pio","penv"))
 
 def _validate_legacy_runtime_inputs(inputs:DistributionInputs)->None:
     if inputs.runtime_bin is None or inputs.runtime_platformio is None or inputs.runtime_resources is None: raise DistributionPackageError("Legacy distribution assembly requires runtime_bin, runtime_platformio, and runtime_resources")
@@ -100,7 +103,8 @@ def assemble_distribution(inputs:DistributionInputs,output:Path)->Path:
             from tools import runtime_preflight; runtime_preflight.validate_distribution(output)
             runtime_integrity.write_runtime_manifest(output)
         except Exception as exc: raise DistributionPackageError(f"Assembled distribution runtime validation failed: {exc}") from exc
-    manifest={"schema":SCHEMA,"schema_version":SCHEMA_VERSION,"application":executable.name,"portable":portable,"artifact_model":"RoboStudio + Compiler" if inputs.production_boundary else "legacy-runtime","runtime_root":runtime_root,"production_boundary":inputs.production_boundary,"compiler":"compiler/main.py" if inputs.production_boundary else None,"compiler_contract":"compiler/robostudio_bridge.py" if inputs.production_boundary else None,"frontend":"compiler/frontend" if inputs.production_boundary and inputs.frontend_root is not None else None,"files":_file_entries(output)}
+    packaged_frontend=(output/"compiler"/"frontend").is_dir() if inputs.production_boundary else False
+    manifest={"schema":SCHEMA,"schema_version":SCHEMA_VERSION,"application":executable.name,"portable":portable,"artifact_model":"RoboStudio + Compiler" if inputs.production_boundary else "legacy-runtime","runtime_root":runtime_root,"production_boundary":inputs.production_boundary,"compiler":"compiler/main.py" if inputs.production_boundary else None,"compiler_contract":"compiler/robostudio_bridge.py" if inputs.production_boundary else None,"frontend":"compiler/frontend" if packaged_frontend else None,"files":_file_entries(output)}
     manifest_path=output/DISTRIBUTION_MANIFEST; manifest_path.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8"); return manifest_path
 
 def validate_distribution_manifest(path:Path)->dict:

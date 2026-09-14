@@ -60,9 +60,9 @@ def _stage_compiler(compiler_root:Path,frontend_root:Path,stage:Path)->tuple[Pat
 def build_production_distribution(inputs:ProductionDistributionInputs,output:Path)->ProductionDistributionResult:
     output=Path(output).expanduser().resolve(); executable=Path(inputs.executable).expanduser().resolve(); version_file=Path(inputs.version_file).expanduser().resolve(); runtime_resources=Path(inputs.runtime_resources).expanduser().resolve(); validate_inputs(inputs,output); version=_read_version(version_file)
     with tempfile.TemporaryDirectory(prefix="robostudio-production-stage-") as temp:
-        stage=Path(temp)/"application"; staged_executable=_stage_application(executable,version_file,stage); compiler_stage,frontend_stage=_stage_compiler(Path(inputs.compiler_root),Path(inputs.frontend_root),stage)
+        stage=Path(temp)/"application"; staged_executable=_stage_application(executable,version_file,stage); compiler_stage,_=_stage_compiler(Path(inputs.compiler_root),Path(inputs.frontend_root),stage)
         try:
-            manifest=distribution_package.assemble_distribution(distribution_package.DistributionInputs(executable=staged_executable,runtime_resources=runtime_resources,production_boundary=True,launcher=stage/LAUNCHER_NAME,compiler_root=compiler_stage,frontend_root=frontend_stage),output)
+            manifest=distribution_package.assemble_distribution(distribution_package.DistributionInputs(executable=staged_executable,runtime_resources=runtime_resources,production_boundary=True,launcher=stage/LAUNCHER_NAME,compiler_root=compiler_stage,frontend_root=None),output)
         except distribution_package.DistributionPackageError as exc:raise ProductionDistributionError(f"Production distribution assembly failed: {exc}") from exc
     return ProductionDistributionResult(output,manifest,executable.name,version)
 def main()->int:
