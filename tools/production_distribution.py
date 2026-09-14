@@ -36,7 +36,7 @@ def _read_version(path:Path)->str:
 def validate_inputs(inputs:ProductionDistributionInputs,output:Path|None=None)->str:
     executable=_require_file(inputs.executable,"RoboStudio executable"); resources=_require_directory(inputs.runtime_resources,"application resources"); version=_read_version(inputs.version_file)
     compiler=_require_directory(inputs.compiler_root,"application-owned compiler")
-    if not (compiler/COMPILER_ENTRY_NAME).is_file() or not (compiler/"compiler").is_dir():raise ProductionDistributionError("Application-owned compiler must contain main.py and compiler/")
+    if not (compiler/COMPILER_ENTRY_NAME).is_file() or not (compiler/"compiler").is_dir():raise ProductionDistributionError("Invalid application-owned compiler: must contain main.py and compiler/")
     frontend=_require_directory(inputs.frontend_root,"RoboSim frontend")
     if not (frontend/"__init__.py").is_file() or not (frontend/"rewriter.py").is_file():raise ProductionDistributionError("RoboSim frontend must contain __init__.py and rewriter.py")
     if output is not None:
