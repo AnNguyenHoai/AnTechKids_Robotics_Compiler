@@ -1,88 +1,21 @@
 #!/usr/bin/env python3
-"""Run the repository's regression and H26/H27/H28/H29/RSD contract test suites."""
-
+"""Run the repository's regression and RSD contract test suites."""
 from __future__ import annotations
-import subprocess
-import sys
+import subprocess,sys
 from pathlib import Path
-ROOT = Path(__file__).resolve().parent
-
-def run_script(script_path: Path) -> bool:
-    print(f"\n=== Running {script_path.relative_to(ROOT)} ===")
-    result = subprocess.run([sys.executable, str(script_path)], cwd=ROOT, text=True)
-    if result.returncode != 0:
-        print(f"FAILED: {script_path.relative_to(ROOT)} (exit {result.returncode})", file=sys.stderr)
-        return False
-    print(f"PASS: {script_path.relative_to(ROOT)}")
-    return True
-
-def main() -> int:
-    tests = [
-        ROOT / "robot-compiler" / "tests" / "run_tests.py",
-        ROOT / "robot-frontend-robosim" / "test" / "run_tests.py",
-        ROOT / "robot-compiler" / "integration" / "end_to_end" / "run_integration_tests.py",
-        ROOT / "tests" / "c4" / "test_language_semantics.py",
-        ROOT / "tests" / "c5" / "test_c5_pipeline.py",
-        ROOT / "tests" / "rsd_02" / "run_rsd_02.py",
-        ROOT / "tests" / "rsd_03" / "run_rsd_03.py",
-        ROOT / "tests" / "rsd_04" / "run_rsd_04.py",
-        ROOT / "tests" / "rsd_05" / "run_rsd_05.py",
-        ROOT / "tests" / "rsd_06" / "run_rsd_06.py",
-        ROOT / "tests" / "rsd_07" / "run_rsd_07.py",
-        ROOT / "tests" / "rsd_08" / "run_rsd_08.py",
-        ROOT / "tests" / "rsd_09" / "run_rsd_09.py",
-        ROOT / "tests" / "rsd_10" / "run_rsd_10.py",
-        ROOT / "tests" / "rsd_11" / "run_rsd_11.py",
-        ROOT / "tests" / "rsd_12" / "run_rsd_12.py",
-        ROOT / "tests" / "rsd_13" / "run_rsd_13.py",
-        ROOT / "tests" / "rsd_14" / "run_rsd_14.py",
-        ROOT / "tests" / "rsd_15" / "run_rsd_15.py",
-        ROOT / "tests" / "rsd_16" / "run_rsd_16.py",
-        ROOT / "tests" / "rsd_17" / "run_rsd_17.py",
-        ROOT / "tests" / "rsd_18" / "run_rsd_18.py",
-        ROOT / "tests" / "rsd_19" / "run_rsd_19.py",
-        ROOT / "tests" / "rsd_20_p" / "run_rsd_20_p.py",
-        ROOT / "tests" / "rsd_20_p1" / "run_rsd_20_p1.py",
-        ROOT / "tests" / "rsd_20" / "run_rsd_20.py",
-        ROOT / "tests" / "rsd_21" / "run_rsd_21.py",
-        ROOT / "tests" / "rsd_21_2" / "run_rsd_21_2.py",
-        ROOT / "tests" / "rsd_21_3" / "run_rsd_21_3.py",
-        ROOT / "tests" / "rsd_21_4" / "run_rsd_21_4.py",
-        ROOT / "tests" / "rsd_21_5" / "run_rsd_21_5.py",
-        ROOT / "tests" / "rsd_21_6" / "run_rsd_21_6.py",
-        ROOT / "tests" / "rsd_21_7" / "run_rsd_21_7.py",
-        ROOT / "tests" / "h26_a" / "run_h26_a.py",
-        ROOT / "tests" / "h26_b" / "run_h26_b.py",
-        ROOT / "tests" / "h26_c" / "run_h26_c.py",
-        ROOT / "tests" / "h26_d" / "run_h26_d.py",
-        ROOT / "tests" / "h26_e" / "run_h26_e.py",
-        ROOT / "tests" / "h26_f" / "run_h26_f.py",
-        ROOT / "tests" / "h26_g" / "run_h26_g.py",
-        ROOT / "tests" / "h26_h" / "run_h26_h.py",
-        ROOT / "tests" / "h26_i" / "run_h26_i.py",
-        ROOT / "tests" / "h26_j" / "run_h26_j.py",
-        ROOT / "tests" / "h26_k" / "run_h26_k.py",
-        ROOT / "tests" / "h26_l" / "run_h26_l.py",
-        ROOT / "tests" / "h26_m" / "run_h26_m.py",
-        ROOT / "tests" / "h26_ota" / "run_h26_ota.py",
-        ROOT / "tests" / "h26_o" / "run_h26_o.py",
-        ROOT / "tests" / "h27_a1" / "run_h27_a1.py",
-        ROOT / "tests" / "h27_b0" / "run_h27_b0.py",
-        ROOT / "tests" / "h27_b" / "run_h27_b.py",
-        ROOT / "tests" / "h28_b" / "run_h28_b.py",
-        ROOT / "tests" / "h29_a" / "run_h29_a.py",
-        ROOT / "tests" / "h29_b" / "run_h29_b.py",
-        ROOT / "tests" / "h29_c" / "run_h29_c.py",
-        ROOT / "tests" / "h29_d" / "run_h29_d.py",
-    ]
-    missing = [path.relative_to(ROOT) for path in tests if not path.exists()]
+ROOT=Path(__file__).resolve().parent
+def run_script(path:Path)->bool:
+    print(f"\n=== Running {path.relative_to(ROOT)} ==="); result=subprocess.run([sys.executable,str(path)],cwd=ROOT,text=True)
+    if result.returncode!=0:print(f"FAILED: {path.relative_to(ROOT)} (exit {result.returncode})",file=sys.stderr);return False
+    print(f"PASS: {path.relative_to(ROOT)}");return True
+def main()->int:
+    tests=[ROOT/"robot-compiler"/"tests"/"run_tests.py",ROOT/"robot-frontend-robosim"/"test"/"run_tests.py",ROOT/"robot-compiler"/"integration"/"end_to_end"/"run_integration_tests.py",ROOT/"tests"/"c4"/"test_language_semantics.py",ROOT/"tests"/"c5"/"test_c5_pipeline.py"]
+    for name in ["rsd_02","rsd_03","rsd_04","rsd_05","rsd_06","rsd_07","rsd_08","rsd_09","rsd_10","rsd_11","rsd_12","rsd_13","rsd_14","rsd_15","rsd_16","rsd_17","rsd_18","rsd_19","rsd_20_p","rsd_20_p1","rsd_20","rsd_21","rsd_21_2","rsd_21_3","rsd_21_4","rsd_21_5","rsd_21_6","rsd_21_7","rsd_21_8"]:tests.append(ROOT/"tests"/name/f"run_{name}.py")
+    for name in ["h26_a","h26_b","h26_c","h26_d","h26_e","h26_f","h26_g","h26_h","h26_i","h26_j","h26_k","h26_l","h26_m","h26_ota","h26_o","h27_a1","h27_b0","h27_b","h28_b","h29_a","h29_b","h29_c","h29_d"]:tests.append(ROOT/"tests"/name/f"run_{name}.py")
+    missing=[p.relative_to(ROOT) for p in tests if not p.exists()]
     if missing:
-        print("Missing required test runner(s):", file=sys.stderr)
-        for path in missing: print(f"  - {path}", file=sys.stderr)
-        return 2
+        print("Missing required test runner(s):",file=sys.stderr);[print(f"  - {p}",file=sys.stderr) for p in missing];return 2
     for test in tests:
-        if not run_script(test): return 1
-    print("\nALL TESTS PASSED")
-    return 0
-
-if __name__ == "__main__": raise SystemExit(main())
+        if not run_script(test):return 1
+    print("\nALL TESTS PASSED");return 0
+if __name__=="__main__":raise SystemExit(main())
