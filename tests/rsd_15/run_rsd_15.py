@@ -101,7 +101,7 @@ def main() -> int:
         check("compatibility schema version is declared", compatibility["schema_version"] == 1)
         check("application version is locked", compatibility["application_version"] == "0.1.1")
         check("runtime schema is locked", compatibility["runtime_integrity_schema_version"] == 1)
-        check("distribution schema is locked", compatibility["distribution_schema_version"] == 1)
+        check("distribution schema is locked", compatibility["distribution_schema_version"] == distribution_package.SCHEMA_VERSION == 2)
         check("release schema is locked", compatibility["release_schema_version"] == 1)
         check("portable Python is mandatory", compatibility["portable_python_required"] is True)
         check("bundled PlatformIO is mandatory", compatibility["bundled_platformio_required"] is True)
@@ -110,7 +110,7 @@ def main() -> int:
             manifest,
             application_version="0.1.1",
             runtime_integrity_schema_version=1,
-            distribution_schema_version=1,
+            distribution_schema_version=2,
             release_schema_version=1,
         )
         check("matching runtime compatibility is accepted", checked.application_version == "0.1.1")
@@ -132,7 +132,7 @@ def main() -> int:
         )
         expect_error(
             "distribution schema drift is rejected",
-            lambda: release_compatibility.validate_compatibility(manifest, distribution_schema_version=2),
+            lambda: release_compatibility.validate_compatibility(manifest, distribution_schema_version=3),
             "distribution_schema_version",
         )
         expect_error(
