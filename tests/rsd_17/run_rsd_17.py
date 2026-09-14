@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import production_distribution, runtime_preflight
+from tools import production_distribution, production_artifact_boundary, runtime_preflight
 
 
 def check(name: str, condition: bool) -> None:
@@ -38,36 +38,15 @@ def make_inputs(root: Path) -> production_distribution.ProductionDistributionInp
     version = root / "VERSION"
     version.write_text("7.2.0\n", encoding="utf-8")
 
-    runtime_bin = root / "portable-python"
-    runtime_bin.mkdir()
-    (runtime_bin / "python.exe").write_bytes(b"portable-python")
+    compiler = root / "compiler"
+    (compiler / "compiler").mkdir(parents=True)
+    (compiler / "main.py").write_text("print('compiler')\n", encoding="utf-8")
+    (compiler / "compiler" / "__init__.py").write_text("", encoding="utf-8")
 
-    platformio = root / "platformio-runtime"
-    (platformio / "platforms" / "espressif32").mkdir(parents=True)
-    (platformio / "packages" / "tool-esptoolpy").mkdir(parents=True)
-    (platformio / "deployment-runtime.json").write_text(
-        json.dumps(
-            {
-                "schema": "antechkids.robostudio.deployment-runtime",
-                "schema_version": 1,
-                "platformio_core": {
-                    "source_not_embedded": True,
-                    "required_directories": ["platforms", "packages"],
-                    "file_count": 0,
-                },
-                "runtime_layout": {
-                    "core_dir": "runtime/platformio",
-                    "python": "runtime/bin/python.exe" if sys.platform == "win32" else "runtime/bin/python",
-                    "platformio_module": "platformio",
-                },
-                "portable_python_required": True,
-                "host_virtualenv_included": False,
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    frontend = root / "frontend"
+    frontend.mkdir()
+    (frontend / "__init__.py").write_text("", encoding="utf-8")
+    (frontend / "rewriter.py").write_text("def rewrite(source):\n    return source\n", encoding="utf-8")
 
     resources = root / "resources"
     profile = resources / "robot-isa" / "target_profiles.json"
@@ -79,10 +58,10 @@ def make_inputs(root: Path) -> production_distribution.ProductionDistributionInp
 
     return production_distribution.ProductionDistributionInputs(
         executable=executable,
-        runtime_bin=runtime_bin,
-        runtime_platformio=platformio,
         runtime_resources=resources,
         version_file=version,
+        compiler_root=compiler,
+        frontend_root=frontend,
     )
 
 
@@ -103,23 +82,28 @@ def main() -> int:
         check("application is copied", (output / "RoboStudio.exe").is_file())
         check("application-local DLL is copied", (output / "Qt6Core.dll").is_file())
         check("repository VERSION is integrated", (output / "VERSION").read_text(encoding="utf-8").strip() == "7.2.0")
-        check("portable Python is included", (output / "runtime" / "bin" / "python.exe").is_file())
-        check("PlatformIO runtime is included", (output / "runtime" / "platformio" / "deployment-runtime.json").is_file())
+        check("bundled Python is not included", not (output / "runtime" / "bin").exists())
+        check("bundled PlatformIO is not included", not (output / "runtime" / "platformio").exists())
         check("runtime resources are included", (output / "runtime" / "resources" / "robot-isa" / "target_profiles.json").is_file())
+        check("application-owned compiler is included", (output / "compiler" / "main.py").is_file())
+        check("RoboSim frontend is included", (output / "compiler" / "frontend" / "rewriter.py").is_file())
         check("distribution passes runtime preflight", runtime_preflight.validate_distribution(output).application_root == output)
+        check("production artifact boundary passes", production_artifact_boundary.validate_distribution_root(output)["status"] == "PASS")
 
         manifest = json.loads(result.manifest.read_text(encoding="utf-8"))
         check("distribution manifest records application", manifest["application"] == "RoboStudio.exe")
-        check("distribution manifest records portability", manifest["portable"] is True)
+        check("distribution manifest records production portability", manifest["portable"] is False)
         check("distribution manifest records application-local DLL", any(item["path"] == "Qt6Core.dll" for item in manifest["files"]))
         check("distribution VERSION is not source-relative", Path(manifest["files"][0]["path"]).is_absolute() is False)
+        check("distribution manifest records compiler", manifest["compiler"] == "compiler/main.py")
+        check("distribution manifest records compiler contract", manifest["compiler_contract"] == "compiler/robostudio_bridge.py")
 
         missing_version = production_distribution.ProductionDistributionInputs(
             executable=inputs.executable,
-            runtime_bin=inputs.runtime_bin,
-            runtime_platformio=inputs.runtime_platformio,
             runtime_resources=inputs.runtime_resources,
             version_file=root / "missing-VERSION",
+            compiler_root=inputs.compiler_root,
+            frontend_root=inputs.frontend_root,
         )
         expect_error(
             "missing production VERSION is rejected",
@@ -127,22 +111,30 @@ def main() -> int:
             "VERSION",
         )
 
-        bad_platformio = root / "bad-platformio"
-        (bad_platformio / "platforms").mkdir(parents=True)
-        (bad_platformio / "packages").mkdir(parents=True)
-        (bad_platformio / "penv").mkdir()
+        bad_compiler = root / "bad-compiler"
+        bad_compiler.mkdir()
         bad_inputs = production_distribution.ProductionDistributionInputs(
             executable=inputs.executable,
-            runtime_bin=inputs.runtime_bin,
-            runtime_platformio=bad_platformio,
             runtime_resources=inputs.runtime_resources,
             version_file=inputs.version_file,
+            compiler_root=bad_compiler,
+            frontend_root=inputs.frontend_root,
         )
         expect_error(
-            "host-specific PlatformIO penv is rejected",
-            lambda: production_distribution.build_production_distribution(bad_inputs, root / "bad-penv"),
-            "penv",
+            "invalid application-owned compiler is rejected",
+            lambda: production_distribution.build_production_distribution(bad_inputs, root / "bad-compiler-output"),
+            "application-owned compiler",
         )
+
+        forbidden = output / "runtime" / "bin"
+        forbidden.mkdir(parents=True)
+        (forbidden / "python.exe").write_bytes(b"forbidden")
+        try:
+            production_artifact_boundary.validate_distribution_root(output)
+        except production_artifact_boundary.ProductionArtifactBoundaryError as exc:
+            check("bundled Python payload is rejected by production boundary", "runtime/bin" in str(exc))
+        else:
+            raise AssertionError("bundled Python payload is not rejected")
 
     print("RSD-17 production distribution checks: PASS")
     return 0
