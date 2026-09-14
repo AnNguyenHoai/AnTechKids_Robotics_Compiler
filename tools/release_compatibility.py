@@ -51,12 +51,13 @@ def read_compatibility(manifest: Mapping[str, object]) -> Compatibility:
     if not isinstance(bundled_platformio_required, bool): raise ReleaseCompatibilityError("Invalid compatibility field: bundled_platformio_required")
     production = manifest.get("production_boundary") is True
     expected_prerequisite = not production
+    mode = "production" if production else "legacy"
     if portable_python_required is not expected_prerequisite:
-        mode = "production" if production else "legacy"
-        raise ReleaseCompatibilityError(f"Invalid compatibility field: portable_python_required must be {expected_prerequisite} for {mode} releases")
+        expected_text = "True" if expected_prerequisite else "False"
+        raise ReleaseCompatibilityError(f"Invalid compatibility field: portable Python must be {expected_text} for {mode} releases")
     if bundled_platformio_required is not expected_prerequisite:
-        mode = "production" if production else "legacy"
-        raise ReleaseCompatibilityError(f"Invalid compatibility field: bundled_platformio_required must be {expected_prerequisite} for {mode} releases")
+        expected_text = "True" if expected_prerequisite else "False"
+        raise ReleaseCompatibilityError(f"Invalid compatibility field: bundled PlatformIO must be {expected_text} for {mode} releases")
     return Compatibility(application_version=application_version, portable_python_required=portable_python_required, bundled_platformio_required=bundled_platformio_required, **values)
 
 def validate_compatibility(manifest: Mapping[str, object], *, application_version: str | None = None, runtime_integrity_schema_version: int | None = None, distribution_schema_version: int | None = None, release_schema_version: int | None = None) -> Compatibility:
