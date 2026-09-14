@@ -17,6 +17,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     build = sub.add_parser("build", help="assemble and prove a production release")
     build.add_argument("--executable", required=True, type=Path)
+    build.add_argument("--compiler-root", required=True, type=Path, help="application-owned compiler root containing main.py and compiler/")
     build.add_argument("--runtime-bin", required=False, type=Path, help=argparse.SUPPRESS)
     build.add_argument("--runtime-platformio", required=False, type=Path, help=argparse.SUPPRESS)
     build.add_argument("--runtime-resources", required=True, type=Path)
@@ -37,7 +38,7 @@ def _build_parser() -> argparse.ArgumentParser:
     e2e.add_argument("artifact", type=Path)
     e2e.add_argument("--source", required=True, type=Path)
     e2e.add_argument("--launch-command", required=True, help="command template containing {app}")
-    e2e.add_argument("--compile-command", required=True, help="command template containing {app}, {source}, {output}")
+    e2e.add_argument("--compile-command", required=True, help="command template containing {compiler}, {app}, {source}, {output}")
     e2e.add_argument("--timeout", type=float, default=production_e2e.DEFAULT_TIMEOUT)
     e2e.add_argument("--report", type=Path)
     e2e.add_argument("--json", action="store_true", dest="as_json")
@@ -47,13 +48,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def _cmd_build(args: argparse.Namespace) -> int:
     try:
         revision = production_release_assembly._source_revision(args.source_revision)
-        report = production_release_assembly.assemble_release(production_release_assembly.ProductionReleaseInputs(args.executable, args.runtime_resources, args.version_file, revision, args.runtime_bin, args.runtime_platformio), args.output)
+        report = production_release_assembly.assemble_release(production_release_assembly.ProductionReleaseInputs(args.executable, args.runtime_resources, args.version_file, revision, args.runtime_bin, args.runtime_platformio, args.compiler_root), args.output)
     except production_release_assembly.ProductionReleaseAssemblyError as exc:
-        print(f"RSD-20 build: FAIL: {exc}", file=sys.stderr); return 1
+        print(f"RSD-21.7 build: FAIL: {exc}", file=sys.stderr); return 1
     if args.as_json: print(json.dumps(report, indent=2))
     else:
-        print("RSD-20 release: PASS")
-        print(f"Artifact: {report['artifact']}"); print(f"SHA-256: {report['artifact_sha256']}"); print(f"Release manifest: {report['release_manifest']}"); print(f"Provenance: {report['release_provenance']}"); print(f"Portable proof: {report['portable_proof_report']}"); print(f"Assembly report: {Path(args.output).resolve() / production_release_assembly.REPORT_NAME}")
+        print("RSD-21.7 release: PASS")
+        print(f"Artifact: {report['artifact']}"); print(f"SHA-256: {report['artifact_sha256']}"); print(f"Release manifest: {report['release_manifest']}"); print(f"Provenance: {report['release_provenance']}"); print(f"Portable proof: {report['portable_proof_report']}"); print(f"Compiler: {report['compiler']}"); print(f"Assembly report: {Path(args.output).resolve() / production_release_assembly.REPORT_NAME}")
     return 0
 
 
@@ -120,10 +121,10 @@ def _cmd_e2e(args: argparse.Namespace) -> int:
         report = production_e2e.build_report(result)
         if args.report: production_e2e.write_report(report, args.report)
     except production_e2e.ProductionE2EError as exc:
-        print(f"RSD-21.5 E2E: FAIL: {exc}", file=sys.stderr); return 1
+        print(f"RSD-21.7 E2E: FAIL: {exc}", file=sys.stderr); return 1
     if args.as_json: print(json.dumps(report, indent=2))
     else:
-        print(f"RSD-21.5 E2E: {report['status']}")
+        print(f"RSD-21.7 E2E: {report['status']}")
         print(f"Artifact: {args.artifact.resolve()}")
         print(f"RoboStudio started: {report['robostudio']['started']}")
         print(f"Compiler executed: {report['compiler']['executed']}")

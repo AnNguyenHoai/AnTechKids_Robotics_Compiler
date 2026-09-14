@@ -25,6 +25,7 @@ class DistributionInputs:
     runtime_resources: Path | None = None
     production_boundary: bool = False
     launcher: Path | None = None
+    compiler_root: Path | None = None
 
 def _copy_tree(source: Path, destination: Path, label: str) -> None:
     if not source.is_dir(): raise DistributionPackageError(f"Missing distribution input {label}: {source}")
@@ -37,30 +38,18 @@ def _copy_tree(source: Path, destination: Path, label: str) -> None:
         elif item.is_file(): shutil.copy2(item, target)
 
 def _normalize_production_resources(destination: Path) -> None:
-    """Normalize supported source layouts to the canonical production layout.
-
-    The packaged runtime contract keeps target profiles under ``robot-isa``.
-    Some callers provide a small application-resource root with
-    ``target_profiles.json`` directly at its top level. Accept that input form
-    at the assembly boundary and move it into the canonical namespace before
-    generating the runtime-resource manifest. This keeps validation strict
-    while making production assembly independent of the caller's staging
-    layout.
-    """
+    """Normalize supported source layouts to the canonical production layout."""
     canonical = destination / "robot-isa" / "target_profiles.json"
     legacy = destination / "target_profiles.json"
     if canonical.is_file():
         if legacy.exists():
             if legacy.is_dir():
-                raise DistributionPackageError(
-                    "Conflicting production resource layouts: target_profiles.json"
-                )
+                raise DistributionPackageError("Conflicting production resource layouts: target_profiles.json")
             legacy.unlink()
         return
     if legacy.is_file():
         canonical.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(legacy), str(canonical))
-
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -84,11 +73,21 @@ def _copy_launcher(launcher: Path | None, output: Path) -> None:
     if launcher is None:
         return
     launcher = Path(launcher).resolve()
-    if not launcher.is_file():
-        raise DistributionPackageError(f"Missing production launcher: {launcher}")
-    if launcher.suffix.lower() not in {".cmd", ".bat"}:
-        raise DistributionPackageError(f"Unsupported production launcher type: {launcher.name}")
+    if not launcher.is_file(): raise DistributionPackageError(f"Missing production launcher: {launcher}")
+    if launcher.suffix.lower() not in {".cmd", ".bat"}: raise DistributionPackageError(f"Unsupported production launcher type: {launcher.name}")
     shutil.copy2(launcher, output / launcher.name)
+
+def _copy_compiler(compiler_root: Path | None, output: Path) -> None:
+    """Copy the application-owned compiler while excluding developer state."""
+    if compiler_root is None:
+        return
+    source = Path(compiler_root).resolve()
+    if not source.is_dir(): raise DistributionPackageError(f"Missing application-owned compiler: {source}")
+    if not (source / "main.py").is_file(): raise DistributionPackageError(f"Compiler entry point is missing: {source / 'main.py'}")
+    if not (source / "compiler").is_dir(): raise DistributionPackageError(f"Compiler package is missing: {source / 'compiler'}")
+    destination = output / "compiler"
+    if destination.exists(): raise DistributionPackageError(f"Compiler destination already exists: {destination}")
+    shutil.copytree(source, destination, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".git", ".venv", ".pio", "penv"))
 
 def _validate_legacy_runtime_inputs(inputs: DistributionInputs) -> None:
     if inputs.runtime_bin is None or inputs.runtime_platformio is None or inputs.runtime_resources is None:
@@ -111,6 +110,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
             raise DistributionPackageError("Production artifact boundary forbids bundled Python and PlatformIO inputs")
         if inputs.runtime_resources is None: raise DistributionPackageError("Production artifact assembly requires application resources")
         _copy_launcher(inputs.launcher, output)
+        _copy_compiler(inputs.compiler_root, output)
         resource_output = output / "runtime" / "resources"
         _copy_tree(Path(inputs.runtime_resources), resource_output, "application resources")
         _normalize_production_resources(resource_output)
@@ -133,7 +133,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
         except Exception as exc: raise DistributionPackageError(f"Assembled distribution failed runtime preflight: {exc}") from exc
         try: runtime_integrity.write_runtime_manifest(output)
         except runtime_integrity.RuntimeIntegrityError as exc: raise DistributionPackageError(f"Unable to create runtime integrity manifest: {exc}") from exc
-    manifest = {"schema": SCHEMA, "schema_version": SCHEMA_VERSION, "application": executable.name, "portable": portable, "artifact_model": "RoboStudio + Compiler" if inputs.production_boundary else "legacy-runtime", "runtime_root": runtime_root, "production_boundary": inputs.production_boundary, "files": _file_entries(output)}
+    manifest = {"schema": SCHEMA, "schema_version": SCHEMA_VERSION, "application": executable.name, "portable": portable, "artifact_model": "RoboStudio + Compiler" if inputs.production_boundary else "legacy-runtime", "runtime_root": runtime_root, "production_boundary": inputs.production_boundary, "compiler": "compiler/main.py" if inputs.production_boundary and inputs.compiler_root is not None else None, "files": _file_entries(output)}
     manifest_path = output / DISTRIBUTION_MANIFEST
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest_path
@@ -155,4 +155,5 @@ def validate_distribution_manifest(path: Path) -> dict:
         try: production_artifact_boundary.validate_distribution_root(root)
         except production_artifact_boundary.ProductionArtifactBoundaryError as exc: raise DistributionPackageError(f"Production artifact boundary validation failed: {exc}") from exc
         if manifest.get("artifact_model") != "RoboStudio + Compiler": raise DistributionPackageError("Production distribution has an invalid artifact model")
+        if manifest.get("compiler") is not None and not (root / str(manifest["compiler"])).is_file(): raise DistributionPackageError("Production distribution compiler entry point is missing")
     return manifest
