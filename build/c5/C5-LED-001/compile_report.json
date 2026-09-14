@@ -1,7 +1,7 @@
 {
   "input": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\c5\\C5-LED-001\\program.rewrite.py",
   "output": "D:\\TINHOCTRE\\08_Robotics\\04_Robotics_SW_DeepSeek\\build\\c5\\C5-LED-001\\program.h",
-  "compile_time_seconds": 0.011906147003173828,
+  "compile_time_seconds": 0.007180452346801758,
   "instruction_count": 8,
   "variable_count": 5,
   "temp_count": 5,

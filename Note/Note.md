@@ -40,3 +40,6 @@ TEST 12 — Forward → STOP → Ultra
 
 11/9:
       - Chưa merge PR112, tiếp cần merge 112 và pull về chạy lại test
+
+13/9:
+      - Đã tạo bug fix, chưa merge git -> merge git, chạy test

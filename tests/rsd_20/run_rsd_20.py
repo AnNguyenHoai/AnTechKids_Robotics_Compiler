@@ -58,6 +58,7 @@ def main() -> int:
         code, stdout, stderr = capture_main([
             "build",
             "--executable", str(distribution / "RoboStudio.exe"),
+            "--compiler-root", str(ROOT / "robot-compiler"),
             "--runtime-bin", str(distribution / "runtime" / "bin"),
             "--runtime-platformio", str(distribution / "runtime" / "platformio"),
             "--runtime-resources", str(distribution / "runtime" / "resources"),
@@ -77,6 +78,7 @@ def main() -> int:
         with zipfile.ZipFile(output / "RoboStudio-1.2.3-Windows.zip") as archive:
             names = set(archive.namelist())
         check("build packages executable-local PE dependency", "Qt6Core.dll" in names)
+        check("build packages real compiler", "compiler/main.py" in names)
 
         # Clean-machine acceptance is an execution test, so use a real Python
         # runtime only for this artifact. It remains independent of the host's
