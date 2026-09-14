@@ -1,1 +1,0 @@
-RSD-15 legacy releases require portable Python and bundled PlatformIO compatibility flags to be true. Production releases require these flags to be false because the tools are target-machine prerequisites.
