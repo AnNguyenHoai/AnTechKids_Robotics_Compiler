@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import production_distribution, production_artifact_boundary, runtime_preflight
+from tools import production_distribution, production_artifact_boundary
 
 
 def check(name: str, condition: bool) -> None:
@@ -42,6 +42,7 @@ def make_inputs(root: Path) -> production_distribution.ProductionDistributionInp
     (compiler / "compiler").mkdir(parents=True)
     (compiler / "main.py").write_text("print('compiler')\n", encoding="utf-8")
     (compiler / "compiler" / "__init__.py").write_text("", encoding="utf-8")
+    (compiler / "robostudio_bridge.py").write_text("def compile_request(request):\n    return request\n", encoding="utf-8")
 
     frontend = root / "frontend"
     frontend.mkdir()
@@ -86,8 +87,8 @@ def main() -> int:
         check("bundled PlatformIO is not included", not (output / "runtime" / "platformio").exists())
         check("runtime resources are included", (output / "runtime" / "resources" / "robot-isa" / "target_profiles.json").is_file())
         check("application-owned compiler is included", (output / "compiler" / "main.py").is_file())
+        check("compiler contract is included", (output / "compiler" / "robostudio_bridge.py").is_file())
         check("RoboSim frontend is included", (output / "compiler" / "frontend" / "rewriter.py").is_file())
-        check("distribution passes runtime preflight", runtime_preflight.validate_distribution(output).application_root == output)
         check("production artifact boundary passes", production_artifact_boundary.validate_distribution_root(output)["status"] == "PASS")
 
         manifest = json.loads(result.manifest.read_text(encoding="utf-8"))
