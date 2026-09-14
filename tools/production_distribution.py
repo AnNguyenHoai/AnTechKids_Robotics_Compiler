@@ -1,4 +1,4 @@
-"""Build a production RoboStudio distribution within the RSD-21 release boundary."""
+"""Build and validate the production RoboStudio distribution boundary."""
 from __future__ import annotations
 import argparse, shutil, sys, tempfile
 from dataclasses import dataclass
@@ -11,15 +11,10 @@ PRODUCTION_SCHEMA="antechkids.robostudio.production-distribution"; PRODUCTION_SC
 class ProductionDistributionError(RuntimeError): pass
 @dataclass(frozen=True)
 class ProductionDistributionInputs:
-    executable:Path
-    runtime_resources:Path
-    version_file:Path
-    compiler_root:Path|None=None
-    frontend_root:Path|None=None
+    executable:Path; runtime_resources:Path; version_file:Path; compiler_root:Path|None=None; frontend_root:Path|None=None
 @dataclass(frozen=True)
 class ProductionDistributionResult:
     distribution_root:Path; manifest:Path; application:str; application_version:str
-
 def repository_root()->Path:return Path(__file__).resolve().parents[1]
 def _require_file(path:Path,label:str)->Path:
     path=Path(path).expanduser().resolve()
@@ -33,19 +28,23 @@ def _read_version(path:Path)->str:
     value=_require_file(path,"application VERSION file").read_text(encoding="utf-8").strip()
     if not value or "\n" in value or "\r" in value:raise ProductionDistributionError(f"Invalid application VERSION: {path}")
     return value
+def _contract_source(compiler:Path)->Path:
+    root=compiler/CONTRACT_ENTRY_NAME; nested=compiler/"compiler"/CONTRACT_ENTRY_NAME
+    if root.is_file(): return root
+    if nested.is_file(): return nested
+    raise ProductionDistributionError(f"Application-owned compiler contract is missing: expected {root} or {nested}")
 def validate_inputs(inputs:ProductionDistributionInputs,output:Path|None=None)->str:
     executable=_require_file(inputs.executable,"RoboStudio executable"); resources=_require_directory(inputs.runtime_resources,"application resources"); version=_read_version(inputs.version_file)
     compiler=_require_directory(inputs.compiler_root,"application-owned compiler")
     if not (compiler/COMPILER_ENTRY_NAME).is_file() or not (compiler/"compiler").is_dir():raise ProductionDistributionError("Invalid application-owned compiler: must contain main.py and compiler/")
-    contract=compiler/"compiler"/CONTRACT_ENTRY_NAME
-    if not contract.is_file():raise ProductionDistributionError(f"Application-owned compiler contract is missing: {contract}")
+    _contract_source(compiler)
     frontend=_require_directory(inputs.frontend_root,"RoboSim frontend")
     if not (frontend/"__init__.py").is_file() or not (frontend/"rewriter.py").is_file():raise ProductionDistributionError("RoboSim frontend must contain __init__.py and rewriter.py")
     if output is not None:
         output=Path(output).expanduser().resolve()
         for source in (executable.parent,resources,compiler,frontend):
-            try:output.relative_to(source)
-            except ValueError:continue
+            try: output.relative_to(source)
+            except ValueError: continue
             raise ProductionDistributionError(f"Distribution output must not be inside an input source: {output}")
     return version
 def _launcher_text(executable_name:str)->str:
@@ -53,22 +52,20 @@ def _launcher_text(executable_name:str)->str:
 def _stage_application(executable:Path,version_file:Path,stage:Path)->Path:
     stage.mkdir(parents=True,exist_ok=True); staged=stage/executable.name; shutil.copy2(executable,staged); shutil.copy2(version_file,stage/DEFAULT_VERSION_FILE); (stage/LAUNCHER_NAME).write_text(_launcher_text(executable.name),encoding="utf-8")
     for dependency in sorted(executable.parent.glob("*.dll"),key=lambda item:item.name.lower()):
-        if dependency.is_file():shutil.copy2(dependency,stage/dependency.name)
+        if dependency.is_file(): shutil.copy2(dependency,stage/dependency.name)
     return staged
 def _stage_compiler(compiler_root:Path,frontend_root:Path,stage:Path)->tuple[Path,Path]:
     compiler=_require_directory(compiler_root,"application-owned compiler"); frontend=_require_directory(frontend_root,"RoboSim frontend"); destination=stage/COMPILER_ROOT_NAME
+    contract_source=_contract_source(compiler)
     shutil.copytree(compiler,destination,ignore=shutil.ignore_patterns("__pycache__",".pytest_cache",".git",".venv",".pio","penv",CONTRACT_ENTRY_NAME))
-    contract_source=compiler/"compiler"/CONTRACT_ENTRY_NAME
-    if not contract_source.is_file():raise ProductionDistributionError(f"Application-owned compiler contract is missing: {contract_source}")
     shutil.copy2(contract_source,destination/CONTRACT_ENTRY_NAME)
     frontend_destination=destination/FRONTEND_ROOT_NAME; shutil.copytree(frontend,frontend_destination,ignore=shutil.ignore_patterns("__pycache__",".pytest_cache",".git",".venv",".pio","penv")); return destination,frontend_destination
 def build_production_distribution(inputs:ProductionDistributionInputs,output:Path)->ProductionDistributionResult:
     output=Path(output).expanduser().resolve(); executable=Path(inputs.executable).expanduser().resolve(); version_file=Path(inputs.version_file).expanduser().resolve(); runtime_resources=Path(inputs.runtime_resources).expanduser().resolve(); validate_inputs(inputs,output); version=_read_version(version_file)
     with tempfile.TemporaryDirectory(prefix="robostudio-production-stage-") as temp:
         stage=Path(temp)/"application"; staged_executable=_stage_application(executable,version_file,stage); compiler_stage,_=_stage_compiler(Path(inputs.compiler_root),Path(inputs.frontend_root),stage)
-        try:
-            manifest=distribution_package.assemble_distribution(distribution_package.DistributionInputs(executable=staged_executable,runtime_resources=runtime_resources,production_boundary=True,launcher=stage/LAUNCHER_NAME,compiler_root=compiler_stage,frontend_root=None),output)
-        except distribution_package.DistributionPackageError as exc:raise ProductionDistributionError(f"Production distribution assembly failed: {exc}") from exc
+        try: manifest=distribution_package.assemble_distribution(distribution_package.DistributionInputs(executable=staged_executable,runtime_resources=runtime_resources,production_boundary=True,launcher=stage/LAUNCHER_NAME,compiler_root=compiler_stage,frontend_root=None),output)
+        except distribution_package.DistributionPackageError as exc: raise ProductionDistributionError(f"Production distribution assembly failed: {exc}") from exc
     return ProductionDistributionResult(output,manifest,executable.name,version)
 def main()->int:
     parser=argparse.ArgumentParser(description="Assemble a production RoboStudio distribution with its real compiler contract"); parser.add_argument("--executable",required=True,type=Path); parser.add_argument("--compiler-root",required=True,type=Path); parser.add_argument("--frontend-root",required=True,type=Path); parser.add_argument("--runtime-resources",required=True,type=Path); parser.add_argument("--version-file",type=Path,default=repository_root()/DEFAULT_VERSION_FILE); parser.add_argument("--output",required=True,type=Path); args=parser.parse_args()
