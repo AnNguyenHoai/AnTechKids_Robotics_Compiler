@@ -45,9 +45,11 @@ def main() -> int:
         (source / "VERSION").write_text("1.2.3\n", encoding="utf-8")
         resources = _resources(source)
         output = base / "distribution"
-        result = production_distribution.build_production_distribution(
-            production_distribution.ProductionDistributionInputs(executable, resources, source / "VERSION"), output
+
+        default_inputs = production_distribution.ProductionDistributionInputs(
+            executable, resources, source / "VERSION"
         )
+        result = production_distribution.build_production_distribution(default_inputs, output)
         check("production distribution is created", result.distribution_root.is_dir())
         check("RoboStudio is packaged", (output / "RoboStudio.exe").is_file())
         check("application resources are packaged", (output / "runtime" / "resources" / "robot-isa" / "target_profiles.json").is_file())
@@ -56,6 +58,11 @@ def main() -> int:
         boundary = json.loads((output / production_artifact_boundary.BOUNDARY_MANIFEST).read_text(encoding="utf-8"))
         check("boundary evidence is PASS", boundary["status"] == "PASS")
         check("artifact model is RoboStudio + Compiler", boundary["artifact_model"] == "RoboStudio + Compiler")
+
+        explicit = production_distribution.ProductionDistributionInputs(
+            executable, resources, source / "VERSION", ROOT / "robot-compiler", ROOT / "robot-frontend-robosim" / "frontend"
+        )
+        check("explicit application roots remain valid", production_distribution.validate_inputs(explicit, base / "explicit-validation") == "1.2.3")
 
         artifact = base / "RoboStudio-1.2.3-Windows.zip"
         release = release_package.build_release(output, artifact)
