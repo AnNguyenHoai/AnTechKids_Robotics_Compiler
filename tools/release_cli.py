@@ -9,7 +9,7 @@ from tools import portable_release_proof,production_e2e,production_release_assem
 
 def _build_parser()->argparse.ArgumentParser:
     p=argparse.ArgumentParser(prog="python -m tools.release_cli",description="Build and verify a production RoboStudio release."); sub=p.add_subparsers(dest="command",required=True)
-    b=sub.add_parser("build"); b.add_argument("--executable",required=True,type=Path); b.add_argument("--compiler-root",required=True,type=Path); b.add_argument("--frontend-root",required=True,type=Path); b.add_argument("--runtime-resources",required=True,type=Path); b.add_argument("--version-file",type=Path,default=production_release_assembly.repository_root()/"VERSION"); b.add_argument("--source-revision"); b.add_argument("--output",type=Path,default=production_release_assembly.repository_root()/"releases"/"production"); b.add_argument("--json",action="store_true",dest="as_json")
+    b=sub.add_parser("build"); b.add_argument("--executable",required=True,type=Path); b.add_argument("--compiler-root",type=Path); b.add_argument("--frontend-root",type=Path); b.add_argument("--runtime-resources",required=True,type=Path); b.add_argument("--version-file",type=Path,default=production_release_assembly.repository_root()/"VERSION"); b.add_argument("--source-revision"); b.add_argument("--output",type=Path,default=production_release_assembly.repository_root()/"releases"/"production"); b.add_argument("--json",action="store_true",dest="as_json")
     v=sub.add_parser("verify"); v.add_argument("artifact",type=Path); v.add_argument("--manifest",type=Path); v.add_argument("--json",action="store_true",dest="as_json")
     i=sub.add_parser("inspect"); i.add_argument("artifact",type=Path); i.add_argument("--manifest",type=Path); i.add_argument("--json",action="store_true",dest="as_json")
     a=sub.add_parser("accept"); a.add_argument("artifact",type=Path); a.add_argument("--timeout",type=float,default=30.0); a.add_argument("--report",type=Path); a.add_argument("--target-machine",action="store_true"); a.add_argument("--prerequisite-scope",choices=[s.value for s in target_machine_qualification.target_machine_prerequisites.RequirementScope],default="compile"); a.add_argument("--json",action="store_true",dest="as_json")
@@ -40,7 +40,7 @@ def _cmd_accept(a):
         print(json.dumps(payload,indent=2) if a.as_json else f"RSD-21.4 target-machine qualification: PASS\nScope: {r.scope}");return 0
     try:r=release_acceptance.accept_release(a.artifact,timeout=a.timeout); ep=release_acceptance.write_evidence(r,a.report) if a.report else None
     except (release_acceptance.ReleaseAcceptanceError,OSError) as exc:print(f"RSD-20 accept: FAIL: {exc}",file=sys.stderr);return 1
-    payload=release_acceptance.report_to_dict(r); print(json.dumps(payload,indent=2) if a.as_json else f"RSD-20 accept: PASS\nArtifact: {r.artifact}\nExecutable verified: {r.executable_verified}\nEnvironment verified: {r.environment_verified}"); return 0
+    payload=release_acceptance.report_to_dict(r); print(json.dumps(payload,indent=2) if a.as_json else f"RSD-20 accept: PASS\nArtifact: {a.artifact}\nExecutable verified: {r.executable_verified}\nEnvironment verified: {r.environment_verified}"); return 0
 
 def _cmd_e2e(a):
     try:r=production_e2e.qualify_release_e2e(a.artifact,source=a.source,launch_command=production_e2e.command_from_text(a.launch_command),compile_command=production_e2e.command_from_text(a.compile_command),timeout=a.timeout); payload=production_e2e.build_report(r)
