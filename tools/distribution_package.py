@@ -105,7 +105,14 @@ def assemble_distribution(inputs:DistributionInputs,output:Path)->Path:
         except Exception as exc: raise DistributionPackageError(f"Assembled distribution runtime validation failed: {exc}") from exc
     packaged_frontend=(output/"compiler"/"frontend").is_dir() if inputs.production_boundary else False
     manifest={"schema":SCHEMA,"schema_version":SCHEMA_VERSION,"application":executable.name,"portable":portable,"artifact_model":"RoboStudio + Compiler" if inputs.production_boundary else "legacy-runtime","runtime_root":runtime_root,"production_boundary":inputs.production_boundary,"compiler":"compiler/main.py" if inputs.production_boundary else None,"compiler_contract":"compiler/robostudio_bridge.py" if inputs.production_boundary else None,"frontend":"compiler/frontend" if packaged_frontend else None,"files":_file_entries(output)}
-    manifest_path=output/DISTRIBUTION_MANIFEST; manifest_path.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8"); return manifest_path
+    manifest_path=output/DISTRIBUTION_MANIFEST; manifest_path.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
+    if inputs.production_boundary:
+        try:
+            from tools import production_runtime_closure
+            production_runtime_closure.validate_distribution(output)
+        except Exception as exc:
+            raise DistributionPackageError(f"Production runtime dependency closure failed: {exc}") from exc
+    return manifest_path
 
 def validate_distribution_manifest(path:Path)->dict:
     path=Path(path)
