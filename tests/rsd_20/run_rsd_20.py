@@ -65,7 +65,9 @@ def main() -> int:
         ])
         if code != 0:
             raise AssertionError(f"build command failed:\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
-        check("build reports PASS", "RSD-20 release: PASS" in stdout)
+        # release_cli build delegates to the canonical production release
+        # assembly, whose user-facing success prefix is RSD-21.8.
+        check("build reports PASS", "RSD-21.8 release: PASS" in stdout)
         check("build creates ZIP", (output / "RoboStudio-1.2.3-Windows.zip").is_file())
         check("build creates provenance", (output / "release-provenance.json").is_file())
         check("build creates portable proof", (output / "portable-release-proof.json").is_file())
