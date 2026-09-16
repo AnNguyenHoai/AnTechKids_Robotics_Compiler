@@ -41,6 +41,9 @@ def main() -> int:
 
     check("qualification schema is stable", target_machine_qualification.SCHEMA == "antechkids.robostudio.target-machine-qualification")
     check("qualification schema version is stable", target_machine_qualification.SCHEMA_VERSION == 1)
+    check("qualification references setup contract", compile_payload["setup_contract"]["schema"] == target_machine_prerequisites.SCHEMA)
+    check("qualification records setup contract version", compile_payload["setup_contract"]["schema_version"] == target_machine_prerequisites.SCHEMA_VERSION)
+    check("qualification records supported host OS", compile_payload["setup_contract"]["supported_host_os"] == target_machine_prerequisites.SUPPORTED_HOST_OS)
     check("compile scope is recorded", compile_report.scope == "compile")
     check("Python is checked for compile scope", python_result.required)
     check("Python is available for test environment", python_result.available)
