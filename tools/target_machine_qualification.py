@@ -1,19 +1,15 @@
 """RSD-21.4 target-machine-aware release qualification.
 
-This gate validates the *host* contract for a production RoboStudio release.
+The gate validates the host contract for a production RoboStudio release.
 Python and PlatformIO are prerequisites installed by the target user; they are
 not copied from the build machine and are not treated as release payload.
-
-The gate deliberately separates automated executable checks from prerequisites
-that require a human/device-specific installation check (for example an
-ESP32 USB/UART driver). It never installs or mutates host tooling.
+The qualification is read-only and never installs or mutates host tooling.
 """
 from __future__ import annotations
 
 import json
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -149,6 +145,12 @@ def to_dict(report: TargetMachineQualificationReport) -> dict[str, object]:
     return {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
+        "setup_contract": {
+            "schema": target_machine_prerequisites.SCHEMA,
+            "schema_version": target_machine_prerequisites.SCHEMA_VERSION,
+            "supported_host_os": target_machine_prerequisites.SUPPORTED_HOST_OS,
+            "path_policy": target_machine_prerequisites.PATH_POLICY,
+        },
         "scope": report.scope,
         "passed": report.passed,
         "automated_checks_passed": report.automated_checks_passed,
