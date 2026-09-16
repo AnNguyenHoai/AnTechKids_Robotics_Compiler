@@ -20,6 +20,7 @@ def check(name: str, condition: bool) -> None:
 
 def main() -> int:
     target_machine_prerequisites.validate_contract()
+    contract_payload = target_machine_prerequisites.to_dict()
 
     compile_report = target_machine_qualification.qualify_target_machine(
         scope=target_machine_prerequisites.RequirementScope.COMPILE,
@@ -28,8 +29,21 @@ def main() -> int:
     compile_payload = target_machine_qualification.to_dict(compile_report)
     python_result = next(item for item in compile_report.prerequisites if item.name == "Python")
 
+    check("setup contract schema is stable", target_machine_prerequisites.SCHEMA == "antechkids.robostudio.target-machine-prerequisites")
+    check("setup contract schema version is stable", target_machine_prerequisites.SCHEMA_VERSION == 2)
+    check("supported host OS policy is declared", target_machine_prerequisites.SUPPORTED_HOST_OS == "Windows 10/11 x64")
+    check("PATH policy is declared", "PATH" in target_machine_prerequisites.PATH_POLICY)
+    check("setup contract is JSON serializable", bool(json.dumps(contract_payload)))
+    check("Python install policy is declared", any(item["name"] == "Python" and item["install_command"] for item in contract_payload["prerequisites"]))
+    check("PlatformIO install policy is declared", any(item["name"] == "PlatformIO Core" and item["install_command"] for item in contract_payload["prerequisites"]))
+    check("driver does not require PATH", next(item for item in contract_payload["prerequisites"] if item["name"] == "ESP32/USB driver")["path_required"] is False)
+    check("forbidden bundled prerequisites remain explicit", "Python installation" in contract_payload["forbidden_bundled_prerequisites"])
+
     check("qualification schema is stable", target_machine_qualification.SCHEMA == "antechkids.robostudio.target-machine-qualification")
     check("qualification schema version is stable", target_machine_qualification.SCHEMA_VERSION == 1)
+    check("qualification references setup contract", compile_payload["setup_contract"]["schema"] == target_machine_prerequisites.SCHEMA)
+    check("qualification records setup contract version", compile_payload["setup_contract"]["schema_version"] == target_machine_prerequisites.SCHEMA_VERSION)
+    check("qualification records supported host OS", compile_payload["setup_contract"]["supported_host_os"] == target_machine_prerequisites.SUPPORTED_HOST_OS)
     check("compile scope is recorded", compile_report.scope == "compile")
     check("Python is checked for compile scope", python_result.required)
     check("Python is available for test environment", python_result.available)
