@@ -9,6 +9,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TEST = ROOT / "tests" / "h26_m_deployment_contract.py"
 
+# The standalone runner may be launched from any working directory.  Make the
+# repository root importable before loading the test module, whose production
+# dependency is the top-level ``tools`` package.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 
 def load_tests():
     spec = importlib.util.spec_from_file_location("h26_m_tests", TEST)
