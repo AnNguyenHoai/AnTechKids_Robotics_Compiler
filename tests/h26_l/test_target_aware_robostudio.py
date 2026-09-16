@@ -39,12 +39,14 @@ def test_target_reports_missing_capability_before_build():
 
 
 def test_unknown_target_is_not_treated_as_ready():
-    import pytest
     from domain.target_capability_view import TargetCapabilityViewError
 
     service = TargetCapabilityService.load()
-    with pytest.raises(TargetCapabilityViewError):
+    try:
         service.evaluate("not-a-target", ("runtime.control",))
+    except TargetCapabilityViewError:
+        return
+    raise AssertionError("unknown target must raise TargetCapabilityViewError")
 
 
 def test_program_analysis_remains_hardware_compatible():
