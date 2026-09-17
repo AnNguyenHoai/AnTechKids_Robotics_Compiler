@@ -1,9 +1,4 @@
-"""Build the complete application-owned RoboStudio production release.
-
-RSD-23 turns the explicit build outputs and application-owned runtime inputs
-into the final release artifact. It deliberately does not discover Python or
-PlatformIO through PATH or user-local state.
-"""
+"""Build the complete application-owned RoboStudio production release."""
 from __future__ import annotations
 
 import argparse
@@ -57,19 +52,11 @@ def _forbidden_entries(root: Path) -> list[str]:
 
 
 def _validate_python_runtime(runtime_bin: Path) -> None:
-    python = runtime_bin / "python.exe"
-    _require_file(python, "Windows portable Python executable")
-    module = runtime_bin / "Lib" / "site-packages" / "platformio" / "__init__.py"
-    if not module.is_file():
-        raise OneCommandProductionBuildError(
-            "Application-owned Python runtime must contain "
-            "Lib/site-packages/platformio/__init__.py"
-        )
+    _require_file(runtime_bin / "python.exe", "Windows portable Python executable")
+    _require_file(runtime_bin / "Lib" / "site-packages" / "platformio" / "__init__.py", "PlatformIO Python module")
     violations = _forbidden_entries(runtime_bin)
     if violations:
-        raise OneCommandProductionBuildError(
-            "Python runtime contains forbidden development payload: " + ", ".join(violations)
-        )
+        raise OneCommandProductionBuildError("Python runtime contains forbidden development payload: " + ", ".join(violations))
 
 
 def _validate_platformio_runtime(runtime_platformio: Path) -> None:
@@ -77,77 +64,41 @@ def _validate_platformio_runtime(runtime_platformio: Path) -> None:
     _require_directory(runtime_platformio / "packages", "PlatformIO packages")
     violations = _forbidden_entries(runtime_platformio)
     if violations:
-        raise OneCommandProductionBuildError(
-            "PlatformIO runtime contains forbidden development payload: " + ", ".join(violations)
-        )
+        raise OneCommandProductionBuildError("PlatformIO runtime contains forbidden development payload: " + ", ".join(violations))
 
 
 def _write_deployment_manifest(runtime_platformio: Path) -> Path:
     path = runtime_platformio / DEPLOYMENT_MANIFEST
-    payload = {
-        "schema": DEPLOYMENT_SCHEMA,
-        "schema_version": DEPLOYMENT_SCHEMA_VERSION,
-        "portable_python_required": True,
-        "host_virtualenv_included": False,
-        "runtime_layout": {
-            "python": "runtime/bin/python.exe",
-            "core_dir": "runtime/platformio",
-        },
-        "platformio_core": {
-            "required_directories": ["platforms", "packages"],
-        },
-    }
+    payload = {"schema": DEPLOYMENT_SCHEMA, "schema_version": DEPLOYMENT_SCHEMA_VERSION, "portable_python_required": True, "host_virtualenv_included": False, "runtime_layout": {"python": "runtime/bin/python.exe", "core_dir": "runtime/platformio"}, "platformio_core": {"required_directories": ["platforms", "packages"]}}
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
 
 
-def validate_inputs(
-    executable: Path,
-    runtime_bin: Path,
-    runtime_platformio: Path,
-    runtime_resources: Path,
-    version_file: Path,
-    output: Path,
-) -> str:
+def validate_inputs(executable: Path, runtime_bin: Path, runtime_platformio: Path, runtime_resources: Path, version_file: Path, output: Path, firmware_root: Path) -> str:
     _require_file(executable, "RoboStudio executable")
     runtime_bin = _require_directory(runtime_bin, "application-owned portable Python")
     runtime_platformio = _require_directory(runtime_platformio, "application-owned PlatformIO runtime")
+    firmware_root = _require_directory(firmware_root, "application-owned firmware project")
     _validate_python_runtime(runtime_bin)
     _validate_platformio_runtime(runtime_platformio)
     _require_directory(runtime_resources, "application resources")
+    _require_file(firmware_root / "platformio.ini", "firmware platformio.ini")
+    _require_file(firmware_root / "wifi_config.py", "firmware wifi_config.py")
+    _require_directory(firmware_root / "main", "firmware main source")
     version = production_release_assembly._read_version(_resolve(version_file))
-
     output = _resolve(output)
-    for source in (
-        _resolve(executable).parent,
-        runtime_bin,
-        runtime_platformio,
-        _resolve(runtime_resources),
-    ):
+    for source in (_resolve(executable).parent, runtime_bin, runtime_platformio, _resolve(runtime_resources), firmware_root):
         try:
             output.relative_to(source)
         except ValueError:
             continue
-        raise OneCommandProductionBuildError(
-            f"Production output must not be inside an input source: {output}"
-        )
+        raise OneCommandProductionBuildError(f"Production output must not be inside an input source: {output}")
     return version
 
 
-def build(
-    executable: Path,
-    runtime_bin: Path,
-    runtime_platformio: Path,
-    runtime_resources: Path,
-    version_file: Path,
-    source_revision: str,
-    output: Path,
-) -> dict[str, object]:
-    version = validate_inputs(
-        executable, runtime_bin, runtime_platformio, runtime_resources, version_file, output
-    )
-    # Normalize only a copied runtime tree. Source inputs remain untouched.
-    staging = _resolve(output).parent / f".rsd23-runtime-{version}"
+def build(executable: Path, runtime_bin: Path, runtime_platformio: Path, runtime_resources: Path, version_file: Path, source_revision: str, output: Path, firmware_root: Path) -> dict[str, object]:
+    version = validate_inputs(executable, runtime_bin, runtime_platformio, runtime_resources, version_file, output, firmware_root)
+    staging = _resolve(output).parent / f".rsd25-runtime-{version}"
     if staging.exists():
         import shutil
         shutil.rmtree(staging)
@@ -159,25 +110,8 @@ def build(
         shutil.copytree(_resolve(runtime_bin), staged_bin)
         shutil.copytree(_resolve(runtime_platformio), staged_platformio)
         _write_deployment_manifest(staged_platformio)
-
-        result = production_release_assembly.assemble_release(
-            production_release_assembly.ProductionReleaseInputs(
-                executable=_resolve(executable),
-                runtime_resources=_resolve(runtime_resources),
-                version_file=_resolve(version_file),
-                source_revision=source_revision,
-                runtime_bin=staged_bin,
-                runtime_platformio=staged_platformio,
-            ),
-            _resolve(output),
-        )
-        result["rsd23"] = {
-            "status": "PASS",
-            "runtime_model": "application-owned",
-            "portable_python": "runtime/bin/python.exe",
-            "platformio": "runtime/platformio",
-            "target_machine_host_toolchain_required": False,
-        }
+        result = production_release_assembly.assemble_release(production_release_assembly.ProductionReleaseInputs(executable=_resolve(executable), runtime_resources=_resolve(runtime_resources), version_file=_resolve(version_file), source_revision=source_revision, runtime_bin=staged_bin, runtime_platformio=staged_platformio, firmware_root=_resolve(firmware_root)), _resolve(output))
+        result["rsd25"] = {"status": "PASS", "runtime_model": "application-owned", "portable_python": "runtime/bin/python.exe", "platformio": "runtime/platformio", "firmware": "firmware/robot-platform", "target_machine_host_toolchain_required": False}
         return result
     finally:
         import shutil
@@ -190,41 +124,31 @@ def _source_revision(value: str | None) -> str:
     env = os.environ.get("RSD_SOURCE_REVISION", "").strip()
     if env:
         return env
-    raise OneCommandProductionBuildError(
-        "Source revision is required; pass --source-revision or set RSD_SOURCE_REVISION."
-    )
+    raise OneCommandProductionBuildError("Source revision is required; pass --source-revision or set RSD_SOURCE_REVISION.")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="RSD-23 one-command application-owned RoboStudio production build"
-    )
+    parser = argparse.ArgumentParser(description="RSD-25 one-command application-owned RoboStudio production build")
     parser.add_argument("--executable", required=True, type=Path)
     parser.add_argument("--runtime-bin", required=True, type=Path)
     parser.add_argument("--runtime-platformio", required=True, type=Path)
     parser.add_argument("--runtime-resources", required=True, type=Path)
+    parser.add_argument("--firmware-root", type=Path, default=Path(__file__).resolve().parents[1] / "robot-platform")
     parser.add_argument("--version-file", type=Path, default=Path(__file__).resolve().parents[1] / "VERSION")
     parser.add_argument("--source-revision")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "releases" / "production")
     args = parser.parse_args()
     try:
-        result = build(
-            args.executable,
-            args.runtime_bin,
-            args.runtime_platformio,
-            args.runtime_resources,
-            args.version_file,
-            _source_revision(args.source_revision),
-            args.output,
-        )
+        result = build(args.executable, args.runtime_bin, args.runtime_platformio, args.runtime_resources, args.version_file, _source_revision(args.source_revision), args.output, args.firmware_root)
     except OneCommandProductionBuildError as exc:
-        print(f"RSD-23 one-command production build: FAIL: {exc}", file=sys.stderr)
+        print(f"RSD-25 one-command production build: FAIL: {exc}", file=sys.stderr)
         return 1
-    print("RSD-23 one-command production build: PASS")
+    print("RSD-25 one-command production build: PASS")
     print(f"Artifact: {result['artifact']}")
     print(f"SHA-256: {result['artifact_sha256']}")
     print("Bundled Python: runtime/bin/python.exe")
     print("Bundled PlatformIO: runtime/platformio")
+    print("Firmware: firmware/robot-platform")
     return 0
 
 
