@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import zipfile
@@ -11,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tests.rsd_17.run_rsd_17 import make_inputs
 from tools import production_artifact_boundary, production_distribution, release_package
 
 
@@ -20,67 +22,19 @@ def check(name: str, condition: bool) -> None:
     print(f"PASS: {name}")
 
 
-def _minimal_pe() -> bytes:
-    data = bytearray(0x600)
-    data[0:2] = b"MZ"
-    data[0x3C:0x40] = (0x80).to_bytes(4, "little")
-    data[0x80:0x84] = b"PE\0\0"
-    data[0x84:0x86] = (0x8664).to_bytes(2, "little")
-    data[0x86:0x88] = (1).to_bytes(2, "little")
-    data[0x94:0x96] = (0xF0).to_bytes(2, "little")
-    section = 0x80 + 24 + 0xF0
-    data[section:section + 8] = b".text\0\0\0"
-    data[section + 8:section + 12] = (0x200).to_bytes(4, "little")
-    data[section + 12:section + 16] = (0x1000).to_bytes(4, "little")
-    data[section + 16:section + 20] = (0x200).to_bytes(4, "little")
-    data[section + 20:section + 24] = (0x400).to_bytes(4, "little")
-    return bytes(data)
-
-
-def _resources(root: Path) -> Path:
-    resources = root / "resources"
-    (resources / "robot-isa").mkdir(parents=True)
-    (resources / "robot-isa" / "target_profiles.json").write_text(
-        '{"targets": []}\n', encoding="utf-8"
-    )
-    return resources
-
-
-def _runtime_fixture(root: Path) -> tuple[Path, Path]:
-    """Create the smallest valid application-owned Python + PlatformIO runtime."""
-    runtime_bin = root / "runtime-bin"
-    (runtime_bin / "Lib" / "site-packages" / "platformio").mkdir(parents=True)
-    (runtime_bin / "python.exe").write_bytes(b"application-owned python runtime")
-    (runtime_bin / "Lib" / "site-packages" / "platformio" / "__init__.py").write_text(
-        "__version__ = 'fixture'\n", encoding="utf-8"
-    )
-
-    runtime_platformio = root / "runtime-platformio"
-    (runtime_platformio / "platforms" / "espressif32").mkdir(parents=True)
-    (runtime_platformio / "packages" / "tool-esptoolpy").mkdir(parents=True)
-    return runtime_bin, runtime_platformio
-
-
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="robostudio-rsd21-3-") as temp:
         base = Path(temp)
-        source = base / "source"
-        source.mkdir()
-        executable = source / "RoboStudio.exe"
-        executable.write_bytes(_minimal_pe())
-        (source / "VERSION").write_text("1.2.3\n", encoding="utf-8")
-        resources = _resources(source)
-        runtime_bin, runtime_platformio = _runtime_fixture(source)
+        inputs = make_inputs(base)
         output = base / "distribution"
 
-        default_inputs = production_distribution.ProductionDistributionInputs(
-            executable=executable,
-            runtime_resources=resources,
-            version_file=source / "VERSION",
-            runtime_bin=runtime_bin,
-            runtime_platformio=runtime_platformio,
-        )
-        result = production_distribution.build_production_distribution(default_inputs, output)
+        old_cwd = Path.cwd()
+        os.chdir(base / "app-build")
+        try:
+            result = production_distribution.build_production_distribution(inputs, output)
+        finally:
+            os.chdir(old_cwd)
+
         check("production distribution is created", result.distribution_root.is_dir())
         check("RoboStudio is packaged", (output / "RoboStudio.exe").is_file())
         check(
@@ -104,6 +58,11 @@ def main() -> int:
             "bundled PlatformIO deployment manifest is packaged",
             (output / "runtime" / "platformio" / "deployment-runtime.json").is_file(),
         )
+        check(
+            "production firmware is packaged",
+            (output / "firmware" / "robot-platform" / "platformio.ini").is_file(),
+        )
+
         boundary = json.loads(
             (output / production_artifact_boundary.BOUNDARY_MANIFEST).read_text(encoding="utf-8")
         )
@@ -114,20 +73,21 @@ def main() -> int:
         )
 
         explicit = production_distribution.ProductionDistributionInputs(
-            executable=executable,
-            runtime_resources=resources,
-            version_file=source / "VERSION",
-            runtime_bin=runtime_bin,
-            runtime_platformio=runtime_platformio,
-            compiler_root=ROOT / "robot-compiler",
-            frontend_root=ROOT / "robot-frontend-robosim" / "frontend",
+            executable=inputs.executable,
+            runtime_resources=inputs.runtime_resources,
+            version_file=inputs.version_file,
+            runtime_bin=inputs.runtime_bin,
+            runtime_platformio=inputs.runtime_platformio,
+            compiler_root=inputs.compiler_root,
+            frontend_root=inputs.frontend_root,
+            firmware_root=inputs.firmware_root,
         )
         check(
             "explicit application roots remain valid",
-            production_distribution.validate_inputs(explicit, base / "explicit-validation") == "1.2.3",
+            production_distribution.validate_inputs(explicit, base / "explicit-validation") == "7.2.0",
         )
 
-        artifact = base / "RoboStudio-1.2.3-Windows.zip"
+        artifact = base / "RoboStudio-7.2.0-Windows.zip"
         release = release_package.build_release(output, artifact)
         check("production ZIP is created", artifact.is_file())
         with zipfile.ZipFile(artifact) as archive:
@@ -146,6 +106,10 @@ def main() -> int:
             "ZIP contains bundled PlatformIO",
             "runtime/platformio/deployment-runtime.json" in names
             and "runtime/bin/Lib/site-packages/platformio/__init__.py" in names,
+        )
+        check(
+            "ZIP contains production firmware",
+            "firmware/robot-platform/platformio.ini" in names,
         )
 
         manifest = json.loads(release.manifest.read_text(encoding="utf-8"))
