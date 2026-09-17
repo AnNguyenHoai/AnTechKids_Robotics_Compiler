@@ -54,6 +54,25 @@ def make_inputs(root: Path) -> production_distribution.ProductionDistributionInp
     profile.parent.mkdir(parents=True)
     profile.write_text('{"targets": []}\n', encoding="utf-8")
 
+    firmware = root / "firmware"
+    (firmware / "main").mkdir(parents=True)
+    (firmware / "main" / "main.cpp").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+    (firmware / "wifi_config.py").write_text("Import('env')\n", encoding="utf-8")
+    (firmware / "platformio.ini").write_text(
+        "[platformio]\n"
+        "src_dir = main\n\n"
+        "[env:esp32dev]\n"
+        "platform = espressif32@6.12.0\n"
+        "board = esp32dev\n"
+        "framework = arduino\n\n"
+        "[env:esp32dev_bootstrap]\n"
+        "extends = env:esp32dev\n\n"
+        "[env:esp32dev_ota]\n"
+        "extends = env:esp32dev\n"
+        "upload_protocol = espota\n",
+        encoding="utf-8",
+    )
+
     runtime_bin = root / "runtime-bin"
     (runtime_bin / "Lib" / "site-packages" / "platformio").mkdir(parents=True)
     (runtime_bin / "python.exe").write_bytes(b"portable-python")
@@ -62,8 +81,61 @@ def make_inputs(root: Path) -> production_distribution.ProductionDistributionInp
     )
 
     runtime_platformio = root / "runtime-platformio"
-    (runtime_platformio / "platforms" / "espressif32").mkdir(parents=True)
-    (runtime_platformio / "packages" / "toolchain-xtensa-esp32").mkdir(parents=True)
+    platform = runtime_platformio / "platforms" / "espressif32"
+    platform.mkdir(parents=True)
+    (platform / "platform.json").write_text(
+        json.dumps(
+            {
+                "name": "espressif32",
+                "version": "6.12.0",
+                "frameworks": {
+                    "arduino": {"package": "framework-arduinoespressif32"}
+                },
+                "packages": {
+                    "toolchain-xtensa-esp32": {"version": ">=1.0.0"},
+                    "framework-arduinoespressif32": {"version": "1.0.0"},
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    toolchain = runtime_platformio / "packages" / "toolchain-xtensa-esp32"
+    toolchain.mkdir(parents=True)
+    (toolchain / "package.json").write_text(
+        '{"name": "toolchain-xtensa-esp32", "version": "1.2.0", "dependencies": {}}\n',
+        encoding="utf-8",
+    )
+    framework_package = runtime_platformio / "packages" / "framework-arduinoespressif32"
+    framework_package.mkdir(parents=True)
+    (framework_package / "package.json").write_text(
+        '{"name": "framework-arduinoespressif32", "version": "1.0.0", "dependencies": {}}\n',
+        encoding="utf-8",
+    )
+    (runtime_platformio / "deployment-runtime.json").write_text(
+        json.dumps(
+            {
+                "schema": "antechkids.robostudio.deployment-runtime",
+                "schema_version": 1,
+                "platformio_core": {
+                    "source_not_embedded": True,
+                    "required_directories": ["platforms", "packages"],
+                    "file_count": 0,
+                },
+                "runtime_layout": {
+                    "core_dir": "runtime/platformio",
+                    "python": "runtime/bin/python.exe",
+                    "platformio_module": "platformio",
+                },
+                "portable_python_required": True,
+                "host_virtualenv_included": False,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     from tools import runtime_resources
     runtime_resources.write_resource_manifest(resources)
@@ -76,6 +148,7 @@ def make_inputs(root: Path) -> production_distribution.ProductionDistributionInp
         runtime_platformio=runtime_platformio,
         compiler_root=compiler,
         frontend_root=frontend,
+        firmware_root=firmware,
     )
 
 
@@ -103,6 +176,7 @@ def main() -> int:
         check("application-owned compiler is included", (output / "compiler" / "main.py").is_file())
         check("compiler contract is included", (output / "compiler" / "robostudio_bridge.py").is_file())
         check("RoboSim frontend is included", (output / "compiler" / "frontend" / "rewriter.py").is_file())
+        check("production firmware is included", (output / "firmware" / "robot-platform" / "platformio.ini").is_file())
         check("production artifact boundary passes", production_artifact_boundary.validate_distribution_root(output)["status"] == "PASS")
 
         manifest = json.loads(result.manifest.read_text(encoding="utf-8"))
@@ -121,6 +195,7 @@ def main() -> int:
             runtime_platformio=inputs.runtime_platformio,
             compiler_root=inputs.compiler_root,
             frontend_root=inputs.frontend_root,
+            firmware_root=inputs.firmware_root,
         )
         expect_error(
             "missing production VERSION is rejected",
@@ -138,6 +213,7 @@ def main() -> int:
             runtime_platformio=inputs.runtime_platformio,
             compiler_root=bad_compiler,
             frontend_root=inputs.frontend_root,
+            firmware_root=inputs.firmware_root,
         )
         expect_error(
             "invalid application-owned compiler is rejected",
