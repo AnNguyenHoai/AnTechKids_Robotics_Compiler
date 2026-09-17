@@ -8,7 +8,12 @@ import json
 
 from tools.runtime_paths import resolve_path
 
-PROFILE_PATH = resolve_path("runtime", "resources", "robot-isa", "target_profiles.json")
+PROFILE_RELATIVE_PATH = ("runtime", "resources", "robot-isa", "target_profiles.json")
+
+
+def profile_path() -> Path:
+    """Resolve the profile from the current application root at call time."""
+    return resolve_path(*PROFILE_RELATIVE_PATH)
 
 
 @dataclass(frozen=True)
@@ -38,7 +43,8 @@ class TargetCapabilityService:
         self._profiles = dict(profiles)
 
     @classmethod
-    def load(cls, path: Path = PROFILE_PATH) -> "TargetCapabilityService":
+    def load(cls, path: Path | None = None) -> "TargetCapabilityService":
+        path = path or profile_path()
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
