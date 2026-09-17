@@ -58,8 +58,6 @@ def main() -> int:
         code, stdout, stderr = capture_main([
             "build",
             "--executable", str(distribution / "RoboStudio.exe"),
-            "--runtime-bin", str(distribution / "runtime" / "bin"),
-            "--runtime-platformio", str(distribution / "runtime" / "platformio"),
             "--runtime-resources", str(distribution / "runtime" / "resources"),
             "--version-file", str(distribution / "VERSION"),
             "--source-revision", "test-revision",
