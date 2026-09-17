@@ -1,9 +1,10 @@
 """RSD-28 production PlatformIO dependency-closure validation.
 
 The production artifact owns the PlatformIO runtime. This module proves that
-all PlatformIO dependencies declared by the packaged firmware environments are
-present in that runtime and have concrete versions. It deliberately does not
-resolve packages from the host machine or invoke PlatformIO during validation.
+the firmware's selected PlatformIO platform and all package dependencies it
+requires are present in that runtime. Platform package requirements may be
+semver ranges; the packaged package itself must expose one concrete version
+that satisfies the declared requirement.
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from typing import Any
 SCHEMA = "antechkids.robostudio.production-platformio-dependency-closure"
 SCHEMA_VERSION = 1
 ENVIRONMENTS = ("esp32dev", "esp32dev_bootstrap", "esp32dev_ota")
-_VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
+_VERSION_RE = re.compile(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-+][0-9A-Za-z.-]+)?$")
 
 
 class ProductionPlatformIOClosureError(RuntimeError):
@@ -34,6 +35,13 @@ def _read_ini(path: Path) -> configparser.ConfigParser:
     return parser
 
 
+def _parse_version(value: str, label: str) -> tuple[int, int, int]:
+    match = _VERSION_RE.fullmatch(str(value).strip())
+    if not match:
+        raise ProductionPlatformIOClosureError(f"{label} has an invalid version: {value!r}")
+    return tuple(int(part or 0) for part in match.groups())
+
+
 def _exact_version(spec: str, label: str) -> str:
     value = str(spec).strip()
     if "@" not in value:
@@ -42,7 +50,8 @@ def _exact_version(spec: str, label: str) -> str:
         )
     _, version = value.rsplit("@", 1)
     version = version.strip()
-    if not _VERSION_RE.fullmatch(version) or any(ch in version for ch in "^~<>=* "):
+    _parse_version(version, label)
+    if any(ch in version for ch in "^~<>=* "):
         raise ProductionPlatformIOClosureError(f"{label} must use an exact version, got: {value!r}")
     return version
 
@@ -73,19 +82,40 @@ def _platform_metadata(runtime_root: Path, platform_name: str, expected_version:
     return matches[0]
 
 
-def _package_metadata(runtime_root: Path) -> dict[tuple[str, str], Path]:
-    result: dict[tuple[str, str], Path] = {}
+def _package_metadata(runtime_root: Path) -> dict[str, list[tuple[str, Path]]]:
+    result: dict[str, list[tuple[str, Path]]] = {}
     for path in sorted((runtime_root / "packages").glob("*/package.json")):
         data = _json(path, "PlatformIO package metadata")
         name = str(data.get("name", "")).strip()
         version = str(data.get("version", "")).strip()
         if not name or not version:
             raise ProductionPlatformIOClosureError(f"PlatformIO package metadata lacks name/version: {path}")
-        key = (name, version)
-        if key in result:
-            raise ProductionPlatformIOClosureError(f"Duplicate packaged PlatformIO package: {name}@{version}")
-        result[key] = path
+        _parse_version(version, f"PlatformIO package {name}")
+        result.setdefault(name, []).append((version, path))
     return result
+
+
+def _version_satisfies(version: str, requirement: str, label: str) -> bool:
+    actual = _parse_version(version, label)
+    requirement = str(requirement).strip()
+    if not requirement:
+        raise ProductionPlatformIOClosureError(f"{label} has an empty version requirement")
+    # PlatformIO commonly uses ~ and ^ requirements in platform.json.
+    if requirement.startswith("~"):
+        base = _parse_version(requirement[1:], label)
+        return actual >= base and actual < (base[0], base[1] + 1, 0)
+    if requirement.startswith("^"):
+        base = _parse_version(requirement[1:], label)
+        upper = (base[0] + 1, 0, 0) if base[0] else (0, base[1] + 1, 0)
+        return actual >= base and actual < upper
+    match = re.fullmatch(r"(>=|<=|>|<)\s*(.+)", requirement)
+    if match:
+        base = _parse_version(match.group(2), label)
+        op = match.group(1)
+        return {">=": actual >= base, "<=": actual <= base, ">": actual > base, "<": actual < base}[op]
+    if "," in requirement:
+        return all(_version_satisfies(version, part.strip(), label) for part in requirement.split(","))
+    return actual == _parse_version(requirement, label)
 
 
 def _platform_packages(metadata: dict[str, Any]) -> dict[str, str]:
@@ -94,11 +124,9 @@ def _platform_packages(metadata: dict[str, Any]) -> dict[str, str]:
         raise ProductionPlatformIOClosureError("Platform metadata 'packages' must be an object")
     required: dict[str, str] = {}
     for name, value in packages.items():
-        if not isinstance(value, dict):
-            raise ProductionPlatformIOClosureError(f"Invalid package declaration for {name!r}")
-        if "version" not in value:
+        if not isinstance(value, dict) or "version" not in value:
             raise ProductionPlatformIOClosureError(f"Platform package {name!r} has no version requirement")
-        required[str(name)] = _exact_version(str(value["version"]), f"Platform package {name}")
+        required[str(name)] = str(value["version"]).strip()
     return required
 
 
@@ -124,7 +152,7 @@ def validate_firmware_project(firmware_root: Path, runtime_root: Path) -> dict[s
 
     declared = _declared_environments(parser)
     platform_records: dict[str, Any] = {}
-    all_packages: dict[str, str] = {}
+    all_packages: dict[str, list[str]] = {}
     for environment, spec in declared.items():
         if environment != "esp32dev" and not spec:
             spec = declared["esp32dev"]
@@ -138,21 +166,21 @@ def validate_firmware_project(firmware_root: Path, runtime_root: Path) -> dict[s
             "version": version,
             "metadata": path.relative_to(runtime_root).as_posix(),
         }
-        for package, package_version in _platform_packages(metadata).items():
-            previous = all_packages.get(package)
-            if previous is not None and previous != package_version:
-                raise ProductionPlatformIOClosureError(
-                    f"PlatformIO environments require conflicting versions for {package}: {previous} vs {package_version}"
-                )
-            all_packages[package] = package_version
+        for package, requirement in _platform_packages(metadata).items():
+            all_packages.setdefault(package, []).append(requirement)
 
     packaged_packages = _package_metadata(runtime_root)
     package_records: list[dict[str, str]] = []
-    for name, version in sorted(all_packages.items()):
-        path = packaged_packages.get((name, version))
-        if path is None:
-            raise ProductionPlatformIOClosureError(f"Missing packaged PlatformIO dependency: {name}@{version}")
-        package_records.append({"name": name, "version": version, "metadata": path.relative_to(runtime_root).as_posix()})
+    for name, requirements in sorted(all_packages.items()):
+        candidates = packaged_packages.get(name, [])
+        matches = [(version, path) for version, path in candidates if all(_version_satisfies(version, req, f"Platform package {name}") for req in requirements)]
+        if len(matches) != 1:
+            detail = ", ".join(requirements)
+            raise ProductionPlatformIOClosureError(
+                f"Expected exactly one packaged PlatformIO dependency satisfying {name} requirements [{detail}], found {len(matches)}"
+            )
+        version, path = matches[0]
+        package_records.append({"name": name, "version": version, "requirements": ", ".join(sorted(set(requirements))), "metadata": path.relative_to(runtime_root).as_posix()})
 
     return {
         "schema": SCHEMA,
@@ -163,7 +191,8 @@ def validate_firmware_project(firmware_root: Path, runtime_root: Path) -> dict[s
         "packages": package_records,
         "package_count": len(package_records),
         "host_resolution": False,
-        "exact_versions_required": True,
+        "exact_platform_versions_required": True,
+        "package_versions_are_concrete": True,
     }
 
 
