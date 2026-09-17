@@ -148,6 +148,10 @@ def _make_distribution(root: Path, *, imported_dll: str | None = None, include_d
 
     runtime = root / "runtime"
     _copy_portable_python(runtime, runnable=runnable_python)
+    if not runnable_python:
+        platformio_site = runtime / "bin" / "Lib" / "site-packages" / "platformio"
+        platformio_site.mkdir(parents=True, exist_ok=True)
+        (platformio_site / "__init__.py").write_text("__version__ = 'fixture'\n", encoding="utf-8")
 
     platformio = runtime / "platformio"
     (platformio / "platforms" / "espressif32").mkdir(parents=True)
