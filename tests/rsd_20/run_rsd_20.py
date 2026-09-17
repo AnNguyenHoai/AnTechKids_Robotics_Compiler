@@ -31,14 +31,62 @@ def capture_main(argv: list[str]) -> tuple[int, str, str]:
     return code, stdout.getvalue(), stderr.getvalue()
 
 
+def _prepare_production_firmware(distribution: Path) -> Path:
+    """Create a clean application-owned firmware fixture and its runtime closure."""
+    firmware = distribution / "firmware-fixture"
+    (firmware / "main").mkdir(parents=True)
+    (firmware / "main" / "main.cpp").write_text(
+        "void setup() {}\nvoid loop() {}\n", encoding="utf-8"
+    )
+    (firmware / "wifi_config.py").write_text("Import('env')\n", encoding="utf-8")
+    (firmware / "platformio.ini").write_text(
+        "[platformio]\nsrc_dir = main\n\n"
+        "[env:esp32dev]\nplatform = espressif32@6.12.0\n"
+        "board = esp32dev\nframework = arduino\n\n"
+        "[env:esp32dev_bootstrap]\nextends = env:esp32dev\n\n"
+        "[env:esp32dev_ota]\nextends = env:esp32dev\n"
+        "upload_protocol = espota\n",
+        encoding="utf-8",
+    )
+
+    runtime = distribution / "runtime" / "platformio"
+    platform = runtime / "platforms" / "espressif32"
+    platform.mkdir(parents=True, exist_ok=True)
+    packages = runtime / "packages"
+    for name in ("toolchain-xtensa-esp32", "framework-arduinoespressif32"):
+        (packages / name).mkdir(parents=True, exist_ok=True)
+
+    (platform / "platform.json").write_text(
+        json.dumps(
+            {
+                "name": "espressif32",
+                "version": "6.12.0",
+                "frameworks": {"arduino": {"package": "framework-arduinoespressif32"}},
+                "packages": {
+                    "toolchain-xtensa-esp32": {"version": ">=1.0.0"},
+                    "framework-arduinoespressif32": {"version": "1.0.0"},
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (packages / "toolchain-xtensa-esp32" / "package.json").write_text(
+        '{"name":"toolchain-xtensa-esp32","version":"1.2.0","dependencies":{}}\n',
+        encoding="utf-8",
+    )
+    (packages / "framework-arduinoespressif32" / "package.json").write_text(
+        '{"name":"framework-arduinoespressif32","version":"1.0.0","dependencies":{}}\n',
+        encoding="utf-8",
+    )
+    return firmware
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="robostudio-rsd20-") as temp:
         base = Path(temp)
-        # The verify/build fixture is intentionally static: it proves release
-        # packaging and PE closure without depending on whichever Python happens
-        # to be installed on the developer machine. RSD-16 acceptance below gets
-        # a separate real interpreter fixture because it actually executes it.
         distribution = _make_distribution(base / "distribution", imported_dll="Qt6Core.dll")
+        firmware = _prepare_production_firmware(distribution)
         artifact = _build_release(distribution, base, "RoboStudio-1.2.3-Windows")
 
         code, stdout, _ = capture_main(["verify", str(artifact)])
@@ -61,14 +109,13 @@ def main() -> int:
             "--runtime-bin", str(distribution / "runtime" / "bin"),
             "--runtime-platformio", str(distribution / "runtime" / "platformio"),
             "--runtime-resources", str(distribution / "runtime" / "resources"),
+            "--firmware-root", str(firmware),
             "--version-file", str(distribution / "VERSION"),
             "--source-revision", "test-revision",
             "--output", str(output),
         ])
         if code != 0:
             raise AssertionError(f"build command failed:\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
-        # release_cli build delegates to the canonical production release
-        # assembly, whose user-facing success prefix is RSD-21.8.
         check("build reports PASS", "RSD-21.8 release: PASS" in stdout)
         check("build creates ZIP", (output / "RoboStudio-1.2.3-Windows.zip").is_file())
         check("build creates provenance", (output / "release-provenance.json").is_file())
@@ -80,11 +127,8 @@ def main() -> int:
             names = set(archive.namelist())
         check("build packages executable-local PE dependency", "Qt6Core.dll" in names)
         check("build packages real compiler", "compiler/main.py" in names)
+        check("build packages production firmware", "firmware/robot-platform/platformio.ini" in names)
 
-        # Clean-machine acceptance is an execution test, so use a real Python
-        # runtime only for this artifact. It remains independent of the host's
-        # PATH/environment because release_acceptance launches the packaged
-        # interpreter by absolute path.
         acceptance_distribution = _make_distribution(
             base / "acceptance-distribution",
             imported_dll="Qt6Core.dll",
