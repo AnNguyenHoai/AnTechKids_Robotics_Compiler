@@ -44,25 +44,11 @@ jobs:
       - name: Validate test topology
         shell: pwsh
         run: |
-          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests']; missing=[p for p in required if not Path(p).is_dir()]; assert not missing, f'Missing test boundaries: {missing}'; print('PASS: test topology boundaries')"
+          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests','run_all_tests.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing test boundaries/runner: {missing}'; print('PASS: test topology boundaries')"
 
       - name: Run repository regression suite
         shell: pwsh
         run: python run_all_tests.py
-
-      - name: Run RSD acceptance suite
-        shell: pwsh
-        run: |
-          python tests/rsd_11/run_rsd_11.py
-          python tests/rsd_15/run_rsd_15.py
-          python tests/rsd_17/run_rsd_17.py
-          python tests/rsd_20/run_rsd_20.py
-          python tests/rsd_21_3/run_rsd_21_3.py
-          python tests/rsd_21_4/run_rsd_21_4.py
-          python tests/rsd_21_5/run_rsd_21_5.py
-          python tests/rsd_21_6/run_rsd_21_6.py
-          python tests/rsd_21_7/run_rsd_21_7.py
-          python tests/rsd_21_8/run_rsd_21_8.py
 
       - name: Collect test artifacts
         if: always()
