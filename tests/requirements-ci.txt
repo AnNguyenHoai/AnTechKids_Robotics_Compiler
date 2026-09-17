@@ -1,0 +1,5 @@
+# CI-only Python dependencies.
+# Keep this file limited to packages required to collect/run repository tests.
+pytest>=8,<9
+PyYAML>=6,<7
+PySide6>=6.8,<7
