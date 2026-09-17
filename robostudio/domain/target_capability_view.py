@@ -9,11 +9,17 @@ import json
 from tools.runtime_paths import resolve_path
 
 PROFILE_RELATIVE_PATH = ("runtime", "resources", "robot-isa", "target_profiles.json")
+SOURCE_PROFILE_PATH = ("packages", "robot-isa", "target_profiles.json")
 
 
 def profile_path() -> Path:
     """Resolve the profile from the current application root at call time."""
-    return resolve_path(*PROFILE_RELATIVE_PATH)
+    packaged = resolve_path(*PROFILE_RELATIVE_PATH)
+    if packaged.is_file():
+        return packaged
+    if not __import__("tools.runtime_paths", fromlist=["is_frozen"]).is_frozen():
+        return resolve_path(*SOURCE_PROFILE_PATH)
+    return packaged
 
 
 @dataclass(frozen=True)
