@@ -42,6 +42,60 @@ def main() -> int:
         (runtime_platformio / "packages" / "tool-esptoolpy").mkdir(parents=True)
         (runtime_platformio / "deployment-runtime.json").write_text(json.dumps({"schema":"antechkids.robostudio.deployment-runtime","schema_version":1,"portable_python_required":True,"host_virtualenv_included":False,"runtime_layout":{"python":"runtime/bin/python.exe","core_dir":"runtime/platformio"},"platformio_core":{"required_directories":["platforms","packages"]}})+"\n", encoding="utf-8")
 
+        # ProductionDistribution validates the complete application-owned firmware
+        # contract and the PlatformIO dependency closure. Keep this fixture clean
+        # and explicit instead of falling back to the repository's development
+        # robot-platform tree (which may contain .pio build output).
+        firmware = inputs / "firmware"
+        (firmware / "main").mkdir(parents=True)
+        (firmware / "main" / "main.cpp").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+        (firmware / "wifi_config.py").write_text("Import('env')\n", encoding="utf-8")
+        (firmware / "platformio.ini").write_text(
+            "[platformio]\n"
+            "src_dir = main\n\n"
+            "[env:esp32dev]\n"
+            "platform = espressif32@6.12.0\n"
+            "board = esp32dev\n"
+            "framework = arduino\n\n"
+            "[env:esp32dev_bootstrap]\n"
+            "extends = env:esp32dev\n\n"
+            "[env:esp32dev_ota]\n"
+            "extends = env:esp32dev\n"
+            "upload_protocol = espota\n",
+            encoding="utf-8",
+        )
+        platform = runtime_platformio / "platforms" / "espressif32"
+        (platform / "platform.json").write_text(
+            json.dumps(
+                {
+                    "name": "espressif32",
+                    "version": "6.12.0",
+                    "frameworks": {
+                        "arduino": {"package": "framework-arduinoespressif32"}
+                    },
+                    "packages": {
+                        "toolchain-xtensa-esp32": {"version": ">=1.0.0"},
+                        "framework-arduinoespressif32": {"version": "1.0.0"},
+                    },
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        toolchain = runtime_platformio / "packages" / "toolchain-xtensa-esp32"
+        toolchain.mkdir(parents=True)
+        (toolchain / "package.json").write_text(
+            '{"name":"toolchain-xtensa-esp32","version":"1.2.0","dependencies":{}}\n',
+            encoding="utf-8",
+        )
+        framework_package = runtime_platformio / "packages" / "framework-arduinoespressif32"
+        framework_package.mkdir(parents=True)
+        (framework_package / "package.json").write_text(
+            '{"name":"framework-arduinoespressif32","version":"1.0.0","dependencies":{}}\n',
+            encoding="utf-8",
+        )
+
         compiler = inputs / "compiler"
         (compiler / "compiler").mkdir(parents=True)
         (compiler / "main.py").write_text("print('fixture')\n", encoding="utf-8")
@@ -61,6 +115,7 @@ def main() -> int:
                 runtime_platformio=runtime_platformio,
                 compiler_root=compiler,
                 frontend_root=frontend,
+                firmware_root=firmware,
             ),
             output,
         )
@@ -79,6 +134,7 @@ def main() -> int:
         check("launcher propagates application exit code", "exit /b %exit_code%" in text)
         check("bundled Python is present", (distribution / "runtime" / "bin" / "python.exe").is_file())
         check("bundled PlatformIO is present", (distribution / "runtime" / "platformio" / "platforms").is_dir())
+        check("production firmware is present", (distribution / "firmware" / "robot-platform" / "platformio.ini").is_file())
         check("distribution manifest is machine-readable", bool(manifest["files"]))
         check("launcher is recorded in distribution manifest", any(item["path"] == "RoboStudio.cmd" for item in manifest["files"]))
 
@@ -90,6 +146,7 @@ def main() -> int:
         check("release ZIP contains launcher", "RoboStudio.cmd" in names)
         check("release ZIP contains bundled Python", "runtime/bin/python.exe" in names)
         check("release ZIP contains PlatformIO", "runtime/platformio/deployment-runtime.json" in names)
+        check("release ZIP contains production firmware", "firmware/robot-platform/platformio.ini" in names)
         check("release ZIP launcher is relocation-safe", "%~dp0RoboStudio.exe" in packaged_launcher)
         check("release ZIP validates", release_package.validate_release_artifact(artifact, release.manifest)["production_boundary"] is True)
 
