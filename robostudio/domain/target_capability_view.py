@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import Iterable, Mapping
 import json
 
-ROOT = Path(__file__).resolve().parents[2]
-PROFILE_PATH = ROOT / "packages" / "robot-isa" / "target_profiles.json"
+from tools.runtime_paths import resolve_path
+
+PROFILE_PATH = resolve_path("runtime", "resources", "robot-isa", "target_profiles.json")
 
 
 @dataclass(frozen=True)
@@ -75,9 +76,6 @@ class TargetCapabilityService:
         )
 
 
-# Source-level API names are mapped to the same canonical capability IDs used
-# by packages/robot-isa/capability_model.json.  This is intentionally kept in
-# one table so RoboStudio never invents target-specific capability semantics.
 API_CAPABILITIES = {
     "forward": "motion.basic", "backward": "motion.basic",
     "turn_left": "motion.basic", "turn_right": "motion.basic",
