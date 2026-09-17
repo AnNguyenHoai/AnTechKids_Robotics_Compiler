@@ -32,19 +32,68 @@ def _make_app(path: Path) -> None:
 
 
 def _make_runtime(root: Path) -> tuple[Path, Path]:
-    """Create the static application-owned runtime required by RSD-23."""
+    """Create a complete static application-owned PlatformIO closure."""
     runtime_bin = root / "runtime-bin"
     runtime_bin.mkdir(parents=True)
     (runtime_bin / "python.exe").write_bytes(b"static-python-runtime-fixture")
     platformio_site = runtime_bin / "Lib" / "site-packages" / "platformio"
     platformio_site.mkdir(parents=True)
-    (platformio_site / "__init__.py").write_text(
-        "__version__ = 'fixture'\n", encoding="utf-8"
-    )
+    (platformio_site / "__init__.py").write_text("__version__ = 'fixture'\n", encoding="utf-8")
 
     runtime_platformio = root / "runtime-platformio"
-    (runtime_platformio / "platforms" / "espressif32").mkdir(parents=True)
-    (runtime_platformio / "packages" / "tool-esptoolpy").mkdir(parents=True)
+    platform = runtime_platformio / "platforms" / "espressif32"
+    platform.mkdir(parents=True)
+    (platform / "platform.json").write_text(
+        json.dumps(
+            {
+                "name": "espressif32",
+                "version": "6.12.0",
+                "frameworks": {"arduino": {"package": "framework-arduinoespressif32"}},
+                "packages": {
+                    "toolchain-xtensa-esp32": {"version": ">=1.0.0"},
+                    "framework-arduinoespressif32": {"version": "1.0.0"},
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    toolchain = runtime_platformio / "packages" / "toolchain-xtensa-esp32"
+    toolchain.mkdir(parents=True)
+    (toolchain / "package.json").write_text(
+        '{"name":"toolchain-xtensa-esp32","version":"1.2.0","dependencies":{}}\n',
+        encoding="utf-8",
+    )
+    framework = runtime_platformio / "packages" / "framework-arduinoespressif32"
+    framework.mkdir(parents=True)
+    (framework / "package.json").write_text(
+        '{"name":"framework-arduinoespressif32","version":"1.0.0","dependencies":{}}\n',
+        encoding="utf-8",
+    )
+    (runtime_platformio / "deployment-runtime.json").write_text(
+        json.dumps(
+            {
+                "schema": "antechkids.robostudio.deployment-runtime",
+                "schema_version": 1,
+                "platformio_core": {
+                    "source_not_embedded": True,
+                    "required_directories": ["platforms", "packages"],
+                    "file_count": 0,
+                },
+                "runtime_layout": {
+                    "core_dir": "runtime/platformio",
+                    "python": "runtime/bin/python.exe",
+                    "platformio_module": "platformio",
+                },
+                "portable_python_required": True,
+                "host_virtualenv_included": False,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return runtime_bin, runtime_platformio
 
 
@@ -66,9 +115,7 @@ def _make_firmware(root: Path) -> Path:
         encoding="utf-8",
     )
     (firmware / "wifi_config.py").write_text("# clean production fixture\n", encoding="utf-8")
-    (firmware / "main" / "main.cpp").write_text(
-        "void setup() {}\nvoid loop() {}\n", encoding="utf-8"
-    )
+    (firmware / "main" / "main.cpp").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
     return firmware
 
 
@@ -87,9 +134,7 @@ def main() -> int:
         (inputs / "VERSION").write_text("1.2.3\n", encoding="utf-8")
         resources = inputs / "resources"
         (resources / "robot-isa").mkdir(parents=True)
-        (resources / "robot-isa" / "target_profiles.json").write_text(
-            '{"targets":[]}\n', encoding="utf-8"
-        )
+        (resources / "robot-isa" / "target_profiles.json").write_text('{"targets":[]}\n', encoding="utf-8")
         runtime_bin, runtime_platformio = _make_runtime(inputs)
         firmware = _make_firmware(inputs)
         dist = base / "distribution"
@@ -104,35 +149,17 @@ def main() -> int:
             frontend_root=frontend_root,
             firmware_root=firmware,
         )
-        result = production_distribution.build_production_distribution(
-            production_inputs, dist
-        )
+        result = production_distribution.build_production_distribution(production_inputs, dist)
         manifest = json.loads(result.manifest.read_text(encoding="utf-8"))
         check("production distribution is created", dist.is_dir())
-        check(
-            "production distribution contains real compiler entry",
-            (dist / "compiler" / "main.py").is_file(),
-        )
-        check(
-            "production distribution contains frontend",
-            (dist / "compiler" / "frontend" / "rewriter.py").is_file(),
-        )
+        check("production distribution contains real compiler entry", (dist / "compiler" / "main.py").is_file())
+        check("production distribution contains frontend", (dist / "compiler" / "frontend" / "rewriter.py").is_file())
         check("production distribution contains firmware", (dist / "firmware" / "robot-platform" / "platformio.ini").is_file())
         check("compiler is recorded", manifest["compiler"] == "compiler/main.py")
-        check(
-            "contract is recorded",
-            manifest["compiler_contract"] == "compiler/robostudio_bridge.py",
-        )
+        check("contract is recorded", manifest["compiler_contract"] == "compiler/robostudio_bridge.py")
         check("bundled Python is packaged", (dist / "runtime" / "bin" / "python.exe").is_file())
-        check(
-            "bundled PlatformIO is packaged",
-            (dist / "runtime" / "platformio" / "platforms").is_dir()
-            and (dist / "runtime" / "platformio" / "packages").is_dir(),
-        )
-        check(
-            "runtime deployment manifest is packaged",
-            (dist / "runtime" / "platformio" / "deployment-runtime.json").is_file(),
-        )
+        check("bundled PlatformIO is packaged", (dist / "runtime" / "platformio" / "platforms").is_dir() and (dist / "runtime" / "platformio" / "packages").is_dir())
+        check("runtime deployment manifest is packaged", (dist / "runtime" / "platformio" / "deployment-runtime.json").is_file())
 
         artifact = base / "release.zip"
         release = release_package.build_release(dist, artifact)
@@ -143,43 +170,20 @@ def main() -> int:
         check("ZIP contains frontend", "compiler/frontend/rewriter.py" in names)
         check("ZIP contains bundled Python", "runtime/bin/python.exe" in names)
         check("ZIP contains firmware", "firmware/robot-platform/platformio.ini" in names)
-        check(
-            "ZIP contains bundled PlatformIO",
-            "runtime/platformio/deployment-runtime.json" in names
-            and "runtime/platformio/platforms/" in names
-            or any(name.startswith("runtime/platformio/platforms/") for name in names),
-        )
-        check(
-            "ZIP validates",
-            release_package.validate_release_artifact(
-                artifact, release.manifest
-            )["production_boundary"] is True,
-        )
+        check("ZIP contains bundled PlatformIO", "runtime/platformio/deployment-runtime.json" in names and ("runtime/platformio/platforms/" in names or any(name.startswith("runtime/platformio/platforms/") for name in names)))
+        check("ZIP validates", release_package.validate_release_artifact(artifact, release.manifest)["production_boundary"] is True)
 
         source = base / "sample.py"
-        source.write_text(
-            "forward(50)\nwait(100)\nstop()\n", encoding="utf-8"
-        )
+        source.write_text("forward(50)\nwait(100)\nstop()\n", encoding="utf-8")
         result = production_e2e.evaluate_production_artifact(
             artifact=artifact,
             source=source,
             launch=True,
             launch_command=[sys.executable, "{app}", "--self-test"],
-            compile_command=[
-                sys.executable,
-                "{compiler}",
-                "--file",
-                "{source}",
-                "--output",
-                "{output}",
-            ],
+            compile_command=[sys.executable, "{compiler}", "--file", "{source}", "--output", "{output}"],
         )
         report = result.to_dict()
-        compiler_output = (
-            Path(report["evidence"]["compiler_output"]).as_posix()
-            if report["evidence"]["compiler_output"]
-            else None
-        )
+        compiler_output = Path(report["evidence"]["compiler_output"]).as_posix() if report["evidence"]["compiler_output"] else None
         check("RoboStudio starts from extracted ZIP", report["robostudio_started"] is True)
         check("real compiler executes", report["compiler_succeeded"] is True)
         check("compiler output produced", compiler_output == "e2e-output/program.h")
