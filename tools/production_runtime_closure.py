@@ -1,4 +1,4 @@
-"""RSD-23 production runtime dependency closure enforcement."""
+"""RSD-25 production runtime dependency closure enforcement."""
 from __future__ import annotations
 
 import json
@@ -7,26 +7,25 @@ from pathlib import Path
 from tools import distribution_package, production_artifact_boundary, runtime_resources
 
 SCHEMA = "antechkids.robostudio.production-runtime-closure"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 FORBIDDEN_NAMES = frozenset({".git", ".venv", ".pio", "penv", "__pycache__", ".pytest_cache"})
 
 
 def _required_paths(application: str) -> tuple[Path, ...]:
     return (
-        Path(application),
-        Path("VERSION"),
-        Path("compiler") / "main.py",
-        Path("compiler") / "robostudio_bridge.py",
-        Path("compiler") / "compiler",
-        Path("compiler") / "frontend" / "__init__.py",
+        Path(application), Path("VERSION"),
+        Path("compiler") / "main.py", Path("compiler") / "robostudio_bridge.py",
+        Path("compiler") / "compiler", Path("compiler") / "frontend" / "__init__.py",
         Path("compiler") / "frontend" / "rewriter.py",
         Path("runtime") / "bin" / "python.exe",
         Path("runtime") / "bin" / "Lib" / "site-packages" / "platformio" / "__init__.py",
         Path("runtime") / "platformio" / "deployment-runtime.json",
-        Path("runtime") / "platformio" / "platforms",
-        Path("runtime") / "platformio" / "packages",
+        Path("runtime") / "platformio" / "platforms", Path("runtime") / "platformio" / "packages",
         Path("runtime") / "resources" / runtime_resources.RESOURCE_MANIFEST_NAME,
         Path("runtime") / "resources" / "robot-isa" / "target_profiles.json",
+        Path("firmware") / "robot-platform" / "platformio.ini",
+        Path("firmware") / "robot-platform" / "wifi_config.py",
+        Path("firmware") / "robot-platform" / "main",
     )
 
 
@@ -83,11 +82,12 @@ def validate_distribution(root: Path) -> dict[str, object]:
     application = str(manifest.get("application", "")).strip()
     if not application or Path(application).name != application or Path(application).suffix.lower() != ".exe":
         raise RuntimeError("Production distribution manifest must identify a single executable")
-
     missing = [path.as_posix() for path in _required_paths(application) if not (root / path).exists()]
     if missing:
         raise RuntimeError("Production runtime closure is missing: " + ", ".join(missing))
     _validate_deployment_manifest(root)
+    if manifest.get("firmware") != "firmware/robot-platform":
+        raise RuntimeError("Production distribution manifest must identify the packaged firmware project")
 
     manifest_files = _manifest_files(manifest)
     payload_files = _payload_files(root)
@@ -101,7 +101,7 @@ def validate_distribution(root: Path) -> dict[str, object]:
     if forbidden:
         raise RuntimeError("Production runtime closure contains developer-only payload: " + ", ".join(forbidden))
     resource_manifest = runtime_resources.validate_resource_manifest(root / "runtime" / "resources" / runtime_resources.RESOURCE_MANIFEST_NAME)
-    return {"schema": SCHEMA, "schema_version": SCHEMA_VERSION, "status": "PASS", "application": application, "required_paths": [p.as_posix() for p in _required_paths(application)], "payload_file_count": len(payload_files), "runtime_resource_manifest": resource_manifest["schema"], "production_boundary": True, "runtime_model": "application-owned"}
+    return {"schema": SCHEMA, "schema_version": SCHEMA_VERSION, "status": "PASS", "application": application, "required_paths": [p.as_posix() for p in _required_paths(application)], "payload_file_count": len(payload_files), "runtime_resource_manifest": resource_manifest["schema"], "production_boundary": True, "runtime_model": "application-owned", "firmware_model": "packaged-project"}
 
 
 def write_evidence(root: Path, output: Path | None = None) -> Path:
