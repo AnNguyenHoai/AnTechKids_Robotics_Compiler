@@ -94,7 +94,8 @@ def preflight_robot(host:str)->dict:
 
 def compile_program(source:Path,build_dir:Path,timeout:float)->Path:
  build_dir.mkdir(parents=True,exist_ok=True);rewritten=build_dir/f"{source.stem}.rewrite.py";header=build_dir/"program.h";report=build_dir/"compile_report.json"
- run([sys.executable,str(ROOT/"tools"/"rewrite.py"),"--input",str(source),"--output",str(rewritten)],cwd=ROOT,timeout=timeout);run([sys.executable,str(ROOT/"tools"/"compile.py"),"--input",str(rewritten),"--output",str(header),"--report",str(report)],cwd=ROOT,timeout=timeout);return header
+ python=runtime_paths.python_command()
+ run([*python,str(ROOT/"tools"/"rewrite.py"),"--input",str(source),"--output",str(rewritten)],cwd=ROOT,timeout=timeout);run([*python,str(ROOT/"tools"/"compile.py"),"--input",str(rewritten),"--output",str(header),"--report",str(report)],cwd=ROOT,timeout=timeout);return header
 
 def main()->int:
  p=argparse.ArgumentParser(description="Deploy a student RoboSim program or bootstrap a new robot");p.add_argument("--input");p.add_argument("--mode",choices=("build","usb","bootstrap","ota"),default="build");p.add_argument("--port");p.add_argument("--robot");p.add_argument("--ssid");p.add_argument("--wifi-password",default=None);p.add_argument("--ota-password",default=None);p.add_argument("--bootstrap-config");p.add_argument("--process-timeout",type=float,default=DEFAULT_PROCESS_TIMEOUT_SECONDS);p.add_argument("--verify-timeout",type=float,default=30.0);a=p.parse_args()
