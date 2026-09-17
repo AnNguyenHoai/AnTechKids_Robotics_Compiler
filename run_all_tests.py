@@ -18,12 +18,20 @@ def _configure_utf8_output() -> None:
             reconfigure(encoding="utf-8",errors="strict")
 
 
+def _child_environment() -> dict[str,str]:
+    """Provide every child runner with the repository import root."""
+    env=os.environ.copy()
+    env["PYTHONUTF8"]="1"
+    env["PYTHONIOENCODING"]="utf-8"
+    root=str(ROOT)
+    existing=env.get("PYTHONPATH")
+    env["PYTHONPATH"]=root if not existing else root+os.pathsep+existing
+    return env
+
+
 def run_script(path:Path)->bool:
     print(f"\n=== Running {path.relative_to(ROOT)} ===")
-    child_env=os.environ.copy()
-    child_env["PYTHONUTF8"]="1"
-    child_env["PYTHONIOENCODING"]="utf-8"
-    result=subprocess.run([sys.executable,str(path)],cwd=ROOT,text=True,env=child_env)
+    result=subprocess.run([sys.executable,str(path)],cwd=ROOT,text=True,env=_child_environment())
     if result.returncode!=0:
         print(f"FAILED: {path.relative_to(ROOT)} (exit {result.returncode})",file=sys.stderr)
         return False
