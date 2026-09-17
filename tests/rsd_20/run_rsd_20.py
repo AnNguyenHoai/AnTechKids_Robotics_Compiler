@@ -34,6 +34,10 @@ def capture_main(argv: list[str]) -> tuple[int, str, str]:
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="robostudio-rsd20-") as temp:
         base = Path(temp)
+        # The verify/build fixture is intentionally static: it proves release
+        # packaging and PE closure without depending on whichever Python happens
+        # to be installed on the developer machine. RSD-16 acceptance below gets
+        # a separate real interpreter fixture because it actually executes it.
         distribution = _make_distribution(base / "distribution", imported_dll="Qt6Core.dll")
         artifact = _build_release(distribution, base, "RoboStudio-1.2.3-Windows")
 
@@ -63,6 +67,8 @@ def main() -> int:
         ])
         if code != 0:
             raise AssertionError(f"build command failed:\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
+        # release_cli build delegates to the canonical production release
+        # assembly, whose user-facing success prefix is RSD-21.8.
         check("build reports PASS", "RSD-21.8 release: PASS" in stdout)
         check("build creates ZIP", (output / "RoboStudio-1.2.3-Windows.zip").is_file())
         check("build creates provenance", (output / "release-provenance.json").is_file())
@@ -75,14 +81,23 @@ def main() -> int:
         check("build packages executable-local PE dependency", "Qt6Core.dll" in names)
         check("build packages real compiler", "compiler/main.py" in names)
 
+        # Clean-machine acceptance is an execution test, so use a real Python
+        # runtime only for this artifact. It remains independent of the host's
+        # PATH/environment because release_acceptance launches the packaged
+        # interpreter by absolute path.
         acceptance_distribution = _make_distribution(
-            base / "acceptance-distribution", imported_dll="Qt6Core.dll", runnable_python=True
+            base / "acceptance-distribution",
+            imported_dll="Qt6Core.dll",
+            runnable_python=True,
         )
         acceptance_artifact = _build_release(
             acceptance_distribution, base, "RoboStudio-1.2.3-Windows-acceptance"
         )
+
         evidence = base / "release-acceptance.json"
-        code, stdout, stderr = capture_main(["accept", str(acceptance_artifact), "--report", str(evidence)])
+        code, stdout, stderr = capture_main([
+            "accept", str(acceptance_artifact), "--report", str(evidence)
+        ])
         check("accept command succeeds", code == 0)
         check("accept reports PASS", "RSD-20 accept: PASS" in stdout)
         check("accept verifies executable", "Executable verified: True" in stdout)
