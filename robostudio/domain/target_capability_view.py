@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable, Mapping
 import json
 
-from tools.runtime_paths import resolve_path
+from tools.runtime_paths import is_frozen, resolve_path
 
 PROFILE_RELATIVE_PATH = ("runtime", "resources", "robot-isa", "target_profiles.json")
 SOURCE_PROFILE_PATH = ("packages", "robot-isa", "target_profiles.json")
@@ -17,7 +17,7 @@ def profile_path() -> Path:
     packaged = resolve_path(*PROFILE_RELATIVE_PATH)
     if packaged.is_file():
         return packaged
-    if not __import__("tools.runtime_paths", fromlist=["is_frozen"]).is_frozen():
+    if not is_frozen():
         return resolve_path(*SOURCE_PROFILE_PATH)
     return packaged
 
