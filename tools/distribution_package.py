@@ -104,7 +104,7 @@ def assemble_distribution(inputs:DistributionInputs,output:Path)->Path:
         resource_output=output/"runtime"/"resources"; _copy_tree(Path(inputs.runtime_resources),resource_output,"application resources"); _normalize_production_resources(resource_output); runtime_resources.write_resource_manifest(resource_output)
         try: production_artifact_boundary.validate_distribution_root(output); production_artifact_boundary.write_boundary_manifest(output)
         except production_artifact_boundary.ProductionArtifactBoundaryError as exc: raise DistributionPackageError(f"Production artifact boundary validation failed: {exc}") from exc
-        portable,runtime_root=True,"runtime"
+        portable,runtime_root=False,"runtime"
     else:
         _validate_legacy_runtime_inputs(inputs); _copy_tree(Path(inputs.runtime_bin),output/"runtime"/"bin","portable Python"); _copy_tree(Path(inputs.runtime_platformio),output/"runtime"/"platformio","PlatformIO"); _copy_tree(Path(inputs.runtime_resources),output/"runtime"/"resources","runtime resources"); runtime_resources.write_resource_manifest(output/"runtime"/"resources")
         if not (output/"runtime"/"platformio"/"deployment-runtime.json").is_file(): raise DistributionPackageError("PlatformIO deployment manifest is missing")
