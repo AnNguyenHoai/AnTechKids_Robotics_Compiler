@@ -25,8 +25,16 @@ def test_golden_path_runner_discovers_h26_acceptance_gates():
     runners = module["acceptance_runners"]()
     assert runners
     assert AUDIT not in runners
+    assert RUNNER not in runners
     assert all(path.name.startswith("run_") for path in runners)
     assert all(path.is_file() for path in runners)
+
+
+def test_golden_path_runner_does_not_self_recurse():
+    module = load_runner_module()
+    runners = module["acceptance_runners"]()
+    resolved = {path.resolve() for path in runners}
+    assert RUNNER.resolve() not in resolved
 
 
 def test_golden_path_runner_executes_with_current_python():
