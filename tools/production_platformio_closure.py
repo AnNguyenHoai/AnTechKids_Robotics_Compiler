@@ -96,12 +96,9 @@ def _platform_packages(metadata: dict[str, Any]) -> dict[str, str]:
     for name, value in packages.items():
         if not isinstance(value, dict):
             raise ProductionPlatformIOClosureError(f"Invalid package declaration for {name!r}")
-        version = value.get("version")
-        if version is None:
-            requirements = value.get("version")
-            if requirements is None:
-                raise ProductionPlatformIOClosureError(f"Platform package {name!r} has no version requirement")
-        required[str(name)] = _exact_version(str(version), f"Platform package {name}")
+        if "version" not in value:
+            raise ProductionPlatformIOClosureError(f"Platform package {name!r} has no version requirement")
+        required[str(name)] = _exact_version(str(value["version"]), f"Platform package {name}")
     return required
 
 
@@ -112,12 +109,8 @@ def _declared_environments(parser: configparser.ConfigParser) -> dict[str, str]:
         if not parser.has_section(section):
             raise ProductionPlatformIOClosureError(f"Firmware project is missing required environment: {environment}")
         platform = parser.get(section, "platform", fallback="").strip()
-        if not platform:
-            # ConfigParser does not expose inherited values. Resolve the base
-            # environment explicitly because all three production environments
-            # extend esp32dev today.
-            if environment != "esp32dev":
-                platform = parser.get("env:esp32dev", "platform", fallback="").strip()
+        if not platform and environment != "esp32dev":
+            platform = parser.get("env:esp32dev", "platform", fallback="").strip()
         result[environment] = platform
     return result
 
@@ -130,7 +123,6 @@ def validate_firmware_project(firmware_root: Path, runtime_root: Path) -> dict[s
         raise ProductionPlatformIOClosureError("PlatformIO runtime must contain platforms/ and packages/")
 
     declared = _declared_environments(parser)
-    platform_specs: dict[str, str] = {}
     platform_records: dict[str, Any] = {}
     all_packages: dict[str, str] = {}
     for environment, spec in declared.items():
@@ -141,7 +133,6 @@ def validate_firmware_project(firmware_root: Path, runtime_root: Path) -> dict[s
         if not platform_name:
             raise ProductionPlatformIOClosureError(f"Invalid PlatformIO platform specification: {spec!r}")
         path, metadata = _platform_metadata(runtime_root, platform_name, version)
-        platform_specs[environment] = spec
         platform_records[environment] = {
             "name": platform_name,
             "version": version,
@@ -178,9 +169,7 @@ def validate_firmware_project(firmware_root: Path, runtime_root: Path) -> dict[s
 
 def validate_distribution(distribution_root: Path) -> dict[str, Any]:
     root = Path(distribution_root).expanduser().resolve()
-    firmware = root / "firmware" / "robot-platform"
-    runtime = root / "runtime" / "platformio"
-    return validate_firmware_project(firmware, runtime)
+    return validate_firmware_project(root / "firmware" / "robot-platform", root / "runtime" / "platformio")
 
 
 def write_evidence(distribution_root: Path, output: Path | None = None) -> Path:
