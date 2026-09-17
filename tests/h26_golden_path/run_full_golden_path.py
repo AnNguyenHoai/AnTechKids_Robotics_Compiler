@@ -9,12 +9,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNNER_AUDIT = ROOT / "tests" / "h26_runner_audit" / "run_h26_runner_audit.py"
+SELF = Path(__file__).resolve()
 
 
 def acceptance_runners() -> list[Path]:
-    """Discover all H26 acceptance runners except the infrastructure audit."""
+    """Discover all H26 acceptance runners except infrastructure/self runners."""
     runners = sorted(ROOT.glob("tests/h26_*/run_*.py"))
-    return [path for path in runners if path != RUNNER_AUDIT]
+    excluded = {RUNNER_AUDIT.resolve(), SELF}
+    return [path for path in runners if path.resolve() not in excluded]
 
 
 def run_gate(path: Path) -> int:
