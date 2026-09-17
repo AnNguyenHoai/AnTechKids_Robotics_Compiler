@@ -1,20 +1,17 @@
-"""
-BuildService – compiles RoboSim code via robot CLI
-Provides command generation and sync build (for legacy).
-"""
+"""RoboStudio build service using the application-owned compiler contract."""
+from __future__ import annotations
 
+import json
+import os
 import subprocess
 import tempfile
-import os
-import shutil
-import sys
-from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional, List, Tuple, Dict
-import json
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 from domain.hardware_config_service import HardwareConfigService
 from domain.hardware_requirement_validator import HardwareRequirementValidator
+from tools.runtime_paths import application_root, is_frozen, python_command
 
 
 @dataclass
@@ -35,122 +32,118 @@ class BuildService:
             with open(config_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
-            return {
-                "compiler_command": "robot",
-                "firmware_project": ""
-            }
+            return {"compiler_command": "robot"}
 
     def validate_hardware(self, code: str) -> Optional[str]:
-        """Validate program capabilities against the active Hardware configuration."""
         config_path = Path(__file__).parent.parent / "config" / "hardware.json"
         config = HardwareConfigService(config_path).load()
         result = HardwareRequirementValidator.validate(code, config)
         return None if result.valid else result.format_errors()
 
+    def _compiler_bridge(self) -> Path:
+        packaged = application_root() / "compiler" / "robostudio_bridge.py"
+        if packaged.is_file():
+            return packaged
+        if is_frozen():
+            raise FileNotFoundError(
+                f"Application-owned compiler contract is missing: {packaged}"
+            )
+        repository = Path(__file__).resolve().parents[2] / "robot-compiler" / "compiler" / "robostudio_bridge.py"
+        if repository.is_file():
+            return repository
+        raise FileNotFoundError(f"Compiler contract not found: {repository}")
+
+    def _get_command_with_env(self) -> Tuple[List[str], Dict[str, str]]:
+        """Return the deterministic application-owned compiler command.
+
+        ``compiler_command`` is retained in config for backward compatibility,
+        but production never resolves it through PATH or the repository CLI.
+        The stable bridge is the only compiler entry point used by RoboStudio.
+        """
+        bridge = self._compiler_bridge()
+        return python_command(str(bridge)), {}
+
     def get_command(self, code: str) -> Tuple[List[str], Dict[str, str], str]:
-        """
-        Generate the command list, environment, and temporary file path.
-        Raises ValueError when the selected hardware cannot support the program.
-        """
         hardware_error = self.validate_hardware(code)
         if hardware_error:
             raise ValueError(hardware_error)
 
-        # Write code to temp file
-        temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8")
-        temp_file.write(code)
-        temp_path = temp_file.name
-        temp_file.close()
+        source = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        )
+        source.write(code)
+        source.close()
+        temp_path = source.name
 
+        output_path = Path(temp_path).with_suffix(".h")
+        report_path = output_path.with_suffix(".json")
+        request_path = output_path.with_suffix(".request.json")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "source": temp_path,
+                    "output": str(output_path),
+                    "report": str(report_path),
+                    "source_kind": "robosim-python",
+                }
+            ),
+            encoding="utf-8",
+        )
         cmd_parts, env_override = self._get_command_with_env()
-        cmd = cmd_parts + ["build", "-f", temp_path, "--copy"]
-
+        cmd = cmd_parts + ["--request", str(request_path)]
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
-        if env_override:
-            env.update(env_override)
-
+        env.update(env_override)
         return cmd, env, temp_path
 
     def build(self, code: str) -> BuildResult:
-        """
-        Sync build (blocking) – kept for backward compatibility.
-        """
         hardware_error = self.validate_hardware(code)
         if hardware_error:
-            return BuildResult(success=False, output=hardware_error, error=hardware_error)
+            return BuildResult(False, hardware_error, hardware_error)
 
-        # Use the same logic as before
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
-            f.write(code)
-            temp_path = f.name
-
-        try:
-            cmd_parts, env_override = self._get_command_with_env()
-            cmd = cmd_parts + ["build", "-f", temp_path, "--copy"]
-            env = os.environ.copy()
-            env["PYTHONIOENCODING"] = "utf-8"
-            if env_override:
-                env.update(env_override)
-
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
+        with tempfile.TemporaryDirectory(prefix="robostudio-build-") as temp_dir:
+            source = Path(temp_dir) / "program.py"
+            output = Path(temp_dir) / "program.h"
+            report = Path(temp_dir) / "compile_report.json"
+            request = Path(temp_dir) / "request.json"
+            source.write_text(code, encoding="utf-8")
+            request.write_text(
+                json.dumps(
+                    {
+                        "source": str(source),
+                        "output": str(output),
+                        "report": str(report),
+                        "source_kind": "robosim-python",
+                    }
+                ),
                 encoding="utf-8",
-                errors="replace",
-                env=env,
-                cwd=os.getcwd()
             )
 
-            output = proc.stdout
-            if proc.stderr:
-                output += "\n" + proc.stderr
-
-            return BuildResult(
-                success=(proc.returncode == 0),
-                output=output,
-                error=proc.stderr if proc.returncode != 0 else None
-            )
-        except FileNotFoundError:
-            return BuildResult(
-                success=False,
-                output="Error: 'robot' command not found.\n"
-                       "Please ensure Robot CLI is installed and in PATH, "
-                       "or set 'compiler_command' in config/config.json.\n"
-                       "To install: cd robot-cli && pip install -e ."
-            )
-        except Exception as e:
-            return BuildResult(
-                success=False,
-                output=f"Unexpected error: {str(e)}"
-            )
-        finally:
             try:
-                os.unlink(temp_path)
-            except:
-                pass
-
-    def _get_command_with_env(self) -> Tuple[List[str], Dict[str, str]]:
-        """Return (command_parts, env_override) for the robot CLI."""
-        cmd = self.config.get("compiler_command", "robot")
-        env_override = {}
-
-        if isinstance(cmd, list):
-            return cmd, env_override
-
-        if os.path.isabs(cmd):
-            return [cmd], env_override
-
-        if shutil.which(cmd):
-            return [cmd], env_override
-
-        # Try to locate robot-cli inside the repository
-        repo_root = Path(__file__).parent.parent.parent
-        cli_path = repo_root / "robot-cli" / "robot" / "cli.py"
-        if cli_path.exists():
-            env_override["PYTHONPATH"] = str(repo_root) + os.pathsep + env_override.get("PYTHONPATH", "")
-            return [sys.executable, "-m", "robot.cli"], env_override
-
-        # Fallback
-        return [cmd], env_override
+                cmd_parts, env_override = self._get_command_with_env()
+                env = os.environ.copy()
+                env["PYTHONIOENCODING"] = "utf-8"
+                env.update(env_override)
+                proc = subprocess.run(
+                    cmd_parts + ["--request", str(request)],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    env=env,
+                    cwd=str(application_root()),
+                )
+                output_text = proc.stdout
+                if proc.stderr:
+                    output_text += "\n" + proc.stderr
+                if proc.returncode == 0 and output.exists():
+                    output_text += f"\n[OK] Header: {output}\n"
+                return BuildResult(
+                    proc.returncode == 0,
+                    output_text,
+                    proc.stderr if proc.returncode != 0 else None,
+                )
+            except (FileNotFoundError, OSError) as exc:
+                return BuildResult(False, f"Compiler runtime error: {exc}", str(exc))
+            except Exception as exc:
+                return BuildResult(False, f"Unexpected error: {exc}", str(exc))
