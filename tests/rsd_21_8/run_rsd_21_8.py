@@ -10,6 +10,13 @@ def check(name,condition):
     if not condition:raise AssertionError(name)
     print(f"PASS: {name}")
 
+def _make_firmware(root):
+    firmware=root/"firmware"; (firmware/"main").mkdir(parents=True)
+    (firmware/"platformio.ini").write_text("[platformio]\nsrc_dir = main\n\n[env:esp32dev]\nplatform = espressif32@6.12.0\nboard = esp32dev\nframework = arduino\n\n[env:esp32dev_ota]\nextends = env:esp32dev\nupload_protocol = espota\n\n[env:esp32dev_bootstrap]\nextends = env:esp32dev\n",encoding="utf-8")
+    (firmware/"wifi_config.py").write_text("# clean production fixture\n",encoding="utf-8")
+    (firmware/"main"/"main.cpp").write_text("void setup() {}\nvoid loop() {}\n",encoding="utf-8")
+    return firmware
+
 def main():
     compiler_root=ROOT/"robot-compiler"; frontend_root=ROOT/"robot-frontend-robosim"/"frontend"
     check("real compiler entry exists",(compiler_root/"main.py").is_file())
@@ -20,11 +27,12 @@ def main():
         resources=inputs/"resources"; (resources/"robot-isa").mkdir(parents=True); (resources/"robot-isa"/"target_profiles.json").write_text('{"targets":[]}\n',encoding="utf-8")
         runtime_bin=inputs/"python-runtime"; (runtime_bin/"Lib"/"site-packages"/"platformio").mkdir(parents=True); (runtime_bin/"python.exe").write_bytes(b"portable-python"); (runtime_bin/"Lib"/"site-packages"/"platformio"/"__init__.py").write_text("__version__='fixture'\n",encoding="utf-8")
         runtime_platformio=inputs/"platformio-runtime"; (runtime_platformio/"platforms"/"espressif32").mkdir(parents=True); (runtime_platformio/"packages"/"tool-esptoolpy").mkdir(parents=True)
-        dist=base/"dist"
-        result=production_distribution.build_production_distribution(production_distribution.ProductionDistributionInputs(exe,resources,inputs/"VERSION",runtime_bin,runtime_platformio,compiler_root,frontend_root),dist)
+        firmware=_make_firmware(inputs); dist=base/"dist"
+        result=production_distribution.build_production_distribution(production_distribution.ProductionDistributionInputs(exe,resources,inputs/"VERSION",runtime_bin,runtime_platformio,compiler_root,frontend_root,firmware),dist)
         manifest=json.loads(result.manifest.read_text(encoding="utf-8"))
         check("contract endpoint packaged",(dist/"compiler"/"robostudio_bridge.py").is_file())
         check("frontend packaged",(dist/"compiler"/"frontend"/"rewriter.py").is_file())
+        check("firmware packaged",(dist/"firmware"/"robot-platform"/"platformio.ini").is_file())
         check("bundled Python packaged",(dist/"runtime"/"bin"/"python.exe").is_file())
         check("bundled PlatformIO packaged",(dist/"runtime"/"platformio"/"platforms").is_dir())
         check("manifest records contract",manifest["compiler_contract"]=="compiler/robostudio_bridge.py")
@@ -33,6 +41,7 @@ def main():
         with zipfile.ZipFile(artifact) as z:names=set(z.namelist())
         check("ZIP contains contract", "compiler/robostudio_bridge.py" in names)
         check("ZIP contains frontend", "compiler/frontend/rewriter.py" in names)
+        check("ZIP contains firmware", "firmware/robot-platform/platformio.ini" in names)
         check("ZIP contains Python", "runtime/bin/python.exe" in names)
         check("ZIP contains PlatformIO", "runtime/platformio/platforms/espressif32/" in names or any(n.startswith("runtime/platformio/platforms/espressif32/") for n in names))
         source=base/"student.py"; source.write_text("import rcu\nrcu.SetMoveSpeed(50, 80)\nrcu.SetWaitForTime(1)\n",encoding="utf-8")
