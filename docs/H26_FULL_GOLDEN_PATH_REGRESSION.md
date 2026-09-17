@@ -8,11 +8,12 @@ Provide one deterministic, portable command that executes the complete H26 accep
 
 1. Run the H26 Acceptance Runner Audit.
 2. Discover every `tests/h26_*/run_*.py` acceptance runner, in sorted path order.
-3. Execute every discovered H26 gate with the active Python interpreter.
-4. Continue after individual failures so the final output identifies every failing gate.
-5. Return exit code `0` only when every gate passes.
+3. Exclude the orchestration runner itself and the runner-audit infrastructure runner from the discovered execution set.
+4. Execute every remaining discovered H26 gate with the active Python interpreter.
+5. Continue after individual failures so the final output identifies every failing gate.
+6. Return exit code `0` only when every gate passes.
 
-The runner itself does not invoke pytest.
+The runner itself does not invoke pytest and must never invoke itself recursively.
 
 ## Gate
 
