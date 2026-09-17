@@ -44,7 +44,7 @@ def _runtime_fixture(root: Path) -> tuple[Path, Path]:
     runtime_bin = root / "runtime-bin"
     runtime_bin.mkdir(parents=True)
     # Use the current interpreter as a real executable fixture, then execute
-    # only this copied interpreter from the extracted artifact.  The test is
+    # only this copied interpreter from the extracted artifact. The test is
     # intentionally independent of PATH/PYTHONPATH/VIRTUAL_ENV at execution.
     bundled_python = runtime_bin / "python.exe"
     shutil.copy2(sys.executable, bundled_python)
@@ -123,7 +123,7 @@ def main() -> int:
         )
         production_distribution.build_production_distribution(production_inputs, dist)
         artifact = base / "release.zip"
-        release_package.build_release(dist, artifact)
+        release = release_package.build_release(dist, artifact)
 
         with zipfile.ZipFile(artifact) as archive:
             names = set(archive.namelist())
@@ -133,7 +133,10 @@ def main() -> int:
             "runtime/platformio/deployment-runtime.json" in names,
         )
         check("ZIP contains compiler", "compiler/main.py" in names)
-        check("ZIP passes production boundary", release_package.validate_release_artifact(artifact, dist / "release-manifest.json")["production_boundary"] is True)
+        check(
+            "ZIP passes production boundary",
+            release_package.validate_release_artifact(artifact, release.manifest)["production_boundary"] is True,
+        )
 
         extracted = base / "extracted"
         extracted.mkdir()
@@ -162,7 +165,10 @@ def main() -> int:
             env,
         )
         check("bundled interpreter executes", identity.returncode == 0)
-        check("interpreter path is inside extracted artifact", str(bundled_python).lower().replace("\\", "/") in identity.stdout.lower().replace("\\", "/"))
+        check(
+            "interpreter path is inside extracted artifact",
+            str(bundled_python).lower().replace("\\", "/") in identity.stdout.lower().replace("\\", "/"),
+        )
 
         source = base / "sample.py"
         source.write_text("forward(50)\nwait(100)\nstop()\n", encoding="utf-8")
@@ -180,9 +186,11 @@ def main() -> int:
             artifact=artifact,
             source=source,
             launch=True,
-            launch_command=[str(bundled_python), "{app}", "--self-test"],
-            compile_command=[str(bundled_python), "{compiler}", "--file", "{source}", "--output", "{output}"],
+            launch_command=["{python}", "{app}", "--self-test"],
+            compile_command=["{python}", "{compiler}", "--file", "{source}", "--output", "{output}"],
+            environment=env,
         )
+        check("production E2E resolves bundled Python", app_result.evidence["bundled_python"] == "runtime/bin/python.exe")
         check("production E2E can use bundled Python", app_result.status == "PASS")
         check("production E2E compiler succeeds", app_result.compiler_succeeded is True)
 
