@@ -54,6 +54,17 @@ def make_inputs(root: Path) -> production_distribution.ProductionDistributionInp
     profile.parent.mkdir(parents=True)
     profile.write_text('{"targets": []}\n', encoding="utf-8")
 
+    runtime_bin = root / "runtime-bin"
+    (runtime_bin / "Lib" / "site-packages" / "platformio").mkdir(parents=True)
+    (runtime_bin / "python.exe").write_bytes(b"portable-python")
+    (runtime_bin / "Lib" / "site-packages" / "platformio" / "__init__.py").write_text(
+        "__version__ = 'test'\n", encoding="utf-8"
+    )
+
+    runtime_platformio = root / "runtime-platformio"
+    (runtime_platformio / "platforms" / "espressif32").mkdir(parents=True)
+    (runtime_platformio / "packages" / "toolchain-xtensa-esp32").mkdir(parents=True)
+
     from tools import runtime_resources
     runtime_resources.write_resource_manifest(resources)
 
@@ -61,6 +72,8 @@ def make_inputs(root: Path) -> production_distribution.ProductionDistributionInp
         executable=executable,
         runtime_resources=resources,
         version_file=version,
+        runtime_bin=runtime_bin,
+        runtime_platformio=runtime_platformio,
         compiler_root=compiler,
         frontend_root=frontend,
     )
@@ -83,8 +96,9 @@ def main() -> int:
         check("application is copied", (output / "RoboStudio.exe").is_file())
         check("application-local DLL is copied", (output / "Qt6Core.dll").is_file())
         check("repository VERSION is integrated", (output / "VERSION").read_text(encoding="utf-8").strip() == "7.2.0")
-        check("bundled Python is not included", not (output / "runtime" / "bin").exists())
-        check("bundled PlatformIO is not included", not (output / "runtime" / "platformio").exists())
+        check("bundled Python is included", (output / "runtime" / "bin" / "python.exe").is_file())
+        check("bundled PlatformIO is included", (output / "runtime" / "platformio" / "platforms").is_dir())
+        check("deployment runtime manifest is included", (output / "runtime" / "platformio" / "deployment-runtime.json").is_file())
         check("runtime resources are included", (output / "runtime" / "resources" / "robot-isa" / "target_profiles.json").is_file())
         check("application-owned compiler is included", (output / "compiler" / "main.py").is_file())
         check("compiler contract is included", (output / "compiler" / "robostudio_bridge.py").is_file())
@@ -103,6 +117,8 @@ def main() -> int:
             executable=inputs.executable,
             runtime_resources=inputs.runtime_resources,
             version_file=root / "missing-VERSION",
+            runtime_bin=inputs.runtime_bin,
+            runtime_platformio=inputs.runtime_platformio,
             compiler_root=inputs.compiler_root,
             frontend_root=inputs.frontend_root,
         )
@@ -118,6 +134,8 @@ def main() -> int:
             executable=inputs.executable,
             runtime_resources=inputs.runtime_resources,
             version_file=inputs.version_file,
+            runtime_bin=inputs.runtime_bin,
+            runtime_platformio=inputs.runtime_platformio,
             compiler_root=bad_compiler,
             frontend_root=inputs.frontend_root,
         )
@@ -127,15 +145,14 @@ def main() -> int:
             "application-owned compiler",
         )
 
-        forbidden = output / "runtime" / "bin"
+        forbidden = output / "runtime" / "bin" / ".venv"
         forbidden.mkdir(parents=True)
-        (forbidden / "python.exe").write_bytes(b"forbidden")
         try:
             production_artifact_boundary.validate_distribution_root(output)
         except production_artifact_boundary.ProductionArtifactBoundaryError as exc:
-            check("bundled Python payload is rejected by production boundary", "runtime/bin" in str(exc))
+            check("developer virtualenv payload is rejected by production boundary", ".venv" in str(exc))
         else:
-            raise AssertionError("bundled Python payload is not rejected")
+            raise AssertionError("developer virtualenv payload is not rejected")
 
     print("RSD-17 production distribution checks: PASS")
     return 0
