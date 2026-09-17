@@ -58,7 +58,7 @@ def test_build_environment_overrides_host_platformio_state(tmp_path):
     assert env["PLATFORMIO_CORE_DIR"] == str(runtime)
     assert env["PLATFORMIO_PLATFORMS_DIR"] == str(runtime / "platforms")
     assert env["PLATFORMIO_PACKAGES_DIR"] == str(runtime / "packages")
-    assert env["PLATFORMIO_HOME"] is None if "PLATFORMIO_HOME" in env else True
+    assert "PLATFORMIO_HOME" not in env
     assert env["PATH"] == "host-path"
 
 
