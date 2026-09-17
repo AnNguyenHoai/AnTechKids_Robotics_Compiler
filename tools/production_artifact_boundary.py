@@ -1,10 +1,9 @@
 """RSD-21.3 production artifact boundary enforcement.
 
-The production release payload is the RoboStudio application and its
-application-owned compiler/resources/dependencies. Target-machine tools such
-as Python and PlatformIO are prerequisites, not payload. This module provides
-the executable enforcement point used by production distribution assembly and
-release validation.
+The production release payload includes application-owned runtime assets. RSD-23
+moved Python and PlatformIO from target prerequisites into the application-owned
+release boundary so a clean Windows machine can run the product without a
+pre-installed developer environment. Developer-only payloads remain forbidden.
 """
 from __future__ import annotations
 
@@ -17,18 +16,16 @@ SCHEMA = "antechkids.robostudio.production-artifact-boundary"
 SCHEMA_VERSION = 1
 BOUNDARY_MANIFEST = "release-boundary.json"
 
-# These paths are intentionally structural rather than installation-specific.
-# A production artifact may contain application resources below runtime/, but
-# it must never contain a bundled host-tool installation at these roots.
-FORBIDDEN_PAYLOAD_ROOTS: tuple[Path, ...] = (
-    Path("runtime/bin"),
-    Path("runtime/platformio"),
-)
-
+# These names are always development state and must never be copied into the
+# production artifact. Runtime/bin and runtime/platformio are now valid because
+# they are application-owned release payload roots under RSD-23.
 FORBIDDEN_PAYLOAD_NAMES: frozenset[str] = frozenset({
+    ".git",
     ".venv",
     ".pio",
     "penv",
+    "__pycache__",
+    ".pytest_cache",
 })
 
 
@@ -43,12 +40,7 @@ def _normal(path: Path) -> str:
 def _is_forbidden(relative: Path) -> bool:
     normalized = _normal(relative)
     parts = normalized.split("/") if normalized else []
-    if any(part in FORBIDDEN_PAYLOAD_NAMES for part in parts):
-        return True
-    return any(
-        normalized == _normal(root) or normalized.startswith(_normal(root) + "/")
-        for root in FORBIDDEN_PAYLOAD_ROOTS
-    )
+    return any(part in FORBIDDEN_PAYLOAD_NAMES for part in parts)
 
 
 def validate_distribution_root(root: Path) -> dict[str, object]:
@@ -69,13 +61,9 @@ def validate_distribution_root(root: Path) -> dict[str, object]:
 
     if violations:
         raise ProductionArtifactBoundaryError(
-            "Production artifact contains target/developer prerequisite payload: "
-            + ", ".join(violations)
+            "Production artifact contains developer-only payload: " + ", ".join(violations)
         )
 
-    # The RSD-21.1 contract is the policy source of truth. Keep an explicit
-    # assertion here so a future boundary change cannot silently invalidate the
-    # enforcement layer.
     for item in release_boundary.packaged_items():
         if item.package is not True or item.ownership is not release_boundary.ReleaseOwnership.APPLICATION:
             raise ProductionArtifactBoundaryError(
@@ -90,11 +78,10 @@ def validate_distribution_root(root: Path) -> dict[str, object]:
     return {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
-        "artifact_model": "RoboStudio + Compiler",
+        "artifact_model": "RoboStudio + Compiler + Application-Owned Runtime",
         "boundary_schema": release_boundary.SCHEMA,
         "boundary_schema_version": release_boundary.SCHEMA_VERSION,
         "status": "PASS",
-        "forbidden_payload_roots": [item.as_posix() for item in FORBIDDEN_PAYLOAD_ROOTS],
         "forbidden_payload_names": sorted(FORBIDDEN_PAYLOAD_NAMES),
     }
 
