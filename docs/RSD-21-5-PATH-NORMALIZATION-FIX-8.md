@@ -1,0 +1,1 @@
+Evidence path normalization keeps artifact reports deterministic across Windows and POSIX hosts.

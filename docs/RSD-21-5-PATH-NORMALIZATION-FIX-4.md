@@ -1,0 +1,1 @@
+The production E2E evidence contract uses canonical POSIX artifact paths independent of the host OS.
