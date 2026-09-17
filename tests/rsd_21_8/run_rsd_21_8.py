@@ -17,6 +17,15 @@ def _make_firmware(root):
     (firmware/"main"/"main.cpp").write_text("void setup() {}\nvoid loop() {}\n",encoding="utf-8")
     return firmware
 
+def _make_runtime(root):
+    runtime_bin=root/"python-runtime"; (runtime_bin/"Lib"/"site-packages"/"platformio").mkdir(parents=True); (runtime_bin/"python.exe").write_bytes(b"portable-python"); (runtime_bin/"Lib"/"site-packages"/"platformio"/"__init__.py").write_text("__version__='fixture'\n",encoding="utf-8")
+    runtime_platformio=root/"platformio-runtime"; platform=runtime_platformio/"platforms"/"espressif32"; platform.mkdir(parents=True)
+    (platform/"platform.json").write_text(json.dumps({"name":"espressif32","version":"6.12.0","frameworks":{"arduino":{"package":"framework-arduinoespressif32"}},"packages":{"toolchain-xtensa-esp32":{"version":">=1.0.0"},"framework-arduinoespressif32":{"version":"1.0.0"}}},indent=2)+"\n",encoding="utf-8")
+    toolchain=runtime_platformio/"packages"/"toolchain-xtensa-esp32"; toolchain.mkdir(parents=True); (toolchain/"package.json").write_text('{"name":"toolchain-xtensa-esp32","version":"1.2.0","dependencies":{}}\n',encoding="utf-8")
+    framework=runtime_platformio/"packages"/"framework-arduinoespressif32"; framework.mkdir(parents=True); (framework/"package.json").write_text('{"name":"framework-arduinoespressif32","version":"1.0.0","dependencies":{}}\n',encoding="utf-8")
+    (runtime_platformio/"deployment-runtime.json").write_text(json.dumps({"schema":"antechkids.robostudio.deployment-runtime","schema_version":1,"platformio_core":{"source_not_embedded":True,"required_directories":["platforms","packages"],"file_count":0},"runtime_layout":{"core_dir":"runtime/platformio","python":"runtime/bin/python.exe","platformio_module":"platformio"},"portable_python_required":True,"host_virtualenv_included":False},indent=2)+"\n",encoding="utf-8")
+    return runtime_bin,runtime_platformio
+
 def main():
     compiler_root=ROOT/"robot-compiler"; frontend_root=ROOT/"robot-frontend-robosim"/"frontend"
     check("real compiler entry exists",(compiler_root/"main.py").is_file())
@@ -25,8 +34,7 @@ def main():
         base=Path(td); inputs=base/"inputs"; inputs.mkdir(); exe=inputs/"RoboStudio.exe"; exe.write_bytes(b"fixture")
         (inputs/"VERSION").write_text("1.2.3\n",encoding="utf-8")
         resources=inputs/"resources"; (resources/"robot-isa").mkdir(parents=True); (resources/"robot-isa"/"target_profiles.json").write_text('{"targets":[]}\n',encoding="utf-8")
-        runtime_bin=inputs/"python-runtime"; (runtime_bin/"Lib"/"site-packages"/"platformio").mkdir(parents=True); (runtime_bin/"python.exe").write_bytes(b"portable-python"); (runtime_bin/"Lib"/"site-packages"/"platformio"/"__init__.py").write_text("__version__='fixture'\n",encoding="utf-8")
-        runtime_platformio=inputs/"platformio-runtime"; (runtime_platformio/"platforms"/"espressif32").mkdir(parents=True); (runtime_platformio/"packages"/"tool-esptoolpy").mkdir(parents=True)
+        runtime_bin,runtime_platformio=_make_runtime(inputs)
         firmware=_make_firmware(inputs); dist=base/"dist"
         result=production_distribution.build_production_distribution(production_distribution.ProductionDistributionInputs(exe,resources,inputs/"VERSION",runtime_bin,runtime_platformio,compiler_root,frontend_root,firmware),dist)
         manifest=json.loads(result.manifest.read_text(encoding="utf-8"))
@@ -56,8 +64,7 @@ def main():
         check("contract returns PASS",payload["status"]=="PASS")
         check("real compiler output exists",out.is_file() and out.stat().st_size>0)
         check("contract report exists",report.is_file())
-        compiled=out.read_text(encoding="utf-8")
-        check("compiled output contains generated program",len(compiled)>0)
+        check("compiled output contains generated program",len(out.read_text(encoding="utf-8"))>0)
         check("report records source kind",json.loads(report.read_text(encoding="utf-8"))["source_kind"]=="robosim-python")
     print("RSD-21.8 Real RoboStudio ↔ Compiler Contract checks: PASS")
     return 0
