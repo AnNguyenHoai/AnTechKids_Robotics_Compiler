@@ -55,6 +55,9 @@ def firmware_template()->Path:
  return ROOT/"robot-platform"
 
 def deployment_environment(project_name:str)->dict[str,str]:
+ # RSD-11: explicitly materialize the writable build workspace before
+ # resolving the PlatformIO deployment environment.
+ build_isolation.prepare_build_workspace(project_name)
  env=deployment_runtime_environment(os.environ.copy(),project_name=project_name)
  env.update(build_isolation.build_environment(project_name,env));return env
 
@@ -111,7 +114,7 @@ def main()->int:
   if not a.robot or not ssid:p.error("--mode ota requires --robot and --ssid (or ROBOT_WIFI_SSID)")
   if not ota_password:p.error("--mode ota requires --ota-password or ROBOT_OTA_PASSWORD")
   normalize_robot_host(a.robot)
- project=source.stem;build_dir=build_isolation.build_root(project);header=compile_program(source,build_dir,a.process_timeout);capabilities=infer_capabilities(header);manifest_path=build_dir/"deployment_manifest.json";manifest=create_manifest(build_dir,"esp32",capabilities,source_path=source,platformio_environment="esp32dev_ota" if a.mode=="ota" else "esp32dev");write_manifest(manifest,manifest_path);validate_manifest(manifest_path,expected_target="esp32")
+ project=source.stem;build_isolation.prepare_build_workspace(project);build_dir=build_isolation.build_root(project);header=compile_program(source,build_dir,a.process_timeout);capabilities=infer_capabilities(header);manifest_path=build_dir/"deployment_manifest.json";manifest=create_manifest(build_dir,"esp32",capabilities,source_path=source,platformio_environment="esp32dev_ota" if a.mode=="ota" else "esp32dev");write_manifest(manifest,manifest_path);validate_manifest(manifest_path,expected_target="esp32")
  workspace=firmware_workspace.prepare_firmware_workspace(firmware_template(),project);firmware_workspace.install_generated_header(header,workspace);env=deployment_environment(project)
  if ssid:env.update({"ROBOT_WIFI_SSID":ssid,"ROBOT_WIFI_PASSWORD":wifi_password})
  if ota_password:env["ROBOT_OTA_PASSWORD"]=ota_password
