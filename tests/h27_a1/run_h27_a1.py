@@ -27,21 +27,17 @@ def load_discovery_tool():
 
 
 def has_cpp_json_key(source: str, key: str) -> bool:
-    """Accept JSON keys represented as C++ escaped string literals.
-
-    C++ JSON builders commonly store a quote as `\\"`, so a raw source check
-    for `\"key\"` is incorrect even though the generated JSON contains the
-    required key. Keep the contract source-based, but match both spellings.
-    """
+    """Accept JSON keys represented as C++ escaped string literals."""
     raw_key = f'"{key}"'
     escaped_key = f'\\"{key}\\"'
     return raw_key in source or escaped_key in source
 
 
 def has_ota_manifest_environment(source: str) -> bool:
-    """Check the OTA/build environment mapping without depending on spacing."""
+    """Check the OTA/build environment mapping without depending on formatting or local variable naming."""
     return re.search(
-        r'platformio_environment\s*=\s*"esp32dev_ota"\s+if\s+args\.mode\s*==\s*"ota"\s+else\s*"esp32dev"',
+        r'platformio_environment\s*=\s*"esp32dev_ota"\s+if\s+'
+        r'(?:args|a)\.mode\s*==\s*"ota"\s+else\s*"esp32dev"',
         source,
     ) is not None
 
@@ -73,7 +69,7 @@ def main() -> int:
     assert "bool isOtaReady();" in network_h
     assert "bool isUpdateInProgress();" in network_h
     assert "setRobotReady(bool value)" in network_h
-    assert "ROBOT_OTA_PASSWORD \"\"" in network_cpp
+    assert "ROBOT_OTA_PASSWORD \\"\\"" in network_cpp
     assert "g_robotReady && g_networkReady" in network_cpp
     assert "RobotIdentity::infoJson(g_robotReady, g_networkReady, g_otaReady)" in network_cpp
     assert "will retry" in network_cpp
