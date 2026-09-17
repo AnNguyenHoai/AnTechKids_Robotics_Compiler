@@ -39,54 +39,16 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          if (Test-Path requirements.txt) {
-            python -m pip install -r requirements.txt
-          }
-          python -m pip install pytest
+          python -m pip install -r tests/requirements-ci.txt
 
-      - name: Run pytest
+      - name: Validate test topology
         shell: pwsh
-        run: python -m pytest -q
+        run: |
+          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests','run_all_tests.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing test boundaries/runner: {missing}'; print('PASS: test topology boundaries')"
 
-      - name: RSD-11
+      - name: Run repository regression suite
         shell: pwsh
-        run: python tests/rsd_11/run_rsd_11.py
-
-      - name: RSD-15
-        shell: pwsh
-        run: python tests/rsd_15/run_rsd_15.py
-
-      - name: RSD-17
-        shell: pwsh
-        run: python tests/rsd_17/run_rsd_17.py
-
-      - name: RSD-20
-        shell: pwsh
-        run: python tests/rsd_20/run_rsd_20.py
-
-      - name: RSD-21.3
-        shell: pwsh
-        run: python tests/rsd_21_3/run_rsd_21_3.py
-
-      - name: RSD-21.4
-        shell: pwsh
-        run: python tests/rsd_21_4/run_rsd_21_4.py
-
-      - name: RSD-21.5
-        shell: pwsh
-        run: python tests/rsd_21_5/run_rsd_21_5.py
-
-      - name: RSD-21.6
-        shell: pwsh
-        run: python tests/rsd_21_6/run_rsd_21_6.py
-
-      - name: RSD-21.7
-        shell: pwsh
-        run: python tests/rsd_21_7/run_rsd_21_7.py
-
-      - name: RSD-21.8
-        shell: pwsh
-        run: python tests/rsd_21_8/run_rsd_21_8.py
+        run: python run_all_tests.py
 
       - name: Collect test artifacts
         if: always()
