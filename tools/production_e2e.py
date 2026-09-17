@@ -1,8 +1,8 @@
 """Production RoboStudio + Compiler E2E orchestration.
 
-The production ZIP is the system under test. RoboStudio and the application-owned
-compiler are resolved from the extracted artifact; Python remains an external
-target-machine prerequisite used to execute the packaged Python compiler.
+The production ZIP is the system under test. RoboStudio, the application-owned
+compiler, and the application-owned Python runtime are resolved from the
+extracted artifact.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from pathlib import Path
 
 DEFAULT_TIMEOUT = 30.0
 COMPILER_ENTRY = Path("compiler") / "main.py"
+PYTHON_ENTRY = Path("runtime") / "bin" / "python.exe"
 
 
 class ProductionE2EError(RuntimeError):
@@ -70,11 +71,16 @@ def _find_compiler(root: Path) -> Path | None:
     return candidate if candidate.is_file() else None
 
 
-def _run(command: list[str], *, cwd: Path, timeout: float, label: str) -> subprocess.CompletedProcess[str]:
+def _find_python(root: Path) -> Path | None:
+    candidate = root / PYTHON_ENTRY
+    return candidate if candidate.is_file() else None
+
+
+def _run(command: list[str], *, cwd: Path, timeout: float, label: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     if not command:
         raise ProductionE2EError(f"{label} command is empty")
     try:
-        return subprocess.run(command, cwd=cwd, check=True, timeout=timeout, text=True, capture_output=True, shell=False)
+        return subprocess.run(command, cwd=cwd, env=env, check=True, timeout=timeout, text=True, capture_output=True, shell=False)
     except FileNotFoundError as exc:
         raise ProductionE2EError(f"{label} command is unavailable: {command[0]}") from exc
     except subprocess.TimeoutExpired as exc:
@@ -110,6 +116,7 @@ def evaluate_production_artifact(
     compile_command: list[str] | None = None,
     launch_command: list[str] | None = None,
     timeout: float = DEFAULT_TIMEOUT,
+    environment: dict[str, str] | None = None,
 ) -> ProductionE2EResult:
     artifact = Path(artifact).resolve()
     source = Path(source).resolve()
@@ -130,8 +137,11 @@ def evaluate_production_artifact(
         if root not in app.parents:
             raise ProductionE2EError("RoboStudio resolved outside production artifact")
         compiler = _find_compiler(root)
+        bundled_python = _find_python(root)
         if compiler is None and compile_command:
             raise ProductionE2EError("application-owned compiler entry point is missing from production artifact")
+        if bundled_python is None and (compile_command or launch_command):
+            raise ProductionE2EError("application-owned Python runtime is missing from production artifact")
 
         started = compiled = False
         output = root / "e2e-output" / "program.h"
@@ -139,21 +149,29 @@ def evaluate_production_artifact(
         evidence = {
             "robostudio": str(app.relative_to(root)),
             "compiler": str(compiler.relative_to(root)) if compiler else None,
+            "bundled_python": str(bundled_python.relative_to(root)) if bundled_python else None,
             "source": str(source),
             "launch_requested": launch,
             "target_cwd": str(app.parent),
             "compiler_output_contract": str(output.relative_to(root)),
         }
 
+        values = {
+            "app": app,
+            "compiler": compiler or root / COMPILER_ENTRY,
+            "python": bundled_python or root / PYTHON_ENTRY,
+            "source": source,
+            "output": output,
+        }
         if launch and launch_command:
-            launch_result = _run(_render_command(launch_command, app=app, compiler=compiler or root / COMPILER_ENTRY, source=source, output=output), cwd=app.parent, timeout=timeout, label="RoboStudio launch")
+            launch_result = _run(_render_command(launch_command, **values), cwd=app.parent, timeout=timeout, label="RoboStudio launch", env=environment)
             started = True
             evidence["launch_returncode"] = launch_result.returncode
             evidence["launch_stdout"] = launch_result.stdout
             evidence["launch_stderr"] = launch_result.stderr
 
         if compile_command:
-            compile_result = _run(_render_command(compile_command, app=app, compiler=compiler or root / COMPILER_ENTRY, source=source, output=output), cwd=app.parent, timeout=timeout, label="compiler E2E")
+            compile_result = _run(_render_command(compile_command, **values), cwd=app.parent, timeout=timeout, label="compiler E2E", env=environment)
             compiled = output.is_file() and output.stat().st_size > 0
             evidence["compile_returncode"] = compile_result.returncode
             evidence["compile_stdout"] = compile_result.stdout
