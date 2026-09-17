@@ -4,10 +4,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tools import distribution_package, production_artifact_boundary, runtime_resources
+from tools import distribution_package, production_artifact_boundary, production_platformio_closure, runtime_resources
 
 SCHEMA = "antechkids.robostudio.production-runtime-closure"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 FORBIDDEN_NAMES = frozenset({".git", ".venv", ".pio", "penv", "__pycache__", ".pytest_cache"})
 
 
@@ -30,7 +30,7 @@ def _required_paths(application: str) -> tuple[Path, ...]:
 
 
 def _payload_files(root: Path) -> set[str]:
-    excluded = {distribution_package.DISTRIBUTION_MANIFEST, production_artifact_boundary.BOUNDARY_MANIFEST}
+    excluded = {distribution_package.DISTRIBUTION_MANIFEST, production_artifact_boundary.BOUNDARY_MANIFEST, "production-runtime-closure.json"}
     return {path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file() and path.name not in excluded}
 
 
@@ -101,7 +101,23 @@ def validate_distribution(root: Path) -> dict[str, object]:
     if forbidden:
         raise RuntimeError("Production runtime closure contains developer-only payload: " + ", ".join(forbidden))
     resource_manifest = runtime_resources.validate_resource_manifest(root / "runtime" / "resources" / runtime_resources.RESOURCE_MANIFEST_NAME)
-    return {"schema": SCHEMA, "schema_version": SCHEMA_VERSION, "status": "PASS", "application": application, "required_paths": [p.as_posix() for p in _required_paths(application)], "payload_file_count": len(payload_files), "runtime_resource_manifest": resource_manifest["schema"], "production_boundary": True, "runtime_model": "application-owned", "firmware_model": "packaged-project"}
+    try:
+        platformio_evidence = production_platformio_closure.validate_distribution(root)
+    except production_platformio_closure.ProductionPlatformIOClosureError as exc:
+        raise RuntimeError(f"Production PlatformIO dependency closure failed: {exc}") from exc
+    return {
+        "schema": SCHEMA,
+        "schema_version": SCHEMA_VERSION,
+        "status": "PASS",
+        "application": application,
+        "required_paths": [p.as_posix() for p in _required_paths(application)],
+        "payload_file_count": len(payload_files),
+        "runtime_resource_manifest": resource_manifest["schema"],
+        "production_boundary": True,
+        "runtime_model": "application-owned",
+        "firmware_model": "packaged-project",
+        "platformio_dependency_closure": platformio_evidence,
+    }
 
 
 def write_evidence(root: Path, output: Path | None = None) -> Path:

@@ -13,7 +13,7 @@ if __package__ in (None, ""):
     if str(_repository_root) not in sys.path:
         sys.path.insert(0, str(_repository_root))
 
-from tools import distribution_package
+from tools import distribution_package, production_platformio_closure
 
 PRODUCTION_SCHEMA = "antechkids.robostudio.production-distribution"
 PRODUCTION_SCHEMA_VERSION = 4
@@ -143,6 +143,10 @@ def validate_inputs(inputs: ProductionDistributionInputs, output: Path | None = 
     _validate_firmware(firmware)
     _validate_runtime_bin(runtime_bin)
     _validate_runtime_platformio(runtime_platformio)
+    try:
+        production_platformio_closure.validate_firmware_project(firmware, runtime_platformio)
+    except production_platformio_closure.ProductionPlatformIOClosureError as exc:
+        raise ProductionDistributionError(f"PlatformIO dependency closure failed: {exc}") from exc
 
     if output is not None:
         output = _resolve_root(output)
