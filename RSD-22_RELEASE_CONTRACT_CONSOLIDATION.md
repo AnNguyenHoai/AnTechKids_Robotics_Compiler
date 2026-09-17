@@ -2,25 +2,13 @@
 
 ## 1. Purpose
 
-RSD-22 is the single authoritative contract for the RoboStudio production
-release boundary.
+RSD-22 is the single authoritative contract for the RoboStudio production release boundary.
 
-It consolidates the release assumptions that had accumulated across RSD-07,
-RSD-09, RSD-12, RSD-13, RSD-16, RSD-17, RSD-18, RSD-20-P, RSD-20-P.1 and
-RSD-21.x, and explicitly separates **current implementation behavior** from the
-**final zero-development-machine target**.
-
-The goal is to prevent later tasks from silently reintroducing dependencies on
-the developer checkout, current working directory, host Python, host
-PlatformIO, virtual environments, or host-specific paths.
+It consolidates the release assumptions that had accumulated across RSD-07, RSD-09, RSD-12, RSD-13, RSD-16, RSD-17, RSD-18, RSD-20-P, RSD-20-P.1 and RSD-21.x, and explicitly separates implementation behavior from the final zero-development-machine target.
 
 ## 2. Authority
 
-For any conflict between an older release document and this document, this
-contract wins.
-
-Later implementation tasks must reference RSD-22 rather than creating another
-parallel definition of the production release boundary.
+For any conflict between an older release document and this document, this contract wins. Later implementation tasks must reference RSD-22 rather than creating another parallel definition of the production release boundary.
 
 ## 3. Production release artifact
 
@@ -32,10 +20,7 @@ RoboStudio-<version>-Windows.zip
 
 The ZIP is the unit that is copied to another machine.
 
-The release must be relocatable. Its application, compiler contract, compiler
-frontend, application resources, launcher, manifests and application-local
-DLLs must resolve relative to the extracted release root rather than the
-repository checkout or the caller's current working directory.
+The release must be relocatable. Its application, compiler contract, compiler frontend, application resources, launcher, manifests, runtime and application-local DLLs must resolve relative to the extracted release root rather than the repository checkout or the caller's current working directory.
 
 Canonical layout:
 
@@ -47,115 +32,49 @@ RoboStudio-<version>/
 ├── compiler/
 │   ├── main.py
 │   ├── robostudio_bridge.py
-│   ├── compiler/
 │   └── frontend/
 ├── runtime/
-│   └── application resources owned by the release
+│   ├── bin/          # application-owned Python
+│   ├── platformio/   # application-owned PlatformIO core/packages/platforms
+│   └── resources/
 └── release manifests
 ```
 
-The exact manifest file names remain owned by the existing release tooling.
-The logical ownership above is normative.
-
 ## 4. Source-of-truth and path rules
 
-Production release code MUST:
-
-- resolve application-owned resources from the release root or an explicit
-  release input;
-- never discover production dependencies through `PATH`;
-- never use the caller's current working directory as an implicit release root;
-- never depend on a developer virtual environment;
-- never embed the developer checkout path into the shipped artifact;
-- never use user-local PlatformIO state as a production dependency;
-- keep temporary staging outside the final distribution;
-- reject unsafe or ambiguous release inputs rather than guessing.
-
-A release may be launched from any unrelated working directory.
+Production release code MUST resolve application-owned resources from the release root or an explicit release input; never discover production dependencies through PATH; never use the caller's current working directory as an implicit release root; never depend on a developer virtual environment; never embed the developer checkout path into the shipped artifact; never use user-local PlatformIO state as a production dependency; keep temporary staging outside the final distribution; and reject unsafe or ambiguous release inputs rather than guessing.
 
 ## 5. Toolchain boundary
 
-There are two distinct concepts and they must not be conflated.
+RSD-23 changes the toolchain boundary established by the earlier RSD-21.x implementation.
 
-### 5.1 Current implementation contract
+The production artifact now owns the Windows Python runtime and PlatformIO runtime required by RoboStudio. The final target-machine contract is therefore:
 
-The current RoboStudio production distribution implementation packages the
-application and compiler payload but treats Python and PlatformIO as target
-machine prerequisites. This is reflected by the current RSD-21.6 regression
-contract.
+> A user should be able to extract the release on another supported Windows machine and use RoboStudio without installing a developer Python/PlatformIO environment or cloning the repository.
 
-This is an explicit **current-state boundary**, not a claim that the final
-zero-development-machine objective has been completed.
-
-### 5.2 Final product target
-
-The final productization target is:
-
-> A user should be able to extract the release on another supported Windows
-> machine and use RoboStudio without installing a developer Python/PlatformIO
-> environment or cloning the repository.
-
-The work required to reach that target is RSD-23 and subsequent clean-machine
-qualification. RSD-22 does not pretend to implement that runtime bundling.
-
-When RSD-23 is complete, application-owned Python and PlatformIO runtime inputs
-must be treated as release-owned dependencies and the release proof must verify
-their closure.
+RSD-23 implements deterministic assembly of those application-owned runtime inputs. RSD-24 remains responsible for proving the result on a clean Windows machine.
 
 ## 6. Application boundary
 
-The production artifact owns:
+The production artifact owns RoboStudio executable, application-local DLLs, launcher, compiler entry point, compiler implementation, RoboSim frontend, application resources, VERSION/release metadata, application-owned Python, application-owned PlatformIO core/packages/platforms, and integrity/provenance evidence generated by the release pipeline.
 
-- RoboStudio executable;
-- application-local DLLs required by the executable;
-- launcher;
-- compiler entry point and implementation required by the compiler contract;
-- RoboSim frontend required by the compiler contract;
-- application resources;
-- VERSION and release metadata;
-- integrity/provenance evidence generated by the release pipeline.
-
-The production artifact must not contain:
-
-- repository `.git` data;
-- developer virtual environments;
-- Python cache directories;
-- pytest caches;
-- PlatformIO `penv`;
-- unrelated build products;
-- developer-machine absolute paths.
+The production artifact must not contain repository `.git` data, developer virtual environments, Python cache directories, pytest caches, PlatformIO `penv`, unrelated build products, or developer-machine absolute paths.
 
 ## 7. Launcher contract
 
-`RoboStudio.cmd` is the canonical Windows entry point.
-
-It MUST:
-
-1. resolve `RoboStudio.exe` relative to `%~dp0`;
-2. make the release directory the process working directory;
-3. forward `%*` unchanged;
-4. fail clearly when the executable is absent;
-5. propagate the application's exit code;
-6. contain no repository or developer-machine path.
+`RoboStudio.cmd` is the canonical Windows entry point. It MUST resolve `RoboStudio.exe` relative to `%~dp0`, make the release directory the process working directory, forward `%*` unchanged, fail clearly when the executable is absent, propagate the application's exit code, and contain no repository or developer-machine path.
 
 ## 8. Compiler contract
 
-The production release exposes the stable RoboStudio compiler bridge:
+The production release exposes the stable compiler bridge:
 
 ```text
 compiler/robostudio_bridge.py
 ```
 
-RoboStudio communicates through the documented JSON contract and does not
-couple itself to compiler implementation internals.
-
-The production ZIP must therefore contain the real compiler/frontend payload
-needed to execute that bridge; test fixtures are not acceptable production
-substitutes.
+RoboStudio communicates through the documented JSON contract and does not couple itself to compiler implementation internals. The production ZIP must contain the real compiler/frontend payload needed to execute that bridge; test fixtures are not acceptable production substitutes.
 
 ## 9. Release pipeline
-
-The canonical release qualification flow is:
 
 ```text
 Real production build outputs
@@ -174,65 +93,30 @@ RSD-20-P portable dependency proof
         ↓
 RSD-20-P.1 production artifact assembly
         ↓
-RSD-16 clean-machine acceptance
+RSD-23 application-owned runtime packaging
+        ↓
+RSD-16 / RSD-24 clean-machine acceptance
         ↓
 RSD-21.5 / RSD-21.8 compiler E2E
-        ↓
-RSD-24 real clean Windows qualification
         ↓
 H28 robot E2E qualification
 ```
 
-The release is not considered production-qualified merely because unit or
-contract tests pass.
+The release is not considered production-qualified merely because unit or contract tests pass.
 
 ## 10. Evidence requirements
 
-A production release must have machine-readable evidence for:
-
-- release version;
-- source revision;
-- artifact file inventory;
-- artifact integrity/hash;
-- provenance;
-- portable/dependency proof;
-- clean-machine acceptance result.
-
-The final release ZIP and its evidence sidecars must be traceable to the same
-source revision and release version.
+A production release must have machine-readable evidence for release version, source revision, artifact inventory, integrity/hash, provenance, portable/dependency proof, and clean-machine acceptance. The final release ZIP and evidence sidecars must be traceable to the same source revision and release version.
 
 ## 11. Clean-machine definition
 
-A clean-machine qualification must run the actual shipped ZIP from outside
-the repository checkout and from an unrelated working directory.
+A clean-machine qualification must run the actual shipped ZIP from outside the repository checkout and from an unrelated working directory. At minimum it must prove extraction succeeds, launcher starts the application boundary, application paths remain inside the release boundary, hostile host Python/virtualenv settings cannot redirect the packaged runtime, hostile PlatformIO settings cannot redirect application-owned toolchain paths, compiler E2E works from the packaged payload, GUI startup is verified on Windows, and intended robot discovery/upload workflow is verified with real hardware.
 
-At minimum it must prove:
-
-- extraction succeeds;
-- launcher starts the application boundary;
-- application paths remain inside the release boundary;
-- hostile host Python/virtualenv settings cannot redirect the packaged runtime;
-- hostile PlatformIO settings cannot redirect application-owned toolchain paths;
-- compiler E2E works from the packaged payload;
-- GUI startup is verified on Windows;
-- intended robot discovery/upload workflow is verified with real hardware.
-
-Automated contract tests may prove individual boundaries, but they do not
-replace the final GUI and hardware qualification.
+Automated contract tests may prove individual boundaries, but they do not replace the final GUI and hardware qualification.
 
 ## 12. Fail-closed rules
 
-Release assembly MUST fail rather than produce a release-ready artifact when:
-
-- a required production input is missing;
-- the release contains unsafe ZIP members;
-- required application payload is absent;
-- a forbidden developer path is detected;
-- required integrity/provenance evidence cannot be generated;
-- dependency proof fails;
-- clean-machine acceptance fails.
-
-A failed gate must never be reported as a successful release.
+Release assembly MUST fail rather than produce a release-ready artifact when a required production input is missing; the release contains unsafe ZIP members; required application/runtime payload is absent; a forbidden developer path is detected; required integrity/provenance evidence cannot be generated; dependency proof fails; or clean-machine acceptance fails.
 
 ## 13. Ownership matrix
 
@@ -245,16 +129,15 @@ A failed gate must never be reported as a successful release.
 | Integrity | RSD-19 |
 | Portable dependency proof | RSD-20-P |
 | Production artifact assembly | RSD-20-P.1 |
+| Application-owned Python/PlatformIO packaging | RSD-23 |
 | Clean-machine automated boundary | RSD-16 |
-| Compiler/application contract | RSD-21.5 / RSD-21.8 |
-| Final zero-development-machine packaging | RSD-23 |
 | Real clean Windows qualification | RSD-24 |
+| Compiler/application contract | RSD-21.5 / RSD-21.8 |
 | Real robot E2E | H28 |
 
 ## 14. Supersession rule
 
-The following documents remain useful as implementation history, but their
-release-boundary statements are subordinate to RSD-22:
+The following documents remain useful as implementation history, but their release-boundary statements are subordinate to RSD-22 and RSD-23 where runtime ownership is concerned:
 
 - RSD-16_CLEAN_MACHINE_RELEASE_ACCEPTANCE.md
 - RSD-17_PRODUCTION_DISTRIBUTION_BUILDER.md
@@ -263,17 +146,9 @@ release-boundary statements are subordinate to RSD-22:
 - RSD-21.6_PRODUCTION_RELEASE_LAUNCHER.md
 - RSD-21.8_REAL_ROBOSTUDIO_COMPILER_CONTRACT.md
 
-Future changes to these documents must not redefine the production boundary
-independently of RSD-22.
-
 ## 15. Verification
 
-RSD-22 is a contract-consolidation task. Its regression suite verifies that the
-canonical contract is internally consistent and that the known conflicting
-legacy statements are explicitly classified as current-state or superseded
-rather than silently treated as final product requirements.
-
 ```powershell
-python tests\rsd_22\run_rsd_22.py
+python tests\rsd_23\run_rsd_23.py
 python run_all_tests.py
 ```

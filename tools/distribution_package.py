@@ -4,7 +4,7 @@ import hashlib, json, shutil
 from dataclasses import dataclass
 from pathlib import Path
 from tools import production_artifact_boundary, runtime_integrity, runtime_resources
-DISTRIBUTION_MANIFEST="distribution-manifest.json"; SCHEMA="antechkids.robostudio.distribution"; SCHEMA_VERSION=2
+DISTRIBUTION_MANIFEST="distribution-manifest.json"; SCHEMA="antechkids.robostudio.distribution"; SCHEMA_VERSION=3
 class DistributionPackageError(RuntimeError): pass
 @dataclass(frozen=True)
 class DistributionInputs:
@@ -72,9 +72,19 @@ def _copy_compiler(compiler_root:Path|None,frontend_root:Path|None,output:Path)-
         frontend=Path(frontend_root).resolve()
         if not frontend.is_dir(): raise DistributionPackageError(f"Missing RoboSim frontend: {frontend}")
         frontend_destination=destination/"frontend"
-        if frontend_destination.exists():
-            raise DistributionPackageError(f"Compiler source already contains frontend payload: {frontend_destination}")
+        if frontend_destination.exists(): raise DistributionPackageError(f"Compiler source already contains frontend payload: {frontend_destination}")
         shutil.copytree(frontend,frontend_destination,ignore=shutil.ignore_patterns("__pycache__",".pytest_cache",".git",".venv",".pio","penv"))
+
+def _validate_production_runtime(inputs:DistributionInputs)->None:
+    if inputs.runtime_bin is None or inputs.runtime_platformio is None:
+        raise DistributionPackageError("Production distribution requires application-owned Python and PlatformIO runtimes")
+    python=Path(inputs.runtime_bin).resolve()/"python.exe"
+    if not python.is_file(): raise DistributionPackageError(f"Bundled Windows Python is missing: {python}")
+    platformio=Path(inputs.runtime_platformio).resolve()
+    for directory in ("platforms","packages"):
+        if not (platformio/directory).is_dir(): raise DistributionPackageError(f"Bundled PlatformIO {directory} directory is missing")
+    manifest=platformio/"deployment-runtime.json"
+    if not manifest.is_file(): raise DistributionPackageError(f"Bundled PlatformIO deployment manifest is missing: {manifest}")
 
 def _validate_legacy_runtime_inputs(inputs:DistributionInputs)->None:
     if inputs.runtime_bin is None or inputs.runtime_platformio is None or inputs.runtime_resources is None: raise DistributionPackageError("Legacy distribution assembly requires runtime_bin, runtime_platformio, and runtime_resources")
@@ -88,30 +98,28 @@ def assemble_distribution(inputs:DistributionInputs,output:Path)->Path:
     if not executable.is_file(): raise DistributionPackageError(f"Missing RoboStudio executable: {executable}")
     shutil.copy2(executable,output/executable.name); _copy_application_dependencies(executable,output); _copy_application_metadata(executable,output)
     if inputs.production_boundary:
-        if inputs.runtime_bin is not None or inputs.runtime_platformio is not None: raise DistributionPackageError("Production artifact boundary forbids bundled Python and PlatformIO inputs")
         if inputs.runtime_resources is None: raise DistributionPackageError("Production artifact assembly requires application resources")
-        _copy_launcher(inputs.launcher,output); _copy_compiler(inputs.compiler_root,inputs.frontend_root,output)
+        _validate_production_runtime(inputs); _copy_launcher(inputs.launcher,output); _copy_compiler(inputs.compiler_root,inputs.frontend_root,output)
+        _copy_tree(Path(inputs.runtime_bin),output/"runtime"/"bin","portable Python"); _copy_tree(Path(inputs.runtime_platformio),output/"runtime"/"platformio","PlatformIO runtime")
         resource_output=output/"runtime"/"resources"; _copy_tree(Path(inputs.runtime_resources),resource_output,"application resources"); _normalize_production_resources(resource_output); runtime_resources.write_resource_manifest(resource_output)
         try: production_artifact_boundary.validate_distribution_root(output); production_artifact_boundary.write_boundary_manifest(output)
         except production_artifact_boundary.ProductionArtifactBoundaryError as exc: raise DistributionPackageError(f"Production artifact boundary validation failed: {exc}") from exc
-        portable,runtime_root=False,"runtime"
+        portable,runtime_root=True,"runtime"
     else:
         _validate_legacy_runtime_inputs(inputs); _copy_tree(Path(inputs.runtime_bin),output/"runtime"/"bin","portable Python"); _copy_tree(Path(inputs.runtime_platformio),output/"runtime"/"platformio","PlatformIO"); _copy_tree(Path(inputs.runtime_resources),output/"runtime"/"resources","runtime resources"); runtime_resources.write_resource_manifest(output/"runtime"/"resources")
         if not (output/"runtime"/"platformio"/"deployment-runtime.json").is_file(): raise DistributionPackageError("PlatformIO deployment manifest is missing")
         portable,runtime_root=True,"runtime"
         try:
-            from tools import runtime_preflight; runtime_preflight.validate_distribution(output)
-            runtime_integrity.write_runtime_manifest(output)
+            from tools import runtime_preflight; runtime_preflight.validate_distribution(output); runtime_integrity.write_runtime_manifest(output)
         except Exception as exc: raise DistributionPackageError(f"Assembled distribution runtime validation failed: {exc}") from exc
     packaged_frontend=(output/"compiler"/"frontend").is_dir() if inputs.production_boundary else False
-    manifest={"schema":SCHEMA,"schema_version":SCHEMA_VERSION,"application":executable.name,"portable":portable,"artifact_model":"RoboStudio + Compiler" if inputs.production_boundary else "legacy-runtime","runtime_root":runtime_root,"production_boundary":inputs.production_boundary,"compiler":"compiler/main.py" if inputs.production_boundary else None,"compiler_contract":"compiler/robostudio_bridge.py" if inputs.production_boundary else None,"frontend":"compiler/frontend" if packaged_frontend else None,"files":_file_entries(output)}
+    manifest={"schema":SCHEMA,"schema_version":SCHEMA_VERSION,"application":executable.name,"portable":portable,"artifact_model":"RoboStudio + Compiler","runtime_root":runtime_root,"production_boundary":inputs.production_boundary,"compiler":"compiler/main.py" if inputs.production_boundary else None,"compiler_contract":"compiler/robostudio_bridge.py" if inputs.production_boundary else None,"frontend":"compiler/frontend" if packaged_frontend else None,"files":_file_entries(output)}
     manifest_path=output/DISTRIBUTION_MANIFEST; manifest_path.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
     if inputs.production_boundary:
         try:
             from tools import production_runtime_closure
             production_runtime_closure.validate_distribution(output)
-        except Exception as exc:
-            raise DistributionPackageError(f"Production runtime dependency closure failed: {exc}") from exc
+        except Exception as exc: raise DistributionPackageError(f"Production runtime dependency closure failed: {exc}") from exc
     return manifest_path
 
 def validate_distribution_manifest(path:Path)->dict:
@@ -134,4 +142,6 @@ def validate_distribution_manifest(path:Path)->dict:
         for key in ("compiler","compiler_contract"):
             if manifest.get(key) and not (root/str(manifest[key])).is_file(): raise DistributionPackageError(f"Production distribution {key} is missing")
         if manifest.get("frontend") and not (root/str(manifest["frontend"])).is_dir(): raise DistributionPackageError("Production RoboSim frontend payload is missing")
+        for relative in (Path("runtime/bin/python.exe"),Path("runtime/platformio/deployment-runtime.json"),Path("runtime/platformio/platforms"),Path("runtime/platformio/packages")):
+            if not (root/relative).exists(): raise DistributionPackageError(f"Production bundled runtime is missing: {relative.as_posix()}")
     return manifest
