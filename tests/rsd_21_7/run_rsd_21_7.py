@@ -48,6 +48,30 @@ def _make_runtime(root: Path) -> tuple[Path, Path]:
     return runtime_bin, runtime_platformio
 
 
+def _make_firmware(root: Path) -> Path:
+    firmware = root / "firmware"
+    (firmware / "main").mkdir(parents=True)
+    (firmware / "platformio.ini").write_text(
+        "[platformio]\n"
+        "src_dir = main\n\n"
+        "[env:esp32dev]\n"
+        "platform = espressif32@6.12.0\n"
+        "board = esp32dev\n"
+        "framework = arduino\n\n"
+        "[env:esp32dev_ota]\n"
+        "extends = env:esp32dev\n"
+        "upload_protocol = espota\n\n"
+        "[env:esp32dev_bootstrap]\n"
+        "extends = env:esp32dev\n",
+        encoding="utf-8",
+    )
+    (firmware / "wifi_config.py").write_text("# clean production fixture\n", encoding="utf-8")
+    (firmware / "main" / "main.cpp").write_text(
+        "void setup() {}\nvoid loop() {}\n", encoding="utf-8"
+    )
+    return firmware
+
+
 def main() -> int:
     compiler_root = ROOT / "robot-compiler"
     frontend_root = ROOT / "robot-frontend-robosim" / "frontend"
@@ -67,6 +91,7 @@ def main() -> int:
             '{"targets":[]}\n', encoding="utf-8"
         )
         runtime_bin, runtime_platformio = _make_runtime(inputs)
+        firmware = _make_firmware(inputs)
         dist = base / "distribution"
 
         production_inputs = production_distribution.ProductionDistributionInputs(
@@ -77,6 +102,7 @@ def main() -> int:
             runtime_platformio=runtime_platformio,
             compiler_root=compiler_root,
             frontend_root=frontend_root,
+            firmware_root=firmware,
         )
         result = production_distribution.build_production_distribution(
             production_inputs, dist
@@ -91,6 +117,7 @@ def main() -> int:
             "production distribution contains frontend",
             (dist / "compiler" / "frontend" / "rewriter.py").is_file(),
         )
+        check("production distribution contains firmware", (dist / "firmware" / "robot-platform" / "platformio.ini").is_file())
         check("compiler is recorded", manifest["compiler"] == "compiler/main.py")
         check(
             "contract is recorded",
@@ -115,6 +142,7 @@ def main() -> int:
         check("ZIP contains contract", "compiler/robostudio_bridge.py" in names)
         check("ZIP contains frontend", "compiler/frontend/rewriter.py" in names)
         check("ZIP contains bundled Python", "runtime/bin/python.exe" in names)
+        check("ZIP contains firmware", "firmware/robot-platform/platformio.ini" in names)
         check(
             "ZIP contains bundled PlatformIO",
             "runtime/platformio/deployment-runtime.json" in names
