@@ -11,7 +11,7 @@ from tools import production_artifact_boundary, runtime_integrity, runtime_resou
 
 DISTRIBUTION_MANIFEST = "distribution-manifest.json"
 SCHEMA = "antechkids.robostudio.distribution"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 2
 
 
 class DistributionPackageError(RuntimeError):
