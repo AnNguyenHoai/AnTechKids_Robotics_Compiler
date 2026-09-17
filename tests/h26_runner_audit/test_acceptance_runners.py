@@ -1,0 +1,106 @@
+"""Static audit for portable H26 acceptance runners.
+
+The H26 acceptance gates are intended to run on target/developer machines
+with the supported Python runtime and without a locally installed pytest.
+This audit prevents regression to the failure mode fixed by H26-L/M/OTA/O.
+"""
+
+from __future__ import annotations
+
+import ast
+import subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+TESTS_ROOT = ROOT / "tests"
+
+
+def acceptance_runners():
+    """Return all H26 acceptance runner scripts in deterministic order."""
+    runners = sorted(TESTS_ROOT.glob("h26_*/run_*.py"))
+    assert runners, "No H26 acceptance runners discovered"
+    return runners
+
+
+def parse_runner(path: Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def pytest_dependency_references(tree: ast.AST):
+    """Find imports or subprocess invocations that require pytest."""
+    violations = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "pytest" or alias.name.startswith("pytest."):
+                    violations.append(f"import {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == "pytest" or (node.module and node.module.startswith("pytest.")):
+                violations.append(f"from {node.module} import ...")
+        elif isinstance(node, ast.Call):
+            func = node.func
+            is_subprocess_run = (
+                isinstance(func, ast.Attribute)
+                and func.attr in {"run", "check_call", "check_output"}
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "subprocess"
+            )
+            if not is_subprocess_run or not node.args:
+                continue
+            command = node.args[0]
+            if isinstance(command, (ast.List, ast.Tuple)):
+                values = []
+                for item in command.elts:
+                    if isinstance(item, ast.Constant) and isinstance(item.value, str):
+                        values.append(item.value)
+                if "pytest" in values:
+                    violations.append("subprocess invocation of pytest")
+    return violations
+
+
+def runner_path_bootstrap_violations(path: Path, tree: ast.Module):
+    """Ensure each runner establishes repository-root importability."""
+    source = path.read_text(encoding="utf-8")
+    has_root = "Path(__file__).resolve().parents[2]" in source
+    has_sys_path = "sys.path" in source
+    if not (has_root and has_sys_path):
+        return ["runner does not explicitly bootstrap repository-root importability"]
+    return []
+
+
+def test_all_h26_acceptance_runners_are_discovered():
+    runners = acceptance_runners()
+    assert all(path.name.startswith("run_") for path in runners)
+    assert all(path.is_file() for path in runners)
+
+
+def test_h26_acceptance_runners_do_not_depend_on_pytest():
+    violations = []
+    for path in acceptance_runners():
+        tree = parse_runner(path)
+        for violation in pytest_dependency_references(tree):
+            violations.append(f"{path.relative_to(ROOT)}: {violation}")
+    assert not violations, "H26 acceptance runners must not depend on pytest: " + "; ".join(violations)
+
+
+def test_h26_acceptance_runners_bootstrap_repository_imports():
+    violations = []
+    for path in acceptance_runners():
+        tree = parse_runner(path)
+        for violation in runner_path_bootstrap_violations(path, tree):
+            violations.append(f"{path.relative_to(ROOT)}: {violation}")
+    assert not violations, "H26 acceptance runners must be launch-location independent: " + "; ".join(violations)
+
+
+def test_h26_acceptance_runners_compile_as_python():
+    failures = []
+    for path in acceptance_runners():
+        result = subprocess.run(
+            [__import__("sys").executable, "-m", "py_compile", str(path)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            failures.append(f"{path.relative_to(ROOT)}: {result.stderr.strip()}")
+    assert not failures, "H26 acceptance runner syntax check failed: " + "; ".join(failures)
