@@ -69,7 +69,7 @@ def main() -> int:
     assert "bool isOtaReady();" in network_h
     assert "bool isUpdateInProgress();" in network_h
     assert "setRobotReady(bool value)" in network_h
-    assert "ROBOT_OTA_PASSWORD \\"\\"" in network_cpp
+    assert 'ROBOT_OTA_PASSWORD ""' in network_cpp
     assert "g_robotReady && g_networkReady" in network_cpp
     assert "RobotIdentity::infoJson(g_robotReady, g_networkReady, g_otaReady)" in network_cpp
     assert "will retry" in network_cpp
