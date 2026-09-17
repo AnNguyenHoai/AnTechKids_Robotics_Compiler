@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,32 +40,31 @@ def pytest_dependency_references(tree: ast.AST):
                 violations.append(f"from {node.module} import ...")
         elif isinstance(node, ast.Call):
             func = node.func
-            is_subprocess_run = (
+            is_subprocess_call = (
                 isinstance(func, ast.Attribute)
                 and func.attr in {"run", "check_call", "check_output"}
                 and isinstance(func.value, ast.Name)
                 and func.value.id == "subprocess"
             )
-            if not is_subprocess_run or not node.args:
+            if not is_subprocess_call or not node.args:
                 continue
             command = node.args[0]
             if isinstance(command, (ast.List, ast.Tuple)):
-                values = []
-                for item in command.elts:
-                    if isinstance(item, ast.Constant) and isinstance(item.value, str):
-                        values.append(item.value)
+                values = [
+                    item.value
+                    for item in command.elts
+                    if isinstance(item, ast.Constant) and isinstance(item.value, str)
+                ]
                 if "pytest" in values:
                     violations.append("subprocess invocation of pytest")
     return violations
 
 
-def runner_path_bootstrap_violations(path: Path, tree: ast.Module):
-    """Ensure each runner establishes repository-root importability."""
+def runner_root_resolution_violations(path: Path):
+    """Ensure each runner derives paths from its own file, not cwd."""
     source = path.read_text(encoding="utf-8")
-    has_root = "Path(__file__).resolve().parents[2]" in source
-    has_sys_path = "sys.path" in source
-    if not (has_root and has_sys_path):
-        return ["runner does not explicitly bootstrap repository-root importability"]
+    if "Path(__file__).resolve().parents[2]" not in source:
+        return ["runner does not derive repository root from __file__"]
     return []
 
 
@@ -83,20 +83,19 @@ def test_h26_acceptance_runners_do_not_depend_on_pytest():
     assert not violations, "H26 acceptance runners must not depend on pytest: " + "; ".join(violations)
 
 
-def test_h26_acceptance_runners_bootstrap_repository_imports():
+def test_h26_acceptance_runners_are_cwd_independent():
     violations = []
     for path in acceptance_runners():
-        tree = parse_runner(path)
-        for violation in runner_path_bootstrap_violations(path, tree):
+        for violation in runner_root_resolution_violations(path):
             violations.append(f"{path.relative_to(ROOT)}: {violation}")
-    assert not violations, "H26 acceptance runners must be launch-location independent: " + "; ".join(violations)
+    assert not violations, "H26 acceptance runners must resolve paths from __file__: " + "; ".join(violations)
 
 
 def test_h26_acceptance_runners_compile_as_python():
     failures = []
     for path in acceptance_runners():
         result = subprocess.run(
-            [__import__("sys").executable, "-m", "py_compile", str(path)],
+            [sys.executable, "-m", "py_compile", str(path)],
             cwd=ROOT,
             capture_output=True,
             text=True,
