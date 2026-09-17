@@ -1,5 +1,7 @@
 # RSD-16 — Clean-Machine Release Acceptance
 
+> **RSD-22 authority notice:** This document defines the clean-machine acceptance mechanism only. Its release-boundary assumptions are subordinate to `RSD-22_RELEASE_CONTRACT_CONSOLIDATION.md`.
+
 ## Objective
 
 Close the final release-qualification gap between a valid portable release ZIP and

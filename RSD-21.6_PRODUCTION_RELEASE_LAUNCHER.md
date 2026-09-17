@@ -1,14 +1,16 @@
 # RSD-21.6 — Production Release Launcher / Entry Point
 
+> **RSD-22 authority notice:** This document defines the launcher mechanism only. The production release boundary is defined by `RSD-22_RELEASE_CONTRACT_CONSOLIDATION.md`.
+
 ## Purpose
 
 Provide a user-facing Windows entry point for the production RoboStudio release.
 
 The launcher is part of the production artifact and starts the application relative to the launcher's own directory. A copied release therefore does not depend on the developer repository, the caller's current working directory, `PATH`, or `PYTHONPATH`.
 
-## Release boundary
+## Current release boundary
 
-The production ZIP contains:
+The current production ZIP contains:
 
 - `RoboStudio.exe`
 - application-local DLL dependencies
@@ -16,7 +18,7 @@ The production ZIP contains:
 - application resources
 - release metadata
 
-The production ZIP does **not** contain Python or PlatformIO. Those remain target-machine prerequisites as defined by RSD-21.2.
+The current implementation treats Python and PlatformIO as target-machine prerequisites. This is explicitly a current-state boundary under RSD-22; the final zero-development-machine target is owned by RSD-23.
 
 ## Launcher contract
 

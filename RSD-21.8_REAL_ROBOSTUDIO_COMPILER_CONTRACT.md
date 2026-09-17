@@ -1,5 +1,7 @@
 # RSD-21.8 — Real RoboStudio ↔ Compiler Contract
 
+> **RSD-22 authority notice:** This document defines the compiler/application boundary only. Production release ownership and portability requirements are defined by `RSD-22_RELEASE_CONTRACT_CONSOLIDATION.md`.
+
 ## Purpose
 
 RSD-21.7 made the real compiler a production artifact. RSD-21.8 defines the actual application boundary so RoboStudio does not depend on compiler internals.
@@ -34,7 +36,7 @@ A successful response contains `status=PASS`, the original source, the generated
 
 ## Production ownership
 
-The production distribution now packages:
+The production distribution packages the real compiler contract payload:
 
 ```text
 compiler/main.py
@@ -45,27 +47,11 @@ compiler/frontend/*
 
 The frontend is copied from `robot-frontend-robosim/frontend` and is therefore the real RoboSim adapter, not a fixture.
 
-Python remains an external target-machine prerequisite. PlatformIO remains external as well.
+The current implementation treats Python and PlatformIO as external target-machine prerequisites. This is a current-state implementation fact and is subordinate to the final product target defined by RSD-22 and RSD-23.
 
 ## E2E guarantee
 
 RSD-21.8 tests extract the production ZIP and execute the packaged bridge from the extracted artifact. The request uses a real RoboSim program and the response is checked against the stable contract. The generated header and machine-readable report must exist.
-
-This closes the architectural gap between:
-
-```text
-RoboStudio UI
-    ↓
-Compiler Contract
-    ↓
-RoboSim Frontend Rewrite
-    ↓
-Real RobotCompiler
-    ↓
-program.h
-```
-
-RoboStudio therefore only needs to know the contract endpoint and request/response schema; it does not need to import `RobotCompiler`, `HeaderEmitter`, or any compiler implementation module directly.
 
 ## Regression
 
