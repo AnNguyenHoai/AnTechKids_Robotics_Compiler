@@ -4,7 +4,7 @@ import hashlib, json, shutil
 from dataclasses import dataclass
 from pathlib import Path
 from tools import production_artifact_boundary, runtime_integrity, runtime_resources
-DISTRIBUTION_MANIFEST="distribution-manifest.json"; SCHEMA="antechkids.robostudio.distribution"; SCHEMA_VERSION=3
+DISTRIBUTION_MANIFEST="distribution-manifest.json"; SCHEMA="antechkids.robostudio.distribution"; SCHEMA_VERSION=2
 class DistributionPackageError(RuntimeError): pass
 @dataclass(frozen=True)
 class DistributionInputs:
