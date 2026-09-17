@@ -1,14 +1,4 @@
-"""RSD-P0 production runtime dependency closure enforcement.
-
-The production ZIP must be self-consistent: every application-owned runtime
-entry required by the production contract is present, every packaged payload
-file is represented by the distribution inventory, and developer/host
-execution state never crosses the release boundary.
-
-This gate intentionally does not package Python, PlatformIO, USB drivers, or
-other target prerequisites. Those remain external prerequisites under the
-production release-boundary contract.
-"""
+"""RSD-23 production runtime dependency closure enforcement."""
 from __future__ import annotations
 
 import json
@@ -17,20 +7,11 @@ from pathlib import Path
 from tools import distribution_package, production_artifact_boundary, runtime_resources
 
 SCHEMA = "antechkids.robostudio.production-runtime-closure"
-SCHEMA_VERSION = 1
-
-FORBIDDEN_NAMES = frozenset({
-    ".git",
-    ".venv",
-    ".pio",
-    "penv",
-    "__pycache__",
-    ".pytest_cache",
-})
+SCHEMA_VERSION = 2
+FORBIDDEN_NAMES = frozenset({".git", ".venv", ".pio", "penv", "__pycache__", ".pytest_cache"})
 
 
-def _required_paths(root: Path, application: str) -> tuple[Path, ...]:
-    """Return the canonical application-owned runtime closure."""
+def _required_paths(application: str) -> tuple[Path, ...]:
     return (
         Path(application),
         Path("VERSION"),
@@ -39,24 +20,22 @@ def _required_paths(root: Path, application: str) -> tuple[Path, ...]:
         Path("compiler") / "compiler",
         Path("compiler") / "frontend" / "__init__.py",
         Path("compiler") / "frontend" / "rewriter.py",
+        Path("runtime") / "bin" / "python.exe",
+        Path("runtime") / "bin" / "Lib" / "site-packages" / "platformio" / "__init__.py",
+        Path("runtime") / "platformio" / "deployment-runtime.json",
+        Path("runtime") / "platformio" / "platforms",
+        Path("runtime") / "platformio" / "packages",
         Path("runtime") / "resources" / runtime_resources.RESOURCE_MANIFEST_NAME,
         Path("runtime") / "resources" / "robot-isa" / "target_profiles.json",
     )
 
 
 def _payload_files(root: Path) -> set[str]:
-    excluded = {
-        distribution_package.DISTRIBUTION_MANIFEST,
-        production_artifact_boundary.BOUNDARY_MANIFEST,
-    }
-    return {
-        path.relative_to(root).as_posix()
-        for path in root.rglob("*")
-        if path.is_file() and path.name not in excluded
-    }
+    excluded = {distribution_package.DISTRIBUTION_MANIFEST, production_artifact_boundary.BOUNDARY_MANIFEST}
+    return {path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file() and path.name not in excluded}
 
 
-def _manifest_files(root: Path, manifest: dict) -> set[str]:
+def _manifest_files(manifest: dict) -> set[str]:
     result: set[str] = set()
     for entry in manifest.get("files", []):
         relative = Path(str(entry.get("path", "")))
@@ -75,58 +54,57 @@ def _validate_forbidden_payload(root: Path) -> list[str]:
     return sorted(violations, key=str.lower)
 
 
+def _validate_deployment_manifest(root: Path) -> dict:
+    path = root / "runtime" / "platformio" / "deployment-runtime.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Invalid deployment runtime manifest: {path}") from exc
+    if data.get("schema") != "antechkids.robostudio.deployment-runtime" or data.get("schema_version") != 1:
+        raise RuntimeError("Unsupported deployment runtime manifest schema")
+    if data.get("portable_python_required") is not True or data.get("host_virtualenv_included") is not False:
+        raise RuntimeError("Deployment runtime manifest has an invalid ownership contract")
+    layout = data.get("runtime_layout", {})
+    if layout.get("python") != "runtime/bin/python.exe" or layout.get("core_dir") != "runtime/platformio":
+        raise RuntimeError("Deployment runtime manifest has an invalid application-owned layout")
+    required = data.get("platformio_core", {}).get("required_directories", [])
+    if any(item not in required for item in ("platforms", "packages")):
+        raise RuntimeError("Deployment runtime manifest must require platforms and packages")
+    return data
+
+
 def validate_distribution(root: Path) -> dict[str, object]:
-    """Validate the complete production runtime dependency closure."""
     root = Path(root).expanduser().resolve()
     if not root.is_dir():
         raise RuntimeError(f"Production distribution not found: {root}")
-
-    manifest_path = root / distribution_package.DISTRIBUTION_MANIFEST
-    manifest = distribution_package.validate_distribution_manifest(manifest_path)
+    manifest = distribution_package.validate_distribution_manifest(root / distribution_package.DISTRIBUTION_MANIFEST)
     if manifest.get("production_boundary") is not True:
         raise RuntimeError("Production runtime closure requires production_boundary=true")
-
     application = str(manifest.get("application", "")).strip()
     if not application or Path(application).name != application or Path(application).suffix.lower() != ".exe":
         raise RuntimeError("Production distribution manifest must identify a single executable")
 
-    required = _required_paths(root, application)
-    missing = [path.as_posix() for path in required if not (root / path).exists()]
+    missing = [path.as_posix() for path in _required_paths(application) if not (root / path).exists()]
     if missing:
         raise RuntimeError("Production runtime closure is missing: " + ", ".join(missing))
+    _validate_deployment_manifest(root)
 
-    manifest_files = _manifest_files(root, manifest)
+    manifest_files = _manifest_files(manifest)
     payload_files = _payload_files(root)
     untracked = sorted(payload_files - manifest_files, key=str.lower)
     if untracked:
         raise RuntimeError("Production payload is not covered by distribution manifest: " + ", ".join(untracked))
-
     missing_inventory = sorted(manifest_files - payload_files, key=str.lower)
     if missing_inventory:
         raise RuntimeError("Distribution manifest references missing payload files: " + ", ".join(missing_inventory))
-
     forbidden = _validate_forbidden_payload(root)
     if forbidden:
         raise RuntimeError("Production runtime closure contains developer-only payload: " + ", ".join(forbidden))
-
-    resource_manifest = runtime_resources.validate_resource_manifest(
-        root / "runtime" / "resources" / runtime_resources.RESOURCE_MANIFEST_NAME
-    )
-
-    return {
-        "schema": SCHEMA,
-        "schema_version": SCHEMA_VERSION,
-        "status": "PASS",
-        "application": application,
-        "required_paths": [path.as_posix() for path in required],
-        "payload_file_count": len(payload_files),
-        "runtime_resource_manifest": resource_manifest["schema"],
-        "production_boundary": True,
-    }
+    resource_manifest = runtime_resources.validate_resource_manifest(root / "runtime" / "resources" / runtime_resources.RESOURCE_MANIFEST_NAME)
+    return {"schema": SCHEMA, "schema_version": SCHEMA_VERSION, "status": "PASS", "application": application, "required_paths": [p.as_posix() for p in _required_paths(application)], "payload_file_count": len(payload_files), "runtime_resource_manifest": resource_manifest["schema"], "production_boundary": True, "runtime_model": "application-owned"}
 
 
 def write_evidence(root: Path, output: Path | None = None) -> Path:
-    """Write machine-readable dependency-closure evidence."""
     root = Path(root).expanduser().resolve()
     evidence = validate_distribution(root)
     path = Path(output) if output is not None else root / "production-runtime-closure.json"
