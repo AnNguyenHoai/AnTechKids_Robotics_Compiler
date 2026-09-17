@@ -108,6 +108,11 @@ def _render_command(command: list[str], **values: Path) -> list[str]:
     return rendered
 
 
+def _artifact_relative(root: Path, path: Path) -> str:
+    """Return artifact evidence paths in ZIP-style POSIX form on every host."""
+    return path.relative_to(root).as_posix()
+
+
 def evaluate_production_artifact(
     *,
     artifact: Path,
@@ -147,13 +152,13 @@ def evaluate_production_artifact(
         output = root / "e2e-output" / "program.h"
         output.parent.mkdir(parents=True, exist_ok=True)
         evidence = {
-            "robostudio": str(app.relative_to(root)),
-            "compiler": str(compiler.relative_to(root)) if compiler else None,
-            "bundled_python": str(bundled_python.relative_to(root)) if bundled_python else None,
+            "robostudio": _artifact_relative(root, app),
+            "compiler": _artifact_relative(root, compiler) if compiler else None,
+            "bundled_python": _artifact_relative(root, bundled_python) if bundled_python else None,
             "source": str(source),
             "launch_requested": launch,
             "target_cwd": str(app.parent),
-            "compiler_output_contract": str(output.relative_to(root)),
+            "compiler_output_contract": _artifact_relative(root, output),
         }
 
         values = {
@@ -176,7 +181,7 @@ def evaluate_production_artifact(
             evidence["compile_returncode"] = compile_result.returncode
             evidence["compile_stdout"] = compile_result.stdout
             evidence["compile_stderr"] = compile_result.stderr
-            evidence["compiler_output"] = str(output.relative_to(root)) if compiled else None
+            evidence["compiler_output"] = _artifact_relative(root, output) if compiled else None
             evidence["compiler_output_size"] = output.stat().st_size if compiled else 0
             if not compiled:
                 raise ProductionE2EError("compiler exited successfully but produced no output")
