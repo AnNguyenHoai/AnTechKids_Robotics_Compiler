@@ -1,13 +1,10 @@
-"""RSD-21.1 production release boundary contract.
+"""Production release boundary contract.
 
-The production artifact contains the RoboStudio product and its application-
-owned compiler/runtime assets. Host tools such as Python and PlatformIO are
-not release payloads; they are target-machine prerequisites declared by the
-release documentation and later qualification gates.
-
-This module is deliberately declarative. It does not inspect or mutate a
-release yet. RSD-21.3/RSD-21.4 will consume this contract when the assembly and
-dependency-closure implementation is migrated to the new boundary.
+The production artifact contains the RoboStudio product and all
+application-owned runtime assets required for an installation to compile and
+communicate with supported robots. This includes the portable Python runtime
+and PlatformIO runtime introduced by RSD-23. Target-machine hardware drivers
+remain prerequisites.
 """
 from __future__ import annotations
 
@@ -37,9 +34,8 @@ class ReleaseBoundaryItem:
     rationale: str
 
 
-# Canonical RSD-21.1 boundary. Keep this list small and explicit so a future
-# assembly implementation cannot silently sweep a developer environment into
-# the production ZIP.
+# Canonical release boundary. Runtime ownership is application-owned so the
+# release remains usable on a clean Windows machine without developer tooling.
 BOUNDARY_ITEMS: tuple[ReleaseBoundaryItem, ...] = (
     ReleaseBoundaryItem(
         name="RoboStudio",
@@ -70,25 +66,25 @@ BOUNDARY_ITEMS: tuple[ReleaseBoundaryItem, ...] = (
         rationale="Non-system dependencies owned by the product must travel with the application.",
     ),
     ReleaseBoundaryItem(
+        name="Application-owned Python runtime",
+        ownership=ReleaseOwnership.APPLICATION,
+        package=True,
+        required_for=("compile", "hardware"),
+        rationale="Portable Python is bundled so the product does not depend on host Python installation or PATH.",
+    ),
+    ReleaseBoundaryItem(
+        name="Application-owned PlatformIO runtime",
+        ownership=ReleaseOwnership.APPLICATION,
+        package=True,
+        required_for=("hardware",),
+        rationale="PlatformIO core, platforms, and packages are bundled for deterministic robot build/upload behavior.",
+    ),
+    ReleaseBoundaryItem(
         name="Release metadata",
         ownership=ReleaseOwnership.APPLICATION,
         package=True,
         required_for=("ide", "compile", "hardware"),
         rationale="Manifest, provenance, and integrity evidence identify and protect the artifact.",
-    ),
-    ReleaseBoundaryItem(
-        name="Python",
-        ownership=ReleaseOwnership.TARGET_PREREQUISITE,
-        package=False,
-        required_for=("compile",),
-        rationale="Provided and maintained by the target machine according to the supported prerequisite contract.",
-    ),
-    ReleaseBoundaryItem(
-        name="PlatformIO",
-        ownership=ReleaseOwnership.TARGET_PREREQUISITE,
-        package=False,
-        required_for=("hardware",),
-        rationale="Provided and maintained by the target machine according to the supported prerequisite contract.",
     ),
     ReleaseBoundaryItem(
         name="ESP32/USB driver",
@@ -133,9 +129,7 @@ def packaged_items() -> tuple[ReleaseBoundaryItem, ...]:
 
 def target_prerequisites() -> tuple[ReleaseBoundaryItem, ...]:
     """Return prerequisites expected to be installed on the target machine."""
-    return tuple(
-        item for item in BOUNDARY_ITEMS if item.ownership is ReleaseOwnership.TARGET_PREREQUISITE
-    )
+    return tuple(item for item in BOUNDARY_ITEMS if item.ownership is ReleaseOwnership.TARGET_PREREQUISITE)
 
 
 def developer_only_items() -> tuple[ReleaseBoundaryItem, ...]:
@@ -148,7 +142,7 @@ def to_dict() -> dict[str, object]:
     return {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
-        "artifact_model": "RoboStudio + Compiler",
+        "artifact_model": "RoboStudio + Compiler + Application-Owned Runtime",
         "items": [
             {
                 "name": item.name,
