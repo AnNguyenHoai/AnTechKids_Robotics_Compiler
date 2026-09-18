@@ -15,7 +15,24 @@ class FirmwareWorkspaceError(RuntimeError):
     pass
 
 
+def _find_forbidden(root: Path) -> list[str]:
+    """Return forbidden developer/build payload paths below ``root``."""
+    return [
+        p.relative_to(root).as_posix()
+        for p in root.rglob("*")
+        if any(x.lower() in FORBIDDEN_NAMES for x in p.relative_to(root).parts)
+    ]
+
+
 def validate_firmware_template(root: Path) -> Path:
+    """Validate the source firmware template's required project structure.
+
+    Source/development checkouts may legitimately contain transient build payload
+    such as ``.pio`` or ``__pycache__`` after a local PlatformIO/Python run. Those
+    directories are not part of the firmware template contract and are filtered
+    while staging. Rejecting them here makes otherwise valid local source trees
+    unusable even though ``prepare_firmware_workspace`` never copies them.
+    """
     root = Path(root).expanduser().resolve()
     if not root.is_dir():
         raise FirmwareWorkspaceError(f"Firmware project not found: {root}")
@@ -24,16 +41,6 @@ def validate_firmware_template(root: Path) -> Path:
             raise FirmwareWorkspaceError(f"Firmware project is missing {name}: {root}")
     if not (root / "main").is_dir():
         raise FirmwareWorkspaceError(f"Firmware project is missing main/: {root}")
-    forbidden = [
-        p.relative_to(root).as_posix()
-        for p in root.rglob("*")
-        if any(x.lower() in FORBIDDEN_NAMES for x in p.relative_to(root).parts)
-    ]
-    if forbidden:
-        raise FirmwareWorkspaceError(
-            "Firmware template contains forbidden developer/build payload: "
-            + ", ".join(sorted(forbidden))
-        )
     return root
 
 
@@ -52,6 +59,16 @@ def prepare_firmware_workspace(template_root: Path, project_name: str) -> Path:
         destination,
         ignore=shutil.ignore_patterns(*FORBIDDEN_NAMES),
     )
+
+    # The source tree may contain transient local artifacts, but the staged
+    # firmware workspace is a strict boundary: none of them may cross it.
+    forbidden = _find_forbidden(destination)
+    if forbidden:
+        shutil.rmtree(destination, ignore_errors=True)
+        raise FirmwareWorkspaceError(
+            "Staged firmware workspace contains forbidden developer/build payload: "
+            + ", ".join(sorted(forbidden))
+        )
     return destination
 
 
