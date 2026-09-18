@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -19,7 +20,7 @@ from tools.deployment_runtime import (
     run_process,
 )
 from tools.deploy_robot import normalize_robot_host
-from tools import build_isolation
+from tools import build_isolation, hardware_preflight
 from tools.firmware_workspace import install_generated_header
 
 
@@ -44,11 +45,16 @@ def test_bootstrap_propagates_generated_credentials_to_platformio():
             encoding="utf-8",
         )
         original_run = deploy_robot.run
+        original_require = deploy_robot.hardware_preflight.require_serial_port
         deploy_robot.run = fake_run
+        deploy_robot.hardware_preflight.require_serial_port = lambda port, base_env=None: SimpleNamespace(
+            selected_port=hardware_preflight.SerialPortInfo("COM4", "Test robot USB")
+        )
         try:
             assert deploy_robot.flash_bootstrap(config_path, "COM4") == 0
         finally:
             deploy_robot.run = original_run
+            deploy_robot.hardware_preflight.require_serial_port = original_require
 
     assert captured["command"][:3] == [sys.executable, "-m", "platformio"]
     assert "-e" in captured["command"]
@@ -134,6 +140,7 @@ def main() -> int:
     assert '"esp32dev_ota"' in deploy
     assert '"esp32dev_bootstrap"' in deploy
     assert '"-t","upload"' in deploy or '"-t", "upload"' in deploy
+    assert "hardware_preflight.require_serial_port" in deploy
     assert "preflight_robot(a.robot)" in deploy
     assert "--process-timeout" in deploy
     assert "--verify-timeout" in deploy
