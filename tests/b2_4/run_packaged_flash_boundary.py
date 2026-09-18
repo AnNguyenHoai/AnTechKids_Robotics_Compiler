@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import distribution_package, production_distribution, production_runtime_closure
+from tools import (
+    distribution_package,
+    production_distribution,
+    production_runtime_closure,
+    release_package,
+)
 
 
 def check(name: str, condition: bool) -> None:
@@ -66,10 +71,21 @@ def test_production_distribution_contains_flash_runtime(base: Path) -> None:
         set(required) == set(production_runtime_closure.REQUIRED_DEPLOYMENT_TOOL_FILES),
     )
 
+    release_zip = base / "robostudio-b2.4-production.zip"
+    release = release_package.build_release(output, release_zip)
+    release_report = release_package.validate_release_artifact(release_zip, release.manifest)
+    check("release ZIP validates after flash-runtime packaging", release_report["production_boundary"] is True)
+    with zipfile.ZipFile(release_zip) as archive:
+        zip_paths = set(archive.namelist())
+    for name in required:
+        check(f"release ZIP contains tools/{name}", f"tools/{name}" in zip_paths)
+
     # Development compiler wrappers must not be accidentally introduced merely
     # to make deployment work. deploy_robot now uses compiler/robostudio_bridge.py.
     check("production runtime excludes source rewrite wrapper", not (output / "tools" / "rewrite.py").exists())
     check("production runtime excludes source compile wrapper", not (output / "tools" / "compile.py").exists())
+    check("release ZIP excludes source rewrite wrapper", "tools/rewrite.py" not in zip_paths)
+    check("release ZIP excludes source compile wrapper", "tools/compile.py" not in zip_paths)
 
 
 def test_robostudio_flash_surface_contract() -> None:
