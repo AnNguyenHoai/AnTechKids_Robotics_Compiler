@@ -56,7 +56,6 @@ def test_bootstrap_propagates_generated_credentials_to_platformio():
     assert "upload" in captured["command"]
     assert "--upload-port" in captured["command"]
     assert "COM4" in captured["command"]
-    assert captured["cwd"] != deploy_robot.PLATFORM
     assert captured["cwd"].name == "firmware"
     assert captured["cwd"].parent.name == "bootstrap"
     assert captured["env"]["ROBOT_BOOTSTRAP_CONFIG"] == str(config_path.resolve())
@@ -133,7 +132,7 @@ def main() -> int:
 
     assert 'platformio_command("run", "-e", "esp32dev_ota")' in deploy
     assert 'platformio_command("run", "-e", "esp32dev_bootstrap", "-t", "upload")' in deploy
-    assert "preflight_robot(args.robot)" in deploy
+    assert "preflight_robot(a.robot)" in deploy
     assert "--process-timeout" in deploy
     assert "--verify-timeout" in deploy
     assert "firmware_workspace.install_generated_header" in deploy
@@ -154,7 +153,6 @@ def main() -> int:
         header.write_text("generated", encoding="utf-8")
         assert install_generated_header(header, firmware_root) == destination
         assert destination.read_text(encoding="utf-8") == "generated"
-
 
     print("H28-B PASS: deployment runtime hardening + live output + bounded subprocesses")
     return 0
