@@ -4,6 +4,11 @@ import argparse
 import sys
 import json
 import time
+
+COMPILER_ROOT = Path(__file__).resolve().parent
+if str(COMPILER_ROOT) not in sys.path:
+    sys.path.insert(0, str(COMPILER_ROOT))
+
 from compiler.compiler import RobotCompiler
 from compiler.emitter import HeaderEmitter
 
