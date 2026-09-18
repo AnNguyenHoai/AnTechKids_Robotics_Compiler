@@ -60,15 +60,13 @@ def _sha256(path: Path) -> str:
 
 
 def _make_runtime(root: Path) -> tuple[Path, Path]:
-    """Create a deterministic, isolated application-owned Python closure."""
+    """Create a deterministic, isolated application-owned PlatformIO closure."""
     runtime_bin = root / "runtime-bin"
     runtime_bin.mkdir(parents=True)
-    python_home = Path(sys.executable).resolve().parent
     source_python = Path(sys.executable).resolve()
+    python_home = source_python.parent
     bundled_python = runtime_bin / "python.exe"
     shutil.copy2(source_python, bundled_python)
-
-    # Copy native DLLs from the exact CPython installation selected by CI.
     for dependency in sorted(python_home.glob("*.dll"), key=lambda item: item.name.lower()):
         if dependency.is_file():
             shutil.copy2(dependency, runtime_bin / dependency.name)
@@ -80,24 +78,79 @@ def _make_runtime(root: Path) -> tuple[Path, Path]:
         runtime_bin / "Lib",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "site-packages"),
     )
-
-    # Isolate the bundled interpreter from registry/environment/user Python.
     pth = ".\nLib\nLib/site-packages\nimport site\n"
     (runtime_bin / "python._pth").write_text(pth, encoding="utf-8")
     python_dll = next(
         (
-            item
-            for item in sorted(runtime_bin.glob("python*.dll"), key=lambda item: item.name.lower())
+            item for item in sorted(runtime_bin.glob("python*.dll"), key=lambda item: item.name.lower())
             if item.name.lower().startswith("python") and item.name[6:-4].isdigit()
         ),
         None,
     )
     if python_dll is not None:
         (runtime_bin / f"{python_dll.stem}._pth").write_text(pth, encoding="utf-8")
-
     check("bundled Python bytes are preserved", _sha256(source_python) == _sha256(bundled_python))
-    check("bundled Python is a Windows executable", bundled_python.suffix.lower() == ".exe")
+    check("Python isolation file is created", (runtime_bin / "python._pth").is_file())
+
     platformio_site = runtime_bin / "Lib" / "site-packages" / "platformio"
+    platformio_site.mkdir(parents=True)
+    (platformio_site / "__init__.py").write_text("__version__ = 'fixture'\n", encoding="utf-8")
+
+    runtime_platformio = root / "runtime-platformio"
+    platform = runtime_platformio / "platforms" / "espressif32"
+    platform.mkdir(parents=True)
+    (platform / "platform.json").write_text(
+        json.dumps(
+            {
+                "name": "espressif32",
+                "version": "6.12.0",
+                "frameworks": {"arduino": {"package": "framework-arduinoespressif32"}},
+                "packages": {
+                    "toolchain-xtensa-esp32": {"version": ">=1.0.0"},
+                    "framework-arduinoespressif32": {"version": "1.0.0"},
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    toolchain = runtime_platformio / "packages" / "toolchain-xtensa-esp32"
+    toolchain.mkdir(parents=True)
+    (toolchain / "package.json").write_text(
+        '{"name":"toolchain-xtensa-esp32","version":"1.2.0","dependencies":{}}\n',
+        encoding="utf-8",
+    )
+    framework = runtime_platformio / "packages" / "framework-arduinoespressif32"
+    framework.mkdir(parents=True)
+    (framework / "package.json").write_text(
+        '{"name":"framework-arduinoespressif32","version":"1.0.0","dependencies":{}}\n',
+        encoding="utf-8",
+    )
+    (runtime_platformio / "deployment-runtime.json").write_text(
+        json.dumps(
+            {
+                "schema": "antechkids.robostudio.deployment-runtime",
+                "schema_version": 1,
+                "platformio_core": {
+                    "source_not_embedded": True,
+                    "required_directories": ["platforms", "packages"],
+                    "file_count": 0,
+                },
+                "runtime_layout": {
+                    "core_dir": "runtime/platformio",
+                    "python": "runtime/bin/python.exe",
+                    "platformio_module": "platformio",
+                },
+                "portable_python_required": True,
+                "host_virtualenv_included": False,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return runtime_bin, runtime_platformio
 
 
 def _make_firmware(root: Path) -> Path:
