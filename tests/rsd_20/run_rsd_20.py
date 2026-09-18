@@ -92,7 +92,7 @@ def main() -> int:
         manifest = distribution / distribution_package.DISTRIBUTION_MANIFEST
         manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
         manifest_payload["files"] = distribution_package._file_entries(distribution)
-        manifest.write_text(json.dumps(manifest_payload, indent=2) + "\\n", encoding="utf-8")
+        manifest.write_text(json.dumps(manifest_payload, indent=2) + "\n", encoding="utf-8")
         artifact = _build_release(distribution, base, "RoboStudio-1.2.3-Windows")
 
         code, stdout, _ = capture_main(["verify", str(artifact)])
