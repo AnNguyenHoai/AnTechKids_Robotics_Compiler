@@ -126,9 +126,52 @@ def validate_deployment_runtime() -> Path:
     return root
 
 
+def python_command(*args: str) -> list[str]:
+    """Build a Python command that is portable in frozen RoboStudio.
+
+    ``sys.executable`` is the RoboStudio executable in a frozen/PyInstaller
+    build, not a general Python interpreter. Deployment helper scripts must
+    therefore resolve the application-owned interpreter explicitly.
+    """
+    try:
+        return runtime_paths.python_command(*args)
+    except runtime_paths.RuntimePathError as exc:
+        raise DeploymentRuntimeError(f"Packaged Python runtime is unavailable: {exc}") from exc
+
+
 def platformio_command(*args: str) -> list[str]:
     """Build the PlatformIO command through the RoboStudio runtime resolver."""
     return resolve_platformio_command(*args)
+
+
+def _prepare_process_environment(
+    command: Sequence[str],
+    env: Mapping[str, str] | None,
+) -> Mapping[str, str] | None:
+    """Seal production subprocesses at the process-launch boundary.
+
+    Callers are allowed to add application values such as Wi-Fi credentials,
+    but a frozen RoboStudio process may not re-open host PATH/PYTHONPATH by
+    passing ``os.environ.copy()`` or by omitting ``env``. The runner therefore
+    applies B2.2 dependency closure immediately before ``Popen`` and validates
+    that the executable itself belongs to the production artifact.
+
+    Source/development runs intentionally preserve their historical behavior.
+    """
+    if not is_frozen():
+        return dict(env) if env is not None else None
+
+    closed = deployment_runtime_environment(env)
+    try:
+        dependency_closure.validate_artifact_command(
+            list(command),
+            root=application_root(),
+            environment=closed,
+            label="deployment command",
+        )
+    except dependency_closure.DependencyClosureError as exc:
+        raise DeploymentRuntimeError(f"Packaged deployment command rejected: {exc}") from exc
+    return closed
 
 
 def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
@@ -206,6 +249,10 @@ def run_process(
 ) -> ProcessResult:
     """Run a process, stream combined output, and enforce a hard deadline.
 
+    Frozen/production launches are sealed here, at the final subprocess
+    boundary. This means a caller cannot accidentally bypass dependency closure
+    by passing the host environment or by leaving ``env`` unset.
+
     The child is isolated into a process group so a timeout does not leave a
     compiler/PlatformIO descendant running after RoboStudio reports failure.
     Output is retained even for non-zero exits, allowing callers to surface a
@@ -215,6 +262,8 @@ def run_process(
         raise ValueError("Deployment command must not be empty.")
     if timeout <= 0:
         raise ValueError("Deployment process timeout must be greater than zero.")
+
+    process_env = _prepare_process_environment(command, env)
 
     creationflags = 0
     start_new_session = False
@@ -227,7 +276,7 @@ def run_process(
         process = subprocess.Popen(
             list(command),
             cwd=str(cwd),
-            env=dict(env) if env is not None else None,
+            env=dict(process_env) if process_env is not None else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
