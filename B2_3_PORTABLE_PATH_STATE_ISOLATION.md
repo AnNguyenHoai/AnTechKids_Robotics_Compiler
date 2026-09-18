@@ -25,6 +25,7 @@ B2.3 is stacked on B2.2 dependency closure. B2.2 answers **where executable/runt
 ├── config.json                         user RoboStudio/firmware selection
 ├── generated/
 │   └── generated_device_config.h       user hardware feature macros
+├── firmware-editor/                    editable copies of packaged firmware
 ├── bootstrap/
 │   ├── robot_bootstrap.json
 │   └── arduino-sketch/                 writable first-flash sketch copy
@@ -82,13 +83,13 @@ Host-supplied mutable PlatformIO paths are discarded unless they are already bel
 Packaged configuration under `<release-root>/config` is a read-only default. User changes are stored externally:
 
 - `HardwareConfigService` reads user `hardware.json` first and falls back to the packaged default;
-- `FirmwareService` stores the selected firmware path in external `config.json` and keeps application-owned firmware references relative when possible;
+- `FirmwareService` stores the selected firmware path in external `config.json`; application-owned firmware references stay relocatable until the user requests editing, then the sketch directory is copied to `firmware-editor/` and subsequent edits target that external copy;
 - `HardwareMacroService` writes `generated/generated_device_config.h` under external state;
 - deployment overlays that generated device header only into the isolated firmware copy;
 - `BootstrapConfigService` copies the packaged Arduino sketch to external state before writing bootstrap JSON or the generated bootstrap header;
 - GUI compilation uses a disposable external workspace and a B2.2-sealed environment instead of using the release directory as CWD.
 
-The packaged firmware/header files remain valid defaults for a first run. User-generated state never overwrites those defaults.
+The packaged firmware/header files remain valid defaults for a first run. User edits and generated state never overwrite those defaults.
 
 ## Fail-closed behavior
 
@@ -101,7 +102,8 @@ Packaged startup/build fails with an actionable error when:
 - the state root is not a directory;
 - a write probe cannot be created/deleted;
 - a build workspace cannot be created;
-- a packaged generated hardware/bootstrap output is redirected back into the release.
+- a packaged generated hardware/bootstrap output is redirected back into the release;
+- an application-owned firmware file cannot be copied to an external editable workspace.
 
 Inspection-only bootstrap (`apply=False`) resolves and validates path boundaries but does not create state.
 
@@ -117,11 +119,12 @@ The B2.3 gates verify:
 6. project-specific external state survives the final subprocess closure;
 7. the firmware template is copied to external state before mutation;
 8. hardware/firmware settings persist outside the release;
-9. generated hardware macros are external and are overlaid only into the staged firmware copy;
-10. bootstrap JSON/header and the editable Arduino sketch live in external state;
-11. GUI compile scratch files and CWD are external and its environment remains artifact-closed;
-12. the release tree is byte-for-byte unchanged after state generation/staging;
-13. invalid/unwritable/release-local state roots fail fast.
+9. application-owned firmware is copied to `firmware-editor/` before user editing and edits do not change the packaged file;
+10. generated hardware macros are external and are overlaid only into the staged firmware copy;
+11. bootstrap JSON/header and the editable Arduino sketch live in external state;
+12. GUI compile scratch files and CWD are external and its environment remains artifact-closed;
+13. the release tree is byte-for-byte unchanged after settings, editing, generation, staging, and compile preparation;
+14. invalid/unwritable/release-local state roots fail fast.
 
 ## PlatformIO Unicode note
 
