@@ -1,8 +1,11 @@
-"""Canonical target-machine setup contract for RoboStudio releases.
+"""Canonical target-machine setup contract for portable RoboStudio releases.
 
-The production artifact owns RoboStudio, Compiler and application resources.
-Python, PlatformIO and board USB/UART drivers are provisioned externally on
-the target machine. This module is declarative and side-effect free.
+B2.2 defines a copy-and-run production model: Python and PlatformIO belong to
+the release artifact and must never be prerequisites installed on the target
+machine. The only external hardware prerequisite is the board-specific USB/UART
+driver when Windows does not already provide it.
+
+This module is declarative and side-effect free.
 """
 from __future__ import annotations
 
@@ -10,9 +13,12 @@ from dataclasses import dataclass
 from enum import Enum
 
 SCHEMA = "antechkids.robostudio.target-machine-prerequisites"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SUPPORTED_HOST_OS = "Windows 10/11 x64"
-PATH_POLICY = "Required executable commands must be resolvable from the target user's PATH."
+PATH_POLICY = (
+    "RoboStudio compile/deploy must not require host Python or PlatformIO on PATH; "
+    "production subprocesses resolve application-owned tools from the extracted artifact."
+)
 
 
 class PrerequisiteKind(str, Enum):
@@ -24,7 +30,7 @@ class PrerequisiteKind(str, Enum):
 
 
 class RequirementScope(str, Enum):
-    """When a prerequisite is needed on the target machine."""
+    """When an external prerequisite is needed on the target machine."""
 
     COMPILE = "compile"
     HARDWARE = "hardware"
@@ -45,72 +51,74 @@ class TargetMachinePrerequisite:
     packaged: bool = False
 
 
-# Python is required whenever the production application is used to compile
-# or deploy robot programs. Hardware scope is cumulative with compile scope.
+# Python and PlatformIO are intentionally absent: they are mandatory release
+# payload, not host setup. Hardware deployment may still require a vendor USB
+# driver depending on the ESP32 USB/UART bridge and Windows driver inventory.
 PREREQUISITES: tuple[TargetMachinePrerequisite, ...] = (
-    TargetMachinePrerequisite(
-        name="Python",
-        kind=PrerequisiteKind.RUNTIME,
-        required_for=(RequirementScope.COMPILE, RequirementScope.HARDWARE),
-        command=("python", "--version"),
-        version_policy=">=3.10, 64-bit",
-        install_note="Install a supported 64-bit Python 3.10+ release and enable the Python command in PATH.",
-        install_command="python -m pip --version",
-    ),
-    TargetMachinePrerequisite(
-        name="PlatformIO Core",
-        kind=PrerequisiteKind.TOOL,
-        required_for=(RequirementScope.HARDWARE,),
-        command=("pio", "--version"),
-        version_policy="supported PlatformIO Core release",
-        install_note="Install PlatformIO Core and ensure the pio command is available in PATH.",
-        install_command="python -m pip install --upgrade platformio",
-    ),
     TargetMachinePrerequisite(
         name="ESP32/USB driver",
         kind=PrerequisiteKind.DRIVER,
         required_for=(RequirementScope.HARDWARE,),
         command=(),
         version_policy="vendor-supported driver for the selected ESP32 USB/UART bridge",
-        install_note="Install the USB/UART driver required by the connected ESP32 board before hardware deployment.",
+        install_note=(
+            "Install the USB/UART driver required by the connected ESP32 board only "
+            "when Windows does not already provide a compatible driver."
+        ),
         install_command="Install the driver supplied by the ESP32 board USB/UART bridge vendor.",
         path_required=False,
     ),
 )
 
+REQUIRED_BUNDLED_COMPONENTS: tuple[str, ...] = (
+    "Portable Python runtime",
+    "PlatformIO Core/runtime",
+)
+
+# These remain forbidden inside the production ZIP. They are development state,
+# not runtime dependencies.
 FORBIDDEN_BUNDLED_PREREQUISITES: tuple[str, ...] = (
-    "Python installation",
-    "PlatformIO installation",
+    "Developer virtual environment",
+    "Developer source repository",
+)
+
+# A clean target machine must not need these global installations for normal
+# RoboStudio compile/deploy flows.
+FORBIDDEN_HOST_PREREQUISITES: tuple[str, ...] = (
+    "Global Python installation",
+    "Global PlatformIO installation",
     "Developer virtual environment",
     "Developer source repository",
 )
 
 
 def prerequisites() -> tuple[TargetMachinePrerequisite, ...]:
-    """Return the canonical target-machine prerequisite list."""
+    """Return the canonical external target-machine prerequisite list."""
     return PREREQUISITES
 
 
 def for_scope(scope: RequirementScope | str) -> tuple[TargetMachinePrerequisite, ...]:
-    """Return prerequisites required for a compile or hardware scope."""
+    """Return external prerequisites required for a compile or hardware scope."""
     scope = RequirementScope(scope)
     return tuple(item for item in PREREQUISITES if scope in item.required_for)
 
 
 def validate_contract() -> None:
-    """Validate invariants of the setup contract."""
-    if not PREREQUISITES:
-        raise ValueError("Target-machine prerequisite contract must not be empty")
+    """Validate invariants of the copy-and-run target-machine contract."""
     if not SUPPORTED_HOST_OS:
         raise ValueError("Supported host OS policy must be declared")
     if not PATH_POLICY:
         raise ValueError("PATH policy must be declared")
+    if not REQUIRED_BUNDLED_COMPONENTS:
+        raise ValueError("Portable release must declare bundled runtime components")
     names = [item.name for item in PREREQUISITES]
     if len(names) != len(set(names)):
         raise ValueError("Target prerequisite names must be unique")
+    if any(name in {"Python", "PlatformIO Core"} for name in names):
+        raise ValueError("Python and PlatformIO must be bundled, not target-machine prerequisites")
     for item in PREREQUISITES:
         if item.packaged:
-            raise ValueError(f"Target prerequisite must not be packaged: {item.name}")
+            raise ValueError(f"External target prerequisite must not be packaged: {item.name}")
         if not item.required_for:
             raise ValueError(f"Target prerequisite must declare a scope: {item.name}")
         if item.kind is not PrerequisiteKind.DRIVER and not item.command:
@@ -127,10 +135,14 @@ def to_dict() -> dict[str, object]:
     return {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
-        "host_model": "target-machine-prerequisites",
+        "host_model": "artifact-closed-copy-and-run",
         "supported_host_os": SUPPORTED_HOST_OS,
         "path_policy": PATH_POLICY,
-        "release_payload_policy": "Prerequisites are installed on the target machine; they are not bundled into the production ZIP.",
+        "release_payload_policy": (
+            "Portable Python and PlatformIO are bundled in the production ZIP. "
+            "The target machine must not install them for RoboStudio compile/deploy."
+        ),
+        "required_bundled_components": list(REQUIRED_BUNDLED_COMPONENTS),
         "prerequisites": [
             {
                 "name": item.name,
@@ -146,4 +158,5 @@ def to_dict() -> dict[str, object]:
             for item in PREREQUISITES
         ],
         "forbidden_bundled_prerequisites": list(FORBIDDEN_BUNDLED_PREREQUISITES),
+        "forbidden_host_prerequisites": list(FORBIDDEN_HOST_PREREQUISITES),
     }
