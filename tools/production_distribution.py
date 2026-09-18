@@ -259,28 +259,27 @@ def _copy_deployment_runtime_tools(output: Path) -> Path:
 
 
 def _refresh_distribution_evidence(output: Path, manifest: Path) -> None:
-    """Re-seal distribution evidence after adding the B2.4 runtime allow-list."""
-    try:
-        production_artifact_boundary.validate_distribution_root(output)
-        production_artifact_boundary.write_boundary_manifest(output)
-        production_runtime_closure.validate_distribution(output)
-    except Exception as exc:
-        raise ProductionDistributionError(
-            f"Production deployment runtime validation failed: {exc}"
-        ) from exc
-
+    """Re-seal manifest and release evidence after adding B2.4 runtime tools."""
     try:
         payload = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ProductionDistributionError(f"Invalid distribution manifest after assembly: {manifest}") from exc
+
+    # The deployment allow-list is part of the production artifact. Fingerprint
+    # it before any validator consumes the manifest; otherwise a correct runtime
+    # payload appears as an unexpected post-manifest mutation.
     payload["deployment_tools"] = "tools"
     payload["files"] = distribution_package._file_entries(output)
     manifest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
     try:
+        production_artifact_boundary.validate_distribution_root(output)
+        production_artifact_boundary.write_boundary_manifest(output)
         distribution_package.validate_distribution_manifest(manifest)
+        production_runtime_closure.validate_distribution(output)
     except Exception as exc:
         raise ProductionDistributionError(
-            f"Production distribution manifest failed after deployment-tool packaging: {exc}"
+            f"Production deployment runtime validation failed: {exc}"
         ) from exc
 
 
