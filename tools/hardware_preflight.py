@@ -12,9 +12,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
+
+# Direct execution from an extracted production artifact sets sys.path to the
+# tools/ directory. Add the artifact root before importing the tools namespace;
+# this is relocation-safe and does not consult CWD or PYTHONPATH.
+_APPLICATION_ROOT = Path(__file__).resolve().parent.parent
+if str(_APPLICATION_ROOT) not in sys.path:
+    sys.path.insert(0, str(_APPLICATION_ROOT))
 
 from tools import build_isolation
 from tools.deployment_runtime import (
@@ -152,8 +160,6 @@ def select_serial_port(
             "Reconnect the robot and install the USB/UART bridge driver required by the board."
         )
     for item in ports:
-        # B2.4 production support is Windows; case-insensitive matching also
-        # keeps synthetic qualification fixtures deterministic on non-Windows CI.
         if item.port.casefold() == requested.casefold():
             return item
     raise HardwarePreflightError(
