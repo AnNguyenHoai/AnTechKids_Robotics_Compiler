@@ -12,7 +12,7 @@ if __package__ in (None, ""):
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-from tools import production_release_assembly
+from tools import copy_run_release, production_release_assembly
 
 FORBIDDEN_NAMES = {".git", ".venv", ".pio", "penv", "__pycache__", ".pytest_cache"}
 DEPLOYMENT_MANIFEST = "deployment-runtime.json"
@@ -111,7 +111,12 @@ def build(executable: Path, runtime_bin: Path, runtime_platformio: Path, runtime
         shutil.copytree(_resolve(runtime_platformio), staged_platformio)
         _write_deployment_manifest(staged_platformio)
         result = production_release_assembly.assemble_release(production_release_assembly.ProductionReleaseInputs(executable=_resolve(executable), runtime_resources=_resolve(runtime_resources), version_file=_resolve(version_file), source_revision=source_revision, runtime_bin=staged_bin, runtime_platformio=staged_platformio, firmware_root=_resolve(firmware_root)), _resolve(output))
+        try:
+            result = copy_run_release.finalize_assembly_result(result, source_revision=source_revision)
+        except copy_run_release.CopyRunReleaseError as exc:
+            raise OneCommandProductionBuildError(f"B2.6 copy-and-run finalization failed: {exc}") from exc
         result["rsd25"] = {"status": "PASS", "runtime_model": "application-owned", "portable_python": "runtime/bin/python.exe", "platformio": "runtime/platformio", "firmware": "firmware/robot-platform", "target_machine_host_toolchain_required": False}
+        result["b2_6"] = dict(result.get("b2_6", {}), canonical_release_path=True)
         return result
     finally:
         import shutil
@@ -128,7 +133,7 @@ def _source_revision(value: str | None) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="RSD-25 one-command application-owned RoboStudio production build")
+    parser = argparse.ArgumentParser(description="RSD-25/B2.6 one-command application-owned copy-and-run RoboStudio production build")
     parser.add_argument("--executable", required=True, type=Path)
     parser.add_argument("--runtime-bin", required=True, type=Path)
     parser.add_argument("--runtime-platformio", required=True, type=Path)
@@ -141,11 +146,13 @@ def main() -> int:
     try:
         result = build(args.executable, args.runtime_bin, args.runtime_platformio, args.runtime_resources, args.version_file, _source_revision(args.source_revision), args.output, args.firmware_root)
     except OneCommandProductionBuildError as exc:
-        print(f"RSD-25 one-command production build: FAIL: {exc}", file=sys.stderr)
+        print(f"RSD-25/B2.6 one-command production build: FAIL: {exc}", file=sys.stderr)
         return 1
-    print("RSD-25 one-command production build: PASS")
+    print("RSD-25/B2.6 one-command production build: PASS")
     print(f"Artifact: {result['artifact']}")
     print(f"SHA-256: {result['artifact_sha256']}")
+    print("Delivery model: copy-extract-run")
+    print("Copy-run contract: copy-run-contract.json")
     print("Bundled Python: runtime/bin/python.exe")
     print("Bundled PlatformIO: runtime/platformio")
     print("Firmware: firmware/robot-platform")
