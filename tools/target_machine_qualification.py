@@ -15,8 +15,14 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping
+
+_APPLICATION_ROOT = Path(__file__).resolve().parent.parent
+if str(_APPLICATION_ROOT) not in sys.path:
+    sys.path.insert(0, str(_APPLICATION_ROOT))
 
 from tools import hardware_preflight, target_machine_prerequisites
 
@@ -207,17 +213,13 @@ def to_dict(report: TargetMachineQualificationReport) -> dict[str, object]:
 
 def write_report(report: TargetMachineQualificationReport, path) -> None:
     """Write machine-readable target-machine qualification evidence."""
-    from pathlib import Path
-
     destination = Path(path).expanduser().resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(to_dict(report), indent=2) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Qualify target-machine prerequisites for RoboStudio")
+    parser = __import__("argparse").ArgumentParser(description="Qualify target-machine prerequisites for RoboStudio")
     parser.add_argument("--scope", choices=[scope.value for scope in target_machine_prerequisites.RequirementScope], default="compile")
     parser.add_argument("--serial-port", type=str)
     parser.add_argument("--report", type=str)
