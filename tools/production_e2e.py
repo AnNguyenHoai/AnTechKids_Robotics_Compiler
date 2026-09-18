@@ -1,9 +1,9 @@
 """Production RoboStudio + Compiler E2E orchestration.
 
-The production ZIP is the system under test. RoboStudio, the application-owned
-compiler, and the application-owned Python runtime are resolved from the
-extracted artifact. B2.2 additionally closes executable/runtime lookup so the
-artifact cannot silently fall back to tools installed on the host machine.
+The production ZIP is the system under test. Executable/compiler/runtime inputs
+resolve only from the extracted artifact, while B2.3 requires every mutable E2E
+output and the process working directory to live under external RoboStudio
+state rather than mutating the extracted release.
 """
 from __future__ import annotations
 
@@ -76,7 +76,9 @@ def _safe_extract(artifact: Path, root: Path) -> None:
 
 
 def _find_app(root: Path) -> Path | None:
-    candidates = [p for p in root.rglob("*") if p.is_file() and p.name.lower() == "robostudio.exe"]
+    candidates = [
+        p for p in root.rglob("*") if p.is_file() and p.name.lower() == "robostudio.exe"
+    ]
     return sorted(candidates, key=lambda p: p.as_posix().lower())[0] if candidates else None
 
 
@@ -90,11 +92,27 @@ def _find_python(root: Path) -> Path | None:
     return candidate if candidate.is_file() else None
 
 
-def _run(command: list[str], *, cwd: Path, timeout: float, label: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    command: list[str],
+    *,
+    cwd: Path,
+    timeout: float,
+    label: str,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     if not command:
         raise ProductionE2EError(f"{label} command is empty")
     try:
-        return subprocess.run(command, cwd=cwd, env=env, check=True, timeout=timeout, text=True, capture_output=True, shell=False)
+        return subprocess.run(
+            command,
+            cwd=cwd,
+            env=env,
+            check=True,
+            timeout=timeout,
+            text=True,
+            capture_output=True,
+            shell=False,
+        )
     except FileNotFoundError as exc:
         raise ProductionE2EError(f"{label} command is unavailable: {command[0]}") from exc
     except OSError as exc:
@@ -111,11 +129,12 @@ def _run(command: list[str], *, cwd: Path, timeout: float, label: str, env: dict
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or "").strip()
         suffix = f": {detail}" if detail else ""
-        raise ProductionE2EError(f"{label} failed with exit code {exc.returncode}{suffix}") from exc
+        raise ProductionE2EError(
+            f"{label} failed with exit code {exc.returncode}{suffix}"
+        ) from exc
 
 
 def command_from_text(value: str) -> list[str]:
-    """Parse a command template without invoking a shell."""
     if not value or not value.strip():
         raise ProductionE2EError("command template is empty")
     return shlex.split(value, posix=False)
@@ -132,8 +151,12 @@ def _render_command(command: list[str], **values: Path) -> list[str]:
 
 
 def _artifact_relative(root: Path, path: Path) -> str:
-    """Return artifact evidence paths in ZIP-style POSIX form on every host."""
     return path.relative_to(root).as_posix()
+
+
+def _state_relative(state_root: Path, path: Path) -> str:
+    """Return a stable logical state path without leaking machine-specific roots."""
+    return path.relative_to(state_root).as_posix()
 
 
 def _closed_environment(root: Path, environment: dict[str, str] | None):
@@ -143,7 +166,9 @@ def _closed_environment(root: Path, environment: dict[str, str] | None):
         raise ProductionE2EError(f"portable dependency closure failed: {exc}") from exc
 
 
-def _validate_command(command: list[str], *, root: Path, environment: dict[str, str], label: str) -> str:
+def _validate_command(
+    command: list[str], *, root: Path, environment: dict[str, str], label: str
+) -> str:
     try:
         executable = dependency_closure.validate_artifact_command(
             command, root=root, environment=environment, label=label
@@ -178,41 +203,59 @@ def evaluate_production_artifact(
         _safe_extract(artifact, root)
         app = _find_app(root)
         if app is None:
-            raise ProductionE2EError("RoboStudio executable is missing from production artifact")
+            raise ProductionE2EError(
+                "RoboStudio executable is missing from production artifact"
+            )
         app = app.resolve()
         if root not in app.parents:
             raise ProductionE2EError("RoboStudio resolved outside production artifact")
         compiler = _find_compiler(root)
         bundled_python = _find_python(root)
         if compiler is None and compile_command:
-            raise ProductionE2EError("application-owned compiler entry point is missing from production artifact")
+            raise ProductionE2EError(
+                "application-owned compiler entry point is missing from production artifact"
+            )
         if bundled_python is None and (compile_command or launch_command):
-            raise ProductionE2EError("application-owned Python runtime is missing from production artifact")
+            raise ProductionE2EError(
+                "application-owned Python runtime is missing from production artifact"
+            )
 
         if compiler is not None:
             try:
-                compiler = dependency_closure.assert_artifact_owned(compiler, root, label="compiler")
+                compiler = dependency_closure.assert_artifact_owned(
+                    compiler, root, label="compiler"
+                )
             except dependency_closure.DependencyClosureError as exc:
-                raise ProductionE2EError(f"portable dependency closure failed: {exc}") from exc
+                raise ProductionE2EError(
+                    f"portable dependency closure failed: {exc}"
+                ) from exc
         if bundled_python is not None:
             try:
-                bundled_python = dependency_closure.assert_artifact_owned(bundled_python, root, label="bundled Python")
+                bundled_python = dependency_closure.assert_artifact_owned(
+                    bundled_python, root, label="bundled Python"
+                )
             except dependency_closure.DependencyClosureError as exc:
-                raise ProductionE2EError(f"portable dependency closure failed: {exc}") from exc
+                raise ProductionE2EError(
+                    f"portable dependency closure failed: {exc}"
+                ) from exc
 
         closed_env, closure_report = _closed_environment(root, environment)
-        started = compiled = False
-        output = root / "e2e-output" / "program.h"
+        state_root = closure_report.state_root
+        execution_cwd = state_root / "e2e-cwd"
+        output = state_root / "e2e-output" / "program.h"
+        execution_cwd.mkdir(parents=True, exist_ok=True)
         output.parent.mkdir(parents=True, exist_ok=True)
+        started = compiled = False
         evidence = {
             "robostudio": _artifact_relative(root, app),
             "compiler": _artifact_relative(root, compiler) if compiler else None,
             "bundled_python": _artifact_relative(root, bundled_python) if bundled_python else None,
             "source": str(source),
             "launch_requested": launch,
-            "target_cwd": str(app.parent),
-            "compiler_output_contract": _artifact_relative(root, output),
+            "target_cwd": _state_relative(state_root, execution_cwd),
+            "compiler_output_contract": _state_relative(state_root, output),
             "dependency_closure": dependency_closure.path_evidence(closure_report),
+            "release_root_writable_state": False,
         }
 
         values = {
@@ -225,9 +268,18 @@ def evaluate_production_artifact(
         if launch and launch_command:
             rendered_launch = _render_command(launch_command, **values)
             evidence["launch_executable"] = _validate_command(
-                rendered_launch, root=root, environment=closed_env, label="RoboStudio launch"
+                rendered_launch,
+                root=root,
+                environment=closed_env,
+                label="RoboStudio launch",
             )
-            launch_result = _run(rendered_launch, cwd=app.parent, timeout=timeout, label="RoboStudio launch", env=closed_env)
+            launch_result = _run(
+                rendered_launch,
+                cwd=execution_cwd,
+                timeout=timeout,
+                label="RoboStudio launch",
+                env=closed_env,
+            )
             started = True
             evidence["launch_returncode"] = launch_result.returncode
             evidence["launch_stdout"] = launch_result.stdout
@@ -236,17 +288,30 @@ def evaluate_production_artifact(
         if compile_command:
             rendered_compile = _render_command(compile_command, **values)
             evidence["compile_executable"] = _validate_command(
-                rendered_compile, root=root, environment=closed_env, label="compiler E2E"
+                rendered_compile,
+                root=root,
+                environment=closed_env,
+                label="compiler E2E",
             )
-            compile_result = _run(rendered_compile, cwd=app.parent, timeout=timeout, label="compiler E2E", env=closed_env)
+            compile_result = _run(
+                rendered_compile,
+                cwd=execution_cwd,
+                timeout=timeout,
+                label="compiler E2E",
+                env=closed_env,
+            )
             compiled = output.is_file() and output.stat().st_size > 0
             evidence["compile_returncode"] = compile_result.returncode
             evidence["compile_stdout"] = compile_result.stdout
             evidence["compile_stderr"] = compile_result.stderr
-            evidence["compiler_output"] = _artifact_relative(root, output) if compiled else None
+            evidence["compiler_output"] = (
+                _state_relative(state_root, output) if compiled else None
+            )
             evidence["compiler_output_size"] = output.stat().st_size if compiled else 0
             if not compiled:
-                raise ProductionE2EError("compiler exited successfully but produced no output")
+                raise ProductionE2EError(
+                    "compiler exited successfully but produced no output"
+                )
 
         passed = (not launch or started) and (not compile_command or compiled)
         return ProductionE2EResult(
@@ -262,9 +327,22 @@ def evaluate_production_artifact(
         )
 
 
-def qualify_release_e2e(artifact: Path, *, source: Path, launch_command: list[str], compile_command: list[str], timeout: float = DEFAULT_TIMEOUT) -> ProductionE2EResult:
-    """Run RoboStudio startup and the packaged compiler against an extracted ZIP."""
-    return evaluate_production_artifact(artifact=artifact, source=source, launch=True, launch_command=launch_command, compile_command=compile_command, timeout=timeout)
+def qualify_release_e2e(
+    artifact: Path,
+    *,
+    source: Path,
+    launch_command: list[str],
+    compile_command: list[str],
+    timeout: float = DEFAULT_TIMEOUT,
+) -> ProductionE2EResult:
+    return evaluate_production_artifact(
+        artifact=artifact,
+        source=source,
+        launch=True,
+        launch_command=launch_command,
+        compile_command=compile_command,
+        timeout=timeout,
+    )
 
 
 def build_report(result: ProductionE2EResult) -> dict:
