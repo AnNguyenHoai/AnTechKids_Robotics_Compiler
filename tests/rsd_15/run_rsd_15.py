@@ -98,7 +98,7 @@ def main() -> int:
         compatibility = manifest["compatibility"]
         check("compatibility contract is shipped", isinstance(compatibility, dict))
         check("compatibility schema is declared", compatibility["schema"] == release_compatibility.SCHEMA)
-        check("compatibility schema version is declared", compatibility["schema_version"] == 1)
+        check("compatibility schema version is declared", compatibility["schema_version"] == release_compatibility.SCHEMA_VERSION == 2)
         check("application version is locked", compatibility["application_version"] == "0.1.1")
         check("runtime schema is locked", compatibility["runtime_integrity_schema_version"] == 1)
         check("distribution schema is locked", compatibility["distribution_schema_version"] == distribution_package.SCHEMA_VERSION == 2)
