@@ -1,9 +1,4 @@
-"""Clean-machine launch contract for a packaged RoboStudio distribution.
-
-The launcher uses an absolute application executable and the same artifact-
-closed dependency environment used by production deployment/E2E. Development
-Python, Node, PlatformIO and other global tools cannot leak through host PATH.
-"""
+"""Clean-machine launch contract for a packaged RoboStudio distribution."""
 from __future__ import annotations
 
 import json
@@ -21,13 +16,11 @@ DISTRIBUTION_MANIFEST = "distribution-manifest.json"
 
 
 class CleanMachineLaunchError(RuntimeError):
-    """Raised when a distribution cannot satisfy the clean-machine contract."""
+    pass
 
 
 @dataclass(frozen=True)
 class LaunchSpec:
-    """Absolute command, external working directory, and child environment."""
-
     executable: Path
     command: tuple[str, ...]
     cwd: Path
@@ -49,15 +42,12 @@ def _require_executable(root: Path) -> Path:
     if not executable.is_file():
         raise CleanMachineLaunchError(f"RoboStudio executable is missing: {executable}")
     try:
-        return dependency_closure.assert_artifact_owned(
-            executable, root, label="RoboStudio executable"
-        )
+        return dependency_closure.assert_artifact_owned(executable, root, label="RoboStudio executable")
     except dependency_closure.DependencyClosureError as exc:
         raise CleanMachineLaunchError(f"Packaged dependency closure failed: {exc}") from exc
 
 
 def clean_machine_environment(root: Path, base_env: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Build an artifact-closed environment for packaged RoboStudio."""
     try:
         env, _ = dependency_closure.build_closed_environment(root, base_env)
     except dependency_closure.DependencyClosureError as exc:
@@ -72,7 +62,6 @@ def build_launch_spec(
     args: Sequence[str] = (),
     base_env: Mapping[str, str] | None = None,
 ) -> LaunchSpec:
-    """Create a deterministic packaged launch command."""
     root = Path(root).resolve()
     try:
         runtime_preflight.validate_distribution(root)
@@ -89,7 +78,7 @@ def build_launch_spec(
 
 
 def write_launch_manifest(root: Path) -> Path:
-    """Write a machine-readable record of the clean-machine launch contract."""
+    """Write build-time launch evidence; runtime state is explicitly external."""
     root = Path(root)
     spec = build_launch_spec(root)
     manifest = {
@@ -101,7 +90,9 @@ def write_launch_manifest(root: Path) -> Path:
         "host_runtime_variables_removed": list(dependency_closure.HOST_INJECTION_VARS),
         "path_lookup_required": False,
         "path_policy": "artifact-closed-with-windows-system-allowlist",
-        "platformio_core": "runtime/platformio",
+        "platformio_dependency_payload": "runtime/platformio",
+        "platformio_mutable_core": "external-state/platformio/core",
+        "mutable_state_policy": "external-to-release",
     }
     path = root / LAUNCH_MANIFEST
     path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -115,7 +106,6 @@ def launch(
     cwd: Path | None = None,
     base_env: Mapping[str, str] | None = None,
 ) -> int:
-    """Launch packaged RoboStudio without shell/host-PATH lookup."""
     spec = build_launch_spec(root, cwd=cwd, args=args, base_env=base_env)
     completed = subprocess.run(
         list(spec.command),
