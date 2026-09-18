@@ -6,6 +6,7 @@ extracted artifact.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import shlex
 import subprocess
@@ -27,6 +28,7 @@ class ProductionE2EError(RuntimeError):
 class ProductionE2EResult:
     status: str
     artifact: str
+    artifact_sha256: str
     extracted_root: str
     target_machine_prerequisites: bool
     source_tree_execution: bool
@@ -42,6 +44,7 @@ class ProductionE2EResult:
         return {
             "status": self.status,
             "artifact": self.artifact,
+            "artifact_sha256": self.artifact_sha256,
             "extracted_root": self.extracted_root,
             "target_machine_prerequisites": self.target_machine_prerequisites,
             "source_tree_execution": self.source_tree_execution,
@@ -49,6 +52,14 @@ class ProductionE2EResult:
             "compiler_succeeded": self.compiler_succeeded,
             "evidence": self.evidence,
         }
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _safe_extract(artifact: Path, root: Path) -> None:
@@ -140,6 +151,7 @@ def evaluate_production_artifact(
         raise ProductionE2EError(f"source program is missing: {source}")
     if timeout <= 0:
         raise ProductionE2EError("timeout must be greater than zero")
+    artifact_sha256 = _sha256(artifact)
 
     with tempfile.TemporaryDirectory(prefix="robostudio-production-e2e-") as td:
         root = Path(td).resolve()
@@ -198,7 +210,7 @@ def evaluate_production_artifact(
         passed = (not launch or started) and (not compile_command or compiled)
         # This harness validates the application-owned artifact itself; it does not
         # require external target-machine prerequisites such as USB drivers or hardware.
-        return ProductionE2EResult("PASS" if passed else "FAIL", str(artifact), str(root), False, False, started, compiled, evidence)
+        return ProductionE2EResult("PASS" if passed else "FAIL", str(artifact), artifact_sha256, str(root), False, False, started, compiled, evidence)
 
 
 def qualify_release_e2e(artifact: Path, *, source: Path, launch_command: list[str], compile_command: list[str], timeout: float = DEFAULT_TIMEOUT) -> ProductionE2EResult:
