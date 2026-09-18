@@ -30,6 +30,8 @@ PLATFORMIO_WORKSPACE_DIR_ENV = "PLATFORMIO_WORKSPACE_DIR"
 PLATFORMIO_DISABLE_UPGRADE_CHECK_ENV = "PLATFORMIO_DISABLE_UPGRADE_CHECK"
 PLATFORMIO_DISABLE_PROGRESSBAR_ENV = "PLATFORMIO_DISABLE_PROGRESSBAR"
 PLATFORMIO_NO_ANSI_ENV = "PLATFORMIO_NO_ANSI"
+DEPENDENCY_MODE_ENV = "ROBOSTUDIO_DEPENDENCY_MODE"
+DEPENDENCY_MODE_CLOSED = "artifact-closed"
 
 
 class DeploymentRuntimeError(RuntimeError):
@@ -71,6 +73,17 @@ def deployment_runtime_core_dir() -> Path:
     return deployment_runtime_root()
 
 
+def _dependency_closed_mode(base_env: Mapping[str, str] | None = None) -> bool:
+    """Return whether this process belongs to the packaged dependency boundary.
+
+    A portable Python helper launched by frozen RoboStudio is not itself a
+    PyInstaller/frozen process. The explicit dependency-mode marker therefore
+    propagates production closure to nested compiler/PlatformIO/flash children.
+    """
+    environment = os.environ if base_env is None else base_env
+    return is_frozen() or environment.get(DEPENDENCY_MODE_ENV) == DEPENDENCY_MODE_CLOSED
+
+
 def deployment_runtime_environment(
     base_env: Mapping[str, str] | None = None,
     *,
@@ -78,17 +91,17 @@ def deployment_runtime_environment(
 ) -> dict[str, str]:
     """Build the environment for a deployment subprocess.
 
-    Frozen RoboStudio is dependency-closed: executable lookup is limited to
-    application-owned directories plus the minimal Windows system allow-list,
-    and host Python/Node/PlatformIO injection variables are removed. This
-    prevents a packaged deployment from passing only because development tools
-    happen to exist on the machine running RoboStudio.
+    Packaged RoboStudio and its portable-Python descendants are dependency-
+    closed: executable lookup is limited to application-owned directories plus
+    the minimal Windows system allow-list, and host Python/Node/PlatformIO
+    injection variables are removed. This prevents a packaged deployment from
+    passing only because development tools happen to exist on the machine.
 
     Source builds intentionally retain their developer environment. When
     ``project_name`` is supplied, writable build state is still moved to the
     per-project RoboStudio user-data workspace.
     """
-    if is_frozen():
+    if _dependency_closed_mode(base_env):
         try:
             env, _ = dependency_closure.build_closed_environment(application_root(), base_env)
         except dependency_closure.DependencyClosureError as exc:
@@ -151,14 +164,14 @@ def _prepare_process_environment(
     """Seal production subprocesses at the process-launch boundary.
 
     Callers are allowed to add application values such as Wi-Fi credentials,
-    but a frozen RoboStudio process may not re-open host PATH/PYTHONPATH by
-    passing ``os.environ.copy()`` or by omitting ``env``. The runner therefore
-    applies B2.2 dependency closure immediately before ``Popen`` and validates
-    that the executable itself belongs to the production artifact.
+    but packaged RoboStudio or a portable-Python descendant may not re-open
+    host PATH/PYTHONPATH by passing ``os.environ.copy()`` or by omitting
+    ``env``. The runner therefore applies B2.2 dependency closure immediately
+    before ``Popen`` and validates that the executable belongs to the artifact.
 
     Source/development runs intentionally preserve their historical behavior.
     """
-    if not is_frozen():
+    if not _dependency_closed_mode(env):
         return dict(env) if env is not None else None
 
     closed = deployment_runtime_environment(env)
@@ -249,9 +262,10 @@ def run_process(
 ) -> ProcessResult:
     """Run a process, stream combined output, and enforce a hard deadline.
 
-    Frozen/production launches are sealed here, at the final subprocess
-    boundary. This means a caller cannot accidentally bypass dependency closure
-    by passing the host environment or by leaving ``env`` unset.
+    Production launches are sealed here, at the final subprocess boundary.
+    Closure propagates from frozen RoboStudio into portable Python helpers via
+    ``ROBOSTUDIO_DEPENDENCY_MODE=artifact-closed``, so nested PlatformIO/flash
+    processes cannot accidentally regain the host environment.
 
     The child is isolated into a process group so a timeout does not leave a
     compiler/PlatformIO descendant running after RoboStudio reports failure.
