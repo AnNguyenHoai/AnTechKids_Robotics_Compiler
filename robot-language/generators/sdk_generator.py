@@ -1,6 +1,13 @@
 from pathlib import Path
 from .base_generator import BaseGenerator
 
+_TYPE_MAP = {
+    "int": "int",
+    "string": "str",
+    "bool": "bool",
+    "any": "Any",
+}
+
 
 class SDKGenerator(BaseGenerator):
     name = "SDK Generator"
@@ -24,25 +31,43 @@ class SDKGenerator(BaseGenerator):
         self._generate_init(robot_dir / "__init__.py", module_names, function_names)
         print(f"[SDKGenerator] Generated SDK in {robot_dir}")
 
+    @staticmethod
+    def _python_type(spec_type):
+        try:
+            return _TYPE_MAP[spec_type]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported Robot Language type: {spec_type!r}") from exc
+
     def _generate_module(self, filepath, category_name, category, query):
+        functions = category.get("functions", [])
+        uses_any = any(
+            arg.get("type") == "any" for func in functions for arg in query.arguments_of(func)
+        ) or any(func.get("returns") == "any" for func in functions)
+
         with open(filepath, "w", encoding="utf-8") as f:
             f.write('"""\n')
             f.write(f"AUTO GENERATED FILE – {category_name.capitalize()} API\n")
-            f.write('"""\n\n')
+            f.write('"""\n')
+            if uses_any:
+                f.write("\nfrom typing import Any\n")
+            f.write("\n")
 
-            for func in category.get("functions", []):
+            for func in functions:
                 args = []
                 for arg in query.arguments_of(func):
-                    arg_type = arg.get("type", "int")
+                    arg_type = self._python_type(arg.get("type", "int"))
                     args.append(f"{arg['name']}: {arg_type}")
 
-                signature = f"def {func['name']}({', '.join(args)}) -> None:"
+                return_type = self._python_type(func["returns"]) if "returns" in func else "None"
+                signature = f"def {func['name']}({', '.join(args)}) -> {return_type}:"
 
                 doc_lines = ['    """', f"    {query.description_of(func)}", ""]
                 if args:
                     doc_lines.append("    Args:")
                     for arg in query.arguments_of(func):
-                        doc_lines.append(f"        {arg['name']} ({arg.get('type', 'int')}):")
+                        doc_lines.append(
+                            f"        {arg['name']} ({arg.get('type', 'int')}):"
+                        )
                 doc_lines.append('    """')
 
                 f.write(f"{signature}\n")
