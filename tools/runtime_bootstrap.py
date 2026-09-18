@@ -3,9 +3,9 @@
 This module is the single startup boundary for RoboStudio. It separates three
 locations that must not be confused:
 
-* the application root: the directory containing the distributed executable;
+* the application root: the immutable directory containing the distribution;
 * the frozen bundle root: PyInstaller's import/resource area;
-* the user data root: writable per-user state.
+* the user data root: writable external per-user state.
 
 The bootstrap never changes the current working directory and never searches
 host PATH for RoboStudio-owned runtime components. Frozen mode uses the same
@@ -31,8 +31,6 @@ class RuntimeBootstrapError(RuntimeError):
 
 @dataclass(frozen=True)
 class RuntimeContext:
-    """Resolved launch locations and the environment prepared for children."""
-
     application_root: Path
     bundle_root: Path
     user_data_root: Path
@@ -41,12 +39,10 @@ class RuntimeContext:
 
 
 def is_frozen() -> bool:
-    """Return whether the current process is a frozen RoboStudio executable."""
     return bool(getattr(sys, "frozen", False))
 
 
 def application_root() -> Path:
-    """Return the directory owned by the installed RoboStudio application."""
     override = os.environ.get(runtime_paths.APPLICATION_HOME_ENV)
     if override:
         return Path(override).expanduser().resolve()
@@ -56,7 +52,6 @@ def application_root() -> Path:
 
 
 def bundle_root() -> Path:
-    """Return the import/resource root of the running application bundle."""
     if is_frozen():
         meipass = getattr(sys, "_MEIPASS", None)
         if meipass:
@@ -65,7 +60,6 @@ def bundle_root() -> Path:
 
 
 def _runtime_environment(base_env: dict[str, str] | None = None) -> dict[str, str]:
-    """Create the deterministic child-process environment for RoboStudio."""
     env = dict(os.environ if base_env is None else base_env)
     if not is_frozen():
         return env
@@ -77,12 +71,10 @@ def _runtime_environment(base_env: dict[str, str] | None = None) -> dict[str, st
 
 
 def bootstrap_environment(base_env: dict[str, str] | None = None) -> dict[str, str]:
-    """Return the environment that RoboStudio should give to child processes."""
     return _runtime_environment(base_env)
 
 
 def bootstrap_import_path() -> list[Path]:
-    """Make bundled modules and application-owned source modules importable."""
     roots = [bundle_root()]
     if application_root() != bundle_root():
         roots.append(application_root())
@@ -94,19 +86,37 @@ def bootstrap_import_path() -> list[Path]:
 
 
 def bootstrap(*, apply: bool = True, validate_runtime: bool = False) -> RuntimeContext:
-    """Bootstrap RoboStudio before the GUI or deployment services are imported."""
+    """Bootstrap RoboStudio; real packaged startup validates writable state."""
     roots = bootstrap_import_path() if apply else [bundle_root(), application_root()]
+    root = application_root()
+    frozen = is_frozen()
     env = bootstrap_environment()
+
+    try:
+        if frozen and apply:
+            state_root = runtime_paths.prepare_user_data_root(
+                base_env=env,
+                application_root_override=root,
+                enforce_external=True,
+            )
+        else:
+            state_root = runtime_paths.user_data_root(
+                base_env=env,
+                application_root_override=root,
+                enforce_external=frozen,
+            )
+    except runtime_paths.RuntimePathError as exc:
+        raise RuntimeBootstrapError(
+            f"RoboStudio packaged state initialization failed: {exc}"
+        ) from exc
+    env[runtime_paths.STATE_ROOT_ENV] = str(state_root)
+
     if apply:
-        # Remove host-injection variables that closure intentionally omitted,
-        # then apply the closed environment. os.environ.update() alone would
-        # leave stale host values behind in the current process.
-        if is_frozen():
+        if frozen:
             for name in dependency_closure.HOST_INJECTION_VARS:
                 os.environ.pop(name, None)
         os.environ.update(env)
-    root = application_root()
-    frozen = is_frozen()
+
     if validate_runtime and frozen:
         from tools.runtime_preflight import validate_distribution
         try:
@@ -118,7 +128,7 @@ def bootstrap(*, apply: bool = True, validate_runtime: bool = False) -> RuntimeC
     return RuntimeContext(
         application_root=root,
         bundle_root=roots[0],
-        user_data_root=runtime_paths.user_data_root(),
+        user_data_root=state_root,
         frozen=frozen,
         environment=env,
     )

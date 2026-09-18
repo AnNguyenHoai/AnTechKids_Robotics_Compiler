@@ -46,6 +46,11 @@ class ProcessResult:
     output: str
 
 
+def is_frozen() -> bool:
+    """Return whether RoboStudio is executing as a packaged application."""
+    return runtime_paths.is_frozen()
+
+
 def application_root() -> Path:
     """Resolve the deployment application root deterministically.
 
@@ -64,13 +69,23 @@ def application_root() -> Path:
 
 
 def deployment_runtime_root() -> Path:
-    """Return the immutable PlatformIO/deployment runtime root."""
+    """Return the immutable PlatformIO/deployment dependency payload root."""
     return application_root() / "runtime" / "platformio"
 
 
 def deployment_runtime_core_dir() -> Path:
-    """Return the private PlatformIO Core data directory shipped by RoboStudio."""
-    return deployment_runtime_root()
+    """Return the writable PlatformIO Core service-data directory.
+
+    B2.3 separates immutable platforms/packages from mutable PlatformIO Core
+    state. Callers that need the bundled payload must use
+    :func:`deployment_runtime_root`; Core state always belongs under the
+    external RoboStudio state root.
+    """
+    state = runtime_paths.user_data_root(
+        application_root_override=application_root(),
+        enforce_external=_dependency_closed_mode(),
+    )
+    return state / "platformio" / "core"
 
 
 def _dependency_closed_mode(base_env: Mapping[str, str] | None = None) -> bool:
@@ -278,68 +293,81 @@ def run_process(
         raise ValueError("Deployment process timeout must be greater than zero.")
 
     process_env = _prepare_process_environment(command, env)
-
-    creationflags = 0
-    start_new_session = False
+    popen_kwargs: dict[str, object] = {
+        "cwd": str(Path(cwd)),
+        "env": process_env,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "bufsize": 1,
+    }
     if os.name == "nt":
-        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     else:
-        start_new_session = True
+        popen_kwargs["start_new_session"] = True
 
     try:
-        process = subprocess.Popen(
-            list(command),
-            cwd=str(cwd),
-            env=dict(process_env) if process_env is not None else None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-            creationflags=creationflags,
-            start_new_session=start_new_session,
-        )
+        process = subprocess.Popen(list(command), **popen_kwargs)
     except OSError as exc:
-        raise DeploymentRuntimeError(f"Unable to start deployment command: {exc}") from exc
+        raise DeploymentRuntimeError(
+            f"Unable to start deployment command {command[0]!r}: {exc}"
+        ) from exc
 
-    output: list[str] = []
-    reader_done = threading.Event()
+    output_parts: list[str] = []
+    reader_error: list[BaseException] = []
 
-    def read_output() -> None:
+    def _read_output() -> None:
+        assert process.stdout is not None
         try:
-            assert process.stdout is not None
-            for line in process.stdout:
-                output.append(line)
+            for line in iter(process.stdout.readline, ""):
+                output_parts.append(line)
                 if on_output is not None:
                     on_output(line)
+        except BaseException as exc:  # pragma: no cover - defensive reader boundary
+            reader_error.append(exc)
         finally:
-            reader_done.set()
-
-    reader = threading.Thread(target=read_output, name="deployment-output", daemon=True)
-    reader.start()
-
-    deadline = time.monotonic() + timeout
-    while process.poll() is None:
-        if time.monotonic() >= deadline:
-            _terminate_process_tree(process)
             try:
-                process.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                _kill_process_tree(process)
-                process.wait(timeout=5.0)
-            reader_done.wait(timeout=2.0)
-            raise DeploymentRuntimeError(
-                f"Deployment command timed out after {timeout:.0f}s. "
-                f"Output: {''.join(output).strip()}"
-            )
+                process.stdout.close()
+            except OSError:
+                pass
+
+    reader = threading.Thread(
+        target=_read_output,
+        name="robostudio-deployment-output",
+        daemon=True,
+    )
+    reader.start()
+    started = time.monotonic()
+    timed_out = False
+    while process.poll() is None:
+        if time.monotonic() - started >= timeout:
+            timed_out = True
+            _terminate_process_tree(process)
+            break
         time.sleep(0.05)
 
-    reader_done.wait(timeout=2.0)
-    return ProcessResult(process.returncode, "".join(output))
+    if timed_out and process.poll() is None:
+        try:
+            process.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            _kill_process_tree(process)
 
+    try:
+        returncode = process.wait(timeout=5.0)
+    except subprocess.TimeoutExpired as exc:
+        _kill_process_tree(process)
+        raise DeploymentRuntimeError("Deployment process could not be terminated cleanly") from exc
+    reader.join(timeout=2.0)
 
-# Keep this local alias for compatibility with existing tests that patch the
-# deployment module's frozen-state probe.
-def is_frozen() -> bool:
-    return runtime_paths.is_frozen()
+    output = "".join(output_parts)
+    if reader_error:
+        raise DeploymentRuntimeError(f"Unable to read deployment output: {reader_error[0]}")
+    if timed_out:
+        detail = output.strip()
+        suffix = f"\n{detail}" if detail else ""
+        raise DeploymentRuntimeError(
+            f"Deployment process timed out after {timeout:g} seconds.{suffix}"
+        )
+    return ProcessResult(returncode=returncode, output=output)

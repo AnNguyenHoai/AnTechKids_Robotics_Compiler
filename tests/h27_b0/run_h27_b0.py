@@ -35,7 +35,10 @@ def main() -> int:
 
     service = config_service.read_text(encoding="utf-8")
     assert "tools.bootstrap_config" in service
-    assert ".robostudio" in service
+    # B2.3 replaces the historical source/install-relative .robostudio state
+    # directory with the canonical external RoboStudio state-root contract.
+    assert "runtime_paths.user_data_root" in service
+    assert 'self.bootstrap_root = self.state_root / "bootstrap"' in service
     assert "arduino_bootstrap_header" in service
     assert "open_arduino_sketch" in service  # compatibility helper; not used by RoboStudio deployment
 

@@ -1,32 +1,70 @@
-"""Persistence service for RoboStudio hardware.json."""
+"""Persistence service for RoboStudio hardware configuration.
+
+Packaged hardware defaults are read-only application data. User changes are
+mutable state and therefore live under RoboStudio's external user-data root.
+"""
 
 import json
+import os
 from pathlib import Path
 from typing import Optional
+
+from tools import runtime_paths
 
 from .hardware_config import HardwareConfig
 
 
 class HardwareConfigService:
-    """Loads and saves the hardware configuration source of truth."""
+    """Load packaged defaults and persist user hardware configuration externally."""
 
     def __init__(self, config_path: Optional[Path] = None):
-        if config_path is None:
-            config_path = Path(__file__).resolve().parent.parent / "config" / "hardware.json"
-        self.config_path = Path(config_path)
+        if config_path is not None:
+            # Preserve the explicit-path contract used by tests and integrations.
+            self.package_config_path = Path(config_path)
+            self.user_config_path = Path(config_path)
+            self.config_path = Path(config_path)
+            return
+
+        self.user_config_path = runtime_paths.user_data_root() / "hardware.json"
+        self.config_path = self.user_config_path
+
+        application_default = (
+            runtime_paths.application_root() / "config" / "hardware.json"
+        )
+        packaged = (
+            runtime_paths.is_frozen()
+            or os.environ.get(runtime_paths.RUNTIME_MODE_ENV) == "packaged"
+            or os.environ.get(runtime_paths.DEPENDENCY_MODE_ENV) == "artifact-closed"
+        )
+        if packaged:
+            # Never fall back to a checkout-relative file in production. If the
+            # packaged default is absent, load() creates a safe user default.
+            self.package_config_path = application_default
+        else:
+            self.package_config_path = (
+                Path(__file__).resolve().parent.parent / "config" / "hardware.json"
+            )
 
     def load(self) -> HardwareConfig:
-        if not self.config_path.exists():
-            config = HardwareConfig.create_default()
-            self.save(config)
-            return config
+        """Load user state first, then immutable packaged defaults."""
+        for path in (self.user_config_path, self.package_config_path):
+            try:
+                with open(path, "r", encoding="utf-8") as stream:
+                    return HardwareConfig.from_dict(json.load(stream))
+            except FileNotFoundError:
+                continue
+            except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+                # Invalid user state must not cause the package default to be
+                # overwritten or mutated. Fall through to the next safe source.
+                continue
 
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return HardwareConfig.from_dict(data)
+        config = HardwareConfig.create_default()
+        self.save(config)
+        return config
 
     def save(self, config: HardwareConfig) -> None:
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump(config.to_dict(), f, indent=2, ensure_ascii=False)
-            f.write("\n")
+        """Persist only to the writable user-state location."""
+        self.user_config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.user_config_path, "w", encoding="utf-8") as stream:
+            json.dump(config.to_dict(), stream, indent=2, ensure_ascii=False)
+            stream.write("\n")

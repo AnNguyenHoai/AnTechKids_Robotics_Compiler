@@ -9,7 +9,6 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 
 def _configure_utf8_output() -> None:
-    """Make the orchestrator and every child runner deterministic on Windows."""
     os.environ["PYTHONUTF8"]="1"
     os.environ["PYTHONIOENCODING"]="utf-8"
     for stream in (sys.stdout,sys.stderr):
@@ -19,7 +18,6 @@ def _configure_utf8_output() -> None:
 
 
 def _child_environment() -> dict[str,str]:
-    """Provide every child runner with the repository import root."""
     env=os.environ.copy()
     env["PYTHONUTF8"]="1"
     env["PYTHONIOENCODING"]="utf-8"
@@ -45,6 +43,8 @@ def main()->int:
     for name in ["rsd_02","rsd_03","rsd_04","rsd_05","rsd_06","rsd_07","rsd_08","rsd_09","rsd_10","rsd_11","rsd_12","rsd_13","rsd_14","rsd_15","rsd_16","rsd_17","rsd_18","rsd_19","rsd_20_p","rsd_20_p1","rsd_20","rsd_21","rsd_21_2","rsd_21_3","rsd_21_4","rsd_21_5","rsd_21_6","rsd_21_7","rsd_21_8"]:tests.append(ROOT/"tests"/name/f"run_{name}.py")
     tests.append(ROOT/"tests"/"b2_2"/"run_b2_2.py")
     tests.append(ROOT/"tests"/"b2_2"/"run_portable_child_closure.py")
+    tests.append(ROOT/"tests"/"b2_3"/"run_b2_3.py")
+    tests.append(ROOT/"tests"/"b2_3"/"run_settings_isolation.py")
     for name in ["h26_a","h26_b","h26_c","h26_d","h26_e","h26_f","h26_g","h26_h","h26_i","h26_j","h26_k","h26_l","h26_m","h26_ota","h26_o","h27_a1","h27_b0","h27_b","h28_b","h29_a","h29_b","h29_c","h29_d"]:tests.append(ROOT/"tests"/name/f"run_{name}.py")
     missing=[p.relative_to(ROOT) for p in tests if not p.exists()]
     if missing:
