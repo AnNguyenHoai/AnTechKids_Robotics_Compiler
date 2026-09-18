@@ -55,10 +55,16 @@ def _pe_machine(path: Path) -> int:
     data = path.read_bytes()
     if data[:2] != b"MZ":
         raise AssertionError(f"not a PE executable: {path}")
+    if len(data) < 0x40:
+        raise AssertionError(f"truncated PE header: {path}")
     pe_offset = int.from_bytes(data[0x3C:0x40], "little")
-    if data[pe_offset:pe_offset + 4] != b"PE\\0\\0":
+    pe_end = pe_offset + 4
+    if pe_end > len(data) or data[pe_offset:pe_end] != b"PE\x00\x00":
         raise AssertionError(f"invalid PE signature: {path}")
-    return int.from_bytes(data[pe_offset + 4:pe_offset + 6], "little")
+    machine_end = pe_offset + 6
+    if machine_end > len(data):
+        raise AssertionError(f"truncated PE machine field: {path}")
+    return int.from_bytes(data[pe_offset + 4:machine_end], "little")
 
 
 def _sha256(path: Path) -> str:
