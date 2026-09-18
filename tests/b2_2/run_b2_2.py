@@ -72,6 +72,9 @@ def hostile_environment(base: Path, host: Path) -> dict[str, str]:
             "PLATFORMIO_CORE_DIR": str(base / "HostPlatformIO"),
             "PLATFORMIO_PLATFORMS_DIR": str(base / "HostPlatforms"),
             "PLATFORMIO_PACKAGES_DIR": str(base / "HostPackages"),
+            "PLATFORMIO_CACHE_DIR": str(base / "HostCache"),
+            "PLATFORMIO_BUILD_CACHE_DIR": str(base / "HostBuildCache"),
+            "PLATFORMIO_WORKSPACE_DIR": str(base / "HostWorkspace"),
         }
     )
     return hostile
@@ -85,6 +88,14 @@ def _prepare_artifact(artifact: Path) -> Path:
     return artifact_tool
 
 
+def _inside(path: Path | str, root: Path | str) -> bool:
+    path = Path(path).resolve(); root = Path(root).resolve()
+    try:
+        path.relative_to(root); return True
+    except ValueError:
+        return False
+
+
 def test_closed_path_and_fail_fast(base: Path) -> None:
     artifact = base / "RoboStudio"
     artifact_tool = _prepare_artifact(artifact)
@@ -93,39 +104,34 @@ def test_closed_path_and_fail_fast(base: Path) -> None:
     _write_tool(host_tool)
 
     hostile = hostile_environment(base, host)
+    hostile[runtime_paths.STATE_ROOT_ENV] = str(base / "RoboStudioState")
     env, report = dependency_closure.build_closed_environment(artifact, hostile)
     path_entries = [Path(value) for value in env["PATH"].split(os.pathsep) if value]
     check("host PATH is not inherited", host.resolve() not in [p.resolve() for p in path_entries])
     check("closure mode is explicit", env["ROBOSTUDIO_DEPENDENCY_MODE"] == "artifact-closed")
     check("application home is artifact-owned", Path(env["ROBOSTUDIO_HOME"]).resolve() == artifact.resolve())
-    check("PlatformIO core is artifact-owned", Path(env["PLATFORMIO_CORE_DIR"]).resolve() == (artifact / "runtime" / "platformio").resolve())
+    check("PlatformIO platforms are artifact-owned", Path(env["PLATFORMIO_PLATFORMS_DIR"]).resolve() == (artifact / "runtime" / "platformio" / "platforms").resolve())
+    check("PlatformIO packages are artifact-owned", Path(env["PLATFORMIO_PACKAGES_DIR"]).resolve() == (artifact / "runtime" / "platformio" / "packages").resolve())
+    check("PlatformIO core service state is external", not _inside(env["PLATFORMIO_CORE_DIR"], artifact))
     check("host Python injection is removed", "PYTHONHOME" not in env and "PYTHONPATH" not in env and "VIRTUAL_ENV" not in env)
     check("host Node injection is removed", "NODE_PATH" not in env and "NPM_CONFIG_PREFIX" not in env)
     check("host PlatformIO injection is replaced", env["PLATFORMIO_CORE_DIR"] != hostile["PLATFORMIO_CORE_DIR"])
     dependency_closure.validate_closed_environment(report)
 
-    resolved = dependency_closure.resolve_artifact_executable(
-        _tool_name(), root=artifact, environment=env
-    )
+    resolved = dependency_closure.resolve_artifact_executable(_tool_name(), root=artifact, environment=env)
     check("required tool resolves from artifact", resolved.resolve() == artifact_tool.resolve())
-    checked = dependency_closure.validate_artifact_command(
-        [str(artifact_tool)], root=artifact, environment=env, label="B2.2 probe"
-    )
+    checked = dependency_closure.validate_artifact_command([str(artifact_tool)], root=artifact, environment=env, label="B2.2 probe")
     check("explicit artifact command is accepted", checked.resolve() == artifact_tool.resolve())
 
     artifact_tool.unlink()
     expect_closure_error(
         "missing artifact tool never falls back to hostile host PATH",
-        lambda: dependency_closure.resolve_artifact_executable(
-            _tool_name(), root=artifact, environment=env
-        ),
+        lambda: dependency_closure.resolve_artifact_executable(_tool_name(), root=artifact, environment=env),
         "host PATH fallback is disabled",
     )
     expect_closure_error(
         "explicit host executable is rejected",
-        lambda: dependency_closure.validate_artifact_command(
-            [str(host_tool)], root=artifact, environment=env, label="B2.2 probe"
-        ),
+        lambda: dependency_closure.validate_artifact_command([str(host_tool)], root=artifact, environment=env, label="B2.2 probe"),
         "outside production artifact",
     )
 
@@ -136,6 +142,7 @@ def test_packaged_deployment_runtime_is_closed(base: Path) -> None:
     _prepare_artifact(artifact)
     host.mkdir(parents=True, exist_ok=True)
     hostile = hostile_environment(base, host)
+    hostile[runtime_paths.STATE_ROOT_ENV] = str(base / "RoboStudioState")
 
     original_is_frozen = deployment_runtime.is_frozen
     original_application_root = deployment_runtime.application_root
@@ -151,7 +158,8 @@ def test_packaged_deployment_runtime_is_closed(base: Path) -> None:
     check("frozen deployment runtime removes host PATH", host.resolve() not in path_entries)
     check("frozen deployment runtime enables closure mode", env.get("ROBOSTUDIO_DEPENDENCY_MODE") == "artifact-closed")
     check("frozen deployment runtime removes Node injection", "NODE_PATH" not in env and "NPM_CONFIG_PREFIX" not in env)
-    check("frozen deployment runtime rebinds PlatformIO", Path(env["PLATFORMIO_CORE_DIR"]).resolve() == (artifact / "runtime" / "platformio").resolve())
+    check("frozen deployment runtime pins bundled PlatformIO packages", Path(env["PLATFORMIO_PACKAGES_DIR"]).resolve() == (artifact / "runtime" / "platformio" / "packages").resolve())
+    check("frozen deployment runtime keeps mutable core outside artifact", not _inside(env["PLATFORMIO_CORE_DIR"], artifact))
 
     original_is_frozen = deployment_runtime.is_frozen
     try:
@@ -169,20 +177,15 @@ def test_run_process_seals_frozen_boundary(base: Path) -> None:
     host_tool = host / _tool_name()
     _write_tool(host_tool)
     hostile = hostile_environment(base, host)
+    hostile[runtime_paths.STATE_ROOT_ENV] = str(base / "RoboStudioState")
     hostile["ROBOT_WIFI_SSID"] = "B2.2-safe-value"
-
     captured_envs: list[dict[str, str] | None] = []
 
     class FakePopen:
         def __init__(self, command, **kwargs):
-            self.command = command
-            self.returncode = 0
-            self.stdout = io.StringIO("sealed-boundary\n")
-            captured = kwargs.get("env")
-            captured_envs.append(dict(captured) if captured is not None else None)
-
-        def poll(self):
-            return self.returncode
+            self.command = command; self.returncode = 0; self.stdout = io.StringIO("sealed-boundary\n")
+            captured = kwargs.get("env"); captured_envs.append(dict(captured) if captured is not None else None)
+        def poll(self): return self.returncode
 
     original_is_frozen = deployment_runtime.is_frozen
     original_application_root = deployment_runtime.application_root
@@ -192,10 +195,7 @@ def test_run_process_seals_frozen_boundary(base: Path) -> None:
         deployment_runtime.is_frozen = lambda: True
         deployment_runtime.application_root = lambda: artifact
         deployment_runtime.subprocess.Popen = FakePopen
-
-        result = deployment_runtime.run_process(
-            [str(artifact_tool)], cwd=artifact, env=hostile, timeout=1.0
-        )
+        result = deployment_runtime.run_process([str(artifact_tool)], cwd=artifact, env=hostile, timeout=1.0)
         check("frozen runner executes through sealed boundary", result.returncode == 0)
         check("frozen runner preserves streamed output", result.output == "sealed-boundary\n")
         explicit_env = captured_envs[-1]
@@ -207,8 +207,7 @@ def test_run_process_seals_frozen_boundary(base: Path) -> None:
         check("safe deployment values survive closure", explicit_env.get("ROBOT_WIFI_SSID") == "B2.2-safe-value")
         check("runner disables user site packages", explicit_env.get("PYTHONNOUSERSITE") == "1")
 
-        os.environ.clear()
-        os.environ.update(hostile)
+        os.environ.clear(); os.environ.update(hostile)
         deployment_runtime.run_process([str(artifact_tool)], cwd=artifact, timeout=1.0)
         inherited_env = captured_envs[-1]
         check("env=None is sealed instead of inherited", inherited_env is not None)
@@ -217,21 +216,15 @@ def test_run_process_seals_frozen_boundary(base: Path) -> None:
         check("implicit host PATH cannot bypass runner closure", host.resolve() not in inherited_path)
         check("implicit PYTHONPATH cannot bypass runner closure", "PYTHONPATH" not in inherited_env)
 
-        popen_calls_before_rejection = len(captured_envs)
+        calls = len(captured_envs)
         expect_runtime_error(
             "host absolute deployment executable is rejected before spawn",
-            lambda: deployment_runtime.run_process(
-                [str(host_tool)], cwd=artifact, env=hostile, timeout=1.0
-            ),
+            lambda: deployment_runtime.run_process([str(host_tool)], cwd=artifact, env=hostile, timeout=1.0),
             "outside production artifact",
         )
-        check(
-            "rejected host executable never reaches Popen",
-            len(captured_envs) == popen_calls_before_rejection,
-        )
+        check("rejected host executable never reaches Popen", len(captured_envs) == calls)
     finally:
-        os.environ.clear()
-        os.environ.update(original_environment)
+        os.environ.clear(); os.environ.update(original_environment)
         deployment_runtime.is_frozen = original_is_frozen
         deployment_runtime.application_root = original_application_root
         deployment_runtime.subprocess.Popen = original_popen
@@ -241,7 +234,6 @@ def test_packaged_python_command(base: Path) -> None:
     artifact = base / "RoboStudio"
     packaged_python = artifact / "runtime" / "bin" / _python_name()
     _write_tool(packaged_python)
-
     old_home = os.environ.get(runtime_paths.APPLICATION_HOME_ENV)
     original_runtime_is_frozen = runtime_paths.is_frozen
     try:
@@ -249,20 +241,12 @@ def test_packaged_python_command(base: Path) -> None:
         command = deployment_runtime.python_command("tools/deploy_robot.py", "--mode", "bootstrap")
         check("deployment script uses packaged Python", Path(command[0]).resolve() == packaged_python.resolve())
         check("deployment script arguments are preserved", command[1:] == ["tools/deploy_robot.py", "--mode", "bootstrap"])
-
-        packaged_python.unlink()
-        runtime_paths.is_frozen = lambda: True
-        expect_runtime_error(
-            "missing packaged Python fails fast",
-            lambda: deployment_runtime.python_command("tools/deploy_robot.py"),
-            "runtime/bin/python.exe",
-        )
+        packaged_python.unlink(); runtime_paths.is_frozen = lambda: True
+        expect_runtime_error("missing packaged Python fails fast", lambda: deployment_runtime.python_command("tools/deploy_robot.py"), "runtime/bin/python.exe")
     finally:
         runtime_paths.is_frozen = original_runtime_is_frozen
-        if old_home is None:
-            os.environ.pop(runtime_paths.APPLICATION_HOME_ENV, None)
-        else:
-            os.environ[runtime_paths.APPLICATION_HOME_ENV] = old_home
+        if old_home is None: os.environ.pop(runtime_paths.APPLICATION_HOME_ENV, None)
+        else: os.environ[runtime_paths.APPLICATION_HOME_ENV] = old_home
 
 
 def test_robot_deployment_service_uses_portable_python() -> None:
@@ -281,26 +265,18 @@ def test_production_e2e_records_closure(base: Path) -> None:
     (payload / "RoboStudio.exe").write_bytes(b"b22-fake-app")
     (payload / "runtime" / "bin" / "python.exe").write_bytes(b"b22-fake-python")
     (payload / "compiler" / "main.py").write_text("# b2.2 fixture\n", encoding="utf-8")
-
     artifact = base / "RoboStudio-portable.zip"
     with zipfile.ZipFile(artifact, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in payload.rglob("*"):
-            if path.is_file():
-                archive.write(path, path.relative_to(payload).as_posix())
-
-    source = base / "student.py"
-    source.write_text("print('robot')\n", encoding="utf-8")
+            if path.is_file(): archive.write(path, path.relative_to(payload).as_posix())
+    source = base / "student.py"; source.write_text("print('robot')\n", encoding="utf-8")
     hostile = hostile_environment(base, base / "HostOnly")
-
-    result = production_e2e.evaluate_production_artifact(
-        artifact=artifact,
-        source=source,
-        launch=False,
-        environment=hostile,
-    )
+    hostile[runtime_paths.STATE_ROOT_ENV] = str(base / "RoboStudioState")
+    result = production_e2e.evaluate_production_artifact(artifact=artifact, source=source, launch=False, environment=hostile)
     closure = result.evidence.get("dependency_closure", {})
     check("production artifact keeps closure evidence", closure.get("mode") == "artifact-closed")
     check("production gate records no host PATH inheritance", closure.get("host_path_inherited") is False)
+    check("production gate records external state", closure.get("state_outside_artifact") is True)
     check("production gate does not execute source tree", result.source_tree_execution is False)
 
 
