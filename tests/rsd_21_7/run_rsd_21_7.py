@@ -38,7 +38,10 @@ def _make_runtime(root: Path) -> tuple[Path, Path]:
     runtime_bin.mkdir(parents=True)
     python_home = Path(sys.executable).resolve().parent
     shutil.copy2(sys.executable, runtime_bin / "python.exe")
-    for dependency in python_home.glob("python*.dll"):
+    # Python on Windows may depend on non-python DLLs located beside python.exe
+    # (for example OpenSSL/SQLite runtime DLLs). A fixture that copies only
+    # python*.dll is not a complete runnable interpreter after relocation.
+    for dependency in python_home.glob("*.dll"):
         shutil.copy2(dependency, runtime_bin / dependency.name)
     dlls = python_home / "DLLs"
     if dlls.is_dir():
