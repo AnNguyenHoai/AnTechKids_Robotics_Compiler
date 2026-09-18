@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -38,7 +41,11 @@ jobs:
       - name: Validate test topology
         shell: pwsh
         run: |
-          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests','run_all_tests.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing test boundaries/runner: {missing}'; print('PASS: test topology boundaries')"
+          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests','tests/b2_2/run_b2_2.py','run_all_tests.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing test boundaries/runner: {missing}'; print('PASS: test topology boundaries')"
+
+      - name: Run B2.2 dependency closure gate
+        shell: pwsh
+        run: python tests/b2_2/run_b2_2.py
 
       - name: Run repository regression suite
         shell: pwsh
