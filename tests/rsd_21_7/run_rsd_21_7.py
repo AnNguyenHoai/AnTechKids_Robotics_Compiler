@@ -211,7 +211,7 @@ def main() -> int:
         runtime_bin, runtime_platformio = _make_runtime(inputs)
         fixture_python = runtime_bin / "python.exe"
         fixture_probe = subprocess.run(
-            [str(fixture_python), "-c", "import sys; print(sys.executable); print(sys.prefix); import platformio"],
+            [str(fixture_python), "-B", "-c", "import sys; print(sys.executable); print(sys.prefix); import platformio"],
             cwd=inputs,
             env=_clean_python_environment(),
             check=True,
