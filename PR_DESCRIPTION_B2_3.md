@@ -2,7 +2,7 @@
 
 ## Lineage
 
-B2.2 hardening PR #262 is already merged into `main` at `4423ad23dfe6a8840f009f029ec817f7c8e70247`. B2.3 is based directly on that merge and targets `main`.
+The B2.3 branch was created from B2.2 head `13ec6ca2cd484a546039fa0e018a6b915073c794`. B2.2 PR #262 is already merged into `main` at merge commit `4423ad23dfe6a8840f009f029ec817f7c8e70247`, so this PR targets `main` and contains only the B2.3 delta relative to the already-landed B2.2 content.
 
 ## Problem
 
@@ -26,6 +26,6 @@ B2.2 closed executable/dependency lookup, but mutable state could still escape t
 
 ## Acceptance
 
-The copied production release behaves as an immutable application payload. Mutable settings, editable firmware, generated headers, bootstrap data, compiler scratch data, PlatformIO Core/cache/build state, and firmware build copies live outside the release. Path resolution does not depend on the caller CWD, and production rejects any supported state override that would write back into the release.
+The copied production release behaves as an immutable application payload. Mutable settings, editable firmware, generated headers, bootstrap data, compiler scratch data, PlatformIO Core/cache/build state, and firmware working copies live outside the release. Path resolution does not depend on the caller CWD, and production rejects any supported state override that would write back into the release.
 
 Real target-machine PlatformIO + USB/COM + physical robot qualification, including upstream non-ASCII toolchain limitations, remains B2.4+ hardware portability scope.
