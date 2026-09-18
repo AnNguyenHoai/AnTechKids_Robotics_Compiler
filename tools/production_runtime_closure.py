@@ -10,6 +10,24 @@ SCHEMA = "antechkids.robostudio.production-runtime-closure"
 SCHEMA_VERSION = 4
 FORBIDDEN_NAMES = frozenset({".git", ".venv", ".pio", "penv", "__pycache__", ".pytest_cache"})
 
+# B2.4 promotes USB deployment/preflight helpers into the production runtime
+# boundary. Keep this list explicit here so runtime closure fails even if a
+# custom packager accidentally omits a flash dependency from its manifest.
+REQUIRED_DEPLOYMENT_TOOL_FILES: tuple[str, ...] = (
+    "bootstrap_config.py",
+    "build_isolation.py",
+    "dependency_closure.py",
+    "deploy_robot.py",
+    "deployment_contract.py",
+    "deployment_runtime.py",
+    "firmware_workspace.py",
+    "hardware_preflight.py",
+    "runtime_paths.py",
+    "runtime_resources.py",
+    "target_machine_prerequisites.py",
+    "target_machine_qualification.py",
+)
+
 
 def _required_paths(application: str) -> tuple[Path, ...]:
     return (
@@ -26,6 +44,7 @@ def _required_paths(application: str) -> tuple[Path, ...]:
         Path("firmware") / "robot-platform" / "platformio.ini",
         Path("firmware") / "robot-platform" / "wifi_config.py",
         Path("firmware") / "robot-platform" / "main",
+        *(Path("tools") / name for name in REQUIRED_DEPLOYMENT_TOOL_FILES),
     )
 
 
