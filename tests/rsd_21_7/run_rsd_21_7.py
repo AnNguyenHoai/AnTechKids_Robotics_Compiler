@@ -51,6 +51,16 @@ def _clean_python_environment() -> dict[str, str]:
     return env
 
 
+def _pe_machine(path: Path) -> int:
+    data = path.read_bytes()
+    if data[:2] != b"MZ":
+        raise AssertionError(f"not a PE executable: {path}")
+    pe_offset = int.from_bytes(data[0x3C:0x40], "little")
+    if data[pe_offset:pe_offset + 4] != b"PE\\0\\0":
+        raise AssertionError(f"invalid PE signature: {path}")
+    return int.from_bytes(data[pe_offset + 4:pe_offset + 6], "little")
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -90,6 +100,7 @@ def _make_runtime(root: Path) -> tuple[Path, Path]:
     if python_dll is not None:
         (runtime_bin / f"{python_dll.stem}._pth").write_text(pth, encoding="utf-8")
     check("bundled Python bytes are preserved", _sha256(source_python) == _sha256(bundled_python))
+    check("bundled Python machine type is x64", _pe_machine(bundled_python) == 0x8664)
     check("Python isolation file is created", (runtime_bin / "python._pth").is_file())
 
     platformio_site = runtime_bin / "Lib" / "site-packages" / "platformio"
