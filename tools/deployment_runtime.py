@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from tools import build_isolation, runtime_paths
+from tools import build_isolation, dependency_closure, runtime_paths
 from tools.runtime_paths import platformio_command as resolve_platformio_command
 
 DEFAULT_PROCESS_TIMEOUT_SECONDS = 300.0
@@ -78,33 +78,23 @@ def deployment_runtime_environment(
 ) -> dict[str, str]:
     """Build the environment for a deployment subprocess.
 
-    Frozen RoboStudio runs are completely isolated from the user's global
-    PlatformIO installation. PlatformIO's core/platform/package directories
-    are pointed at the application-owned runtime. When ``project_name`` is
-    supplied, all writable PlatformIO build state is moved to the per-project
-    RoboStudio user-data workspace; this prevents ``robot-platform/.pio`` and
-    other host/project-local build state from being created by one-click
-    deployment.
+    Frozen RoboStudio is dependency-closed: executable lookup is limited to
+    application-owned directories plus the minimal Windows system allow-list,
+    and host Python/Node/PlatformIO injection variables are removed. This
+    prevents a packaged deployment from passing only because development tools
+    happen to exist on the machine running RoboStudio.
 
-    Source builds keep their existing PlatformIO core/toolchain fallback, but
-    an explicit project name still receives the same isolated build workspace.
+    Source builds intentionally retain their developer environment. When
+    ``project_name`` is supplied, writable build state is still moved to the
+    per-project RoboStudio user-data workspace.
     """
-    env = dict(os.environ if base_env is None else base_env)
     if is_frozen():
-        core = deployment_runtime_core_dir()
-        env.update(
-            {
-                PLATFORMIO_CORE_DIR_ENV: str(core),
-                PLATFORMIO_PLATFORMS_DIR_ENV: str(core / "platforms"),
-                PLATFORMIO_PACKAGES_DIR_ENV: str(core / "packages"),
-                PLATFORMIO_CACHE_DIR_ENV: str(core / ".cache"),
-                PLATFORMIO_BUILD_CACHE_DIR_ENV: str(core / "build-cache"),
-                PLATFORMIO_WORKSPACE_DIR_ENV: str(core / "workspace"),
-                PLATFORMIO_DISABLE_UPGRADE_CHECK_ENV: "true",
-                PLATFORMIO_DISABLE_PROGRESSBAR_ENV: "true",
-                PLATFORMIO_NO_ANSI_ENV: "true",
-            }
-        )
+        try:
+            env, _ = dependency_closure.build_closed_environment(application_root(), base_env)
+        except dependency_closure.DependencyClosureError as exc:
+            raise DeploymentRuntimeError(f"Packaged dependency closure failed: {exc}") from exc
+    else:
+        env = dict(os.environ if base_env is None else base_env)
 
     if project_name is not None:
         env = build_isolation.build_environment(project_name, env)
@@ -147,8 +137,8 @@ def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
     The deployment process is placed in its own process group on supported
     platforms. On POSIX, the group can therefore be terminated directly. On
     Windows, ``taskkill /T`` is used as a best-effort process-tree fallback;
-    this is deliberately invoked without a shell so a hostile PATH cannot
-    become a command interpreter boundary.
+    this is deliberately invoked without a shell. B2.2 keeps ``System32`` in
+    the packaged PATH allow-list so this OS-owned helper remains available.
     """
     if process.poll() is not None:
         return

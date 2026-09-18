@@ -2,7 +2,8 @@
 
 The production ZIP is the system under test. RoboStudio, the application-owned
 compiler, and the application-owned Python runtime are resolved from the
-extracted artifact.
+extracted artifact. B2.2 additionally closes executable/runtime lookup so the
+artifact cannot silently fall back to tools installed on the host machine.
 """
 from __future__ import annotations
 
@@ -14,6 +15,8 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+
+from tools import dependency_closure
 
 DEFAULT_TIMEOUT = 30.0
 COMPILER_ENTRY = Path("compiler") / "main.py"
@@ -133,6 +136,23 @@ def _artifact_relative(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
+def _closed_environment(root: Path, environment: dict[str, str] | None):
+    try:
+        return dependency_closure.build_closed_environment(root, environment)
+    except dependency_closure.DependencyClosureError as exc:
+        raise ProductionE2EError(f"portable dependency closure failed: {exc}") from exc
+
+
+def _validate_command(command: list[str], *, root: Path, environment: dict[str, str], label: str) -> str:
+    try:
+        executable = dependency_closure.validate_artifact_command(
+            command, root=root, environment=environment, label=label
+        )
+    except dependency_closure.DependencyClosureError as exc:
+        raise ProductionE2EError(f"portable dependency closure failed: {exc}") from exc
+    return _artifact_relative(root, executable)
+
+
 def evaluate_production_artifact(
     *,
     artifact: Path,
@@ -169,6 +189,18 @@ def evaluate_production_artifact(
         if bundled_python is None and (compile_command or launch_command):
             raise ProductionE2EError("application-owned Python runtime is missing from production artifact")
 
+        if compiler is not None:
+            try:
+                compiler = dependency_closure.assert_artifact_owned(compiler, root, label="compiler")
+            except dependency_closure.DependencyClosureError as exc:
+                raise ProductionE2EError(f"portable dependency closure failed: {exc}") from exc
+        if bundled_python is not None:
+            try:
+                bundled_python = dependency_closure.assert_artifact_owned(bundled_python, root, label="bundled Python")
+            except dependency_closure.DependencyClosureError as exc:
+                raise ProductionE2EError(f"portable dependency closure failed: {exc}") from exc
+
+        closed_env, closure_report = _closed_environment(root, environment)
         started = compiled = False
         output = root / "e2e-output" / "program.h"
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -180,6 +212,7 @@ def evaluate_production_artifact(
             "launch_requested": launch,
             "target_cwd": str(app.parent),
             "compiler_output_contract": _artifact_relative(root, output),
+            "dependency_closure": dependency_closure.path_evidence(closure_report),
         }
 
         values = {
@@ -190,14 +223,22 @@ def evaluate_production_artifact(
             "output": output,
         }
         if launch and launch_command:
-            launch_result = _run(_render_command(launch_command, **values), cwd=app.parent, timeout=timeout, label="RoboStudio launch", env=environment)
+            rendered_launch = _render_command(launch_command, **values)
+            evidence["launch_executable"] = _validate_command(
+                rendered_launch, root=root, environment=closed_env, label="RoboStudio launch"
+            )
+            launch_result = _run(rendered_launch, cwd=app.parent, timeout=timeout, label="RoboStudio launch", env=closed_env)
             started = True
             evidence["launch_returncode"] = launch_result.returncode
             evidence["launch_stdout"] = launch_result.stdout
             evidence["launch_stderr"] = launch_result.stderr
 
         if compile_command:
-            compile_result = _run(_render_command(compile_command, **values), cwd=app.parent, timeout=timeout, label="compiler E2E", env=environment)
+            rendered_compile = _render_command(compile_command, **values)
+            evidence["compile_executable"] = _validate_command(
+                rendered_compile, root=root, environment=closed_env, label="compiler E2E"
+            )
+            compile_result = _run(rendered_compile, cwd=app.parent, timeout=timeout, label="compiler E2E", env=closed_env)
             compiled = output.is_file() and output.stat().st_size > 0
             evidence["compile_returncode"] = compile_result.returncode
             evidence["compile_stdout"] = compile_result.stdout
@@ -208,8 +249,6 @@ def evaluate_production_artifact(
                 raise ProductionE2EError("compiler exited successfully but produced no output")
 
         passed = (not launch or started) and (not compile_command or compiled)
-        # This harness validates the application-owned artifact itself; it does not
-        # require external target-machine prerequisites such as USB drivers or hardware.
         return ProductionE2EResult(
             status="PASS" if passed else "FAIL",
             artifact=str(artifact),

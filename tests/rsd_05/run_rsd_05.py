@@ -22,15 +22,12 @@ def main() -> int:
     original_cwd = Path.cwd()
     original_path = os.environ.get("PATH")
 
-    # Source mode is non-invasive: it keeps the developer interpreter/PATH and
-    # does not change the working directory.
     source_env = {"PATH": "HOST-PATH", "CUSTOM": "keep-me"}
     source_result = runtime_bootstrap.bootstrap_environment(source_env)
     check("source environment is preserved", source_result == source_env)
     check("source bootstrap does not change cwd", Path.cwd() == original_cwd)
     check("host PATH remains untouched", os.environ.get("PATH") == original_path)
 
-    # Simulate both the frozen executable and PyInstaller's extracted bundle.
     old_frozen = getattr(sys, "frozen", None)
     old_executable = sys.executable
     old_meipass = getattr(sys, "_MEIPASS", None)
@@ -40,6 +37,9 @@ def main() -> int:
     try:
         app_dir.mkdir(parents=True, exist_ok=True)
         internal_dir.mkdir(parents=True, exist_ok=True)
+        (app_dir / "runtime" / "bin").mkdir(parents=True, exist_ok=True)
+        (app_dir / "runtime" / "platformio" / "platforms").mkdir(parents=True, exist_ok=True)
+        (app_dir / "runtime" / "platformio" / "packages").mkdir(parents=True, exist_ok=True)
         sys.frozen = True
         sys.executable = str(fake_exe)
         sys._MEIPASS = str(internal_dir)
@@ -50,16 +50,18 @@ def main() -> int:
         check("frozen bundle root is PyInstaller-owned", context.bundle_root == internal_dir.resolve())
         check("frozen mode is detected", context.frozen is True)
 
-        env = runtime_bootstrap.bootstrap_environment({"PATH": "HOST-PATH", "CUSTOM": "keep-me"})
+        env = runtime_bootstrap.bootstrap_environment({"PATH": "HOST-PATH", "CUSTOM": "keep-me", "NODE_PATH": "HOST-NODE"})
         core = app_dir.resolve() / "runtime" / "platformio"
         check("frozen bootstrap pins PlatformIO core", env["PLATFORMIO_CORE_DIR"] == str(core))
         check("frozen bootstrap pins PlatformIO packages", env["PLATFORMIO_PACKAGES_DIR"] == str(core / "packages"))
         check("frozen bootstrap pins PlatformIO platforms", env["PLATFORMIO_PLATFORMS_DIR"] == str(core / "platforms"))
         check("frozen bootstrap disables upgrade checks", env["PLATFORMIO_DISABLE_UPGRADE_CHECK"] == "true")
         check("frozen bootstrap disables ANSI output", env["PLATFORMIO_NO_ANSI"] == "true")
-        check("frozen bootstrap preserves host PATH", env["PATH"] == "HOST-PATH")
+        check("frozen bootstrap closes host PATH", env["PATH"] != "HOST-PATH")
+        check("frozen bootstrap removes host Node injection", "NODE_PATH" not in env)
         check("frozen bootstrap preserves unrelated environment", env["CUSTOM"] == "keep-me")
         check("frozen bootstrap declares packaged mode", env["ROBOSTUDIO_RUNTIME_MODE"] == "packaged")
+        check("frozen bootstrap declares dependency closure", env["ROBOSTUDIO_DEPENDENCY_MODE"] == "artifact-closed")
         check("frozen bootstrap does not use cwd", env["ROBOSTUDIO_HOME"] == str(app_dir.resolve()))
     finally:
         if old_frozen is None:

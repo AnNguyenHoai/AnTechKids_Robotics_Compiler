@@ -20,17 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from tools import runtime_paths, runtime_preflight
+from tools import dependency_closure, runtime_paths, runtime_preflight
 
-HOST_RUNTIME_VARS = (
-    "PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX", "CONDA_DEFAULT_ENV",
-    "PIOHOME_DIR", "PLATFORMIO_CORE_DIR", "PLATFORMIO_PLATFORMS_DIR",
-    "PLATFORMIO_PACKAGES_DIR", "PLATFORMIO_CACHE_DIR", "PLATFORMIO_BUILD_CACHE_DIR",
-    "PLATFORMIO_WORKSPACE_DIR",
-)
 
 class CleanMachineE2EError(RuntimeError):
     """Raised when the portable runtime cannot execute cleanly."""
+
 
 @dataclass(frozen=True)
 class CleanMachineE2EReport:
@@ -43,15 +38,7 @@ class CleanMachineE2EReport:
 
 
 def _canonical(path: Path) -> Path:
-    """Return one canonical spelling for an existing filesystem path.
-
-    ``abspath``/``normcase`` are not sufficient on Windows: the same directory
-    may be supplied using an 8.3 short path while a child process reports the
-    long path. ``realpath`` asks Windows for the filesystem's final path when
-    the path exists, making equality and containment representation-independent.
-    For paths that do not exist yet it still provides an absolute normalized
-    fallback.
-    """
+    """Return one canonical spelling for an existing filesystem path."""
     value = os.path.expanduser(str(path))
     return Path(os.path.normcase(os.path.realpath(os.path.abspath(value))))
 
@@ -62,22 +49,10 @@ def _python_path(root: Path) -> Path:
 
 
 def _clean_environment(root: Path, base_env: Mapping[str, str] | None) -> dict[str, str]:
-    env = dict(os.environ if base_env is None else base_env)
-    for name in HOST_RUNTIME_VARS:
-        env.pop(name, None)
-    core = _canonical(root / "runtime" / "platformio")
-    env[runtime_paths.APPLICATION_HOME_ENV] = str(root)
-    env["ROBOSTUDIO_RUNTIME_MODE"] = "packaged"
-    env["PLATFORMIO_CORE_DIR"] = str(core)
-    env["PLATFORMIO_PLATFORMS_DIR"] = str(core / "platforms")
-    env["PLATFORMIO_PACKAGES_DIR"] = str(core / "packages")
-    env["PLATFORMIO_CACHE_DIR"] = str(core / ".cache")
-    env["PLATFORMIO_BUILD_CACHE_DIR"] = str(core / "build-cache")
-    env["PLATFORMIO_WORKSPACE_DIR"] = str(core / "workspace")
-    env["PLATFORMIO_DISABLE_UPGRADE_CHECK"] = "true"
-    env["PLATFORMIO_DISABLE_PROGRESSBAR"] = "true"
-    env["PLATFORMIO_NO_ANSI"] = "true"
-    env["PYTHONIOENCODING"] = "utf-8"
+    try:
+        env, _ = dependency_closure.build_closed_environment(root, base_env)
+    except dependency_closure.DependencyClosureError as exc:
+        raise CleanMachineE2EError(f"Portable dependency closure failed: {exc}") from exc
     return env
 
 
@@ -87,24 +62,45 @@ from pathlib import Path
 root = Path(os.environ["ROBOSTUDIO_HOME"]).resolve()
 expected_python = root / "runtime" / "bin" / ("python.exe" if os.name == "nt" else "python")
 expected_core = root / "runtime" / "platformio"
+path_entries = [Path(value).resolve() for value in os.environ.get("PATH", "").split(os.pathsep) if value]
+system_root = Path(os.environ.get("SystemRoot", os.environ.get("WINDIR", root))).resolve() if os.name == "nt" else None
+allowed_system = ({system_root, system_root / "System32"} if system_root else set())
+path_closed = all(path == root or root in path.parents or path in allowed_system for path in path_entries)
 result = {
     "executable": str(Path(sys.executable).resolve()),
     "cwd": str(Path.cwd().resolve()),
     "application_home": os.environ.get("ROBOSTUDIO_HOME"),
     "runtime_mode": os.environ.get("ROBOSTUDIO_RUNTIME_MODE"),
+    "dependency_mode": os.environ.get("ROBOSTUDIO_DEPENDENCY_MODE"),
     "core": os.environ.get("PLATFORMIO_CORE_DIR"),
     "platforms": os.environ.get("PLATFORMIO_PLATFORMS_DIR"),
     "packages": os.environ.get("PLATFORMIO_PACKAGES_DIR"),
     "host_pythonhome_present": "PYTHONHOME" in os.environ,
     "host_pythonpath_present": "PYTHONPATH" in os.environ,
     "host_virtualenv_present": "VIRTUAL_ENV" in os.environ,
+    "host_nodepath_present": "NODE_PATH" in os.environ,
+    "host_npm_prefix_present": "NPM_CONFIG_PREFIX" in os.environ or "npm_config_prefix" in os.environ,
     "host_piohome_present": "PIOHOME_DIR" in os.environ,
+    "path_closed": path_closed,
     "executable_under_root": Path(sys.executable).resolve().is_relative_to(root),
     "executable_is_expected": Path(sys.executable).resolve() == expected_python,
     "core_is_expected": Path(os.environ["PLATFORMIO_CORE_DIR"]).resolve() == expected_core,
 }
 print(json.dumps(result, sort_keys=True))
-if not (result["executable_under_root"] and result["executable_is_expected"] and result["core_is_expected"] and result["runtime_mode"] == "packaged" and not result["host_pythonhome_present"] and not result["host_pythonpath_present"] and not result["host_virtualenv_present"] and not result["host_piohome_present"]):
+if not (
+    result["executable_under_root"]
+    and result["executable_is_expected"]
+    and result["core_is_expected"]
+    and result["runtime_mode"] == "packaged"
+    and result["dependency_mode"] == "artifact-closed"
+    and result["path_closed"]
+    and not result["host_pythonhome_present"]
+    and not result["host_pythonpath_present"]
+    and not result["host_virtualenv_present"]
+    and not result["host_nodepath_present"]
+    and not result["host_npm_prefix_present"]
+    and not result["host_piohome_present"]
+):
     raise SystemExit(3)
 '''
 
@@ -122,7 +118,7 @@ def _validate_for_root(root: Path) -> None:
 
 
 def execute_clean_machine_probe(root: Path, *, cwd: Path, base_env: Mapping[str, str] | None = None, timeout: float = 30.0) -> CleanMachineE2EReport:
-    """Start the bundled Python process with an external CWD and clean env."""
+    """Start the bundled Python process with an external CWD and closed env."""
     root = _canonical(Path(root))
     cwd = _canonical(Path(cwd))
     if not cwd.is_dir():
@@ -137,6 +133,10 @@ def execute_clean_machine_probe(root: Path, *, cwd: Path, base_env: Mapping[str,
     python = _python_path(root)
     if not python.is_file():
         raise CleanMachineE2EError(f"Portable Python is missing: {python}")
+    try:
+        dependency_closure.assert_artifact_owned(python, root, label="portable Python")
+    except dependency_closure.DependencyClosureError as exc:
+        raise CleanMachineE2EError(f"Portable dependency closure failed: {exc}") from exc
     env = _clean_environment(root, base_env)
     try:
         completed = subprocess.run([str(python), "-c", _PROBE], cwd=str(cwd), env=env, shell=False, capture_output=True, text=True, timeout=timeout, check=False)
@@ -157,12 +157,16 @@ def execute_clean_machine_probe(root: Path, *, cwd: Path, base_env: Mapping[str,
     environment_verified = (
         _canonical(Path(result["application_home"])) == root
         and result.get("runtime_mode") == "packaged"
+        and result.get("dependency_mode") == "artifact-closed"
+        and result.get("path_closed") is True
         and _canonical(Path(result["core"])) == expected_core
         and _canonical(Path(result["platforms"])) == _canonical(expected_core / "platforms")
         and _canonical(Path(result["packages"])) == _canonical(expected_core / "packages")
         and not result.get("host_pythonhome_present")
         and not result.get("host_pythonpath_present")
         and not result.get("host_virtualenv_present")
+        and not result.get("host_nodepath_present")
+        and not result.get("host_npm_prefix_present")
         and not result.get("host_piohome_present")
     )
     executable_verified = observed_python == expected_python and observed_python.is_relative_to(root)
