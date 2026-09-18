@@ -18,11 +18,8 @@ from tools.deployment_runtime import (
     platformio_command,
     run_process,
 )
-from tools.deploy_robot import (
-    _copy_program_header_safely,
-    _restore_program_header,
-    normalize_robot_host,
-)
+from tools.deploy_robot import normalize_robot_host
+from tools.firmware_workspace import install_generated_header
 
 
 def test_bootstrap_propagates_generated_credentials_to_platformio():
@@ -137,8 +134,7 @@ def main() -> int:
     assert "preflight_robot(args.robot)" in deploy
     assert "--process-timeout" in deploy
     assert "--verify-timeout" in deploy
-    assert "_copy_program_header_safely" in deploy
-    assert "_restore_program_header" in deploy
+    assert "firmware_workspace.install_generated_header" in deploy
     assert "platformio_command(" in flash
 
     assert "on_output: DeploymentOutputCallback" in service
@@ -149,15 +145,14 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        source = tmp_path / "new.h"
-        destination = tmp_path / "generated_program.h"
-        source.write_text("new", encoding="utf-8")
-        destination.write_text("old", encoding="utf-8")
-        previous = _copy_program_header_safely(source, destination)
-        assert previous == b"old"
-        assert destination.read_text(encoding="utf-8") == "new"
-        _restore_program_header(destination, previous)
-        assert destination.read_text(encoding="utf-8") == "old"
+        header = tmp_path / "program.h"
+        firmware_root = tmp_path / "firmware"
+        destination = firmware_root / "main" / "src" / "Application" / "generated_program.h"
+        (firmware_root / "main").mkdir(parents=True)
+        header.write_text("generated", encoding="utf-8")
+        assert install_generated_header(header, firmware_root) == destination
+        assert destination.read_text(encoding="utf-8") == "generated"
+
 
     print("H28-B PASS: deployment runtime hardening + live output + bounded subprocesses")
     return 0
