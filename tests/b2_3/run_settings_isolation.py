@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -15,6 +16,7 @@ if str(ROOT) not in sys.path:
 from robostudio.domain.hardware_config import HardwareConfig
 from robostudio.domain.hardware_config_service import HardwareConfigService
 from robostudio.services.bootstrap_config_service import BootstrapConfigService
+from robostudio.services.build_service import BuildService
 from robostudio.services.firmware_service import FirmwareService
 from robostudio.services.hardware_macro_service import HardwareMacroService
 from tools import firmware_workspace, runtime_paths
@@ -70,6 +72,19 @@ def main() -> int:
         firmware.parent.mkdir(parents=True)
         firmware.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
 
+        # Minimal application-owned compiler/runtime fixture for the GUI compile
+        # boundary. It is resolved but never executed by this regression.
+        compiler_bridge = app / "compiler" / "robostudio_bridge.py"
+        compiler_bridge.parent.mkdir(parents=True)
+        compiler_bridge.write_text("# packaged compiler bridge fixture\n", encoding="utf-8")
+        runtime_bin = app / "runtime" / "bin"
+        runtime_bin.mkdir(parents=True)
+        python_name = "python.exe" if os.name == "nt" else "python"
+        bundled_python = runtime_bin / python_name
+        bundled_python.write_text("packaged-python-fixture\n", encoding="utf-8")
+        (app / "runtime" / "platformio" / "platforms").mkdir(parents=True)
+        (app / "runtime" / "platformio" / "packages").mkdir(parents=True)
+
         # Packaged first-flash/PlatformIO content is immutable. Generated
         # bootstrap and device headers must be applied only to state-owned
         # working copies.
@@ -100,6 +115,7 @@ def main() -> int:
 
         before = snapshot(app)
         previous = os.environ.copy()
+        compile_workspace: Path | None = None
         try:
             os.environ[runtime_paths.APPLICATION_HOME_ENV] = str(app)
             os.environ[runtime_paths.STATE_ROOT_ENV] = str(state)
@@ -255,7 +271,48 @@ def main() -> int:
                 ),
                 "outside the packaged RoboStudio application",
             )
+
+            # GUI compile path: hostile host Python/PATH hints must be sealed,
+            # while all request/source/output scratch data stays under state.
+            os.environ["PATH"] = str(base / "Host Tools")
+            os.environ["PYTHONPATH"] = str(base / "Host Project")
+            build_service = BuildService()
+            command, compile_env, temp_file = build_service.get_command("print('hello')\n")
+            compile_source = Path(temp_file).resolve()
+            compile_workspace = compile_source.parent
+            check(
+                "GUI compiler resolves bundled Python",
+                Path(command[0]).resolve() == bundled_python.resolve(),
+            )
+            check(
+                "GUI compile workspace is under external state",
+                compile_workspace
+                == state.resolve() / "build" / "compile" / compile_workspace.name,
+            )
+            check(
+                "GUI compile workspace is outside release",
+                app.resolve() not in compile_workspace.parents,
+            )
+            check("GUI compiler strips host PYTHONPATH", "PYTHONPATH" not in compile_env)
+            check(
+                "GUI compiler keeps artifact-closed mode",
+                compile_env.get(runtime_paths.DEPENDENCY_MODE_ENV) == "artifact-closed",
+            )
+            check(
+                "GUI compiler state root remains external",
+                Path(compile_env[runtime_paths.STATE_ROOT_ENV]).resolve() == state.resolve(),
+            )
+            worker_source = (
+                ROOT / "robostudio" / "services" / "build_worker.py"
+            ).read_text(encoding="utf-8")
+            check(
+                "GUI worker CWD is derived from external compile workspace",
+                "setWorkingDirectory(str(self._workspace()))" in worker_source
+                and "ROBOSTUDIO_HOME" not in worker_source,
+            )
         finally:
+            if compile_workspace is not None:
+                shutil.rmtree(compile_workspace, ignore_errors=True)
             os.environ.clear()
             os.environ.update(previous)
 
