@@ -6,6 +6,7 @@ common developer-host Python signals from the child environment.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -39,21 +40,35 @@ def _minimal_app(path: Path) -> None:
     )
 
 
+def _pe_machine(path: Path) -> int:
+    data = path.read_bytes()
+    if data[:2] != b"MZ":
+        raise AssertionError(f"not a PE executable: {path}")
+    pe_offset = int.from_bytes(data[0x3C:0x40], "little")
+    if data[pe_offset:pe_offset + 4] != b"PE\\0\\0":
+        raise AssertionError(f"invalid PE signature: {path}")
+    return int.from_bytes(data[pe_offset + 4:pe_offset + 6], "little")
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _runtime_fixture(root: Path) -> tuple[Path, Path]:
-    """Build a runnable interpreter fixture plus the required PlatformIO layout."""
+    """Build a deterministic, isolated interpreter fixture plus PlatformIO layout."""
     runtime_bin = root / "runtime-bin"
     runtime_bin.mkdir(parents=True)
-    # Use the current interpreter as a real executable fixture, then execute
-    # only this copied interpreter from the extracted artifact. The test is
-    # intentionally independent of PATH/PYTHONPATH/VIRTUAL_ENV at execution.
+    source_python = Path(sys.executable).resolve()
+    python_home = source_python.parent
     bundled_python = runtime_bin / "python.exe"
-    python_home = Path(sys.executable).resolve().parent
-    shutil.copy2(sys.executable, bundled_python)
-    # Python on Windows may depend on non-python DLLs located beside python.exe
-    # (for example OpenSSL/SQLite runtime DLLs). A fixture that copies only
-    # python*.dll is not a complete runnable interpreter after relocation.
-    for dependency in python_home.glob("*.dll"):
-        shutil.copy2(dependency, runtime_bin / dependency.name)
+    shutil.copy2(source_python, bundled_python)
+    for dependency in sorted(python_home.glob("*.dll"), key=lambda item: item.name.lower()):
+        if dependency.is_file():
+            shutil.copy2(dependency, runtime_bin / dependency.name)
     dlls = python_home / "DLLs"
     if dlls.is_dir():
         shutil.copytree(dlls, runtime_bin / "DLLs", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
@@ -62,8 +77,22 @@ def _runtime_fixture(root: Path) -> tuple[Path, Path]:
         runtime_bin / "Lib",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "site-packages"),
     )
+    pth = ".\nLib\nLib/site-packages\nimport site\n"
+    (runtime_bin / "python._pth").write_text(pth, encoding="utf-8")
+    python_dll = next(
+        (
+            item for item in sorted(runtime_bin.glob("python*.dll"), key=lambda item: item.name.lower())
+            if item.name.lower().startswith("python") and item.name[6:-4].isdigit()
+        ),
+        None,
+    )
+    if python_dll is not None:
+        (runtime_bin / f"{python_dll.stem}._pth").write_text(pth, encoding="utf-8")
     if os.name != "nt":
         bundled_python.chmod(bundled_python.stat().st_mode | 0o111)
+    check("bundled Python bytes are preserved", _sha256(source_python) == _sha256(bundled_python))
+    check("bundled Python machine type is x64", _pe_machine(bundled_python) == 0x8664)
+    check("Python isolation file is created", (runtime_bin / "python._pth").is_file())
 
     platformio_site = runtime_bin / "Lib" / "site-packages" / "platformio"
     platformio_site.mkdir(parents=True)
@@ -165,6 +194,7 @@ def main() -> int:
         bundled_python = extracted / "runtime" / "bin" / "python.exe"
         compiler = extracted / "compiler" / "main.py"
         check("bundled Python executable exists", bundled_python.is_file())
+        check("Python isolation file exists", (bundled_python.parent / "python._pth").is_file())
         check("bundled compiler exists", compiler.is_file())
 
         env = _clean_environment()

@@ -1,9 +1,12 @@
 """RSD-21.7 real compiler integration regression suite."""
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import sys
 import shutil
+import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
@@ -32,17 +35,51 @@ def _make_app(path: Path) -> None:
     )
 
 
+def _clean_python_environment() -> dict[str, str]:
+    env = dict(os.environ)
+    for key in (
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "VIRTUAL_ENV",
+        "CONDA_PREFIX",
+        "CONDA_DEFAULT_ENV",
+        "PIPENV_ACTIVE",
+        "POETRY_ACTIVE",
+    ):
+        env.pop(key, None)
+    env["PATH"] = str(Path(env.get("SystemRoot", "C:/Windows")) / "System32") if os.name == "nt" else ""
+    return env
+
+
+def _pe_machine(path: Path) -> int:
+    data = path.read_bytes()
+    if data[:2] != b"MZ":
+        raise AssertionError(f"not a PE executable: {path}")
+    pe_offset = int.from_bytes(data[0x3C:0x40], "little")
+    if data[pe_offset:pe_offset + 4] != b"PE\\0\\0":
+        raise AssertionError(f"invalid PE signature: {path}")
+    return int.from_bytes(data[pe_offset + 4:pe_offset + 6], "little")
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _make_runtime(root: Path) -> tuple[Path, Path]:
-    """Create a complete static application-owned PlatformIO closure."""
+    """Create a deterministic, isolated application-owned PlatformIO closure."""
     runtime_bin = root / "runtime-bin"
     runtime_bin.mkdir(parents=True)
-    python_home = Path(sys.executable).resolve().parent
-    shutil.copy2(sys.executable, runtime_bin / "python.exe")
-    # Python on Windows may depend on non-python DLLs located beside python.exe
-    # (for example OpenSSL/SQLite runtime DLLs). A fixture that copies only
-    # python*.dll is not a complete runnable interpreter after relocation.
-    for dependency in python_home.glob("*.dll"):
-        shutil.copy2(dependency, runtime_bin / dependency.name)
+    source_python = Path(sys.executable).resolve()
+    python_home = source_python.parent
+    bundled_python = runtime_bin / "python.exe"
+    shutil.copy2(source_python, bundled_python)
+    for dependency in sorted(python_home.glob("*.dll"), key=lambda item: item.name.lower()):
+        if dependency.is_file():
+            shutil.copy2(dependency, runtime_bin / dependency.name)
     dlls = python_home / "DLLs"
     if dlls.is_dir():
         shutil.copytree(dlls, runtime_bin / "DLLs", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
@@ -51,6 +88,21 @@ def _make_runtime(root: Path) -> tuple[Path, Path]:
         runtime_bin / "Lib",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "site-packages"),
     )
+    pth = ".\nLib\nLib/site-packages\nimport site\n"
+    (runtime_bin / "python._pth").write_text(pth, encoding="utf-8")
+    python_dll = next(
+        (
+            item for item in sorted(runtime_bin.glob("python*.dll"), key=lambda item: item.name.lower())
+            if item.name.lower().startswith("python") and item.name[6:-4].isdigit()
+        ),
+        None,
+    )
+    if python_dll is not None:
+        (runtime_bin / f"{python_dll.stem}._pth").write_text(pth, encoding="utf-8")
+    check("bundled Python bytes are preserved", _sha256(source_python) == _sha256(bundled_python))
+    check("bundled Python machine type is x64", _pe_machine(bundled_python) == 0x8664)
+    check("Python isolation file is created", (runtime_bin / "python._pth").is_file())
+
     platformio_site = runtime_bin / "Lib" / "site-packages" / "platformio"
     platformio_site.mkdir(parents=True)
     (platformio_site / "__init__.py").write_text("__version__ = 'fixture'\n", encoding="utf-8")
@@ -151,6 +203,18 @@ def main() -> int:
         (resources / "robot-isa").mkdir(parents=True)
         (resources / "robot-isa" / "target_profiles.json").write_text('{"targets":[]}\n', encoding="utf-8")
         runtime_bin, runtime_platformio = _make_runtime(inputs)
+        fixture_python = runtime_bin / "python.exe"
+        fixture_probe = subprocess.run(
+            [str(fixture_python), "-c", "import sys; print(sys.executable); print(sys.prefix); import platformio"],
+            cwd=inputs,
+            env=_clean_python_environment(),
+            check=True,
+            text=True,
+            capture_output=True,
+            shell=False,
+            timeout=30,
+        )
+        check("relocated fixture Python executes before packaging", fixture_python.as_posix().lower() in fixture_probe.stdout.lower())
         firmware = _make_firmware(inputs)
         dist = base / "distribution"
 
@@ -173,6 +237,7 @@ def main() -> int:
         check("compiler is recorded", manifest["compiler"] == "compiler/main.py")
         check("contract is recorded", manifest["compiler_contract"] == "compiler/robostudio_bridge.py")
         check("bundled Python is packaged", (dist / "runtime" / "bin" / "python.exe").is_file())
+        check("Python isolation file is packaged", (dist / "runtime" / "bin" / "python._pth").is_file())
         check("bundled PlatformIO is packaged", (dist / "runtime" / "platformio" / "platforms").is_dir() and (dist / "runtime" / "platformio" / "packages").is_dir())
         check("runtime deployment manifest is packaged", (dist / "runtime" / "platformio" / "deployment-runtime.json").is_file())
 
