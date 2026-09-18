@@ -17,7 +17,8 @@ Khi chạy từ production ZIP đã giải nén:
 5. Top-level executable của production compile/launch phải nằm trong artifact; truyền trực tiếp absolute path tới tool ngoài artifact cũng bị từ chối.
 6. Nếu dependency bắt buộc bị thiếu, hệ thống fail fast với diagnostic rõ ràng và không fallback sang host `PATH`.
 7. Production E2E report phải lưu evidence cho dependency-closure mode và PATH ownership.
-8. Regression/CI phải fail nếu B2.2 contract bị phá vỡ.
+8. Chính runtime deployment của RoboStudio phải dùng cùng dependency-closure policy; không chỉ acceptance test.
+9. Regression/CI phải fail nếu B2.2 contract bị phá vỡ.
 
 ## 3. Thay đổi implementation
 
@@ -32,6 +33,21 @@ Là policy chung cho executable/runtime dependency closure:
 - kiểm tra ownership của executable;
 - fail fast nếu required dependency không có trong artifact;
 - tạo evidence để đưa vào production acceptance report.
+
+### `tools/deployment_runtime.py`
+
+Đây là runtime boundary thật của compile/PlatformIO/flash. Khi RoboStudio chạy ở frozen/packaged mode, deployment subprocess sử dụng artifact-closed environment. Source/development mode vẫn giữ developer environment để không phá workflow phát triển.
+
+Nhờ vậy B2.2 không chỉ xanh ở test mà còn tác động trực tiếp tới subprocess mà RoboStudio production thực sự sử dụng.
+
+### `tools/clean_machine_e2e.py`
+
+Clean-machine probe dùng chung dependency-closure policy và kiểm tra trong process thật rằng:
+
+- bundled Python là application-owned;
+- `PATH` chỉ chứa artifact-owned directories và Windows system allow-list;
+- Python/Node/npm/PlatformIO host injection không lọt vào process;
+- PlatformIO directories trỏ về artifact.
 
 ### `tools/production_e2e.py`
 
@@ -48,7 +64,13 @@ Regression suite tạo một hostile host environment và kiểm tra:
 - executable cùng tên trong artifact được ưu tiên;
 - khi xóa executable trong artifact, executable cùng tên trên host không được dùng thay thế;
 - explicit host absolute executable bị từ chối;
+- packaged deployment runtime sử dụng closed environment;
+- source/development runtime vẫn giữ developer PATH;
 - production E2E lưu dependency closure evidence.
+
+### Regression compatibility
+
+`tests/rsd_04/run_rsd_04.py` được cập nhật để phản ánh contract mới: frozen deployment phải đóng host PATH, trong khi source/development mode vẫn giữ PATH của developer.
 
 ### CI
 
@@ -64,8 +86,10 @@ B2.2 PASS khi tất cả điều kiện sau đúng:
 - [x] Python/runtime path của production artifact là application-owned.
 - [x] PlatformIO runtime directories được rebound về artifact.
 - [x] Host Python/Conda/Node/npm/PlatformIO injection variables bị loại bỏ.
+- [x] Frozen deployment runtime dùng dependency closure; source/dev mode vẫn giữ developer environment.
 - [x] Production top-level launch/compile executable bắt buộc application-owned.
 - [x] Missing artifact dependency fail fast; host fallback bị cấm.
+- [x] Clean-machine runtime probe xác minh closure trong child process thật.
 - [x] Production E2E report có dependency closure evidence.
 - [x] B2.2 regression test nằm trong repository-wide test gate.
 - [x] GitHub Actions chạy B2.2 trên Pull Request vào `main`.
