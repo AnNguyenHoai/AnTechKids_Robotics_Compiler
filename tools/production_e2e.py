@@ -28,13 +28,13 @@ class ProductionE2EError(RuntimeError):
 class ProductionE2EResult:
     status: str
     artifact: str
-    artifact_sha256: str
     extracted_root: str
     target_machine_prerequisites: bool
     source_tree_execution: bool
     robostudio_started: bool
     compiler_succeeded: bool
     evidence: dict
+    artifact_sha256: str = ""
 
     @property
     def passed(self) -> bool:
@@ -210,7 +210,17 @@ def evaluate_production_artifact(
         passed = (not launch or started) and (not compile_command or compiled)
         # This harness validates the application-owned artifact itself; it does not
         # require external target-machine prerequisites such as USB drivers or hardware.
-        return ProductionE2EResult("PASS" if passed else "FAIL", str(artifact), artifact_sha256, str(root), False, False, started, compiled, evidence)
+        return ProductionE2EResult(
+            status="PASS" if passed else "FAIL",
+            artifact=str(artifact),
+            extracted_root=str(root),
+            target_machine_prerequisites=False,
+            source_tree_execution=False,
+            robostudio_started=started,
+            compiler_succeeded=compiled,
+            evidence=evidence,
+            artifact_sha256=artifact_sha256,
+        )
 
 
 def qualify_release_e2e(artifact: Path, *, source: Path, launch_command: list[str], compile_command: list[str], timeout: float = DEFAULT_TIMEOUT) -> ProductionE2EResult:
