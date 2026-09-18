@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import dependency_closure, production_e2e
+from tools import dependency_closure, deployment_runtime, production_e2e
 
 
 def check(name: str, condition: bool) -> None:
@@ -43,16 +43,7 @@ def _write_tool(path: Path) -> None:
         path.chmod(0o755)
 
 
-def test_closed_path_and_fail_fast(base: Path) -> None:
-    artifact = base / "RoboStudio"
-    artifact_tool = artifact / "runtime" / "bin" / _tool_name()
-    host = base / "HostTools"
-    host_tool = host / _tool_name()
-    _write_tool(artifact_tool)
-    _write_tool(host_tool)
-    (artifact / "runtime" / "platformio" / "platforms").mkdir(parents=True)
-    (artifact / "runtime" / "platformio" / "packages").mkdir(parents=True)
-
+def hostile_environment(base: Path, host: Path) -> dict[str, str]:
     hostile = os.environ.copy()
     hostile.update(
         {
@@ -65,9 +56,24 @@ def test_closed_path_and_fail_fast(base: Path) -> None:
             "NPM_CONFIG_PREFIX": str(base / "HostNpm"),
             "PIOHOME_DIR": str(base / "HostPlatformIO"),
             "PLATFORMIO_CORE_DIR": str(base / "HostPlatformIO"),
+            "PLATFORMIO_PLATFORMS_DIR": str(base / "HostPlatforms"),
+            "PLATFORMIO_PACKAGES_DIR": str(base / "HostPackages"),
         }
     )
+    return hostile
 
+
+def test_closed_path_and_fail_fast(base: Path) -> None:
+    artifact = base / "RoboStudio"
+    artifact_tool = artifact / "runtime" / "bin" / _tool_name()
+    host = base / "HostTools"
+    host_tool = host / _tool_name()
+    _write_tool(artifact_tool)
+    _write_tool(host_tool)
+    (artifact / "runtime" / "platformio" / "platforms").mkdir(parents=True)
+    (artifact / "runtime" / "platformio" / "packages").mkdir(parents=True)
+
+    hostile = hostile_environment(base, host)
     env, report = dependency_closure.build_closed_environment(artifact, hostile)
     path_entries = [Path(value) for value in env["PATH"].split(os.pathsep) if value]
     check("host PATH is not inherited", host.resolve() not in [p.resolve() for p in path_entries])
@@ -105,6 +111,40 @@ def test_closed_path_and_fail_fast(base: Path) -> None:
     )
 
 
+def test_packaged_deployment_runtime_is_closed(base: Path) -> None:
+    artifact = base / "RoboStudio"
+    host = base / "HostTools"
+    _write_tool(artifact / "runtime" / "bin" / _tool_name())
+    host.mkdir(parents=True, exist_ok=True)
+    (artifact / "runtime" / "platformio" / "platforms").mkdir(parents=True)
+    (artifact / "runtime" / "platformio" / "packages").mkdir(parents=True)
+    hostile = hostile_environment(base, host)
+
+    original_is_frozen = deployment_runtime.is_frozen
+    original_application_root = deployment_runtime.application_root
+    try:
+        deployment_runtime.is_frozen = lambda: True
+        deployment_runtime.application_root = lambda: artifact
+        env = deployment_runtime.deployment_runtime_environment(hostile)
+    finally:
+        deployment_runtime.is_frozen = original_is_frozen
+        deployment_runtime.application_root = original_application_root
+
+    path_entries = [Path(value).resolve() for value in env["PATH"].split(os.pathsep) if value]
+    check("frozen deployment runtime removes host PATH", host.resolve() not in path_entries)
+    check("frozen deployment runtime enables closure mode", env.get("ROBOSTUDIO_DEPENDENCY_MODE") == "artifact-closed")
+    check("frozen deployment runtime removes Node injection", "NODE_PATH" not in env and "NPM_CONFIG_PREFIX" not in env)
+    check("frozen deployment runtime rebinds PlatformIO", Path(env["PLATFORMIO_CORE_DIR"]).resolve() == (artifact / "runtime" / "platformio").resolve())
+
+    original_is_frozen = deployment_runtime.is_frozen
+    try:
+        deployment_runtime.is_frozen = lambda: False
+        developer = deployment_runtime.deployment_runtime_environment(hostile)
+    finally:
+        deployment_runtime.is_frozen = original_is_frozen
+    check("source development mode retains developer PATH", developer["PATH"] == hostile["PATH"])
+
+
 def test_production_e2e_records_closure(base: Path) -> None:
     payload = base / "payload"
     (payload / "runtime" / "bin").mkdir(parents=True)
@@ -123,9 +163,7 @@ def test_production_e2e_records_closure(base: Path) -> None:
 
     source = base / "student.py"
     source.write_text("print('robot')\n", encoding="utf-8")
-    hostile = os.environ.copy()
-    hostile["PATH"] = str(base / "HostOnly")
-    hostile["PYTHONHOME"] = str(base / "HostPython")
+    hostile = hostile_environment(base, base / "HostOnly")
 
     result = production_e2e.evaluate_production_artifact(
         artifact=artifact,
@@ -143,6 +181,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="robostudio-b22-") as temp:
         base = Path(temp)
         test_closed_path_and_fail_fast(base / "closure")
+        test_packaged_deployment_runtime_is_closed(base / "deployment")
         test_production_e2e_records_closure(base / "production")
     print("B2.2 portable dependency closure checks: PASS")
     return 0
