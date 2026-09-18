@@ -31,10 +31,12 @@ $candidates = @()
 if ($env:ROBOSTUDIO_BUILD_PYTHON) {
     $candidates += ,@($env:ROBOSTUDIO_BUILD_PYTHON, @())
 }
-$candidates += ,@("py", @("-3.13"))
-$candidates += ,@("py", @("-3.12"))
-$candidates += ,@("py", @("-3.11"))
+# Prefer 3.10 because the production artifact itself is pinned to the
+# Python 3.10.11 embeddable runtime. Newer build interpreters are fallback only.
 $candidates += ,@("py", @("-3.10"))
+$candidates += ,@("py", @("-3.11"))
+$candidates += ,@("py", @("-3.12"))
+$candidates += ,@("py", @("-3.13"))
 $candidates += ,@("python", @())
 $candidates += ,@("python3", @())
 
