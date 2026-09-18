@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 import sys
 import tempfile
@@ -14,12 +13,7 @@ if __package__ in (None, ""):
     if str(_repository_root) not in sys.path:
         sys.path.insert(0, str(_repository_root))
 
-from tools import (
-    distribution_package,
-    production_artifact_boundary,
-    production_platformio_closure,
-    production_runtime_closure,
-)
+from tools import distribution_package, production_platformio_closure
 
 PRODUCTION_SCHEMA = "antechkids.robostudio.production-distribution"
 PRODUCTION_SCHEMA_VERSION = 5
@@ -249,38 +243,13 @@ def _stage_runtime(runtime_bin: Path, runtime_platformio: Path, stage: Path) -> 
     return bin_destination, platformio_destination
 
 
-def _copy_deployment_runtime_tools(output: Path) -> Path:
+def _stage_deployment_runtime_tools(stage: Path) -> Path:
     source = _validate_deployment_tool_sources()
-    destination = output / "tools"
+    destination = stage / "tools"
     destination.mkdir(parents=True, exist_ok=True)
     for name in DEPLOYMENT_RUNTIME_TOOL_FILES:
         shutil.copy2(source / name, destination / name)
     return destination
-
-
-def _refresh_distribution_evidence(output: Path, manifest: Path) -> None:
-    """Re-seal manifest and release evidence after adding B2.4 runtime tools."""
-    try:
-        payload = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ProductionDistributionError(f"Invalid distribution manifest after assembly: {manifest}") from exc
-
-    # The deployment allow-list is part of the production artifact. Fingerprint
-    # it before any validator consumes the manifest; otherwise a correct runtime
-    # payload appears as an unexpected post-manifest mutation.
-    payload["deployment_tools"] = "tools"
-    payload["files"] = distribution_package._file_entries(output)
-    manifest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-    try:
-        production_artifact_boundary.validate_distribution_root(output)
-        production_artifact_boundary.write_boundary_manifest(output)
-        distribution_package.validate_distribution_manifest(manifest)
-        production_runtime_closure.validate_distribution(output)
-    except Exception as exc:
-        raise ProductionDistributionError(
-            f"Production deployment runtime validation failed: {exc}"
-        ) from exc
 
 
 def build_production_distribution(inputs: ProductionDistributionInputs, output: Path) -> ProductionDistributionResult:
@@ -299,6 +268,7 @@ def build_production_distribution(inputs: ProductionDistributionInputs, output: 
         staged_executable = _stage_application(executable, version_file, stage)
         compiler_stage = _stage_compiler(compiler_root, frontend_root, stage)
         _stage_runtime(inputs.runtime_bin, inputs.runtime_platformio, stage)
+        tools_stage = _stage_deployment_runtime_tools(stage)
         try:
             manifest = distribution_package.assemble_distribution(
                 distribution_package.DistributionInputs(
@@ -311,13 +281,12 @@ def build_production_distribution(inputs: ProductionDistributionInputs, output: 
                     firmware_root=firmware_root,
                     runtime_bin=stage / "runtime" / "bin",
                     runtime_platformio=stage / "runtime" / "platformio",
+                    deployment_tools_root=tools_stage,
                 ),
                 output,
             )
         except distribution_package.DistributionPackageError as exc:
             raise ProductionDistributionError(f"Production distribution assembly failed: {exc}") from exc
-    _copy_deployment_runtime_tools(output)
-    _refresh_distribution_evidence(output, manifest)
     return ProductionDistributionResult(output, manifest, executable.name, version)
 
 
