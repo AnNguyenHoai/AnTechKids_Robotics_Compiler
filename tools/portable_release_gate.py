@@ -38,21 +38,35 @@ class PortableReleaseReport:
     build_workspace: Path
 
 
+def _same_path(left: Path | str, right: Path | str) -> bool:
+    """Compare filesystem identity using Windows-safe canonical semantics."""
+    return os.path.normcase(os.path.realpath(os.path.abspath(str(left)))) == os.path.normcase(
+        os.path.realpath(os.path.abspath(str(right)))
+    )
+
+
 def _validate_host_independence(root: Path, base_env: Mapping[str, str]) -> None:
     """Verify launch/build resolution is unaffected by hostile host settings."""
     env = distribution_launch.clean_machine_environment(root, base_env)
 
     expected_core = root / "runtime" / "platformio"
-    if Path(env["ROBOSTUDIO_HOME"]) != root:
+    if not _same_path(env["ROBOSTUDIO_HOME"], root):
         raise PortableReleaseGateError("Launch environment does not identify relocated application root")
-    if Path(env["PLATFORMIO_CORE_DIR"]) != expected_core:
+    if not _same_path(env["PLATFORMIO_CORE_DIR"], expected_core):
         raise PortableReleaseGateError("Launch environment resolves PlatformIO outside application runtime")
-    if Path(env["PLATFORMIO_PLATFORMS_DIR"]) != expected_core / "platforms":
+    if not _same_path(env["PLATFORMIO_PLATFORMS_DIR"], expected_core / "platforms"):
         raise PortableReleaseGateError("Launch environment resolves PlatformIO platforms outside application runtime")
-    if Path(env["PLATFORMIO_PACKAGES_DIR"]) != expected_core / "packages":
+    if not _same_path(env["PLATFORMIO_PACKAGES_DIR"], expected_core / "packages"):
         raise PortableReleaseGateError("Launch environment resolves PlatformIO packages outside application runtime")
-    if "PATH" in base_env and env.get("PATH") != base_env["PATH"]:
-        raise PortableReleaseGateError("Launch environment unexpectedly changed host PATH")
+
+    # B2.2 requires production PATH closure. Keeping the hostile host PATH is
+    # a release-gate failure, not a success condition.
+    if "PATH" in base_env and env.get("PATH") == base_env["PATH"]:
+        raise PortableReleaseGateError("Launch environment still inherits hostile host PATH")
+    if env.get("ROBOSTUDIO_DEPENDENCY_MODE") != "artifact-closed":
+        raise PortableReleaseGateError("Launch environment does not enforce artifact dependency closure")
+    if env.get("PYTHONNOUSERSITE") != "1":
+        raise PortableReleaseGateError("Launch environment does not disable host Python user-site packages")
 
     external_cwd = root.parent / "external-working-directory"
     external_cwd.mkdir(parents=True, exist_ok=True)
@@ -63,7 +77,7 @@ def _validate_host_independence(root: Path, base_env: Mapping[str, str]) -> None
         pass
     else:
         raise PortableReleaseGateError("Packaged launch working directory is inside the application root")
-    if spec.command[0] != str(root / "RoboStudio.exe"):
+    if not _same_path(spec.command[0], root / "RoboStudio.exe"):
         raise PortableReleaseGateError("Packaged launch command is not rooted at the relocated application")
 
 
