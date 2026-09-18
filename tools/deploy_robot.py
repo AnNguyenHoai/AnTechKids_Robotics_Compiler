@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
 from tools.deployment_contract import create_manifest,sha256_file,validate_manifest,write_manifest
 from tools.deployment_runtime import DEFAULT_PROCESS_TIMEOUT_SECONDS,DeploymentRuntimeError,deployment_runtime_environment,platformio_command,run_process
-from tools import build_isolation,firmware_workspace,runtime_paths
+from tools import build_isolation,firmware_workspace,hardware_preflight,runtime_paths
 CAPABILITY_BY_OPCODE={"Forward":"motion.basic","Backward":"motion.basic","TurnLeft":"motion.basic","TurnRight":"motion.basic","SetMotorSpeed":"motion.speed","MoveInitialize":"motion.encoder_angle","MoveRunAngle":"motion.encoder_angle","ReadUltrasonic":"sensor.ultrasonic","ReadTouch":"sensor.touch","ReadLight":"sensor.light","ReadColor":"sensor.color","ReadLine":"sensor.line","GetTraceValue":"sensor.line","GetTraceState":"sensor.line","GetTraceRaw":"sensor.line","GetLightSensorData":"sensor.light","LineBasis":"line.follow","LineFollow":"line.follow","LineStop":"line.follow","LineMillisecond":"line.follow","LineIntersectionStop":"line.follow","LineTurnEncounterLine":"line.follow","LineForBmp":"line.follow","LineSetInitialize":"line.follow","Set3CLed":"actuator.led","SetLightSensorLed":"actuator.led","SetServo":"actuator.servo","SetSeeringEngine":"actuator.servo","SetSeeringEngineTime":"actuator.servo","SetMotor":"actuator.motor","SetMotorServo":"actuator.motor","SetMotorStraightAngle":"actuator.motor","SetMp3Play":"peripheral.mp3","SetLizard":"peripheral.lizard","DisplayVariable":"gui.variable"}
 
 def run(command:list[str],*,env:dict[str,str]|None=None,cwd:Path=ROOT,timeout:float=DEFAULT_PROCESS_TIMEOUT_SECONDS)->None:
@@ -73,11 +73,13 @@ def deployment_environment(project_name:str)->dict[str,str]:
 
 def flash_bootstrap(config_path:Path,port:str|None)->int:
  config=validate_bootstrap_config(config_path.resolve());project="bootstrap";env=deployment_environment(project)
+ try:preflight=hardware_preflight.require_serial_port(port,base_env=env)
+ except hardware_preflight.HardwarePreflightError as exc:raise RuntimeError(str(exc)) from exc
+ selected_port=preflight.selected_port.port
  env.update({"ROBOT_BOOTSTRAP_CONFIG":str(config_path.resolve()),"ROBOT_WIFI_SSID":str(config["wifi"]["ssid"]),"ROBOT_WIFI_PASSWORD":str(config["wifi"].get("password","")),"ROBOT_OTA_PASSWORD":str(config["ota"]["password"])})
  workspace=firmware_workspace.prepare_firmware_workspace(firmware_template(),project);apply_user_hardware_config(workspace)
- command=platformio_command("run","-e","esp32dev_bootstrap","-t","upload")
- if port:command.extend(["--upload-port",port])
- run(command,cwd=workspace,env=env);print("FIRST-FLASH BOOTSTRAP PASS");return 0
+ command=platformio_command("run","-e","esp32dev_bootstrap","-t","upload","--upload-port",selected_port)
+ run(command,cwd=workspace,env=env);print(f"FIRST-FLASH BOOTSTRAP PASS ({selected_port})");return 0
 
 def http_ota_upload(host:str,password:str,firmware:Path,timeout:float=180.0)->str:
  host=normalize_robot_host(host)
@@ -115,6 +117,7 @@ def main()->int:
  if a.process_timeout<=0 or a.verify_timeout<=0:p.error("timeouts must be greater than zero")
  if a.mode=="bootstrap":
   if not a.bootstrap_config:p.error("--mode bootstrap requires --bootstrap-config")
+  if not (a.port or "").strip():p.error("--mode bootstrap requires --port; RoboStudio never guesses a COM port")
   return flash_bootstrap(Path(a.bootstrap_config),a.port)
  if not a.input:p.error("--input is required unless --mode bootstrap is used")
  source=Path(a.input).resolve()
@@ -124,12 +127,17 @@ def main()->int:
   if not a.robot or not ssid:p.error("--mode ota requires --robot and --ssid (or ROBOT_WIFI_SSID)")
   if not ota_password:p.error("--mode ota requires --ota-password or ROBOT_OTA_PASSWORD")
   normalize_robot_host(a.robot)
+ selected_usb_port=""
+ if a.mode=="usb":
+  if not (a.port or "").strip():p.error("--mode usb requires --port; RoboStudio never guesses a COM port")
+  try:selected_usb_port=hardware_preflight.require_serial_port(a.port,timeout=min(a.process_timeout,30.0)).selected_port.port
+  except hardware_preflight.HardwarePreflightError as exc:p.error(str(exc))
  project=source.stem;build_isolation.prepare_build_workspace(project);build_dir=build_isolation.build_root(project);header=compile_program(source,build_dir,a.process_timeout);capabilities=infer_capabilities(header);manifest_path=build_dir/"deployment_manifest.json";manifest=create_manifest(build_dir,"esp32",capabilities,source_path=source,platformio_environment="esp32dev_ota" if a.mode=="ota" else "esp32dev");write_manifest(manifest,manifest_path);validate_manifest(manifest_path,expected_target="esp32")
  workspace=firmware_workspace.prepare_firmware_workspace(firmware_template(),project);firmware_workspace.install_generated_header(header,workspace);apply_user_hardware_config(workspace);env=deployment_environment(project)
  if ssid:env.update({"ROBOT_WIFI_SSID":ssid,"ROBOT_WIFI_PASSWORD":wifi_password})
  if ota_password:env["ROBOT_OTA_PASSWORD"]=ota_password
  if a.mode=="build":run(platformio_command("run","-e","esp32dev"),cwd=workspace,env=env,timeout=a.process_timeout)
- elif a.mode=="usb":run(platformio_command("run","-e","esp32dev","-t","upload")+(["--upload-port",a.port] if a.port else []),cwd=workspace,env=env,timeout=a.process_timeout)
+ elif a.mode=="usb":run(platformio_command("run","-e","esp32dev","-t","upload","--upload-port",selected_usb_port),cwd=workspace,env=env,timeout=a.process_timeout)
  else:
   preflight_robot(a.robot);run(platformio_command("run","-e","esp32dev_ota"),cwd=workspace,env=env,timeout=a.process_timeout);firmware=build_isolation.firmware_path(project,"esp32dev_ota");http_ota_upload(a.robot,ota_password,firmware);wait_for_robot(a.robot,a.verify_timeout)
  firmware=build_isolation.firmware_path(project,"esp32dev_ota" if a.mode=="ota" else "esp32dev")
