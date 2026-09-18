@@ -1,41 +1,23 @@
 """Clean-machine launch contract for a packaged RoboStudio distribution.
 
-RSD-07 proves that a distribution can be assembled. RSD-08 proves that the
-assembled artifact can be launched without inheriting a developer machine's
-Python/PlatformIO configuration. The launcher uses an absolute application
-executable and prepares only application-owned runtime variables; it never
-needs the repository checkout or a PlatformIO installation on PATH.
+The launcher uses an absolute application executable and the same artifact-
+closed dependency environment used by production deployment/E2E. Development
+Python, Node, PlatformIO and other global tools cannot leak through host PATH.
 """
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from tools import runtime_preflight, runtime_paths
+from tools import dependency_closure, runtime_preflight
 
 LAUNCH_MANIFEST = "launch-manifest.json"
 LAUNCH_SCHEMA = "antechkids.robostudio.clean-machine-launch"
 LAUNCH_SCHEMA_VERSION = 1
 DISTRIBUTION_MANIFEST = "distribution-manifest.json"
-
-_HOST_RUNTIME_VARS = (
-    "PYTHONHOME",
-    "PYTHONPATH",
-    "VIRTUAL_ENV",
-    "CONDA_PREFIX",
-    "CONDA_DEFAULT_ENV",
-    "PIOHOME_DIR",
-    "PLATFORMIO_CORE_DIR",
-    "PLATFORMIO_PLATFORMS_DIR",
-    "PLATFORMIO_PACKAGES_DIR",
-    "PLATFORMIO_CACHE_DIR",
-    "PLATFORMIO_BUILD_CACHE_DIR",
-    "PLATFORMIO_WORKSPACE_DIR",
-)
 
 
 class CleanMachineLaunchError(RuntimeError):
@@ -66,29 +48,21 @@ def _require_executable(root: Path) -> Path:
     executable = root / name
     if not executable.is_file():
         raise CleanMachineLaunchError(f"RoboStudio executable is missing: {executable}")
-    return executable
+    try:
+        return dependency_closure.assert_artifact_owned(
+            executable, root, label="RoboStudio executable"
+        )
+    except dependency_closure.DependencyClosureError as exc:
+        raise CleanMachineLaunchError(f"Packaged dependency closure failed: {exc}") from exc
 
 
 def clean_machine_environment(root: Path, base_env: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Build a host-independent environment for a packaged RoboStudio child."""
-    root = Path(root)
-    source = dict(os.environ if base_env is None else base_env)
-    for name in _HOST_RUNTIME_VARS:
-        source.pop(name, None)
-    core = root / "runtime" / "platformio"
-    source[runtime_paths.APPLICATION_HOME_ENV] = str(root)
-    source["ROBOSTUDIO_RUNTIME_MODE"] = "packaged"
-    source["PLATFORMIO_CORE_DIR"] = str(core)
-    source["PLATFORMIO_PLATFORMS_DIR"] = str(core / "platforms")
-    source["PLATFORMIO_PACKAGES_DIR"] = str(core / "packages")
-    source["PLATFORMIO_CACHE_DIR"] = str(core / ".cache")
-    source["PLATFORMIO_BUILD_CACHE_DIR"] = str(core / "build-cache")
-    source["PLATFORMIO_WORKSPACE_DIR"] = str(core / "workspace")
-    source["PLATFORMIO_DISABLE_UPGRADE_CHECK"] = "true"
-    source["PLATFORMIO_DISABLE_PROGRESSBAR"] = "true"
-    source["PLATFORMIO_NO_ANSI"] = "true"
-    source["PYTHONIOENCODING"] = "utf-8"
-    return source
+    """Build an artifact-closed environment for packaged RoboStudio."""
+    try:
+        env, _ = dependency_closure.build_closed_environment(root, base_env)
+    except dependency_closure.DependencyClosureError as exc:
+        raise CleanMachineLaunchError(f"Packaged dependency closure failed: {exc}") from exc
+    return env
 
 
 def build_launch_spec(
@@ -99,13 +73,13 @@ def build_launch_spec(
     base_env: Mapping[str, str] | None = None,
 ) -> LaunchSpec:
     """Create a deterministic packaged launch command."""
-    root = Path(root)
+    root = Path(root).resolve()
     try:
         runtime_preflight.validate_distribution(root)
     except Exception as exc:
         raise CleanMachineLaunchError(f"Packaged runtime preflight failed: {exc}") from exc
     executable = _require_executable(root)
-    launch_cwd = Path(cwd) if cwd is not None else root.parent
+    launch_cwd = Path(cwd).resolve() if cwd is not None else root.parent
     return LaunchSpec(
         executable=executable,
         command=(str(executable), *tuple(args)),
@@ -124,8 +98,9 @@ def write_launch_manifest(root: Path) -> Path:
         "application": spec.executable.name,
         "command_is_absolute": True,
         "cwd_must_be_external": True,
-        "host_runtime_variables_removed": list(_HOST_RUNTIME_VARS),
+        "host_runtime_variables_removed": list(dependency_closure.HOST_INJECTION_VARS),
         "path_lookup_required": False,
+        "path_policy": "artifact-closed-with-windows-system-allowlist",
         "platformio_core": "runtime/platformio",
     }
     path = root / LAUNCH_MANIFEST
@@ -140,7 +115,7 @@ def launch(
     cwd: Path | None = None,
     base_env: Mapping[str, str] | None = None,
 ) -> int:
-    """Launch packaged RoboStudio without shell/PATH lookup."""
+    """Launch packaged RoboStudio without shell/host-PATH lookup."""
     spec = build_launch_spec(root, cwd=cwd, args=args, base_env=base_env)
     completed = subprocess.run(
         list(spec.command),
