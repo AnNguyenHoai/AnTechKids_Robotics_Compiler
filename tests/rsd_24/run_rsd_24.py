@@ -52,12 +52,10 @@ def _runtime_fixture(root: Path) -> tuple[Path, Path]:
     """Build a deterministic, isolated interpreter fixture plus PlatformIO layout."""
     runtime_bin = root / "runtime-bin"
     runtime_bin.mkdir(parents=True)
-    bundled_python = runtime_bin / "python.exe"
     source_python = Path(sys.executable).resolve()
     python_home = source_python.parent
+    bundled_python = runtime_bin / "python.exe"
     shutil.copy2(source_python, bundled_python)
-
-    # Copy native DLLs from the exact CPython installation selected by CI.
     for dependency in sorted(python_home.glob("*.dll"), key=lambda item: item.name.lower()):
         if dependency.is_file():
             shutil.copy2(dependency, runtime_bin / dependency.name)
@@ -69,28 +67,32 @@ def _runtime_fixture(root: Path) -> tuple[Path, Path]:
         runtime_bin / "Lib",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "site-packages"),
     )
-
-    # Isolate the bundled interpreter from registry/environment/user Python.
     pth = ".\nLib\nLib/site-packages\nimport site\n"
     (runtime_bin / "python._pth").write_text(pth, encoding="utf-8")
     python_dll = next(
         (
-            item
-            for item in sorted(runtime_bin.glob("python*.dll"), key=lambda item: item.name.lower())
+            item for item in sorted(runtime_bin.glob("python*.dll"), key=lambda item: item.name.lower())
             if item.name.lower().startswith("python") and item.name[6:-4].isdigit()
         ),
         None,
     )
     if python_dll is not None:
         (runtime_bin / f"{python_dll.stem}._pth").write_text(pth, encoding="utf-8")
-
     if os.name != "nt":
         bundled_python.chmod(bundled_python.stat().st_mode | 0o111)
-
     check("bundled Python bytes are preserved", _sha256(source_python) == _sha256(bundled_python))
-    check("bundled Python is a Windows executable", bundled_python.suffix.lower() == ".exe")
+    check("Python isolation file is created", (runtime_bin / "python._pth").is_file())
 
     platformio_site = runtime_bin / "Lib" / "site-packages" / "platformio"
+    platformio_site.mkdir(parents=True)
+    (platformio_site / "__init__.py").write_text(
+        "__version__ = 'clean-machine-fixture'\n", encoding="utf-8"
+    )
+
+    runtime_platformio = root / "runtime-platformio"
+    (runtime_platformio / "platforms" / "espressif32").mkdir(parents=True)
+    (runtime_platformio / "packages" / "tool-esptoolpy").mkdir(parents=True)
+    return runtime_bin, runtime_platformio
 
 
 def _clean_environment() -> dict[str, str]:
