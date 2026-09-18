@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shlex
 import subprocess
 import tempfile
@@ -241,7 +242,8 @@ def evaluate_production_artifact(
                     f"portable dependency closure failed: {exc}"
                 ) from exc
 
-        requested_environment = dict(environment or {})
+        base_environment = os.environ if environment is None else environment
+        requested_environment = dict(base_environment)
         requested_environment.setdefault(runtime_paths.STATE_ROOT_ENV, str(default_state))
         closed_env, closure_report = _closed_environment(root, requested_environment)
         state_root = closure_report.state_root
