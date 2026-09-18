@@ -16,7 +16,8 @@ from robostudio.domain.hardware_config import HardwareConfig
 from robostudio.domain.hardware_config_service import HardwareConfigService
 from robostudio.services.bootstrap_config_service import BootstrapConfigService
 from robostudio.services.firmware_service import FirmwareService
-from tools import runtime_paths
+from robostudio.services.hardware_macro_service import HardwareMacroService
+from tools import firmware_workspace, runtime_paths
 
 
 def check(name: str, condition: bool) -> None:
@@ -69,10 +70,18 @@ def main() -> int:
         firmware.parent.mkdir(parents=True)
         firmware.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
 
-        # Packaged Arduino first-flash content is an immutable template. The
-        # generated header must be written only to a state-owned working copy.
-        sketch_template = app / "firmware" / "robot-platform" / "main"
+        # Packaged first-flash/PlatformIO content is immutable. Generated
+        # bootstrap and device headers must be applied only to state-owned
+        # working copies.
+        firmware_template = app / "firmware" / "robot-platform"
+        sketch_template = firmware_template / "main"
         sketch_template.mkdir(parents=True)
+        (firmware_template / "platformio.ini").write_text(
+            "[platformio]\ndefault_envs = esp32dev\n", encoding="utf-8"
+        )
+        (firmware_template / "wifi_config.py").write_text(
+            "# fixture\n", encoding="utf-8"
+        )
         (sketch_template / "main.ino").write_text(
             '#include "include/generated/generated_bootstrap_config.h"\n'
             "void setup() {}\nvoid loop() {}\n",
@@ -80,6 +89,13 @@ def main() -> int:
         )
         (sketch_template / "template-marker.txt").write_text(
             "immutable-template\n", encoding="utf-8"
+        )
+        packaged_device_header = (
+            sketch_template / "include" / "generated" / "generated_device_config.h"
+        )
+        packaged_device_header.parent.mkdir(parents=True)
+        packaged_device_header.write_text(
+            "// immutable packaged default\n", encoding="utf-8"
         )
 
         before = snapshot(app)
@@ -115,6 +131,54 @@ def main() -> int:
             check(
                 "saved hardware change is readable",
                 HardwareConfigService(hardware_service.user_config_path).load().is_enabled("imu"),
+            )
+
+            macro_service = HardwareMacroService(config_service=hardware_service)
+            macro_path = macro_service.generate()
+            expected_macro = state.resolve() / "generated" / "generated_device_config.h"
+            check("generated hardware macro is external", macro_path == expected_macro)
+            macro_text = macro_path.read_text(encoding="utf-8")
+            check(
+                "generated hardware macro reflects user state",
+                "ROBOT_FEATURE_IMU                1" in macro_text,
+            )
+            check(
+                "packaged device header remains default before staging",
+                packaged_device_header.read_text(encoding="utf-8")
+                == "// immutable packaged default\n",
+            )
+            expect_error(
+                "generated hardware macro inside release is rejected",
+                lambda: HardwareMacroService(
+                    config_service=hardware_service,
+                    output_path=app / "generated_device_config.h",
+                ),
+                "ROBOSTUDIO_STATE_ROOT",
+            )
+
+            staged_firmware = firmware_workspace.prepare_firmware_workspace(
+                firmware_template, "settings-isolation"
+            )
+            installed_macro = firmware_workspace.install_device_config_header(
+                macro_path, staged_firmware
+            )
+            check(
+                "hardware macro is overlaid only into external firmware workspace",
+                installed_macro
+                == staged_firmware.resolve()
+                / "main"
+                / "include"
+                / "generated"
+                / "generated_device_config.h",
+            )
+            check(
+                "staged firmware receives user hardware macro",
+                installed_macro.read_text(encoding="utf-8") == macro_text,
+            )
+            check(
+                "packaged device header remains unchanged after staging",
+                packaged_device_header.read_text(encoding="utf-8")
+                == "// immutable packaged default\n",
             )
 
             firmware_service = FirmwareService()
@@ -173,7 +237,7 @@ def main() -> int:
                 "Lớp Robotics" in header_text,
             )
             check(
-                "packaged Arduino template receives no generated header",
+                "packaged Arduino template receives no generated bootstrap header",
                 not (
                     sketch_template
                     / "include"
@@ -195,7 +259,7 @@ def main() -> int:
             os.environ.clear()
             os.environ.update(previous)
 
-        check("RoboStudio settings never mutate release", snapshot(app) == before)
+        check("RoboStudio mutable state never changes release", snapshot(app) == before)
         check("external user state was created", state.is_dir())
 
     print("B2.3 RoboStudio user settings isolation checks: PASS")
