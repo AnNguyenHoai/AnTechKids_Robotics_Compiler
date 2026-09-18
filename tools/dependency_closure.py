@@ -11,7 +11,7 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Sequence
 
 
 class DependencyClosureError(RuntimeError):
@@ -89,9 +89,6 @@ def artifact_path_entries(root: Path | str) -> tuple[Path, ...]:
     """Discover only artifact-owned directories that can contain runtime tools."""
     root = _canonical(root)
     candidates: list[Path] = []
-
-    # Stable layout entries are kept even when currently empty so that a tool
-    # materialised by a later packaging step still resolves from the artifact.
     for relative in (
         Path("."),
         Path("runtime") / "bin",
@@ -203,6 +200,32 @@ def resolve_artifact_executable(
             f"required artifact dependency is missing: {name}; host PATH fallback is disabled"
         )
     return assert_artifact_owned(resolved, root, label=f"required dependency {name}")
+
+
+def validate_artifact_command(
+    command: Sequence[str],
+    *,
+    root: Path | str,
+    environment: Mapping[str, str],
+    label: str,
+) -> Path:
+    """Require a top-level production command to start from an artifact-owned binary."""
+    if not command:
+        raise DependencyClosureError(f"{label} command is empty")
+    token = command[0].strip('"')
+    candidate = Path(token)
+    is_path = candidate.is_absolute() or candidate.parent != Path(".")
+    if is_path:
+        if not candidate.is_file():
+            raise DependencyClosureError(f"{label} executable is missing: {candidate}")
+        return assert_artifact_owned(candidate, root, label=f"{label} executable")
+
+    resolved = shutil.which(token, path=environment.get("PATH", ""))
+    if not resolved:
+        raise DependencyClosureError(
+            f"{label} executable is missing from production artifact: {token}; host PATH fallback is disabled"
+        )
+    return assert_artifact_owned(resolved, root, label=f"{label} executable")
 
 
 def path_evidence(report: DependencyClosureReport) -> dict[str, object]:
