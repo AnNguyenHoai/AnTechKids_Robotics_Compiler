@@ -1,8 +1,11 @@
 """RSD-21.4 target-machine-aware release qualification.
 
-The gate validates the host contract for a production RoboStudio release.
-Python and PlatformIO are prerequisites installed by the target user; they are
-not copied from the build machine and are not treated as release payload.
+The production artifact owns RoboStudio, Compiler, portable Python, PlatformIO,
+and application resources. Target-machine qualification therefore must not
+search the host PATH for Python or PlatformIO. The only current external
+hardware prerequisite is the board-specific USB/UART driver, recorded as a
+manual check when hardware scope is requested.
+
 The qualification is read-only and never installs or mutates host tooling.
 """
 from __future__ import annotations
@@ -16,7 +19,7 @@ from typing import Mapping
 from tools import target_machine_prerequisites
 
 SCHEMA = "antechkids.robostudio.target-machine-qualification"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class TargetMachineQualificationError(RuntimeError):
@@ -44,7 +47,7 @@ class TargetMachineQualificationReport:
 
 
 def _run_version(command: tuple[str, ...], env: Mapping[str, str] | None) -> tuple[bool, str | None]:
-    """Run a read-only prerequisite version command without shell expansion."""
+    """Run a read-only external prerequisite version command without shell expansion."""
     try:
         completed = subprocess.run(
             list(command),
@@ -102,12 +105,12 @@ def qualify_target_machine(
     scope: target_machine_prerequisites.RequirementScope | str = target_machine_prerequisites.RequirementScope.COMPILE,
     env: Mapping[str, str] | None = None,
 ) -> TargetMachineQualificationReport:
-    """Qualify the target host for the requested release usage scope.
+    """Qualify only external prerequisites for the requested usage scope.
 
-    ``compile`` validates Python. ``hardware`` validates both Python and
-    PlatformIO and records the ESP32 driver as a manual check. The driver is
-    intentionally not guessed from the host because USB/UART bridge hardware
-    differs between boards.
+    ``compile`` has no external runtime/tool prerequisite because Python and
+    PlatformIO are application-owned. ``hardware`` records the ESP32 USB/UART
+    driver as a manual check; the driver is intentionally not guessed because
+    USB bridge hardware differs between boards.
     """
     target_machine_prerequisites.validate_contract()
     scope = target_machine_prerequisites.RequirementScope(scope)
@@ -129,7 +132,7 @@ def require_target_machine(
     scope: target_machine_prerequisites.RequirementScope | str = target_machine_prerequisites.RequirementScope.COMPILE,
     env: Mapping[str, str] | None = None,
 ) -> TargetMachineQualificationReport:
-    """Run qualification and raise with actionable prerequisite diagnostics."""
+    """Run qualification and raise with actionable external-prerequisite diagnostics."""
     report = qualify_target_machine(scope=scope, env=env)
     if not report.passed:
         missing = [item.name for item in report.prerequisites if item.validation in {"missing", "command-failed"}]
@@ -150,6 +153,7 @@ def to_dict(report: TargetMachineQualificationReport) -> dict[str, object]:
             "schema_version": target_machine_prerequisites.SCHEMA_VERSION,
             "supported_host_os": target_machine_prerequisites.SUPPORTED_HOST_OS,
             "path_policy": target_machine_prerequisites.PATH_POLICY,
+            "required_bundled_components": list(target_machine_prerequisites.REQUIRED_BUNDLED_COMPONENTS),
         },
         "scope": report.scope,
         "passed": report.passed,
@@ -195,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(to_dict(report), indent=2))
     else:
         print(f"RSD-21.4 target-machine qualification: {'PASS' if report.passed else 'FAIL'}")
+        if not report.prerequisites:
+            print("External prerequisites: none")
         for item in report.prerequisites:
             status = item.validation
             if item.version_output:
