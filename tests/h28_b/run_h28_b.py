@@ -153,7 +153,9 @@ def main() -> int:
         destination = firmware_root / "main" / "src" / "Application" / "generated_program.h"
         (firmware_root / "main").mkdir(parents=True)
         header.write_text("generated", encoding="utf-8")
-        assert install_generated_header(header, firmware_root) == destination
+        installed = install_generated_header(header, firmware_root)
+        assert Path(installed).resolve() == destination.resolve()
+        assert installed.is_file()
         assert destination.read_text(encoding="utf-8") == "generated"
 
     print("H28-B PASS: deployment runtime hardening + live output + bounded subprocesses")
