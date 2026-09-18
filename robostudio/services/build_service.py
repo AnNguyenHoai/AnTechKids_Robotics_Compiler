@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ except ImportError:  # desktop entry point exposes robostudio/ as import root
     from domain.hardware_config_service import HardwareConfigService
     from domain.hardware_requirement_validator import HardwareRequirementValidator
 
+from tools import deployment_runtime, runtime_paths
 from tools.runtime_paths import application_root, is_frozen, python_command
 
 
@@ -41,6 +43,31 @@ class BuildService:
                 return json.load(f)
         except Exception:
             return {"compiler_command": "robot"}
+
+    @staticmethod
+    def _packaged_mode() -> bool:
+        return (
+            runtime_paths.is_frozen()
+            or os.environ.get(runtime_paths.RUNTIME_MODE_ENV) == "packaged"
+            or os.environ.get(runtime_paths.DEPENDENCY_MODE_ENV) == "artifact-closed"
+        )
+
+    def _new_compile_workspace(self) -> Path:
+        """Create disposable compiler state outside the immutable application."""
+        if self._packaged_mode():
+            parent = runtime_paths.prepare_user_data_root(
+                application_root_override=application_root(),
+                enforce_external=True,
+            ) / "build" / "compile"
+            parent.mkdir(parents=True, exist_ok=True)
+            return Path(tempfile.mkdtemp(prefix="robostudio-compile-", dir=parent))
+        return Path(tempfile.mkdtemp(prefix="robostudio-compile-"))
+
+    def _compiler_environment(self) -> Dict[str, str]:
+        """Return a B2.2-closed environment in packaged mode."""
+        env = deployment_runtime.deployment_runtime_environment(os.environ.copy())
+        env["PYTHONIOENCODING"] = "utf-8"
+        return env
 
     def validate_hardware(self, code: str) -> Optional[str]:
         """Validate against the same user hardware state edited by RoboStudio.
@@ -89,48 +116,45 @@ class BuildService:
         return python_command(str(bridge)), {}
 
     def get_command(self, code: str) -> Tuple[List[str], Dict[str, str], str]:
+        """Prepare an asynchronous GUI compile in disposable external state."""
         hardware_error = self.validate_hardware(code)
         if hardware_error:
             raise ValueError(hardware_error)
 
-        source = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, encoding="utf-8"
-        )
-        source.write(code)
-        source.close()
-        temp_path = source.name
-
-        output_path = Path(temp_path).with_suffix(".h")
-        report_path = output_path.with_suffix(".json")
-        request_path = output_path.with_suffix(".request.json")
-        request_path.write_text(
-            json.dumps(
-                {
-                    "source": temp_path,
-                    "output": str(output_path),
-                    "report": str(report_path),
-                    "source_kind": "robosim-python",
-                }
-            ),
-            encoding="utf-8",
-        )
-        cmd_parts, env_override = self._get_command_with_env()
-        cmd = cmd_parts + ["--request", str(request_path)]
-        env = os.environ.copy()
-        env["PYTHONIOENCODING"] = "utf-8"
-        env.update(env_override)
-        return cmd, env, temp_path
+        workspace = self._new_compile_workspace()
+        try:
+            source = workspace / "program.py"
+            output_path = workspace / "program.h"
+            report_path = workspace / "compile_report.json"
+            request_path = workspace / "request.json"
+            source.write_text(code, encoding="utf-8")
+            request_path.write_text(
+                json.dumps(
+                    {
+                        "source": str(source),
+                        "output": str(output_path),
+                        "report": str(report_path),
+                        "source_kind": "robosim-python",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            cmd_parts, env_override = self._get_command_with_env()
+            cmd = cmd_parts + ["--request", str(request_path)]
+            env = self._compiler_environment()
+            env.update(env_override)
+            return cmd, env, str(source)
+        except Exception:
+            shutil.rmtree(workspace, ignore_errors=True)
+            raise
 
     def build(self, code: str) -> BuildResult:
         hardware_error = self.validate_hardware(code)
         if hardware_error:
             return BuildResult(False, hardware_error, hardware_error)
 
-        # Compiler scratch state belongs to the OS/user temp area, never the
-        # immutable application directory. The child CWD follows that external
-        # workspace so relative compiler writes cannot mutate the release.
-        with tempfile.TemporaryDirectory(prefix="robostudio-build-") as temp_dir:
-            workspace = Path(temp_dir)
+        workspace = self._new_compile_workspace()
+        try:
             source = workspace / "program.py"
             output = workspace / "program.h"
             report = workspace / "compile_report.json"
@@ -150,8 +174,7 @@ class BuildService:
 
             try:
                 cmd_parts, env_override = self._get_command_with_env()
-                env = os.environ.copy()
-                env["PYTHONIOENCODING"] = "utf-8"
+                env = self._compiler_environment()
                 env.update(env_override)
                 proc = subprocess.run(
                     cmd_parts + ["--request", str(request)],
@@ -176,3 +199,5 @@ class BuildService:
                 return BuildResult(False, f"Compiler runtime error: {exc}", str(exc))
             except Exception as exc:
                 return BuildResult(False, f"Unexpected error: {exc}", str(exc))
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
