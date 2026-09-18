@@ -263,6 +263,9 @@ def test_final_process_boundary(base: Path) -> None:
         def poll(self):
             return self.returncode
 
+        def wait(self, timeout=None):
+            return self.returncode
+
     original_root = deployment_runtime.application_root
     original_popen = deployment_runtime.subprocess.Popen
     try:
