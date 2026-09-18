@@ -58,15 +58,27 @@ def _prepare_artifact(root: Path) -> Path:
     (root / "runtime" / "platformio" / "packages").mkdir(parents=True)
     firmware = root / "firmware" / "robot-platform"
     (firmware / "main").mkdir(parents=True)
-    (firmware / "platformio.ini").write_text("[env:esp32dev]\nboard=esp32dev\n", encoding="utf-8")
+    (firmware / "platformio.ini").write_text(
+        "[env:esp32dev]\nboard=esp32dev\n", encoding="utf-8"
+    )
     (firmware / "wifi_config.py").write_text("# fixture\n", encoding="utf-8")
-    (firmware / "main" / "main.cpp").write_text("void setup(){}\nvoid loop(){}\n", encoding="utf-8")
+    (firmware / "main" / "main.cpp").write_text(
+        "void setup(){}\nvoid loop(){}\n", encoding="utf-8"
+    )
     return tool
 
 
 def _snapshot(root: Path) -> tuple[tuple[str, ...], tuple[tuple[str, bytes], ...]]:
-    directories = tuple(sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_dir()))
-    files = tuple(sorted((p.relative_to(root).as_posix(), p.read_bytes()) for p in root.rglob("*") if p.is_file()))
+    directories = tuple(
+        sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_dir())
+    )
+    files = tuple(
+        sorted(
+            (p.relative_to(root).as_posix(), p.read_bytes())
+            for p in root.rglob("*")
+            if p.is_file()
+        )
+    )
     return directories, files
 
 
@@ -163,7 +175,9 @@ def test_path_relocation_and_state_contract(base: Path) -> None:
     )
 
 
-def test_dependency_and_platformio_state_split(base: Path) -> tuple[Path, Path, dict[str, str], Path]:
+def test_dependency_and_platformio_state_split(
+    base: Path,
+) -> tuple[Path, Path, dict[str, str], Path]:
     artifact = base / "Release Có Khoảng Trắng" / "RoboStudio Việt"
     state = base / "External State" / "Học sinh Nguyễn An"
     tool = _prepare_artifact(artifact)
@@ -172,6 +186,7 @@ def test_dependency_and_platformio_state_split(base: Path) -> tuple[Path, Path, 
     env.update(
         {
             "PLATFORMIO_CORE_DIR": str(host / "core"),
+            "PLATFORMIO_GLOBALLIB_DIR": str(host / "lib"),
             "PLATFORMIO_CACHE_DIR": str(host / "cache"),
             "PLATFORMIO_BUILD_CACHE_DIR": str(host / "build-cache"),
             "PLATFORMIO_WORKSPACE_DIR": str(host / "workspace"),
@@ -183,17 +198,37 @@ def test_dependency_and_platformio_state_split(base: Path) -> tuple[Path, Path, 
 
     closed, report = dependency_closure.build_closed_environment(artifact, env)
     packaged_pio = artifact / "runtime" / "platformio"
-    check("closure records external state root", Path(closed[runtime_paths.STATE_ROOT_ENV]).resolve() == state.resolve())
+    check(
+        "closure records external state root",
+        Path(closed[runtime_paths.STATE_ROOT_ENV]).resolve() == state.resolve(),
+    )
     check("closure evidence marks state external", report.state_root == state.resolve())
-    check("PlatformIO core service data is external", _inside(closed["PLATFORMIO_CORE_DIR"], state))
-    check("PlatformIO core service data is not in release", not _inside(closed["PLATFORMIO_CORE_DIR"], artifact))
-    check("PlatformIO platforms remain bundled", Path(closed["PLATFORMIO_PLATFORMS_DIR"]).resolve() == (packaged_pio / "platforms").resolve())
-    check("PlatformIO packages remain bundled", Path(closed["PLATFORMIO_PACKAGES_DIR"]).resolve() == (packaged_pio / "packages").resolve())
+    check(
+        "PlatformIO core service data is external",
+        _inside(closed["PLATFORMIO_CORE_DIR"], state),
+    )
+    check(
+        "PlatformIO core service data is not in release",
+        not _inside(closed["PLATFORMIO_CORE_DIR"], artifact),
+    )
+    check(
+        "PlatformIO platforms remain bundled",
+        Path(closed["PLATFORMIO_PLATFORMS_DIR"]).resolve()
+        == (packaged_pio / "platforms").resolve(),
+    )
+    check(
+        "PlatformIO packages remain bundled",
+        Path(closed["PLATFORMIO_PACKAGES_DIR"]).resolve()
+        == (packaged_pio / "packages").resolve(),
+    )
 
     for name in dependency_closure.MUTABLE_PLATFORMIO_VARS:
         check(f"{name} is outside release", not _inside(closed[name], artifact))
         check(f"{name} is under state root", _inside(closed[name], state))
-        check(f"host {name} override is rejected", Path(closed[name]).resolve() != Path(env[name]).resolve())
+        check(
+            f"host {name} override is rejected",
+            Path(closed[name]).resolve() != Path(env[name]).resolve(),
+        )
 
     project_env = build_isolation.build_environment("Bài học số 01", closed)
     reclosed, _ = dependency_closure.build_closed_environment(artifact, project_env)
@@ -205,7 +240,10 @@ def test_dependency_and_platformio_state_split(base: Path) -> tuple[Path, Path, 
         "PLATFORMIO_BUILD_CACHE_DIR",
         "PLATFORMIO_SHARED_DIR",
     ):
-        check(f"trusted project {name} survives final closure", Path(reclosed[name]).resolve() == Path(project_env[name]).resolve())
+        check(
+            f"trusted project {name} survives final closure",
+            Path(reclosed[name]).resolve() == Path(project_env[name]).resolve(),
+        )
     return artifact, state, reclosed, tool
 
 
@@ -221,6 +259,7 @@ def test_final_process_boundary(base: Path) -> None:
             self.returncode = 0
             self.stdout = io.StringIO("b23-boundary\n")
             captured.append(dict(kwargs["env"]))
+
         def poll(self):
             return self.returncode
 
@@ -238,9 +277,19 @@ def test_final_process_boundary(base: Path) -> None:
 
     check("final process boundary succeeds from unrelated cwd", result.returncode == 0)
     spawned = captured[-1]
-    check("final process keeps external state root", Path(spawned[runtime_paths.STATE_ROOT_ENV]).resolve() == state.resolve())
-    check("final process keeps project workspace", Path(spawned["PLATFORMIO_WORKSPACE_DIR"]).resolve() == Path(env["PLATFORMIO_WORKSPACE_DIR"]).resolve())
-    check("final process never restores release-local cache", not _inside(spawned["PLATFORMIO_CACHE_DIR"], artifact))
+    check(
+        "final process keeps external state root",
+        Path(spawned[runtime_paths.STATE_ROOT_ENV]).resolve() == state.resolve(),
+    )
+    check(
+        "final process keeps project workspace",
+        Path(spawned["PLATFORMIO_WORKSPACE_DIR"]).resolve()
+        == Path(env["PLATFORMIO_WORKSPACE_DIR"]).resolve(),
+    )
+    check(
+        "final process never restores release-local cache",
+        not _inside(spawned["PLATFORMIO_CACHE_DIR"], artifact),
+    )
 
 
 def test_build_and_firmware_workspace_do_not_mutate_release(base: Path) -> None:
@@ -262,8 +311,14 @@ def test_build_and_firmware_workspace_do_not_mutate_release(base: Path) -> None:
         os.environ.clear()
         os.environ.update(previous_env)
 
-    check("build workspace is external", _inside(workspace, state) and not _inside(workspace, artifact))
-    check("firmware workspace is copied to external state", _inside(copied, state) and not _inside(copied, artifact))
+    check(
+        "build workspace is external",
+        _inside(workspace, state) and not _inside(workspace, artifact),
+    )
+    check(
+        "firmware workspace is copied to external state",
+        _inside(copied, state) and not _inside(copied, artifact),
+    )
     check("release tree is byte-for-byte unchanged", _snapshot(artifact) == before)
 
 
