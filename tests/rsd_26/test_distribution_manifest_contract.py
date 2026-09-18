@@ -88,12 +88,64 @@ def test_distribution_manifest_rejects_duplicate_path(tmp_path: Path):
         distribution_package.validate_distribution_manifest(manifest)
 
 
-def test_production_distribution_uses_canonical_artifact_model(tmp_path: Path):
-    (tmp_path / "RoboStudio.exe").write_bytes(b"app")
-    manifest = _write_manifest(
-        tmp_path,
-        [_entry(tmp_path, "RoboStudio.exe")],
-        production=False,
+def test_production_distribution_uses_canonical_artifact_model(tmp_path: Path, monkeypatch):
+    from tools import production_runtime_closure
+
+    executable = tmp_path / "inputs" / "RoboStudio.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"app")
+    resources = tmp_path / "inputs" / "resources"
+    resources.mkdir()
+    (resources / "resource.txt").write_text("resource\n", encoding="utf-8")
+
+    runtime_bin = tmp_path / "inputs" / "runtime-bin"
+    (runtime_bin / "Lib" / "site-packages" / "platformio").mkdir(parents=True)
+    (runtime_bin / "python.exe").write_bytes(b"python")
+    (runtime_bin / "Lib" / "site-packages" / "platformio" / "__init__.py").write_text("", encoding="utf-8")
+
+    runtime_platformio = tmp_path / "inputs" / "runtime-platformio"
+    (runtime_platformio / "platforms").mkdir(parents=True)
+    (runtime_platformio / "packages").mkdir(parents=True)
+    (runtime_platformio / "deployment-runtime.json").write_text("{}\n", encoding="utf-8")
+
+    compiler = tmp_path / "inputs" / "compiler"
+    (compiler / "compiler").mkdir(parents=True)
+    (compiler / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    (compiler / "robostudio_bridge.py").write_text("bridge\n", encoding="utf-8")
+
+    firmware = tmp_path / "inputs" / "firmware"
+    (firmware / "main").mkdir(parents=True)
+    (firmware / "platformio.ini").write_text("[platformio]\n", encoding="utf-8")
+    (firmware / "wifi_config.py").write_text("config = {}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        production_runtime_closure,
+        "validate_distribution",
+        lambda root: None,
     )
-    data = json.loads(manifest.read_text(encoding="utf-8"))
-    assert data["artifact_model"] == "RoboStudio + Compiler + Application-Owned Runtime"
+    monkeypatch.setattr(
+        distribution_package.production_artifact_boundary,
+        "validate_distribution_root",
+        lambda root: {"status": "PASS"},
+    )
+    monkeypatch.setattr(
+        distribution_package.production_artifact_boundary,
+        "write_boundary_manifest",
+        lambda root: root / distribution_package.production_artifact_boundary.BOUNDARY_MANIFEST,
+    )
+
+    manifest_path = distribution_package.assemble_distribution(
+        distribution_package.DistributionInputs(
+            executable=executable,
+            runtime_resources=resources,
+            runtime_bin=runtime_bin,
+            runtime_platformio=runtime_platformio,
+            production_boundary=True,
+            compiler_root=compiler,
+            firmware_root=firmware,
+        ),
+        tmp_path / "distribution",
+    )
+
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["artifact_model"] == distribution_package.CANONICAL_PRODUCTION_ARTIFACT_MODEL
