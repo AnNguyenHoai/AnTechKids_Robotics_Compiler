@@ -19,6 +19,7 @@ from tools.deployment_runtime import (
     run_process,
 )
 from tools.deploy_robot import normalize_robot_host
+from tools import build_isolation
 from tools.firmware_workspace import install_generated_header
 
 
@@ -56,8 +57,7 @@ def test_bootstrap_propagates_generated_credentials_to_platformio():
     assert "upload" in captured["command"]
     assert "--upload-port" in captured["command"]
     assert "COM4" in captured["command"]
-    assert captured["cwd"].name == "firmware"
-    assert captured["cwd"].parent.name == "bootstrap"
+    assert captured["cwd"] == build_isolation.build_workspace("bootstrap") / "firmware"
     assert captured["env"]["ROBOT_BOOTSTRAP_CONFIG"] == str(config_path.resolve())
     assert captured["env"]["ROBOT_WIFI_SSID"] == "classroom-wifi"
     assert captured["env"]["ROBOT_WIFI_PASSWORD"] == "wifi-secret"
