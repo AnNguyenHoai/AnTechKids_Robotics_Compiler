@@ -16,7 +16,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from tools import dependency_closure
+from tools import dependency_closure, runtime_paths
 
 DEFAULT_TIMEOUT = 30.0
 COMPILER_ENTRY = Path("compiler") / "main.py"
@@ -155,7 +155,6 @@ def _artifact_relative(root: Path, path: Path) -> str:
 
 
 def _state_relative(state_root: Path, path: Path) -> str:
-    """Return a stable logical state path without leaking machine-specific roots."""
     return path.relative_to(state_root).as_posix()
 
 
@@ -199,7 +198,10 @@ def evaluate_production_artifact(
     artifact_sha256 = _sha256(artifact)
 
     with tempfile.TemporaryDirectory(prefix="robostudio-production-e2e-") as td:
-        root = Path(td).resolve()
+        sandbox = Path(td).resolve()
+        root = sandbox / "Relocated RoboStudio Ứng dụng"
+        default_state = sandbox / "External State Nguyễn An"
+        root.mkdir()
         _safe_extract(artifact, root)
         app = _find_app(root)
         if app is None:
@@ -239,7 +241,9 @@ def evaluate_production_artifact(
                     f"portable dependency closure failed: {exc}"
                 ) from exc
 
-        closed_env, closure_report = _closed_environment(root, environment)
+        requested_environment = dict(environment or {})
+        requested_environment.setdefault(runtime_paths.STATE_ROOT_ENV, str(default_state))
+        closed_env, closure_report = _closed_environment(root, requested_environment)
         state_root = closure_report.state_root
         execution_cwd = state_root / "e2e-cwd"
         output = state_root / "e2e-output" / "program.h"
