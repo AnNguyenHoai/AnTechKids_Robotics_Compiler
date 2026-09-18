@@ -1,7 +1,7 @@
 """Portable executable dependency-closure policy for RoboStudio.
 
 B2.2 requires packaged execution to be deterministic on a clean Windows host:
-application dependencies may be resolved only from the extracted artifact.  A
+application dependencies may be resolved only from the extracted artifact. A
 small Windows system allow-list remains on PATH for OS-owned process helpers;
 user/global development-tool directories are deliberately excluded.
 """
@@ -136,7 +136,7 @@ def build_closed_environment(
     root: Path | str,
     base_env: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, str], DependencyClosureReport]:
-    """Build a child environment whose executable PATH is artifact-closed."""
+    """Build a child environment whose executable/runtime lookup is artifact-closed."""
     artifact_root = _canonical(root)
     if not artifact_root.is_dir():
         raise DependencyClosureError(f"production artifact root is missing: {artifact_root}")
@@ -149,7 +149,21 @@ def build_closed_environment(
     system_entries = system_path_entries(env)
     path_entries = artifact_entries + system_entries
     env["PATH"] = os.pathsep.join(str(entry) for entry in path_entries)
+    env["ROBOSTUDIO_HOME"] = str(artifact_root)
+    env["ROBOSTUDIO_RUNTIME_MODE"] = "packaged"
     env["ROBOSTUDIO_DEPENDENCY_MODE"] = "artifact-closed"
+
+    platformio = artifact_root / "runtime" / "platformio"
+    env["PLATFORMIO_CORE_DIR"] = str(platformio)
+    env["PLATFORMIO_PLATFORMS_DIR"] = str(platformio / "platforms")
+    env["PLATFORMIO_PACKAGES_DIR"] = str(platformio / "packages")
+    env["PLATFORMIO_CACHE_DIR"] = str(platformio / ".cache")
+    env["PLATFORMIO_BUILD_CACHE_DIR"] = str(platformio / "build-cache")
+    env["PLATFORMIO_WORKSPACE_DIR"] = str(platformio / "workspace")
+    env["PLATFORMIO_DISABLE_UPGRADE_CHECK"] = "true"
+    env["PLATFORMIO_DISABLE_PROGRESSBAR"] = "true"
+    env["PLATFORMIO_NO_ANSI"] = "true"
+    env["PYTHONIOENCODING"] = "utf-8"
 
     report = DependencyClosureReport(
         application_root=artifact_root,
