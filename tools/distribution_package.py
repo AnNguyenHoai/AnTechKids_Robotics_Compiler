@@ -12,6 +12,7 @@ from tools import production_artifact_boundary, runtime_integrity, runtime_resou
 DISTRIBUTION_MANIFEST = "distribution-manifest.json"
 SCHEMA = "antechkids.robostudio.distribution"
 SCHEMA_VERSION = 2
+CANONICAL_PRODUCTION_ARTIFACT_MODEL = "RoboStudio + Compiler + Application-Owned Runtime"
 
 
 class DistributionPackageError(RuntimeError):
@@ -224,7 +225,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
         "schema_version": SCHEMA_VERSION,
         "application": executable.name,
         "portable": portable,
-        "artifact_model": "RoboStudio + Compiler",
+        "artifact_model": CANONICAL_PRODUCTION_ARTIFACT_MODEL,
         "runtime_root": runtime_root,
         "production_boundary": inputs.production_boundary,
         "compiler": "compiler/main.py" if inputs.production_boundary else None,
@@ -253,23 +254,52 @@ def validate_distribution_manifest(path: Path) -> dict:
     if manifest.get("schema") != SCHEMA or manifest.get("schema_version") != SCHEMA_VERSION:
         raise DistributionPackageError("Unsupported distribution manifest schema")
     root = path.parent
-    for entry in manifest.get("files", []):
+    entries = manifest.get("files", [])
+    if not isinstance(entries, list):
+        raise DistributionPackageError("Distribution manifest files must be a list")
+
+    expected_paths: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or "path" not in entry:
+            raise DistributionPackageError("Distribution manifest contains an invalid file entry")
         relative = Path(str(entry["path"]))
         if relative.is_absolute() or ".." in relative.parts:
             raise DistributionPackageError(f"Distribution manifest path escapes root: {relative}")
+        normalized = relative.as_posix()
+        if normalized in expected_paths:
+            raise DistributionPackageError(f"Distribution manifest contains duplicate file path: {normalized}")
+        expected_paths.add(normalized)
         actual = root / relative
         if not actual.is_file():
-            raise DistributionPackageError(f"Distribution file is missing: {relative.as_posix()}")
+            raise DistributionPackageError(f"Distribution file is missing: {normalized}")
         if _sha256(actual) != str(entry["sha256"]):
-            raise DistributionPackageError(f"Distribution file checksum mismatch: {relative.as_posix()}")
+            raise DistributionPackageError(f"Distribution file checksum mismatch: {normalized}")
         if actual.stat().st_size != int(entry["size"]):
-            raise DistributionPackageError(f"Distribution file size changed: {relative.as_posix()}")
+            raise DistributionPackageError(f"Distribution file size changed: {normalized}")
+
+    actual_paths = {
+        p.relative_to(root).as_posix()
+        for p in root.rglob("*")
+        if p.is_file()
+        and p.name not in {DISTRIBUTION_MANIFEST, production_artifact_boundary.BOUNDARY_MANIFEST}
+    }
+    if actual_paths != expected_paths:
+        missing = sorted(expected_paths - actual_paths)
+        unexpected = sorted(actual_paths - expected_paths)
+        details = []
+        if missing:
+            details.append("missing=" + ", ".join(missing))
+        if unexpected:
+            details.append("unexpected=" + ", ".join(unexpected))
+        raise DistributionPackageError(
+            "Distribution manifest file set does not match filesystem: " + "; ".join(details)
+        )
     if manifest.get("production_boundary") is True:
         try:
             production_artifact_boundary.validate_distribution_root(root)
         except production_artifact_boundary.ProductionArtifactBoundaryError as exc:
             raise DistributionPackageError(f"Production artifact boundary validation failed: {exc}") from exc
-        if manifest.get("artifact_model") != "RoboStudio + Compiler":
+        if manifest.get("artifact_model") != CANONICAL_PRODUCTION_ARTIFACT_MODEL:
             raise DistributionPackageError("Production distribution has an invalid artifact model")
         for key in ("compiler", "compiler_contract"):
             if manifest.get(key) and not (root / str(manifest[key])).is_file():

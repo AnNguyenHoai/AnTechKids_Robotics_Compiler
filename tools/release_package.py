@@ -103,7 +103,7 @@ def validate_release_artifact(artifact: Path, manifest: Path | None = None) -> d
     if data.get("artifact") != artifact.name or data.get("portable") is not True: raise ReleasePackageError("Release manifest does not describe this portable artifact")
     production = data.get("production_boundary") is True
     if production:
-        if data.get("artifact_model") != "RoboStudio + Compiler": raise ReleasePackageError("Production release has an invalid artifact model")
+        if data.get("artifact_model") != distribution_package.CANONICAL_PRODUCTION_ARTIFACT_MODEL: raise ReleasePackageError("Production release has an invalid artifact model")
     try: compatibility = release_compatibility.read_compatibility(data)
     except release_compatibility.ReleaseCompatibilityError as exc: raise ReleasePackageError(f"Invalid release compatibility contract: {exc}") from exc
     if production and (compatibility.portable_python_required or compatibility.bundled_platformio_required): raise ReleasePackageError("Production release incorrectly requires bundled host tools")
