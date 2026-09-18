@@ -1,9 +1,8 @@
-"""
-FirmwareService – manages firmware project path and opening
-"""
+"""FirmwareService – manages firmware project path and safe editing."""
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -80,14 +79,73 @@ class FirmwareService:
             self.config["firmware_project"] = relative.as_posix()
         self._save_config()
 
-    def open_firmware(self):
-        """Open the firmware file with the default application."""
+    def prepare_editable_firmware(self) -> Path:
+        """Return a firmware file that is safe for the user to edit.
+
+        A configured file already outside the application is user-owned and can
+        be opened directly. Application-owned firmware is an immutable template:
+        before exposing it to Arduino IDE/editor, copy its sketch directory into
+        external RoboStudio state and persist that external path for later opens.
+        """
         ino_file = self.get_firmware_path()
         if ino_file is None:
             raise FileNotFoundError(
                 "Could not locate firmware project.\n"
                 "Please select the main.ino or RobotVM.ino file."
             )
+
+        source = ino_file.expanduser().resolve()
+        app_root = application_root().resolve()
+        try:
+            relative = source.relative_to(app_root)
+        except ValueError:
+            return source
+
+        state_root = self.user_config_path.parent.expanduser().resolve()
+        destination = state_root / "firmware-editor" / relative
+        destination_dir = destination.parent
+        source_dir = source.parent
+        try:
+            if not destination.is_file():
+                destination_dir.parent.mkdir(parents=True, exist_ok=True)
+                if destination_dir.exists():
+                    # Preserve existing user edits. Populate only files that do
+                    # not exist yet when the external sketch was partially made.
+                    for item in source_dir.rglob("*"):
+                        rel = item.relative_to(source_dir)
+                        target = destination_dir / rel
+                        if item.is_dir():
+                            target.mkdir(parents=True, exist_ok=True)
+                        elif not target.exists():
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(item, target)
+                else:
+                    shutil.copytree(
+                        source_dir,
+                        destination_dir,
+                        ignore=shutil.ignore_patterns(
+                            ".git", ".venv", ".pio", "__pycache__", ".pytest_cache"
+                        ),
+                    )
+        except OSError as exc:
+            raise RuntimeError(
+                f"Unable to prepare editable firmware outside the RoboStudio release: {exc}"
+            ) from exc
+
+        if not destination.is_file():
+            raise RuntimeError(
+                f"Editable firmware copy was not created: {destination}"
+            )
+
+        # The editable copy is machine/user state, so an absolute path is
+        # appropriate here. It never becomes part of the portable artifact.
+        self.config["firmware_project"] = str(destination)
+        self._save_config()
+        return destination
+
+    def open_firmware(self):
+        """Open an external writable firmware copy with the default application."""
+        ino_file = self.prepare_editable_firmware()
 
         if os.name == "nt":
             os.startfile(str(ino_file))
