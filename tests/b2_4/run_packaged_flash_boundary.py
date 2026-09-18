@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import distribution_package, production_distribution
+from tools import distribution_package, production_distribution, production_runtime_closure
 
 
 def check(name: str, condition: bool) -> None:
@@ -54,6 +54,18 @@ def test_production_distribution_contains_flash_runtime(base: Path) -> None:
     check("manifest records target qualification", "tools/target_machine_qualification.py" in paths)
     check("production distribution schema advanced for flash runtime", production_distribution.PRODUCTION_SCHEMA_VERSION == 5)
 
+    closure = production_runtime_closure.validate_distribution(output)
+    closure_required = set(closure["required_paths"])
+    check("production runtime closure passes with packaged flash tools", closure["status"] == "PASS")
+    check(
+        "runtime closure requires every packaged deployment tool",
+        {f"tools/{name}" for name in required}.issubset(closure_required),
+    )
+    check(
+        "packager and runtime closure share the same deployment tool contract",
+        set(required) == set(production_runtime_closure.REQUIRED_DEPLOYMENT_TOOL_FILES),
+    )
+
     # Development compiler wrappers must not be accidentally introduced merely
     # to make deployment work. deploy_robot now uses compiler/robostudio_bridge.py.
     check("production runtime excludes source rewrite wrapper", not (output / "tools" / "rewrite.py").exists())
@@ -64,6 +76,8 @@ def test_robostudio_flash_surface_contract() -> None:
     service = (ROOT / "robostudio" / "services" / "robot_deployment_service.py").read_text(encoding="utf-8")
     ui = (ROOT / "robostudio" / "ui" / "robot_tab.py").read_text(encoding="utf-8")
     deploy = (ROOT / "tools" / "deploy_robot.py").read_text(encoding="utf-8")
+    hardware = (ROOT / "tools" / "hardware_preflight.py").read_text(encoding="utf-8")
+    qualification = (ROOT / "tools" / "target_machine_qualification.py").read_text(encoding="utf-8")
 
     check("deployment service resolves canonical application root", "runtime_paths.application_root()" in service)
     check("deployment service validates packaged runtime tool files", "def _runtime_tool" in service)
@@ -78,6 +92,8 @@ def test_robostudio_flash_surface_contract() -> None:
     check("deployment compiler uses packaged compiler bridge", '"compiler"/"robostudio_bridge.py"' in deploy or '"compiler" / "robostudio_bridge.py"' in deploy)
     check("deployment no longer invokes rewrite wrapper", 'ROOT/"tools"/"rewrite.py"' not in deploy)
     check("deployment no longer invokes compile wrapper", 'ROOT/"tools"/"compile.py"' not in deploy)
+    check("hardware preflight direct CLI bootstraps artifact root", "_APPLICATION_ROOT = Path(__file__).resolve().parent.parent" in hardware)
+    check("target qualification direct CLI bootstraps artifact root", "_APPLICATION_ROOT = Path(__file__).resolve().parent.parent" in qualification)
 
 
 def main() -> int:
