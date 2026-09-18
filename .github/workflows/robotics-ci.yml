@@ -75,6 +75,10 @@ jobs:
         shell: pwsh
         run: python tests/b2_6/run_b2_6.py
 
+      - name: Smoke B2.7 one-click launcher plan
+        shell: cmd
+        run: BUILD_PRODUCTION_ZIP.cmd --plan
+
       - name: Run B2.7 one-click production ZIP gate
         shell: pwsh
         run: python tests/b2_7/run_b2_7.py
