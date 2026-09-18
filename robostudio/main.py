@@ -33,8 +33,19 @@ from app import RoboStudioApp
 from ui.robot_tab import RobotTab
 
 
-def main():
-    app = QApplication(sys.argv)
+ACCEPTANCE_PROBE_ARG = "--acceptance-probe"
+
+
+def main() -> int:
+    # B2.5 needs a bounded, non-interactive way to prove that the *packaged GUI
+    # application itself* can initialize on an independent clean machine.  The
+    # probe constructs the real window/Robot tab and processes Qt events, but it
+    # does not enter the indefinite GUI event loop.  Normal launches are
+    # unchanged and still use app.exec().
+    acceptance_probe = ACCEPTANCE_PROBE_ARG in sys.argv
+    qt_argv = [arg for arg in sys.argv if arg != ACCEPTANCE_PROBE_ARG]
+
+    app = QApplication(qt_argv)
     app.setApplicationName("RoboStudio")
     app.setOrganizationName("RobotDevPlatform")
 
@@ -42,10 +53,17 @@ def main():
     robot_tab = RobotTab(lambda: window.ui.code_editor.toPlainText(), window)
     window.ui.main_tabs.addTab(robot_tab, "Robot")
     window.ui.code_editor.textChanged.connect(robot_tab.refresh_code_state)
-    window.show()
 
-    sys.exit(app.exec())
+    if acceptance_probe:
+        window.show()
+        app.processEvents()
+        window.close()
+        app.processEvents()
+        return 0
+
+    window.show()
+    return app.exec()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
