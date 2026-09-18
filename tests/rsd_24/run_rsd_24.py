@@ -47,7 +47,18 @@ def _runtime_fixture(root: Path) -> tuple[Path, Path]:
     # only this copied interpreter from the extracted artifact. The test is
     # intentionally independent of PATH/PYTHONPATH/VIRTUAL_ENV at execution.
     bundled_python = runtime_bin / "python.exe"
+    python_home = Path(sys.executable).resolve().parent
     shutil.copy2(sys.executable, bundled_python)
+    for dependency in python_home.glob("python*.dll"):
+        shutil.copy2(dependency, runtime_bin / dependency.name)
+    dlls = python_home / "DLLs"
+    if dlls.is_dir():
+        shutil.copytree(dlls, runtime_bin / "DLLs", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(
+        python_home / "Lib",
+        runtime_bin / "Lib",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "site-packages"),
+    )
     if os.name != "nt":
         bundled_python.chmod(bundled_python.stat().st_mode | 0o111)
 

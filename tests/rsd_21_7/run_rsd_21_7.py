@@ -36,7 +36,18 @@ def _make_runtime(root: Path) -> tuple[Path, Path]:
     """Create a complete static application-owned PlatformIO closure."""
     runtime_bin = root / "runtime-bin"
     runtime_bin.mkdir(parents=True)
+    python_home = Path(sys.executable).resolve().parent
     shutil.copy2(sys.executable, runtime_bin / "python.exe")
+    for dependency in python_home.glob("python*.dll"):
+        shutil.copy2(dependency, runtime_bin / dependency.name)
+    dlls = python_home / "DLLs"
+    if dlls.is_dir():
+        shutil.copytree(dlls, runtime_bin / "DLLs", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(
+        python_home / "Lib",
+        runtime_bin / "Lib",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "site-packages"),
+    )
     platformio_site = runtime_bin / "Lib" / "site-packages" / "platformio"
     platformio_site.mkdir(parents=True)
     (platformio_site / "__init__.py").write_text("__version__ = 'fixture'\n", encoding="utf-8")
