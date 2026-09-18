@@ -41,7 +41,7 @@ jobs:
       - name: Validate test topology
         shell: pwsh
         run: |
-          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests','tests/b2_2/run_b2_2.py','tests/b2_2/run_portable_child_closure.py','tests/b2_3/run_b2_3.py','tests/b2_3/run_settings_isolation.py','tests/b2_4/run_b2_4.py','tests/b2_4/run_packaged_flash_boundary.py','tests/b2_5/run_b2_5.py','tools/hardware_preflight.py','tools/clean_machine_physical_e2e.py','run_all_tests.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing test boundaries/runner: {missing}'; print('PASS: test topology boundaries')"
+          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests','tests/b2_2/run_b2_2.py','tests/b2_2/run_portable_child_closure.py','tests/b2_3/run_b2_3.py','tests/b2_3/run_settings_isolation.py','tests/b2_4/run_b2_4.py','tests/b2_4/run_packaged_flash_boundary.py','tests/b2_5/run_b2_5.py','tests/b2_6/run_b2_6.py','tools/hardware_preflight.py','tools/clean_machine_physical_e2e.py','tools/copy_run_contract.py','tools/copy_run_release.py','run_all_tests.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing test boundaries/runner: {missing}'; print('PASS: test topology boundaries')"
 
       - name: Run B2.2 dependency closure gate
         shell: pwsh
@@ -70,6 +70,10 @@ jobs:
       - name: Run B2.5 clean-machine physical E2E harness gate
         shell: pwsh
         run: python tests/b2_5/run_b2_5.py
+
+      - name: Run B2.6 release copy-and-run contract gate
+        shell: pwsh
+        run: python tests/b2_6/run_b2_6.py
 
       - name: Run repository regression suite
         shell: pwsh
