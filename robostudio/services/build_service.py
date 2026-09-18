@@ -9,8 +9,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from domain.hardware_config_service import HardwareConfigService
-from domain.hardware_requirement_validator import HardwareRequirementValidator
+try:  # package import used by tests/integration
+    from ..domain.hardware_config_service import HardwareConfigService
+    from ..domain.hardware_requirement_validator import HardwareRequirementValidator
+except ImportError:  # desktop entry point exposes robostudio/ as import root
+    from domain.hardware_config_service import HardwareConfigService
+    from domain.hardware_requirement_validator import HardwareRequirementValidator
+
 from tools.runtime_paths import application_root, is_frozen, python_command
 
 
@@ -23,9 +28,12 @@ class BuildResult:
 
 class BuildService:
     def __init__(self, config_path: Optional[Path] = None):
+        self._explicit_config_path = Path(config_path) if config_path is not None else None
         if config_path is None:
-            config_path = Path(__file__).parent.parent / "config" / "config.json"
-        self.config = self._load_config(config_path)
+            packaged = application_root() / "config" / "config.json"
+            source = Path(__file__).parent.parent / "config" / "config.json"
+            config_path = packaged if packaged.is_file() else source
+        self.config = self._load_config(Path(config_path))
 
     def _load_config(self, config_path: Path) -> dict:
         try:
@@ -35,8 +43,20 @@ class BuildService:
             return {"compiler_command": "robot"}
 
     def validate_hardware(self, code: str) -> Optional[str]:
-        config_path = Path(__file__).parent.parent / "config" / "hardware.json"
-        config = HardwareConfigService(config_path).load()
+        """Validate against the same user hardware state edited by RoboStudio.
+
+        Explicit config paths retain the historical sibling ``hardware.json``
+        behavior for tests/integration. Normal application usage delegates to
+        ``HardwareConfigService`` so external user state wins over immutable
+        packaged defaults.
+        """
+        if self._explicit_config_path is not None:
+            config_service = HardwareConfigService(
+                self._explicit_config_path.parent / "hardware.json"
+            )
+        else:
+            config_service = HardwareConfigService()
+        config = config_service.load()
         result = HardwareRequirementValidator.validate(code, config)
         return None if result.valid else result.format_errors()
 
@@ -48,7 +68,12 @@ class BuildService:
             raise FileNotFoundError(
                 f"Application-owned compiler contract is missing: {packaged}"
             )
-        repository = Path(__file__).resolve().parents[2] / "robot-compiler" / "compiler" / "robostudio_bridge.py"
+        repository = (
+            Path(__file__).resolve().parents[2]
+            / "robot-compiler"
+            / "compiler"
+            / "robostudio_bridge.py"
+        )
         if repository.is_file():
             return repository
         raise FileNotFoundError(f"Compiler contract not found: {repository}")
@@ -101,11 +126,15 @@ class BuildService:
         if hardware_error:
             return BuildResult(False, hardware_error, hardware_error)
 
+        # Compiler scratch state belongs to the OS/user temp area, never the
+        # immutable application directory. The child CWD follows that external
+        # workspace so relative compiler writes cannot mutate the release.
         with tempfile.TemporaryDirectory(prefix="robostudio-build-") as temp_dir:
-            source = Path(temp_dir) / "program.py"
-            output = Path(temp_dir) / "program.h"
-            report = Path(temp_dir) / "compile_report.json"
-            request = Path(temp_dir) / "request.json"
+            workspace = Path(temp_dir)
+            source = workspace / "program.py"
+            output = workspace / "program.h"
+            report = workspace / "compile_report.json"
+            request = workspace / "request.json"
             source.write_text(code, encoding="utf-8")
             request.write_text(
                 json.dumps(
@@ -131,7 +160,7 @@ class BuildService:
                     encoding="utf-8",
                     errors="replace",
                     env=env,
-                    cwd=str(application_root()),
+                    cwd=str(workspace),
                 )
                 output_text = proc.stdout
                 if proc.stderr:
