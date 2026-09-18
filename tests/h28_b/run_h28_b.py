@@ -20,8 +20,36 @@ from tools.deployment_runtime import (
     run_process,
 )
 from tools.deploy_robot import normalize_robot_host
-from tools import build_isolation, hardware_preflight
+from tools import build_isolation, hardware_preflight, firmware_workspace
 from tools.firmware_workspace import install_generated_header
+
+
+def test_local_firmware_artifacts_are_filtered_during_staging():
+    """Local PlatformIO/Python build artifacts must not invalidate source staging."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        template = tmp_path / "robot-platform"
+        (template / "main").mkdir(parents=True)
+        (template / "platformio.ini").write_text("[env:esp32dev]\n", encoding="utf-8")
+        (template / "wifi_config.py").write_text("# fixture\n", encoding="utf-8")
+        (template / ".pio" / "build" / "esp32dev").mkdir(parents=True)
+        (template / ".pio" / "build" / "esp32dev" / "firmware.bin").write_bytes(b"local-build")
+        (template / "__pycache__").mkdir()
+        (template / "__pycache__" / "wifi_config.pyc").write_bytes(b"local-cache")
+
+        original_build_workspace = firmware_workspace.build_isolation.build_workspace
+        firmware_workspace.build_isolation.build_workspace = lambda project: tmp_path / "state" / project
+        try:
+            staged = firmware_workspace.prepare_firmware_workspace(template, "h28-b-local")
+        finally:
+            firmware_workspace.build_isolation.build_workspace = original_build_workspace
+
+        assert staged.is_dir()
+        assert (staged / "platformio.ini").is_file()
+        assert (staged / "wifi_config.py").is_file()
+        assert (staged / "main").is_dir()
+        assert not (staged / ".pio").exists()
+        assert not (staged / "__pycache__").exists()
 
 
 def test_bootstrap_propagates_generated_credentials_to_platformio():
@@ -92,6 +120,7 @@ def main() -> int:
     robot_tab = (ROOT / "robostudio" / "ui" / "robot_tab.py").read_text(encoding="utf-8")
     runtime = (ROOT / "tools" / "deployment_runtime.py").read_text(encoding="utf-8")
 
+    test_local_firmware_artifacts_are_filtered_during_staging()
     test_bootstrap_propagates_generated_credentials_to_platformio()
     test_bootstrap_build_forces_generated_credentials_before_nvs_fallback()
 
