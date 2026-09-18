@@ -11,20 +11,21 @@ Mục tiêu của giai đoạn này là khóa dependency boundary trước khi c
 Khi chạy từ production ZIP đã giải nén:
 
 1. Runtime/tool của ứng dụng phải resolve từ bên trong application root.
-2. `PATH` của child process không kế thừa các thư mục development/global từ máy host.
+2. `PATH` của process production không kế thừa các thư mục development/global từ máy host.
 3. Trên Windows chỉ giữ lại application-owned directories và system allow-list tối thiểu (`System32`, `SystemRoot`).
 4. Các biến môi trường có thể inject Python/Node/PlatformIO từ host bị xóa hoặc ghi đè bằng đường dẫn trong artifact.
 5. Top-level executable của production compile/launch phải nằm trong artifact; truyền trực tiếp absolute path tới tool ngoài artifact cũng bị từ chối.
-6. Nếu dependency bắt buộc bị thiếu, hệ thống fail fast với diagnostic rõ ràng và không fallback sang host `PATH`.
-7. Production E2E report phải lưu evidence cho dependency-closure mode và PATH ownership.
-8. Chính runtime deployment của RoboStudio phải dùng cùng dependency-closure policy; không chỉ acceptance test.
-9. Regression/CI phải fail nếu B2.2 contract bị phá vỡ.
+6. Portable Python phải chứa runtime DLL và standard library cần để tự bootstrap; chỉ copy `python.exe` không được xem là dependency-complete.
+7. Nếu dependency bắt buộc bị thiếu, hệ thống fail fast với diagnostic rõ ràng và không fallback sang host `PATH`.
+8. Production E2E report phải lưu evidence cho dependency-closure mode và PATH ownership.
+9. Startup bootstrap, clean-machine launcher và deployment runtime phải dùng cùng dependency-closure policy; không chỉ acceptance test.
+10. Regression/CI phải fail nếu B2.2 contract bị phá vỡ.
 
 ## 3. Thay đổi implementation
 
 ### `tools/dependency_closure.py`
 
-Là policy chung cho executable/runtime dependency closure:
+Policy chung cho executable/runtime dependency closure:
 
 - tạo artifact-closed environment;
 - loại bỏ host Python/Conda/Node/npm/PlatformIO injection variables;
@@ -32,13 +33,32 @@ Là policy chung cho executable/runtime dependency closure:
 - chỉ giữ OS allow-list tối thiểu trên Windows;
 - kiểm tra ownership của executable;
 - fail fast nếu required dependency không có trong artifact;
-- tạo evidence để đưa vào production acceptance report.
+- tạo evidence cho production acceptance report.
+
+### `tools/runtime_bootstrap.py`
+
+Frozen RoboStudio bootstrap dùng artifact-closed environment ngay từ startup. Source/development mode vẫn giữ nguyên developer environment.
+
+Việc này đóng lỗ hổng mà bootstrap trước đây pin PlatformIO về artifact nhưng vẫn giữ nguyên host `PATH`.
+
+### `tools/distribution_launch.py`
+
+Clean-machine launcher dùng cùng dependency-closure policy. RoboStudio được gọi bằng absolute path, nhưng child environment không còn chứa global/developer PATH. Launch manifest ghi rõ `artifact-closed-with-windows-system-allowlist`.
 
 ### `tools/deployment_runtime.py`
 
 Đây là runtime boundary thật của compile/PlatformIO/flash. Khi RoboStudio chạy ở frozen/packaged mode, deployment subprocess sử dụng artifact-closed environment. Source/development mode vẫn giữ developer environment để không phá workflow phát triển.
 
-Nhờ vậy B2.2 không chỉ xanh ở test mà còn tác động trực tiếp tới subprocess mà RoboStudio production thực sự sử dụng.
+### `tools/production_distribution.py`
+
+Production builder từ chối portable Python không dependency-complete:
+
+- bắt buộc có `python.exe`;
+- bắt buộc có Python runtime DLL (`python*.dll`);
+- bắt buộc có standard library bootstrap (`Lib/encodings` hoặc `python*.zip`);
+- vẫn bắt buộc bundled PlatformIO Python package.
+
+Nhờ vậy lỗi kiểu `0xC0000135 / DLL not found` bị chặn trước khi tạo production distribution thay vì chỉ xuất hiện trên máy sạch.
 
 ### `tools/clean_machine_e2e.py`
 
@@ -68,9 +88,15 @@ Regression suite tạo một hostile host environment và kiểm tra:
 - source/development runtime vẫn giữ developer PATH;
 - production E2E lưu dependency closure evidence.
 
-### Regression compatibility
+### Regression contracts
 
-`tests/rsd_04/run_rsd_04.py` được cập nhật để phản ánh contract mới: frozen deployment phải đóng host PATH, trong khi source/development mode vẫn giữ PATH của developer.
+Các regression suite liên quan được cập nhật để phản ánh contract mới:
+
+- `RSD-04`: frozen deployment đóng host PATH;
+- `RSD-05`: frozen startup bootstrap đóng host PATH;
+- `RSD-08`: clean-machine launch đóng host PATH và ghi path policy;
+- `RSD-17`: production builder bắt runtime DLL/stdlib bị thiếu;
+- `RSD-21.5`: E2E fixture staging một Python runtime thực sự runnable thay vì chỉ copy `python.exe`.
 
 ### CI
 
@@ -83,7 +109,9 @@ Workflow chạy cho cả `push` và `pull_request` vào `main`, để dependency
 B2.2 PASS khi tất cả điều kiện sau đúng:
 
 - [x] Host `PATH` không được kế thừa vào production child process.
+- [x] Frozen startup bootstrap và distribution launcher cũng đóng host PATH.
 - [x] Python/runtime path của production artifact là application-owned.
+- [x] Production builder từ chối Python payload thiếu runtime DLL hoặc standard library.
 - [x] PlatformIO runtime directories được rebound về artifact.
 - [x] Host Python/Conda/Node/npm/PlatformIO injection variables bị loại bỏ.
 - [x] Frozen deployment runtime dùng dependency closure; source/dev mode vẫn giữ developer environment.
@@ -105,4 +133,4 @@ Các nội dung dưới đây cố ý để cho các bước tiếp theo:
 
 ## 6. Definition of Done của B2.2
 
-Một máy có Python/Node/PlatformIO/toolchain global hoặc có hostile PATH không được ảnh hưởng tới executable/runtime dependency resolution của RoboStudio production artifact. Nếu artifact thiếu dependency cần thiết, acceptance gate phải FAIL thay vì vô tình sử dụng dependency trên máy host.
+Một máy có Python/Node/PlatformIO/toolchain global hoặc có hostile PATH không được ảnh hưởng tới executable/runtime dependency resolution của RoboStudio production artifact. Nếu artifact thiếu dependency cần thiết, build/acceptance gate phải FAIL thay vì vô tình sử dụng dependency trên máy host.
