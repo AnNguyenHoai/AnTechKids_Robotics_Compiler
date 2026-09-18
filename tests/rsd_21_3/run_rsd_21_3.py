@@ -115,12 +115,12 @@ def main() -> int:
         manifest = json.loads(release.manifest.read_text(encoding="utf-8"))
         compatibility = manifest["compatibility"]
         check(
-            "release does not require host Python",
-            compatibility["portable_python_required"] is False,
+            "release requires bundled portable Python",
+            compatibility["portable_python_required"] is True,
         )
         check(
-            "release does not require host PlatformIO",
-            compatibility["bundled_platformio_required"] is False,
+            "release requires bundled PlatformIO",
+            compatibility["bundled_platformio_required"] is True,
         )
 
         forbidden = output / ".pio" / "unexpected-build-state"
