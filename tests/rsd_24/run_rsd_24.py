@@ -49,7 +49,10 @@ def _runtime_fixture(root: Path) -> tuple[Path, Path]:
     bundled_python = runtime_bin / "python.exe"
     python_home = Path(sys.executable).resolve().parent
     shutil.copy2(sys.executable, bundled_python)
-    for dependency in python_home.glob("python*.dll"):
+    # Python on Windows may depend on non-python DLLs located beside python.exe
+    # (for example OpenSSL/SQLite runtime DLLs). A fixture that copies only
+    # python*.dll is not a complete runnable interpreter after relocation.
+    for dependency in python_home.glob("*.dll"):
         shutil.copy2(dependency, runtime_bin / dependency.name)
     dlls = python_home / "DLLs"
     if dlls.is_dir():
