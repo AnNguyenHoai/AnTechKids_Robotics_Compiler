@@ -1,4 +1,4 @@
-""""RSD-21.5 production RoboStudio + Compiler E2E contract regression suite."""
+"""RSD-21.5 production RoboStudio + Compiler E2E contract regression suite."""
 from __future__ import annotations
 import json, shutil, sys, tempfile, zipfile
 from pathlib import Path
@@ -17,9 +17,6 @@ def _make_test_artifact(root: Path) -> tuple[Path, Path]:
     compiler=package/"compiler"; compiler.mkdir()
     (compiler/"main.py").write_text("import pathlib, sys\nargs=sys.argv[1:]\nout=pathlib.Path(args[args.index('--output')+1])\nout.parent.mkdir(parents=True, exist_ok=True)\nout.write_bytes(b'ROBOT_BYTECODE_E2E_OK\\n')\nprint('COMPILER_E2E_OK')\n",encoding="utf-8")
     runtime_bin=package/"runtime"/"bin"; runtime_bin.mkdir(parents=True)
-    # Use the current interpreter as a portable test double for the bundled
-    # Python executable so the E2E actually executes through {python}, not the
-    # developer interpreter that launches the test harness.
     shutil.copy2(sys.executable, runtime_bin/"python.exe")
     resources=package/"runtime"/"resources"; resources.mkdir(parents=True)
     (resources/"target_profiles.json").write_text('{"targets": []}\n',encoding="utf-8")
