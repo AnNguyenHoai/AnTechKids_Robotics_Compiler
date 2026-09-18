@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Callable
 
 from services.robot_discovery_service import RobotDiscoveryClient, RobotInfo
+from tools import runtime_paths
 from tools.deployment_runtime import DeploymentRuntimeError, python_command, run_process
 
-ROOT = Path(__file__).resolve().parents[2]
 DeploymentOutputCallback = Callable[[str], None]
 
 
@@ -34,8 +34,39 @@ class DeploymentResult:
 
 class RobotDeploymentService:
     def __init__(self, root: Path | None = None):
-        self.root = root or ROOT
+        # In a frozen/PyInstaller build ``__file__`` can point at the temporary
+        # bundle extraction tree. Production deployment assets live beside the
+        # installed/extracted RoboStudio executable, so use the canonical
+        # application root unless a test/integration caller explicitly supplies
+        # a root.
+        self.root = (
+            Path(root).expanduser().resolve()
+            if root is not None
+            else runtime_paths.application_root()
+        )
         self.discovery = RobotDiscoveryClient()
+
+    def _deployment_cwd(self) -> Path:
+        """Return external writable process state, never the immutable release."""
+        packaged = (
+            runtime_paths.is_frozen()
+            or os.environ.get(runtime_paths.RUNTIME_MODE_ENV) == "packaged"
+            or os.environ.get(runtime_paths.DEPENDENCY_MODE_ENV) == "artifact-closed"
+        )
+        cwd = runtime_paths.prepare_user_data_root(
+            application_root_override=self.root,
+            enforce_external=packaged,
+        ) / "deployment"
+        cwd.mkdir(parents=True, exist_ok=True)
+        return cwd
+
+    def _runtime_tool(self, name: str) -> Path:
+        path = self.root / "tools" / name
+        if not path.is_file():
+            raise DeploymentRuntimeError(
+                f"Packaged RoboStudio deployment tool is missing: {path}"
+            )
+        return path
 
     def generate_bootstrap_config(self, ssid: str, wifi_password: str,
                                   ota_password: str, output: Path) -> Path:
@@ -45,14 +76,14 @@ class RobotDeploymentService:
             raise ValueError("OTA password is required for first-flash bootstrap.")
         try:
             command = python_command(
-                str(self.root / "tools" / "bootstrap_config.py"),
+                str(self._runtime_tool("bootstrap_config.py")),
                 "generate",
                 "--ssid", ssid.strip(),
                 "--password", wifi_password,
                 "--ota-password", ota_password,
                 "--output", str(output),
             )
-            completed = run_process(command, cwd=self.root, timeout=300.0)
+            completed = run_process(command, cwd=self._deployment_cwd(), timeout=300.0)
         except DeploymentRuntimeError as exc:
             raise RuntimeError(str(exc)) from exc
         if completed.returncode != 0:
@@ -67,6 +98,13 @@ class RobotDeploymentService:
         config_path = config_path.resolve()
         if not config_path.is_file():
             return DeploymentResult(False, "", f"Bootstrap config not found: {config_path}")
+        usb_port = usb_port.strip()
+        if not usb_port:
+            return DeploymentResult(
+                False,
+                "",
+                "Select a detected USB/COM port before first-flash. RoboStudio never guesses a port.",
+            )
 
         try:
             config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -79,16 +117,14 @@ class RobotDeploymentService:
 
         try:
             command = python_command(
-                str(self.root / "tools" / "deploy_robot.py"),
+                str(self._runtime_tool("deploy_robot.py")),
                 "--mode", "bootstrap",
                 "--bootstrap-config", str(config_path),
+                "--port", usb_port,
             )
-            if usb_port.strip():
-                command.extend(["--port", usb_port.strip()])
-
             completed = run_process(
                 command,
-                cwd=self.root,
+                cwd=self._deployment_cwd(),
                 env=os.environ.copy(),
                 timeout=360.0,
                 on_output=on_output,
@@ -130,6 +166,8 @@ class RobotDeploymentService:
         if not code.strip():
             return DeploymentResult(False, "", "No student program is available to deploy.")
 
+        # Student source is temporary user/process state. It is deliberately not
+        # created under the immutable application root.
         fd, temp_name = tempfile.mkstemp(prefix="robostudio_", suffix=".py", text=True)
         os.close(fd)
         source = Path(temp_name)
@@ -141,7 +179,7 @@ class RobotDeploymentService:
             env["ROBOT_OTA_PASSWORD"] = ota_password
 
             command = python_command(
-                str(self.root / "tools" / "deploy_robot.py"),
+                str(self._runtime_tool("deploy_robot.py")),
                 "--input", str(source),
                 "--mode", "ota",
                 "--robot", robot.ip,
@@ -150,7 +188,7 @@ class RobotDeploymentService:
             try:
                 completed = run_process(
                     command,
-                    cwd=self.root,
+                    cwd=self._deployment_cwd(),
                     env=env,
                     timeout=360.0,
                     on_output=on_output,
