@@ -98,7 +98,18 @@ def _contract_source(compiler: Path) -> Path:
 
 
 def _validate_runtime_bin(runtime_bin: Path) -> None:
+    """Reject a Python payload that only works by borrowing host dependencies."""
     _require_file(runtime_bin / "python.exe", "Windows portable Python executable")
+    if not list(runtime_bin.glob("python*.dll")):
+        raise ProductionDistributionError(
+            "Portable Python runtime DLL is missing; python.exe must not depend on a host Python installation"
+        )
+    encodings = runtime_bin / "Lib" / "encodings" / "__init__.py"
+    stdlib_zip = list(runtime_bin.glob("python*.zip"))
+    if not encodings.is_file() and not stdlib_zip:
+        raise ProductionDistributionError(
+            "Portable Python standard library is missing; expected Lib/encodings or python*.zip"
+        )
     if not (runtime_bin / "Lib" / "site-packages" / "platformio" / "__init__.py").is_file():
         raise ProductionDistributionError("Portable Python must contain Lib/site-packages/platformio/__init__.py")
     forbidden = {".venv", "penv", ".pio", ".git", "__pycache__", ".pytest_cache"}
