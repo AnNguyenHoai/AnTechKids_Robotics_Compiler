@@ -52,17 +52,19 @@ def main() -> int:
 
         env = runtime_bootstrap.bootstrap_environment({"PATH": "HOST-PATH", "CUSTOM": "keep-me", "NODE_PATH": "HOST-NODE"})
         core = app_dir.resolve() / "runtime" / "platformio"
-        check("frozen bootstrap pins PlatformIO core", env["PLATFORMIO_CORE_DIR"] == str(core))
-        check("frozen bootstrap pins PlatformIO packages", env["PLATFORMIO_PACKAGES_DIR"] == str(core / "packages"))
-        check("frozen bootstrap pins PlatformIO platforms", env["PLATFORMIO_PLATFORMS_DIR"] == str(core / "platforms"))
+        check("frozen bootstrap pins PlatformIO core", Path(env["PLATFORMIO_CORE_DIR"]).resolve() == core.resolve())
+        check("frozen bootstrap pins PlatformIO packages", Path(env["PLATFORMIO_PACKAGES_DIR"]).resolve() == (core / "packages").resolve())
+        check("frozen bootstrap pins PlatformIO platforms", Path(env["PLATFORMIO_PLATFORMS_DIR"]).resolve() == (core / "platforms").resolve())
         check("frozen bootstrap disables upgrade checks", env["PLATFORMIO_DISABLE_UPGRADE_CHECK"] == "true")
         check("frozen bootstrap disables ANSI output", env["PLATFORMIO_NO_ANSI"] == "true")
+        check("frozen bootstrap disables Python user site", env["PYTHONNOUSERSITE"] == "1")
+        check("frozen bootstrap disables Python bytecode writes", env["PYTHONDONTWRITEBYTECODE"] == "1")
         check("frozen bootstrap closes host PATH", env["PATH"] != "HOST-PATH")
         check("frozen bootstrap removes host Node injection", "NODE_PATH" not in env)
         check("frozen bootstrap preserves unrelated environment", env["CUSTOM"] == "keep-me")
         check("frozen bootstrap declares packaged mode", env["ROBOSTUDIO_RUNTIME_MODE"] == "packaged")
         check("frozen bootstrap declares dependency closure", env["ROBOSTUDIO_DEPENDENCY_MODE"] == "artifact-closed")
-        check("frozen bootstrap does not use cwd", env["ROBOSTUDIO_HOME"] == str(app_dir.resolve()))
+        check("frozen bootstrap does not use cwd", Path(env["ROBOSTUDIO_HOME"]).resolve() == app_dir.resolve())
     finally:
         if old_frozen is None:
             try:
