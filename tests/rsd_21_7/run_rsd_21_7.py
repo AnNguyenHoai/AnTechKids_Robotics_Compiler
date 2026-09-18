@@ -220,7 +220,7 @@ def main() -> int:
             shell=False,
             timeout=30,
         )
-        check("relocated fixture Python executes before packaging", fixture_python.as_posix().lower() in fixture_probe.stdout.lower())
+        check("relocated fixture Python executes before packaging", fixture_python.as_posix().lower() in fixture_probe.stdout.lower().replace("\\", "/"))
         firmware = _make_firmware(inputs)
         dist = base / "distribution"
 
