@@ -1,9 +1,9 @@
-"""Portable executable dependency-closure policy for RoboStudio.
+"""Portable executable dependency/state-closure policy for RoboStudio.
 
-B2.2 requires packaged execution to be deterministic on a clean Windows host:
-application dependencies may be resolved only from the extracted artifact. A
-small Windows system allow-list remains on PATH for OS-owned process helpers;
-user/global development-tool directories are deliberately excluded.
+Packaged execution is dependency-closed while its installation tree remains
+immutable. Executables, PlatformIO platforms and packages resolve from the
+artifact; mutable PlatformIO core service data, cache and build workspace live
+under an external RoboStudio state root.
 """
 from __future__ import annotations
 
@@ -13,10 +13,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from tools import runtime_paths
+
 
 class DependencyClosureError(RuntimeError):
     """Raised when packaged execution can escape to a host-owned dependency."""
 
+
+MUTABLE_PLATFORMIO_VARS = (
+    "PLATFORMIO_GLOBALLIB_DIR",
+    "PLATFORMIO_CACHE_DIR",
+    "PLATFORMIO_BUILD_CACHE_DIR",
+    "PLATFORMIO_WORKSPACE_DIR",
+    "PLATFORMIO_BUILD_DIR",
+    "PLATFORMIO_LIBDEPS_DIR",
+    "PLATFORMIO_SHARED_DIR",
+)
 
 HOST_INJECTION_VARS = (
     "PYTHONHOME",
@@ -31,9 +43,7 @@ HOST_INJECTION_VARS = (
     "PLATFORMIO_CORE_DIR",
     "PLATFORMIO_PLATFORMS_DIR",
     "PLATFORMIO_PACKAGES_DIR",
-    "PLATFORMIO_CACHE_DIR",
-    "PLATFORMIO_BUILD_CACHE_DIR",
-    "PLATFORMIO_WORKSPACE_DIR",
+    *MUTABLE_PLATFORMIO_VARS,
 )
 
 _EXECUTABLE_SUFFIXES = {".exe", ".com", ".cmd", ".bat"}
@@ -42,6 +52,7 @@ _EXECUTABLE_SUFFIXES = {".exe", ".com", ".cmd", ".bat"}
 @dataclass(frozen=True)
 class DependencyClosureReport:
     application_root: Path
+    state_root: Path
     path_entries: tuple[Path, ...]
     artifact_entries: tuple[Path, ...]
     system_entries: tuple[Path, ...]
@@ -129,16 +140,53 @@ def system_path_entries(base_env: Mapping[str, str] | None = None) -> tuple[Path
     return tuple(_canonical(path) for path in candidates if path.is_dir())
 
 
+def _state_defaults(state_root: Path) -> dict[str, Path]:
+    pio = state_root / "platformio"
+    return {
+        "PLATFORMIO_GLOBALLIB_DIR": pio / "lib",
+        "PLATFORMIO_CACHE_DIR": pio / "cache",
+        "PLATFORMIO_BUILD_CACHE_DIR": pio / "build-cache",
+        "PLATFORMIO_WORKSPACE_DIR": pio / "workspace",
+        "PLATFORMIO_BUILD_DIR": pio / "build",
+        "PLATFORMIO_LIBDEPS_DIR": pio / "libdeps",
+        "PLATFORMIO_SHARED_DIR": pio / "shared",
+    }
+
+
+def _trusted_mutable_path(value: str | None, state_root: Path) -> Path | None:
+    """Accept caller state overrides only when they stay below our state root."""
+    if not value:
+        return None
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        return None
+    candidate = _canonical(candidate)
+    root = _canonical(state_root)
+    if candidate == root or _is_relative_to(candidate, root):
+        return candidate
+    return None
+
+
 def build_closed_environment(
     root: Path | str,
     base_env: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, str], DependencyClosureReport]:
-    """Build a child environment whose executable/runtime lookup is artifact-closed."""
+    """Build a child environment with immutable dependencies + external state."""
     artifact_root = _canonical(root)
     if not artifact_root.is_dir():
         raise DependencyClosureError(f"production artifact root is missing: {artifact_root}")
 
     env = dict(os.environ if base_env is None else base_env)
+    requested_mutable = {name: env.get(name) for name in MUTABLE_PLATFORMIO_VARS}
+    try:
+        state_root = runtime_paths.user_data_root(
+            base_env=env,
+            application_root_override=artifact_root,
+            enforce_external=True,
+        )
+    except runtime_paths.RuntimePathError as exc:
+        raise DependencyClosureError(f"invalid RoboStudio state root: {exc}") from exc
+
     for name in HOST_INJECTION_VARS:
         env.pop(name, None)
 
@@ -147,16 +195,23 @@ def build_closed_environment(
     path_entries = artifact_entries + system_entries
     env["PATH"] = os.pathsep.join(str(entry) for entry in path_entries)
     env["ROBOSTUDIO_HOME"] = str(artifact_root)
+    env["ROBOSTUDIO_STATE_ROOT"] = str(state_root)
     env["ROBOSTUDIO_RUNTIME_MODE"] = "packaged"
     env["ROBOSTUDIO_DEPENDENCY_MODE"] = "artifact-closed"
 
-    platformio = artifact_root / "runtime" / "platformio"
-    env["PLATFORMIO_CORE_DIR"] = str(platformio)
-    env["PLATFORMIO_PLATFORMS_DIR"] = str(platformio / "platforms")
-    env["PLATFORMIO_PACKAGES_DIR"] = str(platformio / "packages")
-    env["PLATFORMIO_CACHE_DIR"] = str(platformio / ".cache")
-    env["PLATFORMIO_BUILD_CACHE_DIR"] = str(platformio / "build-cache")
-    env["PLATFORMIO_WORKSPACE_DIR"] = str(platformio / "workspace")
+    packaged_platformio = artifact_root / "runtime" / "platformio"
+    mutable_platformio = state_root / "platformio"
+    # PlatformIO core_dir contains mutable service data. Keep only immutable
+    # dependency stores (platforms/packages) inside the production artifact.
+    env["PLATFORMIO_CORE_DIR"] = str(mutable_platformio / "core")
+    env["PLATFORMIO_PLATFORMS_DIR"] = str(packaged_platformio / "platforms")
+    env["PLATFORMIO_PACKAGES_DIR"] = str(packaged_platformio / "packages")
+
+    defaults = _state_defaults(state_root)
+    for name, default in defaults.items():
+        trusted = _trusted_mutable_path(requested_mutable.get(name), state_root)
+        env[name] = str(trusted or default)
+
     env["PLATFORMIO_DISABLE_UPGRADE_CHECK"] = "true"
     env["PLATFORMIO_DISABLE_PROGRESSBAR"] = "true"
     env["PLATFORMIO_NO_ANSI"] = "true"
@@ -166,6 +221,7 @@ def build_closed_environment(
 
     report = DependencyClosureReport(
         application_root=artifact_root,
+        state_root=state_root,
         path_entries=path_entries,
         artifact_entries=artifact_entries,
         system_entries=system_entries,
@@ -175,8 +231,13 @@ def build_closed_environment(
 
 
 def validate_closed_environment(report: DependencyClosureReport) -> None:
-    """Reject any PATH entry that is neither artifact-owned nor OS-allowlisted."""
+    """Reject PATH/state overlap with the immutable production artifact."""
     root = _canonical(report.application_root)
+    state = _canonical(report.state_root)
+    if state == root or _is_relative_to(state, root):
+        raise DependencyClosureError(
+            f"mutable state overlaps production artifact: {state} (root: {root})"
+        )
     allowed_system = {_canonical(path) for path in report.system_entries}
     for entry in report.path_entries:
         candidate = _canonical(entry)
@@ -246,4 +307,6 @@ def path_evidence(report: DependencyClosureReport) -> dict[str, object]:
         "artifact_path_entries": [relative_or_absolute(path) for path in report.artifact_entries],
         "system_path_entries": [str(path) for path in report.system_entries],
         "host_path_inherited": False,
+        "state_root": str(report.state_root),
+        "state_outside_artifact": True,
     }
