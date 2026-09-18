@@ -1,10 +1,12 @@
 """RSD-21 production release qualification for RoboStudio artifacts.
 
 RSD-21 is the post-assembly qualification boundary. It verifies the immutable
-release ZIP, validates its provenance sidecar, optionally runs the legacy
-portable acceptance gate, or (for a real target machine) validates the host
-prerequisite contract without requiring developer-installed runtimes to be
-bundled into the artifact.
+release ZIP, validates its provenance sidecar, always proves portable dependency
+closure, and can additionally validate external target-machine prerequisites.
+
+B2.2 requires Python and PlatformIO to remain application-owned even in
+``--target-machine`` mode. Target-machine qualification therefore supplements
+portable proof; it never replaces it.
 """
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ from typing import Any
 from tools import portable_release_proof, release_acceptance, release_package, release_provenance, target_machine_qualification
 
 SCHEMA = "antechkids.robostudio.production-release-qualification"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 REPORT_NAME = "production-release-qualification.json"
 
 
@@ -49,11 +51,10 @@ def qualify_release(
 ) -> dict[str, Any]:
     """Qualify a production release without modifying the artifact.
 
-    ``target_machine=True`` selects the real production-user acceptance model:
-    the ZIP is validated for release integrity/provenance and the target host
-    is checked against the declared prerequisite contract. The legacy
-    bundled-runtime portable proof is deliberately not a prerequisite in this
-    mode because Python/PlatformIO are supplied by the target machine.
+    Portable dependency closure is mandatory in every mode. With
+    ``target_machine=True`` the already-portable ZIP is additionally checked
+    against external machine prerequisites such as the board USB/UART driver.
+    Host Python or PlatformIO are never accepted as release dependencies.
     """
     artifact = _resolve_file(artifact, "release artifact")
 
@@ -64,14 +65,12 @@ def qualify_release(
     except release_package.ReleasePackageError as exc:
         raise ProductionReleaseQualificationError(f"RSD-20 integrity/structure validation failed: {exc}") from exc
 
-    proof = None
-    if not target_machine:
-        try:
-            proof = portable_release_proof.prove_portable_release(artifact, manifest=manifest_path)
-        except portable_release_proof.PortableReleaseProofError as exc:
-            raise ProductionReleaseQualificationError(f"RSD-20 portable proof failed: {exc}") from exc
-        if not proof.passed:
-            raise ProductionReleaseQualificationError("RSD-20 portable proof failed; artifact is not release-ready")
+    try:
+        proof = portable_release_proof.prove_portable_release(artifact, manifest=manifest_path)
+    except portable_release_proof.PortableReleaseProofError as exc:
+        raise ProductionReleaseQualificationError(f"RSD-20 portable proof failed: {exc}") from exc
+    if not proof.passed:
+        raise ProductionReleaseQualificationError("RSD-20 portable proof failed; artifact is not release-ready")
 
     provenance_path = _sidecar(
         artifact, provenance, release_provenance.PROVENANCE_MANIFEST, "release provenance"
@@ -96,10 +95,9 @@ def qualify_release(
             raise ProductionReleaseQualificationError(f"RSD-21.4 target-machine qualification failed: {exc}") from exc
         target_machine_payload = target_machine_qualification.to_dict(target_report)
         # ``--acceptance-report`` is retained as the CLI evidence output path
-        # for backward compatibility. In target-machine mode the evidence is
-        # the prerequisite qualification report, not legacy bundled-runtime
-        # acceptance evidence. Persist it whenever the caller requested a
-        # report so the CLI contract and machine-readable evidence agree.
+        # for backward compatibility. In target-machine mode this contains the
+        # external prerequisite qualification report; portable closure evidence
+        # is already recorded in the main qualification report.
         if acceptance_report is not None:
             target_machine_qualification.write_report(target_report, acceptance_report)
     elif run_acceptance:
@@ -134,10 +132,10 @@ def qualify_release(
         "application_version": manifest.get("application_version"),
         "file_count": manifest.get("file_count"),
         "portable_dependency_closure": {
-            "required": not target_machine,
-            "passed": proof.passed if proof is not None else None,
-            "packaged_dependency_count": proof.packaged_dependency_count if proof is not None else None,
-            "finding_count": len(proof.findings) if proof is not None else 0,
+            "required": True,
+            "passed": proof.passed,
+            "packaged_dependency_count": proof.packaged_dependency_count,
+            "finding_count": len(proof.findings),
         },
         "provenance": {
             "path": provenance_path.name,
@@ -172,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--provenance", type=Path)
     parser.add_argument("--acceptance-report", type=Path)
     parser.add_argument("--run-acceptance", action="store_true")
-    parser.add_argument("--target-machine", action="store_true", help="qualify the target host using declared prerequisites")
+    parser.add_argument("--target-machine", action="store_true", help="qualify external target-host prerequisites after portable proof")
     parser.add_argument("--prerequisite-scope", choices=[scope.value for scope in target_machine_qualification.target_machine_prerequisites.RequirementScope], default="compile")
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--report", type=Path)
