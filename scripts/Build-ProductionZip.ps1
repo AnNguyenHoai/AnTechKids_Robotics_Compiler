@@ -6,6 +6,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+$env:PYTHONDONTWRITEBYTECODE = "1"
+$env:PYTHONUTF8 = "1"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Orchestrator = Join-Path $RepoRoot "tools\one_click_production_zip.py"
