@@ -1,17 +1,22 @@
 """
-BuildWorker – non‑blocking build using QProcess
+BuildWorker – non-blocking build using QProcess.
+
+The compiler process always runs from the disposable workspace that owns the
+request/source files. In packaged mode the environment has already been sealed
+by BuildService, so neither CWD nor mutable compiler state points at the
+RoboStudio installation directory.
 """
 
 import os
+import shutil
 from pathlib import Path
-from PySide6.QtCore import QObject, QProcess, Signal, QByteArray
+from PySide6.QtCore import QObject, QProcess, Signal
 
 
 class BuildWorker(QObject):
-    # Signals
-    output_received = Signal(str)          # real‑time log line
-    build_finished = Signal(bool, str)     # success, summary_message
-    error_occurred = Signal(str)           # critical error (e.g., command not found)
+    output_received = Signal(str)
+    build_finished = Signal(bool, str)
+    error_occurred = Signal(str)
 
     def __init__(self, command, env, temp_file_path):
         super().__init__()
@@ -23,24 +28,28 @@ class BuildWorker(QObject):
         self.process.readyReadStandardError.connect(self._on_stderr)
         self.process.finished.connect(self._on_finished)
         self.process.errorOccurred.connect(self._on_process_error)
-
-        # Log accumulation (for summary)
         self._log_lines = []
 
+    def _workspace(self) -> Path:
+        return Path(self.temp_file).expanduser().resolve().parent
+
+    def _cleanup_temp_state(self) -> None:
+        """Remove only BuildService-owned disposable compile workspaces."""
+        source = Path(self.temp_file).expanduser()
+        workspace = source.resolve().parent
+        if workspace.name.startswith("robostudio-compile-"):
+            shutil.rmtree(workspace, ignore_errors=True)
+            return
+        try:
+            source.unlink()
+        except OSError:
+            pass
+
     def start(self):
-        """Start the build process."""
+        """Start the build process from external compiler state."""
         env_list = [f"{k}={v}" for k, v in self.env.items()]
         self.process.setEnvironment(env_list)
-        # Only a packaged runtime changes the build working directory. Source
-        # development retains the historical CWD behavior for compatibility.
-        if self.env.get("ROBOSTUDIO_RUNTIME_MODE") == "packaged":
-            working_directory = self.env.get("ROBOSTUDIO_HOME")
-            if working_directory:
-                self.process.setWorkingDirectory(str(Path(working_directory)))
-            else:
-                self.process.setWorkingDirectory(os.getcwd())
-        else:
-            self.process.setWorkingDirectory(os.getcwd())
+        self.process.setWorkingDirectory(str(self._workspace()))
         self.process.start(self.command[0], self.command[1:])
 
     def _on_stdout(self):
@@ -56,17 +65,12 @@ class BuildWorker(QObject):
         self.output_received.emit(text)
 
     def _on_finished(self, exit_code, exit_status):
-        # Clean up temp file
-        try:
-            os.unlink(self.temp_file)
-        except:
-            pass
+        self._cleanup_temp_state()
 
         if exit_status == QProcess.CrashExit:
             self.error_occurred.emit("Process crashed.")
             return
 
-        # Generate summary
         full_log = "".join(self._log_lines)
         if exit_code == 0:
             summary = self._extract_summary(full_log, success=True)
@@ -76,31 +80,26 @@ class BuildWorker(QObject):
             self.build_finished.emit(False, summary)
 
     def _on_process_error(self, error):
-        # Handle errors like FailedToStart
-        try:
-            os.unlink(self.temp_file)
-        except:
-            pass
+        self._cleanup_temp_state()
         msg = self.process.errorString()
         self.error_occurred.emit(f"Process error: {msg}")
 
     def _extract_summary(self, log, success):
-        """
-        Extract a human‑friendly summary from the full log.
-        """
+        """Extract a human-friendly summary from the full log."""
         lines = log.splitlines()
         if success:
-            # Look for "Build completed." or "Compiled successfully" etc.
             if "Compiled successfully" in log or "OK" in log:
                 return "✅ Build successful"
             return "✅ Build completed"
 
-        # Failure: try to find error lines
-        error_lines = [l for l in lines if "error" in l.lower() or "exception" in l.lower() or "failed" in l.lower()]
+        error_lines = [
+            line
+            for line in lines
+            if "error" in line.lower()
+            or "exception" in line.lower()
+            or "failed" in line.lower()
+        ]
         if error_lines:
-            # Take first few errors
-            top = error_lines[:3]
-            return "❌ Build failed\n" + "\n".join(top)
-        # If no obvious error, show last few lines
+            return "❌ Build failed\n" + "\n".join(error_lines[:3])
         tail = lines[-5:] if len(lines) > 5 else lines
         return "❌ Build failed\n" + "\n".join(tail)
