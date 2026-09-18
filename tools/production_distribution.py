@@ -24,13 +24,14 @@ COMPILER_ENTRY_NAME = "main.py"
 FRONTEND_ROOT_NAME = "frontend"
 CONTRACT_ENTRY_NAME = "robostudio_bridge.py"
 
-# B2.4 runtime allow-list. These are application runtime modules, not the
-# repository's release builders/test helpers. ``deploy_robot.py`` bootstraps the
-# artifact root onto sys.path, so the copied directory remains a relocatable
-# namespace package when invoked by bundled Python.
+# Production deployment/acceptance runtime allow-list. These are application
+# runtime modules, not repository release builders/test helpers. Direct CLI
+# tools bootstrap the artifact root onto sys.path, so the copied directory stays
+# relocatable when invoked by bundled Python.
 DEPLOYMENT_RUNTIME_TOOL_FILES: tuple[str, ...] = (
     "bootstrap_config.py",
     "build_isolation.py",
+    "clean_machine_physical_e2e.py",
     "dependency_closure.py",
     "deploy_robot.py",
     "deployment_contract.py",
