@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tests.rsd_20_p.run_rsd_20_p import _build_release, _make_distribution
-from tools import release_cli
+from tools import distribution_package, release_cli
 
 
 def check(name: str, condition: bool) -> None:
