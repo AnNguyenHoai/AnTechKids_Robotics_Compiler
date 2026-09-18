@@ -24,21 +24,27 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp) / "RoboStudio"
         root.mkdir()
+        (root / "runtime" / "bin").mkdir(parents=True)
+        (root / "runtime" / "platformio" / "platforms").mkdir(parents=True)
+        (root / "runtime" / "platformio" / "packages").mkdir(parents=True)
         with patch.dict(os.environ, {runtime_paths.APPLICATION_HOME_ENV: str(root)}, clear=False):
             with patch.object(deployment_runtime, "is_frozen", return_value=True):
                 env = deployment_runtime.deployment_runtime_environment({"PATH": "host-path"})
                 core = root / "runtime" / "platformio"
-                check("frozen deployment core is application-owned", env["PLATFORMIO_CORE_DIR"] == str(core))
-                check("platform packages are isolated", env["PLATFORMIO_PACKAGES_DIR"] == str(core / "packages"))
-                check("platforms are isolated", env["PLATFORMIO_PLATFORMS_DIR"] == str(core / "platforms"))
-                check("build workspace is isolated", env["PLATFORMIO_WORKSPACE_DIR"] == str(core / "workspace"))
+                check("frozen deployment core is application-owned", Path(env["PLATFORMIO_CORE_DIR"]).resolve() == core.resolve())
+                check("platform packages are isolated", Path(env["PLATFORMIO_PACKAGES_DIR"]).resolve() == (core / "packages").resolve())
+                check("platforms are isolated", Path(env["PLATFORMIO_PLATFORMS_DIR"]).resolve() == (core / "platforms").resolve())
+                check("build workspace is isolated", Path(env["PLATFORMIO_WORKSPACE_DIR"]).resolve() == (core / "workspace").resolve())
                 check("PlatformIO upgrade checks are disabled", env["PLATFORMIO_DISABLE_UPGRADE_CHECK"] == "true")
                 check("deployment output has no ANSI", env["PLATFORMIO_NO_ANSI"] == "true")
-                check("host PATH is preserved for child-process compatibility", env["PATH"] == "host-path")
+                check("frozen deployment enables dependency closure", env["ROBOSTUDIO_DEPENDENCY_MODE"] == "artifact-closed")
+                check("host PATH is not inherited by packaged runtime", env["PATH"] != "host-path")
+
+            with patch.object(deployment_runtime, "is_frozen", return_value=False):
+                dev_env = deployment_runtime.deployment_runtime_environment({"PATH": "host-path"})
+                check("source development preserves host PATH", dev_env["PATH"] == "host-path")
 
             runtime = root / "runtime" / "platformio"
-            (runtime / "platforms").mkdir(parents=True)
-            (runtime / "packages").mkdir(parents=True)
             check("runtime validation accepts complete layout", deployment_runtime.validate_deployment_runtime() == runtime)
 
             source = Path(temp) / "pio-home"
