@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from services.bootstrap_config_service import BootstrapConfigService
 from services.robot_deployment_service import RobotDeploymentService, DeploymentResult, RobotInfo
 from services.robot_discovery_service import RobotDiscoveryClient
+from services.serial_console_service import SerialConsoleService
 from ui.serial_console import SerialConsoleWidget
 
 
@@ -76,6 +77,7 @@ class RobotTab(QWidget):
         self._deployment_worker = None
         self._bootstrap_service = BootstrapConfigService()
         self._build_ui()
+        self._refresh_usb_ports()
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -129,9 +131,15 @@ class RobotTab(QWidget):
         bootstrap_form.addRow("OTA Password:", self.bootstrap_ota_password_edit)
         usb_row = QHBoxLayout()
         usb_row.setSpacing(6)
-        self.usb_port_edit = QLineEdit()
-        self.usb_port_edit.setPlaceholderText("e.g. COM4")
-        usb_row.addWidget(self.usb_port_edit, 1)
+        self.usb_port_combo = QComboBox()
+        self.usb_port_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.usb_port_combo.setPlaceholderText("No USB/COM port detected")
+        self.usb_port_combo.currentIndexChanged.connect(self._refresh_bootstrap_flash_enabled)
+        usb_row.addWidget(self.usb_port_combo, 1)
+        self.refresh_usb_button = QPushButton("Refresh USB")
+        self.refresh_usb_button.setToolTip("Refresh USB/COM devices visible to Windows.")
+        self.refresh_usb_button.clicked.connect(self._refresh_usb_ports)
+        usb_row.addWidget(self.refresh_usb_button)
         self.generate_bootstrap_button = QPushButton("Generate Config")
         self.generate_bootstrap_button.clicked.connect(self.generate_bootstrap)
         usb_row.addWidget(self.generate_bootstrap_button)
@@ -258,6 +266,35 @@ class RobotTab(QWidget):
         from PySide6.QtGui import QFont
         return QFont("Courier New", 9)
 
+    def _refresh_usb_ports(self):
+        """Populate first-flash choices from the same Qt serial inventory as the console."""
+        previous = self.usb_port_combo.currentData()
+        self.usb_port_combo.blockSignals(True)
+        self.usb_port_combo.clear()
+        for port, description in SerialConsoleService.available_ports():
+            label = f"{port} — {description}" if description else port
+            self.usb_port_combo.addItem(label, port)
+        if self.usb_port_combo.count():
+            index = self.usb_port_combo.findData(previous) if previous else -1
+            self.usb_port_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.usb_port_combo.blockSignals(False)
+        self._refresh_bootstrap_flash_enabled()
+        if not self.usb_port_combo.count() and self._bootstrap_path is not None:
+            self.bootstrap_status.setText(
+                "No USB/COM port is visible. Reconnect the robot or install the board USB/UART driver, then Refresh USB."
+            )
+            self.bootstrap_status.setStyleSheet("font-weight: bold; color: #b36b00;")
+
+    def _selected_usb_port(self) -> str:
+        value = self.usb_port_combo.currentData()
+        return str(value).strip() if value else ""
+
+    def _refresh_bootstrap_flash_enabled(self):
+        running = bool(self._bootstrap_flash_worker and self._bootstrap_flash_worker.isRunning())
+        self.flash_bootstrap_button.setEnabled(
+            self._bootstrap_path is not None and bool(self._selected_usb_port()) and not running
+        )
+
     def generate_bootstrap(self):
         ssid = self.bootstrap_ssid_edit.text().strip()
         wifi_password = self.bootstrap_wifi_password_edit.text()
@@ -268,11 +305,11 @@ class RobotTab(QWidget):
             QMessageBox.warning(self, "Bootstrap configuration", str(exc))
             return
         self._bootstrap_path = path
-        self.flash_bootstrap_button.setEnabled(True)
+        self._refresh_usb_ports()
         self.bootstrap_status.setText(
             "✓ First-flash configuration ready.\n"
             f"Bootstrap artifact: {path}\n"
-            "Click Flash via USB to build and upload the bootstrap firmware."
+            "Select a detected USB/COM port and click Flash via USB."
         )
         self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
 
@@ -281,19 +318,28 @@ class RobotTab(QWidget):
             return
         if self._bootstrap_flash_worker and self._bootstrap_flash_worker.isRunning():
             return
+        usb_port = self._selected_usb_port()
+        if not usb_port:
+            QMessageBox.warning(
+                self,
+                "USB port required",
+                "No USB/COM port is selected. Reconnect the robot or install its USB/UART driver, then Refresh USB.",
+            )
+            return
         self.generate_bootstrap_button.setEnabled(False)
         self.flash_bootstrap_button.setEnabled(False)
+        self.refresh_usb_button.setEnabled(False)
         self.refresh_button.setEnabled(False)
         self.progress.setVisible(True)
         self.result_label.setText("Building and flashing first-boot firmware with PlatformIO...")
         self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
         self.bootstrap_status.setText(
-            "PlatformIO is building the bootstrap firmware and uploading it over USB. "
+            f"PlatformIO is building and uploading over {usb_port}. "
             "Keep the robot connected until the upload completes."
         )
-        self.set_logs("PlatformIO first-flash in progress...\n")
+        self.set_logs(f"PlatformIO first-flash in progress on {usb_port}...\n")
         self._bootstrap_flash_worker = _BootstrapFlashWorker(
-            self._bootstrap_path, self.usb_port_edit.text().strip()
+            self._bootstrap_path, usb_port
         )
         self._bootstrap_flash_worker.output.connect(self.append_logs)
         self._bootstrap_flash_worker.completed.connect(self._on_bootstrap_flash_finished)
@@ -303,7 +349,9 @@ class RobotTab(QWidget):
     def _bootstrap_flash_finished(self):
         self.progress.setVisible(False)
         self.generate_bootstrap_button.setEnabled(True)
+        self.refresh_usb_button.setEnabled(True)
         self.refresh_button.setEnabled(True)
+        self._refresh_usb_ports()
 
     def _on_bootstrap_flash_finished(self, result):
         self.set_logs(result.output or "")
