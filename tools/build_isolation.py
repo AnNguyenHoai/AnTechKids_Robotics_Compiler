@@ -1,14 +1,9 @@
 """Portable PlatformIO build workspace isolation for RoboStudio.
 
-The packaged application owns the compiler/runtime binaries, while generated
-PlatformIO state is writable user data.  A deployment build must never create
-``.pio`` (or any other build cache) inside the RoboStudio source/install tree.
-
-The public helpers in this module deliberately return absolute paths and do
-not inspect the current working directory.  PlatformIO supports these
-``PLATFORMIO_*`` directory variables, so the deployment layer can keep the
-canonical robot-platform source tree read-only while still producing normal
-PlatformIO artifacts.
+The packaged application owns compiler/runtime dependencies, while generated
+PlatformIO state is writable user data. A deployment build must never create
+``.pio`` (or any other build/cache state) inside the RoboStudio source/install
+tree. Public helpers return absolute paths and do not inspect caller CWD.
 """
 from __future__ import annotations
 
@@ -45,9 +40,6 @@ def _validate_project_name(project_name: str) -> str:
         )
     if any(ord(char) < 32 for char in value):
         raise BuildIsolationError("Build project name contains control characters.")
-    # PlatformIO creates directories on Windows as well as POSIX. Reject
-    # names that are unsafe on either platform so a portable project behaves
-    # consistently when moved between machines.
     if re.fullmatch(r"(?i)(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?", value):
         raise BuildIsolationError(f"Build project name is reserved: {project_name!r}")
     return value
@@ -90,7 +82,12 @@ def shared_dir(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
 
 
 def prepare_build_workspace(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
-    """Create the writable workspace without touching the project source tree."""
+    """Create a writable workspace after fail-fast state-root validation."""
+    try:
+        runtime_paths.prepare_user_data_root()
+    except runtime_paths.RuntimePathError as exc:
+        raise BuildIsolationError(f"Unable to prepare RoboStudio build state: {exc}") from exc
+
     workspace = build_workspace(project_name)
     for directory in (
         workspace,
@@ -100,7 +97,12 @@ def prepare_build_workspace(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
         build_cache_dir(project_name),
         shared_dir(project_name),
     ):
-        directory.mkdir(parents=True, exist_ok=True)
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise BuildIsolationError(
+                f"Unable to create isolated build directory {directory}: {exc}"
+            ) from exc
     return workspace
 
 
@@ -110,12 +112,9 @@ def build_environment(
 ) -> dict[str, str]:
     """Return a subprocess environment with every writable build path isolated.
 
-    Existing caller environment values are deliberately replaced for the
-    PlatformIO build/workspace variables. This prevents a host's global
-    ``PLATFORMIO_BUILD_DIR`` or workspace from silently defeating portability.
-    PlatformIO's core/platform/package locations are left untouched here; the
-    deployment runtime owns those separately and points them at the packaged
-    runtime when RoboStudio is frozen.
+    Existing caller values are deliberately replaced. The final B2.3 process
+    boundary may preserve these values only when they remain below the
+    validated external ``ROBOSTUDIO_STATE_ROOT``.
     """
     env = dict(os.environ if base_env is None else base_env)
     name = _validate_project_name(project_name)
@@ -150,7 +149,8 @@ def firmware_path(
 def clean_build_workspace(project_name: str = DEFAULT_PROJECT_NAME) -> None:
     """Remove one isolated build workspace, never a source/install directory."""
     root = build_root(project_name)
-    if root == runtime_paths.user_data_root() or root.parent != runtime_paths.user_data_root() / BUILD_DATA_DIRECTORY:
+    data_root = runtime_paths.user_data_root()
+    if root == data_root or root.parent != data_root / BUILD_DATA_DIRECTORY:
         raise BuildIsolationError(f"Refusing to clean unsafe build workspace: {root}")
     if root.exists():
         if not root.is_dir():
@@ -158,7 +158,6 @@ def clean_build_workspace(project_name: str = DEFAULT_PROJECT_NAME) -> None:
         shutil.rmtree(root)
 
 
-# Explicit aliases make the contract easy to consume from UI/deployment code.
 resolve_build_workspace = build_workspace
 resolve_build_dir = build_dir
 resolve_build_environment = build_environment
