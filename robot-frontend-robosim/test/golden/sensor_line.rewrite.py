@@ -1,1 +1,1 @@
-line = read_line(2)
+line = read_line(1)
