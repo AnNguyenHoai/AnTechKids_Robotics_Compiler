@@ -50,13 +50,11 @@ class TestSDKGenerator(unittest.TestCase):
         self.generator.generate(self.context)
         motion_content = (self.robot_dir / "motion.py").read_text(encoding="utf-8")
 
-        # Kiểm tra type hints
         self.assertIn("def forward(speed: int) -> None:", motion_content)
         self.assertIn("def backward(speed: int) -> None:", motion_content)
         self.assertIn("def turn_left(speed: int) -> None:", motion_content)
         self.assertIn("def turn_right(speed: int) -> None:", motion_content)
 
-        # Kiểm tra docstring (không cần chính xác tuyệt đối)
         self.assertIn('"""', motion_content)
         self.assertIn("Move robot forward", motion_content)
         self.assertIn("Args:", motion_content)
@@ -73,6 +71,33 @@ class TestSDKGenerator(unittest.TestCase):
         self.assertIn('"""', system_content)
         self.assertIn("Wait milliseconds", system_content)
         self.assertIn("milliseconds (int):", system_content)
+
+    def test_generated_types_and_returns_match_specification(self):
+        """Generated Python signatures must preserve specification types and returns."""
+        self.generator.generate(self.context)
+
+        motion = (self.robot_dir / "motion.py").read_text(encoding="utf-8")
+        sensor = (self.robot_dir / "sensor.py").read_text(encoding="utf-8")
+        gui = (self.robot_dir / "gui.py").read_text(encoding="utf-8")
+
+        self.assertIn("def set_move_initialize(left_motor: int, right_motor: int, reverse: str) -> None:", motion)
+        self.assertIn("def set_move_run_angle(direction: str, speed: int, angle: int) -> None:", motion)
+        self.assertIn("def read_ultrasonic() -> int:", sensor)
+        self.assertIn("def read_touch(port: int) -> int:", sensor)
+        self.assertIn("def get_trace_state(port: int, channel: int) -> bool:", sensor)
+        self.assertIn("from typing import Any", gui)
+        self.assertIn("def update_var(name: str, value: Any) -> None:", gui)
+
+    def test_generated_modules_are_valid_python(self):
+        """Every generated public module must be syntactically valid Python."""
+        self.generator.generate(self.context)
+
+        for module in self.robot_dir.glob("*.py"):
+            source = module.read_text(encoding="utf-8")
+            try:
+                compile(source, str(module), "exec")
+            except SyntaxError as exc:
+                self.fail(f"{module.name} is not valid Python: {exc}")
 
     def test_generator_does_not_create_internal(self):
         """Kiểm tra không sinh internal.py."""
