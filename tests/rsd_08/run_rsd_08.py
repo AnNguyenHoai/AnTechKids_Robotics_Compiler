@@ -43,9 +43,7 @@ def make_distribution(root: Path) -> None:
         ),
         encoding="utf-8",
     )
-    (root / "runtime" / "resources" / "robot-isa" / "target_profiles.json").write_text(
-        "{}\n", encoding="utf-8"
-    )
+    (root / "runtime" / "resources" / "robot-isa" / "target_profiles.json").write_text("{}\n", encoding="utf-8")
     runtime_resources.write_resource_manifest(root / "runtime" / "resources")
     (root / "distribution-manifest.json").write_text(
         json.dumps(
@@ -77,27 +75,31 @@ def main() -> int:
                 "PYTHONPATH": "C:\\HostProject",
                 "VIRTUAL_ENV": "C:\\HostVenv",
                 "CONDA_PREFIX": "C:\\HostConda",
+                "NODE_PATH": "C:\\HostNode",
+                "NPM_CONFIG_PREFIX": "C:\\HostNpm",
                 "PIOHOME_DIR": "C:\\HostPlatformIO",
                 "PLATFORMIO_CORE_DIR": "C:\\HostPlatformIO",
                 "PLATFORMIO_PACKAGES_DIR": "C:\\HostPackages",
             }
             env = distribution_launch.clean_machine_environment(root, hostile)
-            host_only = {"PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX", "PIOHOME_DIR"}
+            host_only = {"PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX", "NODE_PATH", "NPM_CONFIG_PREFIX", "PIOHOME_DIR"}
             check("host-only runtime variables are removed", all(name not in env for name in host_only))
-            check("application home is explicit", env["ROBOSTUDIO_HOME"] == str(root))
-            check("PlatformIO core is application-owned", env["PLATFORMIO_CORE_DIR"] == str(root / "runtime" / "platformio"))
-            check("PlatformIO packages are application-owned", env["PLATFORMIO_PACKAGES_DIR"] == str(root / "runtime" / "platformio" / "packages"))
-            check("host PATH is preserved", env["PATH"] == hostile["PATH"])
+            check("application home is explicit", env["ROBOSTUDIO_HOME"] == str(root.resolve()))
+            check("PlatformIO core is application-owned", Path(env["PLATFORMIO_CORE_DIR"]).resolve() == (root / "runtime" / "platformio").resolve())
+            check("PlatformIO packages are application-owned", Path(env["PLATFORMIO_PACKAGES_DIR"]).resolve() == (root / "runtime" / "platformio" / "packages").resolve())
+            check("host PATH is closed", env["PATH"] != hostile["PATH"])
+            check("dependency closure mode is explicit", env["ROBOSTUDIO_DEPENDENCY_MODE"] == "artifact-closed")
 
             external_cwd = Path(temp) / "outside"
             external_cwd.mkdir()
             spec = distribution_launch.build_launch_spec(root, cwd=external_cwd, base_env=hostile)
-            check("launch command uses absolute application executable", spec.command[0] == str(root / "RoboStudio.exe"))
-            check("launch cwd is external to application", spec.cwd == external_cwd and not spec.cwd.is_relative_to(root))
+            check("launch command uses absolute application executable", spec.command[0] == str((root / "RoboStudio.exe").resolve()))
+            check("launch cwd is external to application", spec.cwd == external_cwd.resolve() and not spec.cwd.is_relative_to(root.resolve()))
             check("launch manifest is generated", distribution_launch.write_launch_manifest(root).is_file())
 
             manifest = json.loads((root / distribution_launch.LAUNCH_MANIFEST).read_text(encoding="utf-8"))
             check("launch manifest records PATH independence", manifest["path_lookup_required"] is False)
+            check("launch manifest records artifact-closed PATH policy", manifest["path_policy"] == "artifact-closed-with-windows-system-allowlist")
             check("launch manifest records external cwd", manifest["cwd_must_be_external"] is True)
         finally:
             if old_home is None:
