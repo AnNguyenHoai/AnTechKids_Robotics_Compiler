@@ -187,7 +187,9 @@ def evaluate_production_artifact(
                 raise ProductionE2EError("compiler exited successfully but produced no output")
 
         passed = (not launch or started) and (not compile_command or compiled)
-        # This harness validates the application-owned artifact itself; it does not\n        # require external target-machine prerequisites such as USB drivers or hardware.\n        return ProductionE2EResult("PASS" if passed else "FAIL", str(artifact), str(root), False, False, started, compiled, evidence)
+        # This harness validates the application-owned artifact itself; it does not
+        # require external target-machine prerequisites such as USB drivers or hardware.
+        return ProductionE2EResult("PASS" if passed else "FAIL", str(artifact), str(root), False, False, started, compiled, evidence)
 
 
 def qualify_release_e2e(artifact: Path, *, source: Path, launch_command: list[str], compile_command: list[str], timeout: float = DEFAULT_TIMEOUT) -> ProductionE2EResult:
