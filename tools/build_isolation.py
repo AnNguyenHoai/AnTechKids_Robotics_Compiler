@@ -1,10 +1,4 @@
-"""Portable PlatformIO build workspace isolation for RoboStudio.
-
-The packaged application owns compiler/runtime dependencies, while generated
-PlatformIO state is writable user data. A deployment build must never create
-``.pio`` (or any other build/cache state) inside the RoboStudio source/install
-tree. Public helpers return absolute paths and do not inspect caller CWD.
-"""
+"""Portable PlatformIO build workspace isolation for RoboStudio."""
 from __future__ import annotations
 
 import os
@@ -45,58 +39,65 @@ def _validate_project_name(project_name: str) -> str:
     return value
 
 
-def build_root(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
-    """Return the per-project writable RoboStudio build root."""
+def _state_root(base_env: Mapping[str, str] | None = None) -> Path:
+    return runtime_paths.user_data_root(base_env=base_env)
+
+
+def build_root(
+    project_name: str = DEFAULT_PROJECT_NAME,
+    *,
+    base_env: Mapping[str, str] | None = None,
+) -> Path:
     name = _validate_project_name(project_name)
-    return runtime_paths.user_data_root() / BUILD_DATA_DIRECTORY / name
+    return _state_root(base_env) / BUILD_DATA_DIRECTORY / name
 
 
-def build_workspace(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
-    """Return the PlatformIO workspace directory for one RoboStudio project."""
-    return build_root(project_name) / "platformio"
+def build_workspace(project_name: str = DEFAULT_PROJECT_NAME, *, base_env: Mapping[str, str] | None = None) -> Path:
+    return build_root(project_name, base_env=base_env) / "platformio"
 
 
-def build_dir(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
-    """Return the PlatformIO per-environment build output directory."""
-    return build_workspace(project_name) / "build"
+def build_dir(project_name: str = DEFAULT_PROJECT_NAME, *, base_env: Mapping[str, str] | None = None) -> Path:
+    return build_workspace(project_name, base_env=base_env) / "build"
 
 
-def libdeps_dir(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
-    """Return the isolated PlatformIO library-dependency directory."""
-    return build_workspace(project_name) / "libdeps"
+def libdeps_dir(project_name: str = DEFAULT_PROJECT_NAME, *, base_env: Mapping[str, str] | None = None) -> Path:
+    return build_workspace(project_name, base_env=base_env) / "libdeps"
 
 
-def cache_dir(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
-    """Return the writable PlatformIO registry/cache directory."""
-    return build_workspace(project_name) / "cache"
+def cache_dir(project_name: str = DEFAULT_PROJECT_NAME, *, base_env: Mapping[str, str] | None = None) -> Path:
+    return build_workspace(project_name, base_env=base_env) / "cache"
 
 
-def build_cache_dir(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
-    """Return the isolated PlatformIO compiled-object cache directory."""
-    return build_workspace(project_name) / "build-cache"
+def build_cache_dir(project_name: str = DEFAULT_PROJECT_NAME, *, base_env: Mapping[str, str] | None = None) -> Path:
+    return build_workspace(project_name, base_env=base_env) / "build-cache"
 
 
-def shared_dir(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
-    """Return the isolated PlatformIO shared workspace directory."""
-    return build_workspace(project_name) / "shared"
+def shared_dir(project_name: str = DEFAULT_PROJECT_NAME, *, base_env: Mapping[str, str] | None = None) -> Path:
+    return build_workspace(project_name, base_env=base_env) / "shared"
 
 
-def prepare_build_workspace(project_name: str = DEFAULT_PROJECT_NAME) -> Path:
+def prepare_build_workspace(
+    project_name: str = DEFAULT_PROJECT_NAME,
+    *,
+    base_env: Mapping[str, str] | None = None,
+) -> Path:
     """Create a writable workspace after fail-fast state-root validation."""
+    env = os.environ if base_env is None else base_env
     try:
-        runtime_paths.prepare_user_data_root()
+        runtime_paths.prepare_user_data_root(base_env=env)
     except runtime_paths.RuntimePathError as exc:
         raise BuildIsolationError(f"Unable to prepare RoboStudio build state: {exc}") from exc
 
-    workspace = build_workspace(project_name)
-    for directory in (
+    workspace = build_workspace(project_name, base_env=env)
+    directories = (
         workspace,
-        build_dir(project_name),
-        libdeps_dir(project_name),
-        cache_dir(project_name),
-        build_cache_dir(project_name),
-        shared_dir(project_name),
-    ):
+        build_dir(project_name, base_env=env),
+        libdeps_dir(project_name, base_env=env),
+        cache_dir(project_name, base_env=env),
+        build_cache_dir(project_name, base_env=env),
+        shared_dir(project_name, base_env=env),
+    )
+    for directory in directories:
         try:
             directory.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -110,21 +111,16 @@ def build_environment(
     project_name: str = DEFAULT_PROJECT_NAME,
     base_env: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
-    """Return a subprocess environment with every writable build path isolated.
-
-    Existing caller values are deliberately replaced. The final B2.3 process
-    boundary may preserve these values only when they remain below the
-    validated external ``ROBOSTUDIO_STATE_ROOT``.
-    """
+    """Return one environment snapshot with all writable build paths isolated."""
     env = dict(os.environ if base_env is None else base_env)
     name = _validate_project_name(project_name)
     paths = {
-        PLATFORMIO_WORKSPACE_DIR_ENV: build_workspace(name),
-        PLATFORMIO_BUILD_DIR_ENV: build_dir(name),
-        PLATFORMIO_LIBDEPS_DIR_ENV: libdeps_dir(name),
-        PLATFORMIO_CACHE_DIR_ENV: cache_dir(name),
-        PLATFORMIO_BUILD_CACHE_DIR_ENV: build_cache_dir(name),
-        PLATFORMIO_SHARED_DIR_ENV: shared_dir(name),
+        PLATFORMIO_WORKSPACE_DIR_ENV: build_workspace(name, base_env=env),
+        PLATFORMIO_BUILD_DIR_ENV: build_dir(name, base_env=env),
+        PLATFORMIO_LIBDEPS_DIR_ENV: libdeps_dir(name, base_env=env),
+        PLATFORMIO_CACHE_DIR_ENV: cache_dir(name, base_env=env),
+        PLATFORMIO_BUILD_CACHE_DIR_ENV: build_cache_dir(name, base_env=env),
+        PLATFORMIO_SHARED_DIR_ENV: shared_dir(name, base_env=env),
     }
     env.update({key: str(value) for key, value in paths.items()})
     return env
@@ -135,21 +131,24 @@ def firmware_path(
     environment: str,
     *,
     filename: str = "firmware.bin",
+    base_env: Mapping[str, str] | None = None,
 ) -> Path:
-    """Return a firmware artifact produced by an isolated PlatformIO build."""
     name = _validate_project_name(project_name)
     env_name = str(environment).strip()
     if not env_name or Path(env_name).name != env_name or "/" in env_name or "\\" in env_name:
         raise BuildIsolationError(f"Invalid PlatformIO environment name: {environment!r}")
     if not filename or Path(filename).name != filename or "/" in filename or "\\" in filename:
         raise BuildIsolationError(f"Invalid firmware filename: {filename!r}")
-    return build_dir(name) / env_name / filename
+    return build_dir(name, base_env=base_env) / env_name / filename
 
 
-def clean_build_workspace(project_name: str = DEFAULT_PROJECT_NAME) -> None:
-    """Remove one isolated build workspace, never a source/install directory."""
-    root = build_root(project_name)
-    data_root = runtime_paths.user_data_root()
+def clean_build_workspace(
+    project_name: str = DEFAULT_PROJECT_NAME,
+    *,
+    base_env: Mapping[str, str] | None = None,
+) -> None:
+    root = build_root(project_name, base_env=base_env)
+    data_root = _state_root(base_env)
     if root == data_root or root.parent != data_root / BUILD_DATA_DIRECTORY:
         raise BuildIsolationError(f"Refusing to clean unsafe build workspace: {root}")
     if root.exists():
