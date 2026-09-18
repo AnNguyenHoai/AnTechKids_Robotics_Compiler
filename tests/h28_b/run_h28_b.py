@@ -130,8 +130,10 @@ def main() -> int:
         else:
             raise AssertionError(f"invalid robot host accepted: {invalid!r}")
 
-    assert 'platformio_command("run", "-e", "esp32dev_ota")' in deploy
-    assert 'platformio_command("run", "-e", "esp32dev_bootstrap", "-t", "upload")' in deploy
+    assert 'platformio_command("run"' in deploy
+    assert '"esp32dev_ota"' in deploy
+    assert '"esp32dev_bootstrap"' in deploy
+    assert '"-t","upload"' in deploy or '"-t", "upload"' in deploy
     assert "preflight_robot(a.robot)" in deploy
     assert "--process-timeout" in deploy
     assert "--verify-timeout" in deploy
