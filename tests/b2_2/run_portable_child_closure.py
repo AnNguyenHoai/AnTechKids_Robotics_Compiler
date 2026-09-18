@@ -69,6 +69,9 @@ def main() -> int:
             def poll(self):
                 return self.returncode
 
+            def wait(self, timeout=None):
+                return self.returncode
+
         original_is_frozen = deployment_runtime.is_frozen
         original_application_root = deployment_runtime.application_root
         original_popen = deployment_runtime.subprocess.Popen
