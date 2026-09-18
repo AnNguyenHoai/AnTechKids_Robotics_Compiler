@@ -93,7 +93,9 @@ The production distribution contains only the runtime modules required by deploy
 - `target_machine_prerequisites.py`
 - `target_machine_qualification.py`
 
-After this allow-list is staged, production boundary evidence, runtime-closure validation, and the distribution manifest are regenerated so the added runtime files cannot bypass release validation.
+After this allow-list is staged, the distribution manifest is re-fingerprinted first. Production boundary validation and runtime-closure validation then consume that final inventory. The runtime closure also declares every deployment tool as a required path, so an omitted flash dependency cannot pass merely because a custom manifest also omitted it.
+
+Release acceptance additionally builds the final ZIP and verifies the same runtime allow-list survives ZIP packaging. Development-only `tools/rewrite.py` and `tools/compile.py` are explicitly excluded from this runtime payload.
 
 ## Target-machine qualification scopes
 
@@ -127,7 +129,19 @@ A successful `flash` qualification proves software/runtime closure and current s
 - USB/UART driver remains external rather than bundled.
 - Firmware configuration contains no developer `COM4` fallback.
 
-The B2.4 gate is a separate fail-closed Windows CI step and is also part of `run_all_tests.py`.
+`tests/b2_4/run_packaged_flash_boundary.py` verifies:
+
+- The production distribution contains the full deployment-runtime allow-list.
+- The distribution manifest fingerprints those deployment files.
+- Production runtime closure requires the same deployment-tool set.
+- Packager and runtime-closure allow-lists cannot drift silently.
+- Frozen deployment resolves application root and external subprocess CWD correctly.
+- First-Flash UI uses detected serial ports rather than a free-text developer COM value.
+- Direct hardware/qualification CLIs bootstrap the extracted artifact root relocatably.
+- The final release ZIP validates and contains every required deployment-runtime file.
+- Development-only rewrite/compile wrappers are absent from both the distribution and final ZIP.
+
+Both B2.4 gates are separate fail-closed Windows CI steps and are also part of `run_all_tests.py`.
 
 ## B2.4 / B2.5 boundary
 
