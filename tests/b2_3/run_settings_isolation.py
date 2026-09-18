@@ -71,6 +71,8 @@ def main() -> int:
         firmware = app / "firmware" / "RobotVM.ino"
         firmware.parent.mkdir(parents=True)
         firmware.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+        firmware_sibling = firmware.parent / "README.txt"
+        firmware_sibling.write_text("packaged firmware sibling\n", encoding="utf-8")
 
         # Minimal application-owned compiler/runtime fixture for the GUI compile
         # boundary. It is resolved but never executed by this regression.
@@ -218,6 +220,21 @@ def main() -> int:
                 "firmware selection resolves inside application",
                 firmware_service.get_firmware_path() == firmware.resolve(),
             )
+            editable_firmware = firmware_service.prepare_editable_firmware()
+            expected_editable = (
+                state.resolve()
+                / "firmware-editor"
+                / "firmware"
+                / "RobotVM.ino"
+            )
+            check("packaged firmware is copied outside release before editing", editable_firmware == expected_editable)
+            check("editable firmware preserves packaged content", editable_firmware.read_text(encoding="utf-8") == firmware.read_text(encoding="utf-8"))
+            check("firmware sibling files are copied to editable state", (editable_firmware.parent / "README.txt").read_text(encoding="utf-8") == "packaged firmware sibling\n")
+            editable_firmware.write_text("// user edit\n", encoding="utf-8")
+            check("editing external firmware never changes packaged firmware", firmware.read_text(encoding="utf-8") == "void setup() {}\nvoid loop() {}\n")
+            saved_after_editable = json.loads(firmware_service.user_config_path.read_text(encoding="utf-8"))
+            check("firmware service persists external editable path", Path(saved_after_editable["firmware_project"]).resolve() == editable_firmware.resolve())
+            check("future firmware resolution uses external editable copy", firmware_service.get_firmware_path() == editable_firmware.resolve())
 
             bootstrap_service = BootstrapConfigService()
             bootstrap_path = bootstrap_service.generate(
