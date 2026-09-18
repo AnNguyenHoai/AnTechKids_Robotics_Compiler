@@ -31,7 +31,7 @@ def main() -> int:
     compile_payload = target_machine_qualification.to_dict(compile_report)
 
     check("setup contract schema is stable", target_machine_prerequisites.SCHEMA == "antechkids.robostudio.target-machine-prerequisites")
-    check("setup contract schema version is artifact-closed", target_machine_prerequisites.SCHEMA_VERSION == 3)
+    check("setup contract schema version is artifact-closed", target_machine_prerequisites.SCHEMA_VERSION == 4)
     check("supported host OS policy is declared", target_machine_prerequisites.SUPPORTED_HOST_OS == "Windows 10/11 x64")
     check("PATH policy rejects host runtime dependency", "must not require host Python" in target_machine_prerequisites.PATH_POLICY)
     check("setup contract is JSON serializable", bool(json.dumps(contract_payload)))
@@ -40,9 +40,10 @@ def main() -> int:
     check("driver does not require PATH", next(item for item in contract_payload["prerequisites"] if item["name"] == "ESP32/USB driver")["path_required"] is False)
     check("global Python host prerequisite is forbidden", "Global Python installation" in contract_payload["forbidden_host_prerequisites"])
     check("global PlatformIO host prerequisite is forbidden", "Global PlatformIO installation" in contract_payload["forbidden_host_prerequisites"])
+    check("flash scope requires explicit serial readiness", "explicit serial port" in contract_payload["flash_readiness_policy"])
 
     check("qualification schema is stable", target_machine_qualification.SCHEMA == "antechkids.robostudio.target-machine-qualification")
-    check("qualification schema version is artifact-closed", target_machine_qualification.SCHEMA_VERSION == 2)
+    check("qualification schema version is artifact-closed", target_machine_qualification.SCHEMA_VERSION == 3)
     check("qualification references setup contract", compile_payload["setup_contract"]["schema"] == target_machine_prerequisites.SCHEMA)
     check("qualification records setup contract version", compile_payload["setup_contract"]["schema_version"] == target_machine_prerequisites.SCHEMA_VERSION)
     check("qualification records supported host OS", compile_payload["setup_contract"]["supported_host_os"] == target_machine_prerequisites.SUPPORTED_HOST_OS)
@@ -53,6 +54,7 @@ def main() -> int:
     check("compile automated checks pass", compile_report.automated_checks_passed)
     check("compile qualification is JSON serializable", bool(json.dumps(compile_payload)))
     check("manual hardware check is not required for compile scope", compile_report.manual_checks_required is False)
+    check("compile qualification has no flash evidence", compile_report.flash_preflight is None)
 
     # Host Python presence or absence must not influence compile qualification.
     python_host_report = target_machine_qualification.qualify_target_machine(
@@ -75,6 +77,7 @@ def main() -> int:
     check("hardware automated qualification passes without host tools", hardware_report.passed is True)
     check("hardware qualification records manual driver check", hardware_report.manual_checks_required is True)
     check("hardware prerequisite result is manual", hardware_report.prerequisites[0].validation == "manual")
+    check("hardware policy scope does not pretend a port is visible", hardware_report.flash_preflight is None)
 
     print("RSD-21.4 target-machine-aware qualification checks: PASS")
     return 0

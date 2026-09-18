@@ -1,25 +1,33 @@
-"""RSD-21.4 target-machine-aware release qualification.
+"""RSD-21.4/B2.4 target-machine-aware release qualification.
 
 The production artifact owns RoboStudio, Compiler, portable Python, PlatformIO,
 and application resources. Target-machine qualification therefore must not
-search the host PATH for Python or PlatformIO. The only current external
-hardware prerequisite is the board-specific USB/UART driver, recorded as a
-manual check when hardware scope is requested.
+search the host PATH for Python or PlatformIO. The only external hardware
+prerequisite is the board-specific USB/UART driver.
 
-The qualification is read-only and never installs or mutates host tooling.
+``hardware`` keeps the setup-policy/manual-driver contract used by release
+qualification. ``flash`` is stricter: it only passes when an explicitly chosen
+serial port is objectively visible through the application-owned PlatformIO
+runtime. The qualification is read-only and never installs host tooling.
 """
 from __future__ import annotations
 
 import json
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping
 
-from tools import target_machine_prerequisites
+_APPLICATION_ROOT = Path(__file__).resolve().parent.parent
+if str(_APPLICATION_ROOT) not in sys.path:
+    sys.path.insert(0, str(_APPLICATION_ROOT))
+
+from tools import hardware_preflight, target_machine_prerequisites
 
 SCHEMA = "antechkids.robostudio.target-machine-qualification"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class TargetMachineQualificationError(RuntimeError):
@@ -44,6 +52,7 @@ class TargetMachineQualificationReport:
     automated_checks_passed: bool
     manual_checks_required: bool
     prerequisites: tuple[PrerequisiteResult, ...]
+    flash_preflight: dict[str, object] | None = None
 
 
 def _run_version(command: tuple[str, ...], env: Mapping[str, str] | None) -> tuple[bool, str | None]:
@@ -100,17 +109,36 @@ def _check_item(item: target_machine_prerequisites.TargetMachinePrerequisite, en
     )
 
 
+def _flash_preflight(
+    serial_port: str | None,
+    env: Mapping[str, str] | None,
+) -> tuple[bool, dict[str, object]]:
+    try:
+        report = hardware_preflight.require_serial_port(serial_port, base_env=env)
+    except hardware_preflight.HardwarePreflightError as exc:
+        return False, {
+            "schema": hardware_preflight.SCHEMA,
+            "schema_version": hardware_preflight.SCHEMA_VERSION,
+            "status": "FAIL",
+            "requested_port": (serial_port or "").strip(),
+            "driver_visibility_proven": False,
+            "error": str(exc),
+        }
+    return True, report.to_dict()
+
+
 def qualify_target_machine(
     *,
     scope: target_machine_prerequisites.RequirementScope | str = target_machine_prerequisites.RequirementScope.COMPILE,
     env: Mapping[str, str] | None = None,
+    serial_port: str | None = None,
 ) -> TargetMachineQualificationReport:
-    """Qualify only external prerequisites for the requested usage scope.
+    """Qualify external prerequisites for the requested usage scope.
 
-    ``compile`` has no external runtime/tool prerequisite because Python and
-    PlatformIO are application-owned. ``hardware`` records the ESP32 USB/UART
-    driver as a manual check; the driver is intentionally not guessed because
-    USB bridge hardware differs between boards.
+    ``compile`` has no external runtime/tool prerequisite. ``hardware`` records
+    the USB/UART driver as a manual policy check. ``flash`` additionally proves
+    that the explicitly selected serial port is visible through packaged
+    PlatformIO; absence of a port or driver is therefore an automated failure.
     """
     target_machine_prerequisites.validate_contract()
     scope = target_machine_prerequisites.RequirementScope(scope)
@@ -118,12 +146,17 @@ def qualify_target_machine(
     results = tuple(_check_item(item, env) for item in items)
     automated = all(item.available for item in results if item.validation != "manual")
     manual_required = any(item.validation == "manual" for item in results)
+    flash_evidence: dict[str, object] | None = None
+    if scope is target_machine_prerequisites.RequirementScope.FLASH:
+        port_ready, flash_evidence = _flash_preflight(serial_port, env)
+        automated = automated and port_ready
     return TargetMachineQualificationReport(
         scope=scope.value,
         passed=automated,
         automated_checks_passed=automated,
         manual_checks_required=manual_required,
         prerequisites=results,
+        flash_preflight=flash_evidence,
     )
 
 
@@ -131,11 +164,14 @@ def require_target_machine(
     *,
     scope: target_machine_prerequisites.RequirementScope | str = target_machine_prerequisites.RequirementScope.COMPILE,
     env: Mapping[str, str] | None = None,
+    serial_port: str | None = None,
 ) -> TargetMachineQualificationReport:
-    """Run qualification and raise with actionable external-prerequisite diagnostics."""
-    report = qualify_target_machine(scope=scope, env=env)
+    """Run qualification and raise with actionable prerequisite diagnostics."""
+    report = qualify_target_machine(scope=scope, env=env, serial_port=serial_port)
     if not report.passed:
         missing = [item.name for item in report.prerequisites if item.validation in {"missing", "command-failed"}]
+        if report.flash_preflight and report.flash_preflight.get("status") == "FAIL":
+            missing.append(str(report.flash_preflight.get("error", "USB serial port is not ready")))
         detail = ", ".join(missing) if missing else "unknown prerequisite failure"
         raise TargetMachineQualificationError(
             f"Target machine is not qualified for {report.scope}: {detail}"
@@ -171,28 +207,26 @@ def to_dict(report: TargetMachineQualificationReport) -> dict[str, object]:
             }
             for item in report.prerequisites
         ],
+        "flash_preflight": report.flash_preflight,
     }
 
 
 def write_report(report: TargetMachineQualificationReport, path) -> None:
     """Write machine-readable target-machine qualification evidence."""
-    from pathlib import Path
-
     destination = Path(path).expanduser().resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(to_dict(report), indent=2) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Qualify target-machine prerequisites for RoboStudio")
+    parser = __import__("argparse").ArgumentParser(description="Qualify target-machine prerequisites for RoboStudio")
     parser.add_argument("--scope", choices=[scope.value for scope in target_machine_prerequisites.RequirementScope], default="compile")
+    parser.add_argument("--serial-port", type=str)
     parser.add_argument("--report", type=str)
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args(argv)
 
-    report = qualify_target_machine(scope=args.scope)
+    report = qualify_target_machine(scope=args.scope, serial_port=args.serial_port)
     if args.report:
         write_report(report, args.report)
     if args.as_json:
@@ -206,6 +240,11 @@ def main(argv: list[str] | None = None) -> int:
             if item.version_output:
                 status = f"{status}: {item.version_output}"
             print(f"{item.name}: {status}")
+        if report.flash_preflight is not None:
+            status = report.flash_preflight.get("status", "FAIL")
+            print(f"USB flash preflight: {status}")
+            if report.flash_preflight.get("error"):
+                print(report.flash_preflight["error"])
     return 0 if report.passed else 1
 
 

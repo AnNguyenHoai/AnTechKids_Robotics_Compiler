@@ -5,6 +5,11 @@ the release artifact and must never be prerequisites installed on the target
 machine. The only external hardware prerequisite is the board-specific USB/UART
 driver when Windows does not already provide it.
 
+B2.4 distinguishes a descriptive ``hardware`` scope from the stricter ``flash``
+scope. Flash readiness additionally requires objective serial-port visibility
+through the application-owned PlatformIO runtime; it must never be inferred
+from host PATH or from a hard-coded COM port.
+
 This module is declarative and side-effect free.
 """
 from __future__ import annotations
@@ -13,7 +18,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 SCHEMA = "antechkids.robostudio.target-machine-prerequisites"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 SUPPORTED_HOST_OS = "Windows 10/11 x64"
 PATH_POLICY = (
     "RoboStudio compile/deploy must not require host Python or PlatformIO on PATH; "
@@ -34,6 +39,7 @@ class RequirementScope(str, Enum):
 
     COMPILE = "compile"
     HARDWARE = "hardware"
+    FLASH = "flash"
 
 
 @dataclass(frozen=True)
@@ -58,12 +64,13 @@ PREREQUISITES: tuple[TargetMachinePrerequisite, ...] = (
     TargetMachinePrerequisite(
         name="ESP32/USB driver",
         kind=PrerequisiteKind.DRIVER,
-        required_for=(RequirementScope.HARDWARE,),
+        required_for=(RequirementScope.HARDWARE, RequirementScope.FLASH),
         command=(),
         version_policy="vendor-supported driver for the selected ESP32 USB/UART bridge",
         install_note=(
             "Install the USB/UART driver required by the connected ESP32 board only "
-            "when Windows does not already provide a compatible driver."
+            "when Windows does not already provide a compatible driver. Flash readiness "
+            "is proven by application-owned PlatformIO serial enumeration."
         ),
         install_command="Install the driver supplied by the ESP32 board USB/UART bridge vendor.",
         path_required=False,
@@ -98,7 +105,7 @@ def prerequisites() -> tuple[TargetMachinePrerequisite, ...]:
 
 
 def for_scope(scope: RequirementScope | str) -> tuple[TargetMachinePrerequisite, ...]:
-    """Return external prerequisites required for a compile or hardware scope."""
+    """Return external prerequisites required for the requested usage scope."""
     scope = RequirementScope(scope)
     return tuple(item for item in PREREQUISITES if scope in item.required_for)
 
@@ -141,6 +148,10 @@ def to_dict() -> dict[str, object]:
         "release_payload_policy": (
             "Portable Python and PlatformIO are bundled in the production ZIP. "
             "The target machine must not install them for RoboStudio compile/deploy."
+        ),
+        "flash_readiness_policy": (
+            "USB flash requires an explicit serial port that is visible through the "
+            "application-owned PlatformIO runtime; no default COM port is permitted."
         ),
         "required_bundled_components": list(REQUIRED_BUNDLED_COMPONENTS),
         "prerequisites": [

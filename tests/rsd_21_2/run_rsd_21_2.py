@@ -24,7 +24,7 @@ def main() -> int:
     names = {item.name for item in items}
 
     check("prerequisite schema is stable", target_machine_prerequisites.SCHEMA == "antechkids.robostudio.target-machine-prerequisites")
-    check("prerequisite schema version is artifact-closed", target_machine_prerequisites.SCHEMA_VERSION == 3)
+    check("prerequisite schema version includes B2.4 flash scope", target_machine_prerequisites.SCHEMA_VERSION == 4)
     check("supported host OS policy is declared", target_machine_prerequisites.SUPPORTED_HOST_OS == "Windows 10/11 x64")
     check("PATH policy rejects host Python lookup", "must not require host Python" in target_machine_prerequisites.PATH_POLICY)
     check("Python is not a target prerequisite", "Python" not in names)
@@ -34,7 +34,11 @@ def main() -> int:
     check("compile has no external prerequisite", target_machine_prerequisites.for_scope("compile") == ())
     hardware = target_machine_prerequisites.for_scope("hardware")
     check("hardware scope only requires external driver", {item.name for item in hardware} == {"ESP32/USB driver"})
+    flash = target_machine_prerequisites.for_scope("flash")
+    check("flash scope only requires external driver policy", {item.name for item in flash} == {"ESP32/USB driver"})
+    check("flash scope is declared", target_machine_prerequisites.RequirementScope.FLASH.value == "flash")
     check("driver does not require PATH", hardware[0].path_required is False)
+    check("flash driver does not require PATH", flash[0].path_required is False)
     check("portable Python is mandatory release payload", "Portable Python runtime" in target_machine_prerequisites.REQUIRED_BUNDLED_COMPONENTS)
     check("PlatformIO is mandatory release payload", "PlatformIO Core/runtime" in target_machine_prerequisites.REQUIRED_BUNDLED_COMPONENTS)
     check("global Python is forbidden as host prerequisite", "Global Python installation" in target_machine_prerequisites.FORBIDDEN_HOST_PREREQUISITES)
@@ -44,11 +48,14 @@ def main() -> int:
     payload = target_machine_prerequisites.to_dict()
     check("machine-readable contract is JSON serializable", bool(json.dumps(payload)))
     check("host model is artifact closed", payload["host_model"] == "artifact-closed-copy-and-run")
-    check("contract schema version is serialized", payload["schema_version"] == 3)
+    check("contract schema version is serialized", payload["schema_version"] == 4)
     check("supported host OS is serialized", payload["supported_host_os"] == "Windows 10/11 x64")
     check("release payload policy requires bundled Python", "Portable Python" in payload["release_payload_policy"])
     check("release payload policy requires bundled PlatformIO", "PlatformIO" in payload["release_payload_policy"])
     check("compile target prerequisites remain empty", not [item for item in payload["prerequisites"] if "compile" in item["required_for"]])
+    driver_payload = next(item for item in payload["prerequisites"] if item["name"] == "ESP32/USB driver")
+    check("serialized driver applies to hardware scope", "hardware" in driver_payload["required_for"])
+    check("serialized driver applies to flash scope", "flash" in driver_payload["required_for"])
 
     print("RSD-21.2 target-machine prerequisite checks: PASS")
     return 0

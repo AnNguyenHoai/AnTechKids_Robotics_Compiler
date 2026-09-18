@@ -16,13 +16,32 @@ if __package__ in (None, ""):
 from tools import distribution_package, production_platformio_closure
 
 PRODUCTION_SCHEMA = "antechkids.robostudio.production-distribution"
-PRODUCTION_SCHEMA_VERSION = 4
+PRODUCTION_SCHEMA_VERSION = 5
 DEFAULT_VERSION_FILE = "VERSION"
 LAUNCHER_NAME = "RoboStudio.cmd"
 COMPILER_ROOT_NAME = "compiler"
 COMPILER_ENTRY_NAME = "main.py"
 FRONTEND_ROOT_NAME = "frontend"
 CONTRACT_ENTRY_NAME = "robostudio_bridge.py"
+
+# B2.4 runtime allow-list. These are application runtime modules, not the
+# repository's release builders/test helpers. ``deploy_robot.py`` bootstraps the
+# artifact root onto sys.path, so the copied directory remains a relocatable
+# namespace package when invoked by bundled Python.
+DEPLOYMENT_RUNTIME_TOOL_FILES: tuple[str, ...] = (
+    "bootstrap_config.py",
+    "build_isolation.py",
+    "dependency_closure.py",
+    "deploy_robot.py",
+    "deployment_contract.py",
+    "deployment_runtime.py",
+    "firmware_workspace.py",
+    "hardware_preflight.py",
+    "runtime_paths.py",
+    "runtime_resources.py",
+    "target_machine_prerequisites.py",
+    "target_machine_qualification.py",
+)
 
 
 class ProductionDistributionError(RuntimeError):
@@ -136,6 +155,16 @@ def _validate_firmware(firmware: Path) -> None:
         raise ProductionDistributionError("Firmware project contains forbidden development payload")
 
 
+def _validate_deployment_tool_sources() -> Path:
+    tools_root = repository_root() / "tools"
+    missing = [name for name in DEPLOYMENT_RUNTIME_TOOL_FILES if not (tools_root / name).is_file()]
+    if missing:
+        raise ProductionDistributionError(
+            "Production deployment runtime tool source is missing: " + ", ".join(missing)
+        )
+    return tools_root
+
+
 def validate_inputs(inputs: ProductionDistributionInputs, output: Path | None = None) -> str:
     executable = _require_file(inputs.executable, "RoboStudio executable")
     resources = _require_directory(inputs.runtime_resources, "application resources")
@@ -145,6 +174,7 @@ def validate_inputs(inputs: ProductionDistributionInputs, output: Path | None = 
     firmware = _require_directory(inputs.firmware_root or _default_firmware_root(), "application-owned firmware project")
     runtime_bin = _require_directory(inputs.runtime_bin, "application-owned portable Python")
     runtime_platformio = _require_directory(inputs.runtime_platformio, "application-owned PlatformIO runtime")
+    _validate_deployment_tool_sources()
 
     if not (compiler / COMPILER_ENTRY_NAME).is_file() or not (compiler / "compiler").is_dir():
         raise ProductionDistributionError("Invalid application-owned compiler: must contain main.py and compiler/")
@@ -213,6 +243,15 @@ def _stage_runtime(runtime_bin: Path, runtime_platformio: Path, stage: Path) -> 
     return bin_destination, platformio_destination
 
 
+def _stage_deployment_runtime_tools(stage: Path) -> Path:
+    source = _validate_deployment_tool_sources()
+    destination = stage / "tools"
+    destination.mkdir(parents=True, exist_ok=True)
+    for name in DEPLOYMENT_RUNTIME_TOOL_FILES:
+        shutil.copy2(source / name, destination / name)
+    return destination
+
+
 def build_production_distribution(inputs: ProductionDistributionInputs, output: Path) -> ProductionDistributionResult:
     output = _resolve_root(output)
     executable = _resolve_root(inputs.executable)
@@ -229,6 +268,7 @@ def build_production_distribution(inputs: ProductionDistributionInputs, output: 
         staged_executable = _stage_application(executable, version_file, stage)
         compiler_stage = _stage_compiler(compiler_root, frontend_root, stage)
         _stage_runtime(inputs.runtime_bin, inputs.runtime_platformio, stage)
+        tools_stage = _stage_deployment_runtime_tools(stage)
         try:
             manifest = distribution_package.assemble_distribution(
                 distribution_package.DistributionInputs(
@@ -241,6 +281,7 @@ def build_production_distribution(inputs: ProductionDistributionInputs, output: 
                     firmware_root=firmware_root,
                     runtime_bin=stage / "runtime" / "bin",
                     runtime_platformio=stage / "runtime" / "platformio",
+                    deployment_tools_root=tools_stage,
                 ),
                 output,
             )
@@ -270,6 +311,7 @@ def main() -> int:
     print(f"Distribution: {result.distribution_root}")
     print(f"Manifest: {result.manifest}")
     print(f"Firmware: {result.distribution_root / 'firmware' / 'robot-platform'}")
+    print(f"Deployment tools: {result.distribution_root / 'tools'}")
     return 0
 
 

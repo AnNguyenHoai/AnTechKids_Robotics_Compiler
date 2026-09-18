@@ -30,6 +30,7 @@ class DistributionInputs:
     compiler_root: Path | None = None
     frontend_root: Path | None = None
     firmware_root: Path | None = None
+    deployment_tools_root: Path | None = None
 
 
 def _copy_tree(source: Path, destination: Path, label: str) -> None:
@@ -188,12 +189,15 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
             raise DistributionPackageError("Production artifact assembly requires application resources")
         if inputs.firmware_root is None:
             raise DistributionPackageError("Production artifact assembly requires application-owned firmware project")
+        if inputs.deployment_tools_root is None:
+            raise DistributionPackageError("Production artifact assembly requires application-owned deployment tools")
         _validate_production_runtime(inputs)
         _copy_launcher(inputs.launcher, output)
         _copy_compiler(inputs.compiler_root, inputs.frontend_root, output)
         _copy_tree(Path(inputs.runtime_bin), output / "runtime" / "bin", "portable Python")
         _copy_tree(Path(inputs.runtime_platformio), output / "runtime" / "platformio", "PlatformIO runtime")
         _copy_tree(Path(inputs.runtime_resources), output / "runtime" / "resources", "application resources")
+        _copy_tree(Path(inputs.deployment_tools_root), output / "tools", "deployment runtime tools")
         _normalize_production_resources(output / "runtime" / "resources")
         runtime_resources.write_resource_manifest(output / "runtime" / "resources")
         _copy_firmware(Path(inputs.firmware_root), output / "firmware" / "robot-platform")
@@ -220,6 +224,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
             raise DistributionPackageError(f"Assembled distribution runtime validation failed: {exc}") from exc
 
     packaged_frontend = (output / "compiler" / "frontend").is_dir() if inputs.production_boundary else False
+    packaged_tools = (output / "tools").is_dir() if inputs.production_boundary else False
     manifest = {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
@@ -232,6 +237,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
         "compiler_contract": "compiler/robostudio_bridge.py" if inputs.production_boundary else None,
         "frontend": "compiler/frontend" if packaged_frontend else None,
         "firmware": "firmware/robot-platform" if inputs.production_boundary else None,
+        "deployment_tools": "tools" if packaged_tools else None,
         "files": _file_entries(output),
     }
     manifest_path = output / DISTRIBUTION_MANIFEST
@@ -308,6 +314,8 @@ def validate_distribution_manifest(path: Path) -> dict:
             raise DistributionPackageError("Production RoboSim frontend payload is missing")
         if not manifest.get("firmware") or not (root / str(manifest["firmware"]) / "platformio.ini").is_file():
             raise DistributionPackageError("Production firmware payload is missing")
+        if manifest.get("deployment_tools") != "tools" or not (root / "tools").is_dir():
+            raise DistributionPackageError("Production deployment runtime tools are missing")
         for relative in (
             Path("runtime/bin/python.exe"),
             Path("runtime/platformio/deployment-runtime.json"),
