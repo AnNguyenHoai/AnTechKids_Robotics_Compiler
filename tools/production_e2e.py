@@ -83,6 +83,15 @@ def _run(command: list[str], *, cwd: Path, timeout: float, label: str, env: dict
         return subprocess.run(command, cwd=cwd, env=env, check=True, timeout=timeout, text=True, capture_output=True, shell=False)
     except FileNotFoundError as exc:
         raise ProductionE2EError(f"{label} command is unavailable: {command[0]}") from exc
+    except OSError as exc:
+        winerror = getattr(exc, "winerror", None)
+        if winerror is not None:
+            detail = f"WinError {winerror}"
+        elif exc.errno is not None:
+            detail = f"errno {exc.errno}"
+        else:
+            detail = type(exc).__name__
+        raise ProductionE2EError(f"{label} could not start ({detail})") from exc
     except subprocess.TimeoutExpired as exc:
         raise ProductionE2EError(f"{label} timed out after {timeout:g}s") from exc
     except subprocess.CalledProcessError as exc:
