@@ -19,7 +19,17 @@ def make_inputs(root:Path)->production_release_assembly.ProductionReleaseInputs:
     executable=root/"upstream-build"/"RoboStudio.exe"; executable.parent.mkdir(parents=True); executable.write_bytes(b"production-executable")
     version=root/"VERSION"; version.write_text("7.2.0\n",encoding="utf-8")
 
-    runtime_bin=root/"portable-python"; (runtime_bin/"Lib"/"site-packages"/"platformio").mkdir(parents=True); (runtime_bin/"python.exe").write_bytes(b"portable-python"); (runtime_bin/"Lib"/"site-packages"/"platformio"/"__init__.py").write_text("__version__='fixture'\n",encoding="utf-8")
+    # Model the minimum self-contained Windows Python shape required by B2.2:
+    # launcher + runtime DLL + stdlib bootstrap + bundled PlatformIO package.
+    # The release-assembly contract must never accept a fixture that only works
+    # by borrowing DLLs or stdlib from a host Python installation.
+    runtime_bin=root/"portable-python"
+    (runtime_bin/"Lib"/"encodings").mkdir(parents=True)
+    (runtime_bin/"Lib"/"site-packages"/"platformio").mkdir(parents=True)
+    (runtime_bin/"python.exe").write_bytes(b"portable-python")
+    (runtime_bin/"python310.dll").write_bytes(b"portable-python-runtime")
+    (runtime_bin/"Lib"/"encodings"/"__init__.py").write_text("# fixture stdlib bootstrap\n",encoding="utf-8")
+    (runtime_bin/"Lib"/"site-packages"/"platformio"/"__init__.py").write_text("__version__='fixture'\n",encoding="utf-8")
 
     platformio=root/"platformio-runtime"; platform=(platformio/"platforms"/"espressif32"); platform.mkdir(parents=True)
     (platformio/"packages"/"toolchain-xtensa-esp32").mkdir(parents=True); (platformio/"packages"/"framework-arduinoespressif32").mkdir(parents=True)

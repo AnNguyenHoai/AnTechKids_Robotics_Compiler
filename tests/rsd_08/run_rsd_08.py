@@ -84,16 +84,18 @@ def main() -> int:
             env = distribution_launch.clean_machine_environment(root, hostile)
             host_only = {"PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX", "NODE_PATH", "NPM_CONFIG_PREFIX", "PIOHOME_DIR"}
             check("host-only runtime variables are removed", all(name not in env for name in host_only))
-            check("application home is explicit", env["ROBOSTUDIO_HOME"] == str(root.resolve()))
+            check("application home is explicit", Path(env["ROBOSTUDIO_HOME"]).resolve() == root.resolve())
             check("PlatformIO core is application-owned", Path(env["PLATFORMIO_CORE_DIR"]).resolve() == (root / "runtime" / "platformio").resolve())
             check("PlatformIO packages are application-owned", Path(env["PLATFORMIO_PACKAGES_DIR"]).resolve() == (root / "runtime" / "platformio" / "packages").resolve())
             check("host PATH is closed", env["PATH"] != hostile["PATH"])
             check("dependency closure mode is explicit", env["ROBOSTUDIO_DEPENDENCY_MODE"] == "artifact-closed")
+            check("clean-machine launch disables Python user site", env["PYTHONNOUSERSITE"] == "1")
+            check("clean-machine launch disables Python bytecode writes", env["PYTHONDONTWRITEBYTECODE"] == "1")
 
             external_cwd = Path(temp) / "outside"
             external_cwd.mkdir()
             spec = distribution_launch.build_launch_spec(root, cwd=external_cwd, base_env=hostile)
-            check("launch command uses absolute application executable", spec.command[0] == str((root / "RoboStudio.exe").resolve()))
+            check("launch command uses absolute application executable", Path(spec.command[0]).resolve() == (root / "RoboStudio.exe").resolve())
             check("launch cwd is external to application", spec.cwd == external_cwd.resolve() and not spec.cwd.is_relative_to(root.resolve()))
             check("launch manifest is generated", distribution_launch.write_launch_manifest(root).is_file())
 

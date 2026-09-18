@@ -161,6 +161,8 @@ def build_closed_environment(
     env["PLATFORMIO_DISABLE_PROGRESSBAR"] = "true"
     env["PLATFORMIO_NO_ANSI"] = "true"
     env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONNOUSERSITE"] = "1"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
 
     report = DependencyClosureReport(
         application_root=artifact_root,

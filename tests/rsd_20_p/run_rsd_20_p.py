@@ -50,19 +50,21 @@ def expect_rejected(name: str, fn, expected: str) -> None:
 def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
     """Stage a static PE fixture or a self-contained runnable CPython runtime.
 
-    The runnable fixture must behave like an application-owned Python runtime
-    after relocation. Copy the interpreter's native support files and standard
-    library, not only ``python.exe`` and ``python*.dll``. On Windows create a
-    deterministic interpreter-specific ``pythonXY._pth`` file instead of
-    copying an installation-specific one. This keeps module resolution inside
-    the staged runtime and prevents source-machine paths from leaking into the
-    relocated acceptance fixture.
+    Even the static fixture models the minimum dependency-complete Windows
+    layout required by B2.2: executable, runtime DLL, and stdlib bootstrap.
+    The runnable fixture additionally copies a real application-owned CPython
+    runtime so relocation/clean-machine execution can be exercised.
     """
     runtime_bin = runtime_root / "bin"
     runtime_bin.mkdir(parents=True, exist_ok=True)
     python_name = "python.exe" if os.name == "nt" else "python"
     if not runnable:
         (runtime_bin / python_name).write_bytes(_minimal_pe())
+        if os.name == "nt":
+            (runtime_bin / "python310.dll").write_bytes(_minimal_pe())
+            encodings = runtime_bin / "Lib" / "encodings"
+            encodings.mkdir(parents=True, exist_ok=True)
+            (encodings / "__init__.py").write_text("# fixture stdlib bootstrap\n", encoding="utf-8")
         return
 
     source_root = Path(sys.base_prefix).resolve()

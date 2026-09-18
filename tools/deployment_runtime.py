@@ -30,6 +30,8 @@ PLATFORMIO_WORKSPACE_DIR_ENV = "PLATFORMIO_WORKSPACE_DIR"
 PLATFORMIO_DISABLE_UPGRADE_CHECK_ENV = "PLATFORMIO_DISABLE_UPGRADE_CHECK"
 PLATFORMIO_DISABLE_PROGRESSBAR_ENV = "PLATFORMIO_DISABLE_PROGRESSBAR"
 PLATFORMIO_NO_ANSI_ENV = "PLATFORMIO_NO_ANSI"
+DEPENDENCY_MODE_ENV = "ROBOSTUDIO_DEPENDENCY_MODE"
+DEPENDENCY_MODE_CLOSED = "artifact-closed"
 
 
 class DeploymentRuntimeError(RuntimeError):
@@ -71,6 +73,17 @@ def deployment_runtime_core_dir() -> Path:
     return deployment_runtime_root()
 
 
+def _dependency_closed_mode(base_env: Mapping[str, str] | None = None) -> bool:
+    """Return whether this process belongs to the packaged dependency boundary.
+
+    A portable Python helper launched by frozen RoboStudio is not itself a
+    PyInstaller/frozen process. The explicit dependency-mode marker therefore
+    propagates production closure to nested compiler/PlatformIO/flash children.
+    """
+    environment = os.environ if base_env is None else base_env
+    return is_frozen() or environment.get(DEPENDENCY_MODE_ENV) == DEPENDENCY_MODE_CLOSED
+
+
 def deployment_runtime_environment(
     base_env: Mapping[str, str] | None = None,
     *,
@@ -78,17 +91,17 @@ def deployment_runtime_environment(
 ) -> dict[str, str]:
     """Build the environment for a deployment subprocess.
 
-    Frozen RoboStudio is dependency-closed: executable lookup is limited to
-    application-owned directories plus the minimal Windows system allow-list,
-    and host Python/Node/PlatformIO injection variables are removed. This
-    prevents a packaged deployment from passing only because development tools
-    happen to exist on the machine running RoboStudio.
+    Packaged RoboStudio and its portable-Python descendants are dependency-
+    closed: executable lookup is limited to application-owned directories plus
+    the minimal Windows system allow-list, and host Python/Node/PlatformIO
+    injection variables are removed. This prevents a packaged deployment from
+    passing only because development tools happen to exist on the machine.
 
     Source builds intentionally retain their developer environment. When
     ``project_name`` is supplied, writable build state is still moved to the
     per-project RoboStudio user-data workspace.
     """
-    if is_frozen():
+    if _dependency_closed_mode(base_env):
         try:
             env, _ = dependency_closure.build_closed_environment(application_root(), base_env)
         except dependency_closure.DependencyClosureError as exc:
@@ -126,9 +139,52 @@ def validate_deployment_runtime() -> Path:
     return root
 
 
+def python_command(*args: str) -> list[str]:
+    """Build a Python command that is portable in frozen RoboStudio.
+
+    ``sys.executable`` is the RoboStudio executable in a frozen/PyInstaller
+    build, not a general Python interpreter. Deployment helper scripts must
+    therefore resolve the application-owned interpreter explicitly.
+    """
+    try:
+        return runtime_paths.python_command(*args)
+    except runtime_paths.RuntimePathError as exc:
+        raise DeploymentRuntimeError(f"Packaged Python runtime is unavailable: {exc}") from exc
+
+
 def platformio_command(*args: str) -> list[str]:
     """Build the PlatformIO command through the RoboStudio runtime resolver."""
     return resolve_platformio_command(*args)
+
+
+def _prepare_process_environment(
+    command: Sequence[str],
+    env: Mapping[str, str] | None,
+) -> Mapping[str, str] | None:
+    """Seal production subprocesses at the process-launch boundary.
+
+    Callers are allowed to add application values such as Wi-Fi credentials,
+    but packaged RoboStudio or a portable-Python descendant may not re-open
+    host PATH/PYTHONPATH by passing ``os.environ.copy()`` or by omitting
+    ``env``. The runner therefore applies B2.2 dependency closure immediately
+    before ``Popen`` and validates that the executable belongs to the artifact.
+
+    Source/development runs intentionally preserve their historical behavior.
+    """
+    if not _dependency_closed_mode(env):
+        return dict(env) if env is not None else None
+
+    closed = deployment_runtime_environment(env)
+    try:
+        dependency_closure.validate_artifact_command(
+            list(command),
+            root=application_root(),
+            environment=closed,
+            label="deployment command",
+        )
+    except dependency_closure.DependencyClosureError as exc:
+        raise DeploymentRuntimeError(f"Packaged deployment command rejected: {exc}") from exc
+    return closed
 
 
 def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
@@ -206,6 +262,11 @@ def run_process(
 ) -> ProcessResult:
     """Run a process, stream combined output, and enforce a hard deadline.
 
+    Production launches are sealed here, at the final subprocess boundary.
+    Closure propagates from frozen RoboStudio into portable Python helpers via
+    ``ROBOSTUDIO_DEPENDENCY_MODE=artifact-closed``, so nested PlatformIO/flash
+    processes cannot accidentally regain the host environment.
+
     The child is isolated into a process group so a timeout does not leave a
     compiler/PlatformIO descendant running after RoboStudio reports failure.
     Output is retained even for non-zero exits, allowing callers to surface a
@@ -215,6 +276,8 @@ def run_process(
         raise ValueError("Deployment command must not be empty.")
     if timeout <= 0:
         raise ValueError("Deployment process timeout must be greater than zero.")
+
+    process_env = _prepare_process_environment(command, env)
 
     creationflags = 0
     start_new_session = False
@@ -227,7 +290,7 @@ def run_process(
         process = subprocess.Popen(
             list(command),
             cwd=str(cwd),
-            env=dict(env) if env is not None else None,
+            env=dict(process_env) if process_env is not None else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

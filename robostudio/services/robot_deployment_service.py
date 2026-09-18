@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -19,7 +18,7 @@ from pathlib import Path
 from typing import Callable
 
 from services.robot_discovery_service import RobotDiscoveryClient, RobotInfo
-from tools.deployment_runtime import DeploymentRuntimeError, run_process
+from tools.deployment_runtime import DeploymentRuntimeError, python_command, run_process
 
 ROOT = Path(__file__).resolve().parents[2]
 DeploymentOutputCallback = Callable[[str], None]
@@ -44,16 +43,15 @@ class RobotDeploymentService:
             raise ValueError("Wi-Fi SSID is required.")
         if not ota_password:
             raise ValueError("OTA password is required for first-flash bootstrap.")
-        command = [
-            sys.executable,
-            str(self.root / "tools" / "bootstrap_config.py"),
-            "generate",
-            "--ssid", ssid.strip(),
-            "--password", wifi_password,
-            "--ota-password", ota_password,
-            "--output", str(output),
-        ]
         try:
+            command = python_command(
+                str(self.root / "tools" / "bootstrap_config.py"),
+                "generate",
+                "--ssid", ssid.strip(),
+                "--password", wifi_password,
+                "--ota-password", ota_password,
+                "--output", str(output),
+            )
             completed = run_process(command, cwd=self.root, timeout=300.0)
         except DeploymentRuntimeError as exc:
             raise RuntimeError(str(exc)) from exc
@@ -79,16 +77,15 @@ class RobotDeploymentService:
         except (OSError, json.JSONDecodeError) as exc:
             return DeploymentResult(False, "", f"Invalid bootstrap config: {exc}")
 
-        command = [
-            sys.executable,
-            str(self.root / "tools" / "deploy_robot.py"),
-            "--mode", "bootstrap",
-            "--bootstrap-config", str(config_path),
-        ]
-        if usb_port.strip():
-            command.extend(["--port", usb_port.strip()])
-
         try:
+            command = python_command(
+                str(self.root / "tools" / "deploy_robot.py"),
+                "--mode", "bootstrap",
+                "--bootstrap-config", str(config_path),
+            )
+            if usb_port.strip():
+                command.extend(["--port", usb_port.strip()])
+
             completed = run_process(
                 command,
                 cwd=self.root,
@@ -143,14 +140,13 @@ class RobotDeploymentService:
             env["ROBOT_WIFI_PASSWORD"] = wifi_password
             env["ROBOT_OTA_PASSWORD"] = ota_password
 
-            command = [
-                sys.executable,
+            command = python_command(
                 str(self.root / "tools" / "deploy_robot.py"),
                 "--input", str(source),
                 "--mode", "ota",
                 "--robot", robot.ip,
                 "--ssid", wifi_ssid.strip(),
-            ]
+            )
             try:
                 completed = run_process(
                     command,
@@ -184,7 +180,7 @@ class RobotDeploymentService:
             if not verified.ready:
                 return DeploymentResult(False, output, "Robot rebooted but is not ready.", verified)
             return DeploymentResult(True, output, verified_robot=verified)
-        except OSError as exc:
+        except (OSError, DeploymentRuntimeError) as exc:
             return DeploymentResult(False, "", f"Unable to start deployment: {exc}")
         finally:
             try:

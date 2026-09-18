@@ -34,8 +34,11 @@ def main() -> int:
         (resources / "target_profiles.json").write_text('{"targets": []}\n', encoding="utf-8")
 
         runtime_bin = inputs / "python-runtime"
+        (runtime_bin / "Lib" / "encodings").mkdir(parents=True)
         (runtime_bin / "Lib" / "site-packages" / "platformio").mkdir(parents=True)
         (runtime_bin / "python.exe").write_bytes(b"portable-python")
+        (runtime_bin / "python310.dll").write_bytes(b"portable-python-runtime")
+        (runtime_bin / "Lib" / "encodings" / "__init__.py").write_text("# fixture stdlib bootstrap\n", encoding="utf-8")
         (runtime_bin / "Lib" / "site-packages" / "platformio" / "__init__.py").write_text("__version__='fixture'\n", encoding="utf-8")
         runtime_platformio = inputs / "platformio-runtime"
         (runtime_platformio / "platforms" / "espressif32").mkdir(parents=True)
@@ -133,6 +136,8 @@ def main() -> int:
         check("launcher changes cwd to its own directory", 'pushd "%~dp0"' in text)
         check("launcher propagates application exit code", "exit /b %exit_code%" in text)
         check("bundled Python is present", (distribution / "runtime" / "bin" / "python.exe").is_file())
+        check("bundled Python runtime DLL is present", any((distribution / "runtime" / "bin").glob("python*.dll")))
+        check("bundled Python stdlib bootstrap is present", (distribution / "runtime" / "bin" / "Lib" / "encodings" / "__init__.py").is_file())
         check("bundled PlatformIO is present", (distribution / "runtime" / "platformio" / "platforms").is_dir())
         check("production firmware is present", (distribution / "firmware" / "robot-platform" / "platformio.ini").is_file())
         check("distribution manifest is machine-readable", bool(manifest["files"]))
@@ -145,6 +150,7 @@ def main() -> int:
             packaged_launcher = archive.read("RoboStudio.cmd").decode("utf-8")
         check("release ZIP contains launcher", "RoboStudio.cmd" in names)
         check("release ZIP contains bundled Python", "runtime/bin/python.exe" in names)
+        check("release ZIP contains Python runtime DLL", any(name.startswith("runtime/bin/python") and name.endswith(".dll") for name in names))
         check("release ZIP contains PlatformIO", "runtime/platformio/deployment-runtime.json" in names)
         check("release ZIP contains production firmware", "firmware/robot-platform/platformio.ini" in names)
         check("release ZIP launcher is relocation-safe", "%~dp0RoboStudio.exe" in packaged_launcher)

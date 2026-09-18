@@ -22,54 +22,59 @@ def main() -> int:
     target_machine_prerequisites.validate_contract()
     contract_payload = target_machine_prerequisites.to_dict()
 
+    # Compile qualification must pass even with an empty host PATH: portable
+    # Python and PlatformIO are release payload, not machine prerequisites.
     compile_report = target_machine_qualification.qualify_target_machine(
         scope=target_machine_prerequisites.RequirementScope.COMPILE,
-        env={"PATH": str(Path(sys.executable).parent)},
+        env={"PATH": ""},
     )
     compile_payload = target_machine_qualification.to_dict(compile_report)
-    python_result = next(item for item in compile_report.prerequisites if item.name == "Python")
 
     check("setup contract schema is stable", target_machine_prerequisites.SCHEMA == "antechkids.robostudio.target-machine-prerequisites")
-    check("setup contract schema version is stable", target_machine_prerequisites.SCHEMA_VERSION == 2)
+    check("setup contract schema version is artifact-closed", target_machine_prerequisites.SCHEMA_VERSION == 3)
     check("supported host OS policy is declared", target_machine_prerequisites.SUPPORTED_HOST_OS == "Windows 10/11 x64")
-    check("PATH policy is declared", "PATH" in target_machine_prerequisites.PATH_POLICY)
+    check("PATH policy rejects host runtime dependency", "must not require host Python" in target_machine_prerequisites.PATH_POLICY)
     check("setup contract is JSON serializable", bool(json.dumps(contract_payload)))
-    check("Python install policy is declared", any(item["name"] == "Python" and item["install_command"] for item in contract_payload["prerequisites"]))
-    check("PlatformIO install policy is declared", any(item["name"] == "PlatformIO Core" and item["install_command"] for item in contract_payload["prerequisites"]))
+    check("portable Python is required bundled payload", "Portable Python runtime" in contract_payload["required_bundled_components"])
+    check("PlatformIO is required bundled payload", "PlatformIO Core/runtime" in contract_payload["required_bundled_components"])
     check("driver does not require PATH", next(item for item in contract_payload["prerequisites"] if item["name"] == "ESP32/USB driver")["path_required"] is False)
-    check("forbidden bundled prerequisites remain explicit", "Python installation" in contract_payload["forbidden_bundled_prerequisites"])
+    check("global Python host prerequisite is forbidden", "Global Python installation" in contract_payload["forbidden_host_prerequisites"])
+    check("global PlatformIO host prerequisite is forbidden", "Global PlatformIO installation" in contract_payload["forbidden_host_prerequisites"])
 
     check("qualification schema is stable", target_machine_qualification.SCHEMA == "antechkids.robostudio.target-machine-qualification")
-    check("qualification schema version is stable", target_machine_qualification.SCHEMA_VERSION == 1)
+    check("qualification schema version is artifact-closed", target_machine_qualification.SCHEMA_VERSION == 2)
     check("qualification references setup contract", compile_payload["setup_contract"]["schema"] == target_machine_prerequisites.SCHEMA)
     check("qualification records setup contract version", compile_payload["setup_contract"]["schema_version"] == target_machine_prerequisites.SCHEMA_VERSION)
     check("qualification records supported host OS", compile_payload["setup_contract"]["supported_host_os"] == target_machine_prerequisites.SUPPORTED_HOST_OS)
+    check("qualification records required bundled runtime", "Portable Python runtime" in compile_payload["setup_contract"]["required_bundled_components"])
     check("compile scope is recorded", compile_report.scope == "compile")
-    check("Python is checked for compile scope", python_result.required)
-    check("Python is available for test environment", python_result.available)
-    check("Python validation is command based", python_result.validation == "command-pass")
-    check("compile qualification passes", compile_report.passed)
+    check("compile requires no external prerequisites", compile_report.prerequisites == ())
+    check("compile qualification passes with empty host PATH", compile_report.passed)
+    check("compile automated checks pass", compile_report.automated_checks_passed)
     check("compile qualification is JSON serializable", bool(json.dumps(compile_payload)))
     check("manual hardware check is not required for compile scope", compile_report.manual_checks_required is False)
 
-    missing_report = target_machine_qualification.qualify_target_machine(
+    # Host Python presence or absence must not influence compile qualification.
+    python_host_report = target_machine_qualification.qualify_target_machine(
         scope="compile",
+        env={"PATH": str(Path(sys.executable).parent)},
+    )
+    check("host Python does not change compile prerequisite set", python_host_report.prerequisites == ())
+    check("host Python does not change compile qualification", python_host_report.passed is True)
+
+    hardware_report = target_machine_qualification.qualify_target_machine(
+        scope="hardware",
         env={"PATH": ""},
     )
-    missing_payload = target_machine_qualification.to_dict(missing_report)
-    missing_python = next(item for item in missing_report.prerequisites if item.name == "Python")
-    check("missing target prerequisite is detected", missing_python.validation == "missing")
-    check("missing target prerequisite fails qualification", missing_report.passed is False)
-    check("failed qualification remains machine-readable", missing_payload["passed"] is False)
-
     hardware_items = target_machine_prerequisites.for_scope("hardware")
     hardware_names = {item.name for item in hardware_items}
-    hardware_python = next(item for item in hardware_items if item.name == "Python")
-    check("hardware scope includes Python", "Python" in hardware_names)
-    check("hardware scope requires Python", target_machine_prerequisites.RequirementScope.HARDWARE in hardware_python.required_for)
-    check("hardware scope includes PlatformIO", "PlatformIO Core" in hardware_names)
+    check("hardware scope excludes host Python", "Python" not in hardware_names)
+    check("hardware scope excludes host PlatformIO", "PlatformIO Core" not in hardware_names)
     check("hardware scope includes driver", "ESP32/USB driver" in hardware_names)
     check("hardware driver is explicitly manual", next(i for i in hardware_items if i.name == "ESP32/USB driver").kind is target_machine_prerequisites.PrerequisiteKind.DRIVER)
+    check("hardware automated qualification passes without host tools", hardware_report.passed is True)
+    check("hardware qualification records manual driver check", hardware_report.manual_checks_required is True)
+    check("hardware prerequisite result is manual", hardware_report.prerequisites[0].validation == "manual")
 
     print("RSD-21.4 target-machine-aware qualification checks: PASS")
     return 0

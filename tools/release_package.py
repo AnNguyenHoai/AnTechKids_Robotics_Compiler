@@ -85,7 +85,14 @@ def build_release(distribution_root: Path, artifact: Path) -> ReleaseArtifact:
     application_version = runtime_integrity.application_version(root)
     if application_version == "unknown": raise ReleasePackageError("Release distribution does not declare an application VERSION")
     try:
-        compatibility = release_compatibility.build_compatibility(application_version, runtime_integrity_schema_version=runtime_integrity.SCHEMA_VERSION, distribution_schema_version=distribution_package.SCHEMA_VERSION, release_schema_version=RELEASE_SCHEMA_VERSION, portable_python_required=not production, bundled_platformio_required=not production)
+        compatibility = release_compatibility.build_compatibility(
+            application_version,
+            runtime_integrity_schema_version=runtime_integrity.SCHEMA_VERSION,
+            distribution_schema_version=distribution_package.SCHEMA_VERSION,
+            release_schema_version=RELEASE_SCHEMA_VERSION,
+            portable_python_required=True,
+            bundled_platformio_required=True,
+        )
     except release_compatibility.ReleaseCompatibilityError as exc: raise ReleasePackageError(f"Invalid release compatibility contract: {exc}") from exc
     manifest = {"schema": RELEASE_SCHEMA, "schema_version": RELEASE_SCHEMA_VERSION, "artifact": artifact.name, "portable": True, "artifact_model": distribution_manifest.get("artifact_model"), "production_boundary": production, "application": distribution_manifest.get("application"), "application_version": application_version, "distribution_manifest": distribution_package.DISTRIBUTION_MANIFEST, "compatibility": compatibility, "file_count": len(entries), "files": [{"path": relative, "size": source.stat().st_size, "sha256": _sha256(source)} for source, relative in entries], "artifact_sha256": _sha256(artifact)}
     manifest_path = artifact.with_name(RELEASE_MANIFEST)
@@ -106,7 +113,8 @@ def validate_release_artifact(artifact: Path, manifest: Path | None = None) -> d
         if data.get("artifact_model") != distribution_package.CANONICAL_PRODUCTION_ARTIFACT_MODEL: raise ReleasePackageError("Production release has an invalid artifact model")
     try: compatibility = release_compatibility.read_compatibility(data)
     except release_compatibility.ReleaseCompatibilityError as exc: raise ReleasePackageError(f"Invalid release compatibility contract: {exc}") from exc
-    if production and (compatibility.portable_python_required or compatibility.bundled_platformio_required): raise ReleasePackageError("Production release incorrectly requires bundled host tools")
+    if not compatibility.portable_python_required or not compatibility.bundled_platformio_required:
+        raise ReleasePackageError("Portable release must require bundled Python and bundled PlatformIO")
     if data.get("application_version") != compatibility.application_version: raise ReleasePackageError("Release manifest application version disagrees with compatibility contract")
     if compatibility.runtime_integrity_schema_version != runtime_integrity.SCHEMA_VERSION: raise ReleasePackageError(f"Release is incompatible with runtime integrity schema {runtime_integrity.SCHEMA_VERSION}")
     if compatibility.distribution_schema_version != distribution_package.SCHEMA_VERSION: raise ReleasePackageError(f"Release is incompatible with distribution schema {distribution_package.SCHEMA_VERSION}")
