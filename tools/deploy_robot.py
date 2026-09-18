@@ -107,10 +107,21 @@ def preflight_robot(host:str)->dict:
  if health.get("status")!="ok" or health.get("ready") is not True or health.get("network_ready") is not True or health.get("http_ota") is not True:raise RuntimeError(f"Robot preflight failed for {host}: {health}")
  return health
 
+def compiler_bridge()->Path:
+ packaged=runtime_paths.application_root()/"compiler"/"robostudio_bridge.py"
+ if packaged.is_file():return packaged
+ source=ROOT/"robot-compiler"/"compiler"/"robostudio_bridge.py"
+ if source.is_file():return source
+ raise RuntimeError(f"Application-owned compiler contract is missing: {packaged}")
+
 def compile_program(source:Path,build_dir:Path,timeout:float)->Path:
- build_dir.mkdir(parents=True,exist_ok=True);rewritten=build_dir/f"{source.stem}.rewrite.py";header=build_dir/"program.h";report=build_dir/"compile_report.json"
- python=runtime_paths.python_command()
- run([*python,str(ROOT/"tools"/"rewrite.py"),"--input",str(source),"--output",str(rewritten)],cwd=build_dir,timeout=timeout);run([*python,str(ROOT/"tools"/"compile.py"),"--input",str(rewritten),"--output",str(header),"--report",str(report)],cwd=build_dir,timeout=timeout);return header
+ """Compile through the same relocatable application contract used by RoboStudio."""
+ build_dir.mkdir(parents=True,exist_ok=True);header=build_dir/"program.h";report=build_dir/"compile_report.json";request=build_dir/"compile_request.json"
+ request.write_text(json.dumps({"source":str(source.resolve()),"output":str(header),"report":str(report),"source_kind":"robosim-python"}),encoding="utf-8")
+ python=runtime_paths.python_command();bridge=compiler_bridge()
+ run([*python,str(bridge),"--request",str(request)],cwd=build_dir,timeout=timeout)
+ if not header.is_file():raise RuntimeError(f"Compiler contract completed without output: {header}")
+ return header
 
 def main()->int:
  p=argparse.ArgumentParser(description="Deploy a student RoboSim program or bootstrap a new robot");p.add_argument("--input");p.add_argument("--mode",choices=("build","usb","bootstrap","ota"),default="build");p.add_argument("--port");p.add_argument("--robot");p.add_argument("--ssid");p.add_argument("--wifi-password",default=None);p.add_argument("--ota-password",default=None);p.add_argument("--bootstrap-config");p.add_argument("--process-timeout",type=float,default=DEFAULT_PROCESS_TIMEOUT_SECONDS);p.add_argument("--verify-timeout",type=float,default=30.0);a=p.parse_args()
