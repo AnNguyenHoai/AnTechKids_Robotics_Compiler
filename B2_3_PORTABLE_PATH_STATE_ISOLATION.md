@@ -12,7 +12,8 @@ B2.3 is stacked on B2.2 dependency closure. B2.2 answers **where executable/runt
 <release-root>/                         READ-ONLY / IMMUTABLE
 ├── RoboStudio.exe
 ├── compiler/
-├── firmware/
+├── config/                             packaged defaults only
+├── firmware/                           firmware / Arduino templates only
 └── runtime/
     ├── bin/                            bundled Python
     └── platformio/
@@ -20,6 +21,13 @@ B2.3 is stacked on B2.2 dependency closure. B2.2 answers **where executable/runt
         └── packages/                   bundled immutable toolchains/frameworks
 
 <ROBOSTUDIO_STATE_ROOT>/                WRITABLE / EXTERNAL
+├── hardware.json                       user hardware selection
+├── config.json                         user RoboStudio/firmware selection
+├── generated/
+│   └── generated_device_config.h       user hardware feature macros
+├── bootstrap/
+│   ├── robot_bootstrap.json
+│   └── arduino-sketch/                 writable first-flash sketch copy
 ├── platformio/
 │   ├── core/                           PlatformIO service/core state
 │   ├── cache/
@@ -27,13 +35,15 @@ B2.3 is stacked on B2.2 dependency closure. B2.2 answers **where executable/runt
 │   ├── workspace/
 │   ├── lib/
 │   └── shared/
-└── build/<project>/platformio/
-    ├── build/
-    ├── libdeps/
-    ├── cache/
-    ├── build-cache/
-    ├── shared/
-    └── firmware/                       copied writable firmware project
+└── build/
+    ├── compile/robostudio-compile-*/    disposable GUI compiler state
+    └── <project>/platformio/
+        ├── build/
+        ├── libdeps/
+        ├── cache/
+        ├── build-cache/
+        ├── shared/
+        └── firmware/                    copied writable firmware project
 ```
 
 ## State-root contract
@@ -67,6 +77,19 @@ Production sets:
 
 Host-supplied mutable PlatformIO paths are discarded unless they are already below the validated RoboStudio state root. This lets a project-specific workspace survive the final B2.2 subprocess sealing step without allowing arbitrary host state back into production.
 
+## RoboStudio settings and generated files
+
+Packaged configuration under `<release-root>/config` is a read-only default. User changes are stored externally:
+
+- `HardwareConfigService` reads user `hardware.json` first and falls back to the packaged default;
+- `FirmwareService` stores the selected firmware path in external `config.json` and keeps application-owned firmware references relative when possible;
+- `HardwareMacroService` writes `generated/generated_device_config.h` under external state;
+- deployment overlays that generated device header only into the isolated firmware copy;
+- `BootstrapConfigService` copies the packaged Arduino sketch to external state before writing bootstrap JSON or the generated bootstrap header;
+- GUI compilation uses a disposable external workspace and a B2.2-sealed environment instead of using the release directory as CWD.
+
+The packaged firmware/header files remain valid defaults for a first run. User-generated state never overwrites those defaults.
+
 ## Fail-closed behavior
 
 Packaged startup/build fails with an actionable error when:
@@ -77,13 +100,14 @@ Packaged startup/build fails with an actionable error when:
 - the state root cannot be created;
 - the state root is not a directory;
 - a write probe cannot be created/deleted;
-- a build workspace cannot be created.
+- a build workspace cannot be created;
+- a packaged generated hardware/bootstrap output is redirected back into the release.
 
 Inspection-only bootstrap (`apply=False`) resolves and validates path boundaries but does not create state.
 
 ## Relocation requirements
 
-The B2.3 gate verifies:
+The B2.3 gates verify:
 
 1. release roots containing spaces and Vietnamese/Unicode characters are resolved without CWD dependence;
 2. an unrelated CWD does not alter application/state resolution;
@@ -92,8 +116,12 @@ The B2.3 gate verifies:
 5. hostile host PlatformIO state overrides cannot redirect production;
 6. project-specific external state survives the final subprocess closure;
 7. the firmware template is copied to external state before mutation;
-8. the release tree is unchanged after workspace preparation;
-9. invalid/unwritable state roots fail fast.
+8. hardware/firmware settings persist outside the release;
+9. generated hardware macros are external and are overlaid only into the staged firmware copy;
+10. bootstrap JSON/header and the editable Arduino sketch live in external state;
+11. GUI compile scratch files and CWD are external and its environment remains artifact-closed;
+12. the release tree is byte-for-byte unchanged after state generation/staging;
+13. invalid/unwritable/release-local state roots fail fast.
 
 ## PlatformIO Unicode note
 
@@ -105,7 +133,8 @@ RoboStudio's path/state layer is Unicode-safe and the B2.3 tests exercise Unicod
 python tests\b2_2\run_b2_2.py
 python tests\b2_2\run_portable_child_closure.py
 python tests\b2_3\run_b2_3.py
+python tests\b2_3\run_settings_isolation.py
 python run_all_tests.py
 ```
 
-The GitHub Actions workflow exposes B2.3 as a dedicated gate before the full repository regression suite.
+The GitHub Actions workflow exposes B2.2 and B2.3 as dedicated Windows gates before the full repository regression suite.
