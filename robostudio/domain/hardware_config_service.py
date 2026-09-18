@@ -5,10 +5,11 @@ mutable state and therefore live under RoboStudio's external user-data root.
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
-from tools.runtime_paths import application_root, user_data_root
+from tools import runtime_paths
 
 from .hardware_config import HardwareConfig
 
@@ -24,16 +25,25 @@ class HardwareConfigService:
             self.config_path = Path(config_path)
             return
 
-        self.user_config_path = user_data_root() / "hardware.json"
+        self.user_config_path = runtime_paths.user_data_root() / "hardware.json"
         self.config_path = self.user_config_path
 
-        # Source mode keeps the historical robostudio/config default. A frozen
-        # distribution may stage the same read-only default at <app>/config.
-        source_default = Path(__file__).resolve().parent.parent / "config" / "hardware.json"
-        application_default = application_root() / "config" / "hardware.json"
-        self.package_config_path = (
-            application_default if application_default.is_file() else source_default
+        application_default = (
+            runtime_paths.application_root() / "config" / "hardware.json"
         )
+        packaged = (
+            runtime_paths.is_frozen()
+            or os.environ.get(runtime_paths.RUNTIME_MODE_ENV) == "packaged"
+            or os.environ.get(runtime_paths.DEPENDENCY_MODE_ENV) == "artifact-closed"
+        )
+        if packaged:
+            # Never fall back to a checkout-relative file in production. If the
+            # packaged default is absent, load() creates a safe user default.
+            self.package_config_path = application_default
+        else:
+            self.package_config_path = (
+                Path(__file__).resolve().parent.parent / "config" / "hardware.json"
+            )
 
     def load(self) -> HardwareConfig:
         """Load user state first, then immutable packaged defaults."""
