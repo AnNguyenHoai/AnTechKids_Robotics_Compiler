@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+import shutil
 import tempfile
 import zipfile
 from pathlib import Path
@@ -35,7 +36,7 @@ def _make_runtime(root: Path) -> tuple[Path, Path]:
     """Create a complete static application-owned PlatformIO closure."""
     runtime_bin = root / "runtime-bin"
     runtime_bin.mkdir(parents=True)
-    (runtime_bin / "python.exe").write_bytes(b"static-python-runtime-fixture")
+    shutil.copy2(sys.executable, runtime_bin / "python.exe")
     platformio_site = runtime_bin / "Lib" / "site-packages" / "platformio"
     platformio_site.mkdir(parents=True)
     (platformio_site / "__init__.py").write_text("__version__ = 'fixture'\n", encoding="utf-8")
@@ -179,8 +180,8 @@ def main() -> int:
             artifact=artifact,
             source=source,
             launch=True,
-            launch_command=[sys.executable, "{app}", "--self-test"],
-            compile_command=[sys.executable, "{compiler}", "--file", "{source}", "--output", "{output}"],
+            launch_command=["{python}", "{app}", "--self-test"],
+            compile_command=["{python}", "{compiler}", "--file", "{source}", "--output", "{output}"],
         )
         report = result.to_dict()
         compiler_output = Path(report["evidence"]["compiler_output"]).as_posix() if report["evidence"]["compiler_output"] else None
@@ -188,6 +189,27 @@ def main() -> int:
         check("real compiler executes", report["compiler_succeeded"] is True)
         check("compiler output produced", compiler_output == "e2e-output/program.h")
         check("E2E PASS", report["status"] == "PASS")
+
+        # Regression guard: corrupting the packaged Python must make the E2E fail.
+        broken_artifact = base / "release-broken-python.zip"
+        with zipfile.ZipFile(artifact, "r") as source_zip, zipfile.ZipFile(broken_artifact, "w", compression=zipfile.ZIP_DEFLATED) as target_zip:
+            for item in source_zip.infolist():
+                payload = source_zip.read(item)
+                if item.filename == "runtime/bin/python.exe":
+                    payload = b"not-a-python-executable"
+                target_zip.writestr(item, payload)
+        try:
+            production_e2e.evaluate_production_artifact(
+                artifact=broken_artifact,
+                source=source,
+                launch=True,
+                launch_command=["{python}", "{app}", "--self-test"],
+                compile_command=["{python}", "{compiler}", "--file", "{source}", "--output", "{output}"],
+            )
+        except production_e2e.ProductionE2EError:
+            print("PASS: broken bundled Python is rejected")
+        else:
+            raise AssertionError("broken bundled Python must make production E2E fail")
 
     print("RSD-21.7 Real Compiler Integration checks: PASS")
     return 0
