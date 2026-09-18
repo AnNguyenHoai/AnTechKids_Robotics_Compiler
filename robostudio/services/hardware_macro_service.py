@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import Optional
 
-from domain.hardware_config_service import HardwareConfigService
-from domain.hardware_macro_generator import HardwareMacroGenerator
+from ..domain.hardware_config_service import HardwareConfigService
+from ..domain.hardware_macro_generator import HardwareMacroGenerator
 
 
 class HardwareMacroService:
