@@ -56,7 +56,9 @@ def test_bootstrap_propagates_generated_credentials_to_platformio():
     assert "upload" in captured["command"]
     assert "--upload-port" in captured["command"]
     assert "COM4" in captured["command"]
-    assert captured["cwd"] == deploy_robot.PLATFORM
+    assert captured["cwd"] != deploy_robot.PLATFORM
+    assert captured["cwd"].name == "firmware"
+    assert captured["cwd"].parent.name == "bootstrap"
     assert captured["env"]["ROBOT_BOOTSTRAP_CONFIG"] == str(config_path.resolve())
     assert captured["env"]["ROBOT_WIFI_SSID"] == "classroom-wifi"
     assert captured["env"]["ROBOT_WIFI_PASSWORD"] == "wifi-secret"
