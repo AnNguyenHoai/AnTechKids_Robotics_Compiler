@@ -190,7 +190,7 @@ def main() -> int:
             compile_command=["{python}", "{compiler}", "--file", "{source}", "--output", "{output}"],
             environment=env,
         )
-        check("production E2E resolves bundled Python", app_result.evidence["bundled_python"] == "runtime/bin/python.exe")
+        check("production E2E resolves bundled Python", app_result.evidence["bundled_python"] == "runtime/bin/python.exe")\n        check("production E2E does not require target-machine prerequisites", app_result.target_machine_prerequisites is False)
         check("production E2E can use bundled Python", app_result.status == "PASS")
         check("production E2E compiler succeeds", app_result.compiler_succeeded is True)
 
