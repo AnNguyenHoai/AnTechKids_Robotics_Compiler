@@ -73,7 +73,7 @@ function Clear-StalePlatformIOTemp {
 
     if (-not (Test-Path $CacheRoot -PathType Container)) { return }
 
-    Get-ChildItem -Path $CacheRoot -Directory -Filter "pio-*" -ErrorAction SilentlyContinue | ForEach-Object {
+    Get-ChildItem -Path $CacheRoot -Directory -Filter "platformio-*" -ErrorAction SilentlyContinue | ForEach-Object {
         $tmp = Join-Path $_.FullName ".cache\tmp"
         if (Test-Path $tmp -PathType Container) {
             $removed = $false
