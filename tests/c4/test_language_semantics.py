@@ -198,6 +198,62 @@ else:
 """)
         self.assertEqual(hw.led_state[1], 1)
 
+    def test_boolean_or_semantics(self):
+        _, hw = run_source("""
+import rcu
+a = 5
+b = 2
+if a < 2 or b > 1:
+    rcu.Set3CLed(1, 1)
+else:
+    rcu.Set3CLed(1, 0)
+""")
+        self.assertEqual(hw.led_state[1], 1)
+
+    def test_boolean_not_semantics(self):
+        _, hw = run_source("""
+import rcu
+a = 0
+if not a:
+    rcu.Set3CLed(1, 1)
+else:
+    rcu.Set3CLed(1, 0)
+""")
+        self.assertEqual(hw.led_state[1], 1)
+
+    def test_nested_boolean_semantics(self):
+        _, hw = run_source("""
+import rcu
+a = 1
+b = 0
+c = 1
+if (a and not b) or (b and not c):
+    rcu.Set3CLed(1, 1)
+else:
+    rcu.Set3CLed(1, 0)
+""")
+        self.assertEqual(hw.led_state[1], 1)
+
+    def test_boolean_and_short_circuit_runtime(self):
+        _, hw = run_source("""
+import rcu
+if 0 and (1 / 0):
+    rcu.Set3CLed(1, 0)
+else:
+    rcu.Set3CLed(1, 1)
+""")
+        self.assertEqual(hw.led_state[1], 1)
+
+    def test_boolean_or_short_circuit_runtime(self):
+        _, hw = run_source("""
+import rcu
+if 1 or (1 / 0):
+    rcu.Set3CLed(1, 1)
+else:
+    rcu.Set3CLed(1, 0)
+""")
+        self.assertEqual(hw.led_state[1], 1)
+
     def test_zero_valued_operands_are_preserved(self):
         _, hw = run_source("""
 import rcu
