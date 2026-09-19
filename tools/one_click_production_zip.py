@@ -18,7 +18,6 @@ import shutil
 import struct
 import subprocess
 import sys
-import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -132,7 +131,10 @@ def _ensure_build_venv(root: Path, build_root: Path, *, offline: bool) -> Path:
         if probe.returncode != 0:
             raise OneClickBuildError("Offline build virtualenv is missing PyInstaller/PySide6/PyYAML")
     else:
-        _run([str(python), "-m", "pip", "install", "--disable-pip-version-check", "-r", str(root / "scripts" / "production-build-requirements.txt")], cwd=root)
+        _run([
+            str(python), "-m", "pip", "install", "--disable-pip-version-check",
+            "-r", str(root / "scripts" / "production-build-requirements.txt"),
+        ], cwd=root)
     return python
 
 
@@ -247,18 +249,28 @@ def _prepare_portable_python(root: Path, build_python: Path, work: Path, cache: 
     _configure_embedded_python(destination)
     site_packages = destination / "Lib" / "site-packages"
     if offline:
-        # Reused cached runtimes may already carry the modules. Never reach the network.
-        probe = subprocess.run([str(destination / "python.exe"), "-I", "-c", "import platformio, yaml"])
+        probe = subprocess.run([
+            str(destination / "python.exe"), "-I", "-c", "import platformio, yaml, pip"
+        ])
         if probe.returncode != 0:
-            raise OneClickBuildError("Offline portable Python cache does not contain PlatformIO and PyYAML")
+            raise OneClickBuildError(
+                "Offline portable Python cache does not contain PlatformIO, PyYAML and pip"
+            )
     else:
+        # PlatformIO's package manager invokes this same embedded interpreter as
+        # `python -m pip` while provisioning tool packages (for example
+        # tool-esptoolpy/_contrib). Therefore pip is part of the production
+        # runtime closure, not merely a developer-side build dependency.
         _run([
             str(build_python), "-m", "pip", "install", "--disable-pip-version-check",
             "--no-compile", "--upgrade", "--target", str(site_packages),
-            f"platformio=={PLATFORMIO_CORE_VERSION}", "PyYAML>=6,<7",
+            f"platformio=={PLATFORMIO_CORE_VERSION}", "PyYAML>=6,<7", "pip>=24,<27",
         ], cwd=root)
     _remove_forbidden(destination)
-    _run([str(destination / "python.exe"), "-I", "-c", "import platformio, yaml; print('portable runtime imports: PASS')"], cwd=root)
+    _run([
+        str(destination / "python.exe"), "-I", "-c",
+        "import platformio, yaml, pip; print('portable runtime imports: PASS')",
+    ], cwd=root)
     return destination
 
 
@@ -303,7 +315,7 @@ def _xtensa_toolchain_structure_error(packages: Path) -> str | None:
     return None
 
 
-def _probe_xtensa_toolchain(packages: Path, work: Path) -> tuple[bool, str]:
+def _probe_xtensa_toolchain(packages: Path, scratch_root: Path) -> tuple[bool, str]:
     """Exercise the cached compiler far enough to spawn cc1plus and assembler."""
     structure_error = _xtensa_toolchain_structure_error(packages)
     if structure_error:
@@ -311,7 +323,7 @@ def _probe_xtensa_toolchain(packages: Path, work: Path) -> tuple[bool, str]:
 
     toolchain = _xtensa_toolchain_root(packages)
     gxx = toolchain / "bin" / "xtensa-esp32-elf-g++.exe"
-    probe_root = work / "xtensa-toolchain-smoke"
+    probe_root = scratch_root / "xtensa-toolchain-smoke"
     if probe_root.exists():
         shutil.rmtree(probe_root, ignore_errors=True)
     probe_root.mkdir(parents=True, exist_ok=True)
@@ -350,11 +362,23 @@ def _purge_xtensa_toolchain(core_cache: Path) -> None:
     shutil.rmtree(core_cache / "packages" / "_tmp", ignore_errors=True)
 
 
+def _platformio_core_cache(cache: Path, platform_spec: str) -> Path:
+    """Return a deliberately short, whitespace-free PlatformIO service root."""
+    if any(ch.isspace() for ch in str(cache)):
+        raise OneClickBuildError(
+            "ROBOSTUDIO_BUILD_CACHE must not contain spaces for the Windows ESP32 toolchain: "
+            + str(cache)
+        )
+    platform_version = platform_spec.rsplit("@", 1)[1]
+    return cache / f"pio-{PLATFORMIO_CORE_VERSION}-e32-{platform_version}"
+
+
 def _prepare_platformio_payload(root: Path, runtime_python: Path, work: Path, cache: Path, *, offline: bool) -> Path:
     platform_spec = _platform_spec(root)
-    cache_key = re.sub(r"[^A-Za-z0-9._-]+", "_", platform_spec)
-    core_cache = cache / f"platformio-{PLATFORMIO_CORE_VERSION}-{cache_key}"
+    core_cache = _platformio_core_cache(cache, platform_spec)
     core_cache.mkdir(parents=True, exist_ok=True)
+    print(f"[pio] core cache: {core_cache}", flush=True)
+
     env = os.environ.copy()
     env["PLATFORMIO_CORE_DIR"] = str(core_cache)
     env.pop("PLATFORMIO_HOME_DIR", None)
@@ -363,42 +387,48 @@ def _prepare_platformio_payload(root: Path, runtime_python: Path, work: Path, ca
 
     platforms = core_cache / "platforms"
     packages = core_cache / "packages"
-    cache_ready = platforms.is_dir() and packages.is_dir() and any(platforms.iterdir()) and any(packages.iterdir())
+    cache_ready = (
+        platforms.is_dir()
+        and packages.is_dir()
+        and any(platforms.iterdir())
+        and any(packages.iterdir())
+    )
     if not cache_ready and offline:
         raise OneClickBuildError("Offline PlatformIO/ESP32 cache is not prepared")
 
+    # Keep both the toolchain and the real PlatformIO project on short paths.
+    # This matters on Windows because the ESP32 GCC driver spawns cc1plus/as and
+    # the full Arduino command line is much larger than a tiny compiler probe.
+    probe_root = core_cache / "p"
+
     if offline:
-        healthy, reason = _probe_xtensa_toolchain(packages, work)
+        healthy, reason = _probe_xtensa_toolchain(packages, core_cache)
         if not healthy:
             raise OneClickBuildError(
                 "Offline PlatformIO cache contains an unusable Xtensa toolchain: " + reason
             )
     else:
-        probe_root = work / "platformio-provision-firmware"
         _copy_tree_clean(root / "robot-platform", probe_root)
         command = [
             str(runtime_python), "-I", "-m", "platformio", "run",
-            "--project-dir", str(probe_root), "-e", "esp32dev",
+            "--project-dir", str(probe_root), "-e", "esp32dev", "-j", "1",
         ]
         try:
-            _run(command, cwd=root, env=env)
+            _run(command, cwd=probe_root, env=env)
         except OneClickBuildError:
-            healthy, reason = _probe_xtensa_toolchain(packages, work)
+            healthy, reason = _probe_xtensa_toolchain(packages, core_cache)
             if healthy:
                 raise
-            print(
-                "[repair] cached Xtensa toolchain is unusable: " + reason,
-                flush=True,
-            )
+            print("[repair] cached Xtensa toolchain is unusable: " + reason, flush=True)
             print(
                 "[repair] removing the broken toolchain package and retrying PlatformIO provisioning once",
                 flush=True,
             )
             _purge_xtensa_toolchain(core_cache)
             _copy_tree_clean(root / "robot-platform", probe_root)
-            _run(command, cwd=root, env=env)
+            _run(command, cwd=probe_root, env=env)
 
-        healthy, reason = _probe_xtensa_toolchain(packages, work)
+        healthy, reason = _probe_xtensa_toolchain(packages, core_cache)
         if not healthy:
             raise OneClickBuildError(
                 "PlatformIO provisioning completed but the Xtensa toolchain is unusable: " + reason
@@ -413,6 +443,7 @@ def _prepare_platformio_payload(root: Path, runtime_python: Path, work: Path, ca
     destination.mkdir(parents=True)
     _copy_tree_clean(platforms, destination / "platforms")
     _copy_tree_clean(packages, destination / "packages")
+    shutil.rmtree(probe_root, ignore_errors=True)
     return destination
 
 
