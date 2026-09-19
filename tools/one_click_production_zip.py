@@ -32,6 +32,7 @@ PLATFORMIO_CORE_VERSION = "6.1.18"
 BUILD_SCHEMA = "antechkids.robostudio.one-click-production-build"
 BUILD_SCHEMA_VERSION = 1
 FORBIDDEN_DIRS = {"__pycache__", ".pytest_cache", ".git", ".venv", ".pio", "penv"}
+XTENSA_TOOLCHAIN_PACKAGE = "toolchain-xtensa-esp32"
 
 
 class OneClickBuildError(RuntimeError):
@@ -279,6 +280,76 @@ def _copy_tree_clean(source: Path, destination: Path) -> None:
     _remove_forbidden(destination)
 
 
+def _xtensa_toolchain_root(packages: Path) -> Path:
+    return packages / XTENSA_TOOLCHAIN_PACKAGE
+
+
+def _xtensa_toolchain_structure_error(packages: Path) -> str | None:
+    """Return a reason when a cached ESP32 Xtensa toolchain is incomplete."""
+    toolchain = _xtensa_toolchain_root(packages)
+    if not toolchain.is_dir():
+        return f"missing {XTENSA_TOOLCHAIN_PACKAGE} package"
+
+    gxx = toolchain / "bin" / "xtensa-esp32-elf-g++.exe"
+    assembler = toolchain / "bin" / "xtensa-esp32-elf-as.exe"
+    if not gxx.is_file():
+        return "missing xtensa-esp32-elf-g++.exe"
+    if not assembler.is_file():
+        return "missing xtensa-esp32-elf-as.exe"
+
+    libexec = toolchain / "libexec" / "gcc" / "xtensa-esp32-elf"
+    if not libexec.is_dir() or not any(libexec.glob("*/cc1plus.exe")):
+        return "missing GCC cc1plus.exe"
+    return None
+
+
+def _probe_xtensa_toolchain(packages: Path, work: Path) -> tuple[bool, str]:
+    """Exercise the cached compiler far enough to spawn cc1plus and assembler."""
+    structure_error = _xtensa_toolchain_structure_error(packages)
+    if structure_error:
+        return False, structure_error
+
+    toolchain = _xtensa_toolchain_root(packages)
+    gxx = toolchain / "bin" / "xtensa-esp32-elf-g++.exe"
+    probe_root = work / "xtensa-toolchain-smoke"
+    if probe_root.exists():
+        shutil.rmtree(probe_root, ignore_errors=True)
+    probe_root.mkdir(parents=True, exist_ok=True)
+    source = probe_root / "probe.cpp"
+    obj = probe_root / "probe.o"
+    source.write_text("int probe() { return 0; }\n", encoding="utf-8")
+    env = os.environ.copy()
+    env["PATH"] = str(toolchain / "bin") + os.pathsep + env.get("PATH", "")
+    try:
+        result = subprocess.run(
+            [str(gxx), "-c", str(source), "-o", str(obj)],
+            cwd=probe_root,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"toolchain smoke test could not run: {exc}"
+    finally:
+        source.unlink(missing_ok=True)
+
+    if result.returncode != 0 or not obj.is_file():
+        detail = (result.stderr or result.stdout or "compiler returned no diagnostic").strip()
+        if len(detail) > 500:
+            detail = detail[-500:]
+        return False, f"toolchain smoke test failed: {detail}"
+    shutil.rmtree(probe_root, ignore_errors=True)
+    return True, ""
+
+
+def _purge_xtensa_toolchain(core_cache: Path) -> None:
+    """Remove only the broken compiler package plus package-manager temp cache."""
+    shutil.rmtree(_xtensa_toolchain_root(core_cache / "packages"), ignore_errors=True)
+    shutil.rmtree(core_cache / ".cache", ignore_errors=True)
+    shutil.rmtree(core_cache / "packages" / "_tmp", ignore_errors=True)
+
+
 def _prepare_platformio_payload(root: Path, runtime_python: Path, work: Path, cache: Path, *, offline: bool) -> Path:
     platform_spec = _platform_spec(root)
     cache_key = re.sub(r"[^A-Za-z0-9._-]+", "_", platform_spec)
@@ -296,13 +367,42 @@ def _prepare_platformio_payload(root: Path, runtime_python: Path, work: Path, ca
     if not cache_ready and offline:
         raise OneClickBuildError("Offline PlatformIO/ESP32 cache is not prepared")
 
-    if not offline:
+    if offline:
+        healthy, reason = _probe_xtensa_toolchain(packages, work)
+        if not healthy:
+            raise OneClickBuildError(
+                "Offline PlatformIO cache contains an unusable Xtensa toolchain: " + reason
+            )
+    else:
         probe_root = work / "platformio-provision-firmware"
         _copy_tree_clean(root / "robot-platform", probe_root)
-        _run([
+        command = [
             str(runtime_python), "-I", "-m", "platformio", "run",
             "--project-dir", str(probe_root), "-e", "esp32dev",
-        ], cwd=root, env=env)
+        ]
+        try:
+            _run(command, cwd=root, env=env)
+        except OneClickBuildError:
+            healthy, reason = _probe_xtensa_toolchain(packages, work)
+            if healthy:
+                raise
+            print(
+                "[repair] cached Xtensa toolchain is unusable: " + reason,
+                flush=True,
+            )
+            print(
+                "[repair] removing the broken toolchain package and retrying PlatformIO provisioning once",
+                flush=True,
+            )
+            _purge_xtensa_toolchain(core_cache)
+            _copy_tree_clean(root / "robot-platform", probe_root)
+            _run(command, cwd=root, env=env)
+
+        healthy, reason = _probe_xtensa_toolchain(packages, work)
+        if not healthy:
+            raise OneClickBuildError(
+                "PlatformIO provisioning completed but the Xtensa toolchain is unusable: " + reason
+            )
 
     if not platforms.is_dir() or not packages.is_dir() or not any(platforms.iterdir()) or not any(packages.iterdir()):
         raise OneClickBuildError("PlatformIO provisioning did not produce platforms/ and packages/")
