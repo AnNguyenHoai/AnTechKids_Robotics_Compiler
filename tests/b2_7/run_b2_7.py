@@ -45,6 +45,39 @@ def main() -> int:
         (runtime / "python310.zip").write_bytes(b"stdlib")
         require(module._portable_python_valid(runtime), "portable Python topology should be accepted")
 
+    # A partially extracted cached Xtensa package must never be accepted just
+    # because packages/ is non-empty. This reproduces the Windows failure where
+    # g++.exe exists but cannot CreateProcess its cc1plus child.
+    with tempfile.TemporaryDirectory(prefix="b2-7-toolchain-") as td:
+        core_cache = Path(td) / "platformio-cache"
+        packages = core_cache / "packages"
+        toolchain = packages / module.XTENSA_TOOLCHAIN_PACKAGE
+        bin_dir = toolchain / "bin"
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "xtensa-esp32-elf-g++.exe").write_bytes(b"g++")
+        (bin_dir / "xtensa-esp32-elf-as.exe").write_bytes(b"as")
+        reason = module._xtensa_toolchain_structure_error(packages)
+        require(reason is not None and "cc1plus" in reason, "B2.7 must reject a cached toolchain missing cc1plus")
+
+        # Repair must be targeted: remove the broken compiler package/temp cache,
+        # but preserve unrelated already-provisioned PlatformIO packages.
+        framework = packages / "framework-arduinoespressif32"
+        framework.mkdir(parents=True)
+        (core_cache / ".cache" / "tmp").mkdir(parents=True)
+        module._purge_xtensa_toolchain(core_cache)
+        require(not toolchain.exists(), "B2.7 repair must remove the broken Xtensa package")
+        require(framework.is_dir(), "B2.7 repair must preserve unrelated PlatformIO packages")
+        require(not (core_cache / ".cache").exists(), "B2.7 repair must clear stale package-manager cache")
+
+        # A complete static toolchain topology should pass the structural gate.
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "xtensa-esp32-elf-g++.exe").write_bytes(b"g++")
+        (bin_dir / "xtensa-esp32-elf-as.exe").write_bytes(b"as")
+        cc1plus = toolchain / "libexec" / "gcc" / "xtensa-esp32-elf" / "8.4.0" / "cc1plus.exe"
+        cc1plus.parent.mkdir(parents=True)
+        cc1plus.write_bytes(b"cc1plus")
+        require(module._xtensa_toolchain_structure_error(packages) is None, "complete Xtensa toolchain topology should be accepted")
+
     cmd = (ROOT / "BUILD_PRODUCTION_ZIP.cmd").read_text(encoding="utf-8")
     ps1 = (ROOT / "scripts" / "Build-ProductionZip.ps1").read_text(encoding="utf-8")
     requirements = (ROOT / "scripts" / "production-build-requirements.txt").read_text(encoding="utf-8")
@@ -63,6 +96,9 @@ def main() -> int:
         "platformio=={PLATFORMIO_CORE_VERSION}",
         '"platformio", "run"',
         '"esp32dev"',
+        "_probe_xtensa_toolchain",
+        "_purge_xtensa_toolchain",
+        "[repair] cached Xtensa toolchain is unusable",
         '"target_profiles.json"',
         '"one_command_production_build.py"',
         '"RoboStudio-{version}-Windows.zip"',
