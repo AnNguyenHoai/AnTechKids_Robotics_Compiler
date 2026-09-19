@@ -15,6 +15,47 @@ if (-not (Test-Path $Orchestrator -PathType Leaf)) {
     throw "Missing B2.7 orchestrator: $Orchestrator"
 }
 
+function Resolve-BuildCacheRoot {
+    if ($env:ROBOSTUDIO_BUILD_CACHE) {
+        return [System.IO.Path]::GetFullPath($env:ROBOSTUDIO_BUILD_CACHE)
+    }
+
+    $base = $env:LOCALAPPDATA
+    if (-not $base) { $base = $env:TEMP }
+    if (-not $base) { $base = [System.IO.Path]::GetTempPath() }
+
+    # Keep the Windows cache path deliberately short. PlatformIO extracts the
+    # Xtensa toolchain into very deep directory trees and classic Win32 APIs can
+    # still fail near MAX_PATH even when long paths are enabled system-wide.
+    return (Join-Path $base "RSBuildCache")
+}
+
+function Clear-StalePlatformIOTemp {
+    param([string]$CacheRoot)
+
+    if (-not (Test-Path $CacheRoot -PathType Container)) { return }
+
+    Get-ChildItem -Path $CacheRoot -Directory -Filter "platformio-*" -ErrorAction SilentlyContinue | ForEach-Object {
+        $tmp = Join-Path $_.FullName ".cache\tmp"
+        if (-not (Test-Path $tmp -PathType Container)) { return }
+
+        $removed = $false
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+                Remove-Item -Path $tmp -Recurse -Force -ErrorAction Stop
+                $removed = $true
+                break
+            } catch {
+                Start-Sleep -Milliseconds (250 * $attempt)
+            }
+        }
+
+        if (-not $removed) {
+            Write-Warning "Could not remove stale PlatformIO temp directory: $tmp. The build will continue with the short cache root."
+        }
+    }
+}
+
 function Test-BuildPython {
     param([string]$Exe, [string[]]$Prefix)
     try {
@@ -28,6 +69,10 @@ function Test-BuildPython {
     }
     return $null
 }
+
+$env:ROBOSTUDIO_BUILD_CACHE = Resolve-BuildCacheRoot
+New-Item -ItemType Directory -Force -Path $env:ROBOSTUDIO_BUILD_CACHE | Out-Null
+Clear-StalePlatformIOTemp -CacheRoot $env:ROBOSTUDIO_BUILD_CACHE
 
 $candidates = @()
 if ($env:ROBOSTUDIO_BUILD_PYTHON) {
@@ -60,6 +105,7 @@ Write-Host " RoboStudio - One Click Production ZIP" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "Repository : $RepoRoot"
 Write-Host "Build Python: $($selected.Exe) $($selected.Prefix -join ' ') (v$($selected.Version))"
+Write-Host "Build cache : $env:ROBOSTUDIO_BUILD_CACHE"
 Write-Host ""
 
 Push-Location $RepoRoot
