@@ -52,6 +52,10 @@ def main() -> int:
 
     require("Build-ProductionZip.ps1" in cmd, "root launcher must delegate to the PowerShell bootstrap")
     require("-3.10" in ps1 and "ROBOSTUDIO_BUILD_PYTHON" in ps1, "PowerShell bootstrap must auto-detect a supported build Python")
+    require("ROBOSTUDIO_BUILD_CACHE" in ps1, "PowerShell bootstrap must own the production build cache root")
+    require("LOCALAPPDATA" in ps1 and "RSBuildCache" in ps1, "Windows production cache must default to a short path outside the repository")
+    require("Clear-StalePlatformIOTemp" in ps1 and '".cache\\tmp"' in ps1, "PowerShell bootstrap must clean interrupted PlatformIO extraction temp state")
+    require("Build cache :" in ps1, "PowerShell bootstrap must print the selected cache for diagnostics")
     require("pyinstaller" in requirements.lower() and "PySide6" in requirements, "build requirements must prepare the GUI freezer")
     for token in (
         "python-{PYTHON_RUNTIME_VERSION}-embed-amd64.zip",
