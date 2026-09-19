@@ -1,16 +1,21 @@
 """
-BuildWorker – non-blocking build using QProcess.
+BuildWorker – non-blocking compiler contract runner using QProcess.
 
 The compiler process always runs from the disposable workspace that owns the
-request/source files. In packaged mode the environment has already been sealed
-by BuildService, so neither CWD nor mutable compiler state points at the
-RoboStudio installation directory.
+request/source files. Compiler-contract JSON is an internal machine interface;
+RoboStudio presents a concise human-readable compile result instead of dumping
+that JSON into the Build Output panel.
 """
 
-import os
+import json
 import shutil
 from pathlib import Path
+
 from PySide6.QtCore import QObject, QProcess, Signal
+
+
+CONTRACT_SCHEMA = "antechkids.robostudio.compiler-contract"
+CONTRACT_VERSION = 1
 
 
 class BuildWorker(QObject):
@@ -28,7 +33,8 @@ class BuildWorker(QObject):
         self.process.readyReadStandardError.connect(self._on_stderr)
         self.process.finished.connect(self._on_finished)
         self.process.errorOccurred.connect(self._on_process_error)
-        self._log_lines = []
+        self._stdout_chunks = []
+        self._stderr_chunks = []
 
     def _workspace(self) -> Path:
         return Path(self.temp_file).expanduser().resolve().parent
@@ -46,7 +52,7 @@ class BuildWorker(QObject):
             pass
 
     def start(self):
-        """Start the build process from external compiler state."""
+        """Start the compiler process from external compiler state."""
         env_list = [f"{k}={v}" for k, v in self.env.items()]
         self.process.setEnvironment(env_list)
         self.process.setWorkingDirectory(str(self._workspace()))
@@ -55,51 +61,114 @@ class BuildWorker(QObject):
     def _on_stdout(self):
         data = self.process.readAllStandardOutput()
         text = data.data().decode("utf-8", errors="replace")
-        self._log_lines.append(text)
-        self.output_received.emit(text)
+        self._stdout_chunks.append(text)
+        # stdout belongs to the stable compiler contract and is intentionally
+        # buffered until completion so raw JSON never leaks into the user log.
 
     def _on_stderr(self):
         data = self.process.readAllStandardError()
         text = data.data().decode("utf-8", errors="replace")
-        self._log_lines.append(text)
-        self.output_received.emit(text)
+        self._stderr_chunks.append(text)
+        # stderr may contain useful runtime diagnostics, so keep it live.
+        if text:
+            self.output_received.emit(text)
 
     def _on_finished(self, exit_code, exit_status):
+        stdout = "".join(self._stdout_chunks)
+        stderr = "".join(self._stderr_chunks)
         self._cleanup_temp_state()
 
         if exit_status == QProcess.CrashExit:
-            self.error_occurred.emit("Process crashed.")
+            self.error_occurred.emit("Compiler process crashed.")
             return
 
-        full_log = "".join(self._log_lines)
-        if exit_code == 0:
-            summary = self._extract_summary(full_log, success=True)
-            self.build_finished.emit(True, summary)
-        else:
-            summary = self._extract_summary(full_log, success=False)
-            self.build_finished.emit(False, summary)
+        details, summary = self.format_result(
+            stdout=stdout,
+            stderr=stderr,
+            success=(exit_code == 0),
+        )
+        if details:
+            self.output_received.emit(details if details.endswith("\n") else details + "\n")
+        self.build_finished.emit(exit_code == 0, summary)
 
     def _on_process_error(self, error):
         self._cleanup_temp_state()
         msg = self.process.errorString()
-        self.error_occurred.emit(f"Process error: {msg}")
+        self.error_occurred.emit(f"Compiler process error: {msg}")
 
-    def _extract_summary(self, log, success):
-        """Extract a human-friendly summary from the full log."""
-        lines = log.splitlines()
+    @staticmethod
+    def _parse_contract(stdout: str):
+        """Return compiler-contract JSON when stdout is exactly that contract."""
+        text = stdout.strip()
+        if not text:
+            return None
+        try:
+            payload = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("schema") != CONTRACT_SCHEMA:
+            return None
+        if payload.get("contract_version") != CONTRACT_VERSION:
+            return None
+        return payload
+
+    @staticmethod
+    def _contract_summary(payload: dict, success: bool) -> str:
+        status = payload.get("status")
+        contract_success = success and status == "PASS"
+        if contract_success:
+            lines = ["✅ Compile successful"]
+            instruction_count = payload.get("instruction_count")
+            if isinstance(instruction_count, int):
+                lines.append(f"Instructions: {instruction_count}")
+            lines.append("Robot program generated successfully.")
+            return "\n".join(lines)
+
+        lines = ["❌ Compile failed"]
+        error_code = payload.get("error_code")
+        error_message = payload.get("error_message")
+        if error_code and error_message:
+            lines.append(f"[{error_code}] {error_message}")
+        elif error_message:
+            lines.append(str(error_message))
+        elif error_code:
+            lines.append(f"Error code: {error_code}")
+        else:
+            lines.append("Compiler returned an unsuccessful contract response.")
+        return "\n".join(lines)
+
+    @classmethod
+    def format_result(cls, stdout: str, stderr: str, success: bool):
+        """Return (visible details, concise summary) for RoboStudio's log UI.
+
+        Stable compiler-contract JSON stays machine-readable internally and is
+        converted to a short user-facing summary. Unknown/non-contract output
+        remains visible so legacy or infrastructure failures are still
+        diagnosable.
+        """
+        payload = cls._parse_contract(stdout)
+        if payload is not None:
+            return "", cls._contract_summary(payload, success)
+
+        combined = "\n".join(part.strip() for part in (stdout, stderr) if part.strip())
+        lines = combined.splitlines()
         if success:
-            if "Compiled successfully" in log or "OK" in log:
-                return "✅ Build successful"
-            return "✅ Build completed"
-
-        error_lines = [
-            line
-            for line in lines
-            if "error" in line.lower()
-            or "exception" in line.lower()
-            or "failed" in line.lower()
-        ]
-        if error_lines:
-            return "❌ Build failed\n" + "\n".join(error_lines[:3])
-        tail = lines[-5:] if len(lines) > 5 else lines
-        return "❌ Build failed\n" + "\n".join(tail)
+            summary = "✅ Compile completed"
+        else:
+            error_lines = [
+                line
+                for line in lines
+                if "error" in line.lower()
+                or "exception" in line.lower()
+                or "failed" in line.lower()
+            ]
+            if error_lines:
+                summary = "❌ Compile failed\n" + "\n".join(error_lines[:3])
+            else:
+                tail = lines[-5:] if len(lines) > 5 else lines
+                summary = "❌ Compile failed"
+                if tail:
+                    summary += "\n" + "\n".join(tail)
+        return combined, summary
