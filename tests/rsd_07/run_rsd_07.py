@@ -93,22 +93,26 @@ def main() -> int:
         distribution_package.assemble_distribution(inputs, output)
         check("reassembly removes stale files", not stale.exists())
 
-        bad_platformio = root / "bad-platformio"
-        bad_platformio.mkdir()
-        (bad_platformio / "platforms").mkdir()
-        (bad_platformio / "packages").mkdir()
-        (bad_platformio / "penv").mkdir()
-        bad_inputs = distribution_package.DistributionInputs(
+        contaminated_platformio = root / "contaminated-platformio"
+        (contaminated_platformio / "platforms").mkdir(parents=True)
+        (contaminated_platformio / "packages").mkdir()
+        (contaminated_platformio / "penv" / "Scripts").mkdir(parents=True)
+        (contaminated_platformio / "penv" / "Scripts" / "python.exe").write_bytes(b"host-venv")
+        source_manifest = inputs.runtime_platformio / "deployment-runtime.json"
+        (contaminated_platformio / "deployment-runtime.json").write_text(
+            source_manifest.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        contaminated_inputs = distribution_package.DistributionInputs(
             executable=inputs.executable,
             runtime_bin=inputs.runtime_bin,
-            runtime_platformio=bad_platformio,
+            runtime_platformio=contaminated_platformio,
             runtime_resources=inputs.runtime_resources,
         )
-        expect_error(
-            "host-specific penv is rejected",
-            lambda: distribution_package.assemble_distribution(bad_inputs, root / "bad-output"),
-            "penv",
-        )
+        filtered_output = root / "filtered-output"
+        filtered_manifest = distribution_package.assemble_distribution(contaminated_inputs, filtered_output)
+        check("host-specific penv is filtered at distribution boundary", not (filtered_output / "runtime" / "platformio" / "penv").exists())
+        check("filtered PlatformIO runtime remains valid", runtime_preflight.validate_distribution(filtered_output).application_root == filtered_output)
+        check("filtered distribution manifest validates", distribution_package.validate_distribution_manifest(filtered_manifest)["portable"] is True)
 
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         target_entry = next(item for item in manifest["files"] if item["path"].endswith("target_profiles.json"))
