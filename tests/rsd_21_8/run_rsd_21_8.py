@@ -32,12 +32,37 @@ def _make_runtime(root):
     (runtime_platformio/"deployment-runtime.json").write_text(json.dumps({"schema":"antechkids.robostudio.deployment-runtime","schema_version":1,"platformio_core":{"source_not_embedded":True,"required_directories":["platforms","packages"],"file_count":0},"runtime_layout":{"core_dir":"runtime/platformio","python":"runtime/bin/python.exe","platformio_module":"platformio"},"portable_python_required":True,"host_virtualenv_included":False},indent=2)+"\n",encoding="utf-8")
     return runtime_bin,runtime_platformio
 
+def _run_contract(name,bridge,source,out,report,request,cwd):
+    request.write_text(json.dumps({"source":str(source),"output":str(out),"report":str(report),"source_kind":"robosim-python"}),encoding="utf-8")
+    proc=subprocess.run([sys.executable,str(bridge),"--request",str(request)],cwd=cwd,text=True,capture_output=True)
+    check(f"{name} contract process succeeds",proc.returncode==0)
+    if proc.returncode!=0:
+        raise AssertionError(f"{name} contract failed:\nstdout={proc.stdout}\nstderr={proc.stderr}")
+    payload=json.loads(proc.stdout)
+    check(f"{name} contract schema is stable",payload["schema"]=="antechkids.robostudio.compiler-contract")
+    check(f"{name} contract version is stable",payload["contract_version"]==1)
+    check(f"{name} contract returns PASS",payload["status"]=="PASS")
+    check(f"{name} compiler output exists",out.is_file() and out.stat().st_size>0)
+    check(f"{name} contract report exists",report.is_file())
+    check(f"{name} report records source kind",json.loads(report.read_text(encoding="utf-8"))["source_kind"]=="robosim-python")
+
 def main():
     compiler_root=ROOT/"robot-compiler"; frontend_root=ROOT/"robot-frontend-robosim"/"frontend"
     check("real compiler entry exists",(compiler_root/"main.py").is_file())
     check("real RoboSim frontend exists",(frontend_root/"rewriter.py").is_file())
+    source_bridge=compiler_root/"compiler"/"robostudio_bridge.py"
+    check("source contract endpoint exists",source_bridge.is_file())
     with tempfile.TemporaryDirectory(prefix="rsd-21-8-") as td:
-        base=Path(td); inputs=base/"inputs"; inputs.mkdir(); exe=inputs/"RoboStudio.exe"; exe.write_bytes(b"fixture")
+        base=Path(td)
+        source=base/"student.py"; source.write_text("import rcu\nrcu.SetMoveSpeed(50, 80)\nrcu.SetWaitForTime(1)\n",encoding="utf-8")
+
+        # Reproduce RoboStudio's source-checkout invocation from an unrelated cwd.
+        # This guards against compiler.py shadowing the compiler package and also
+        # proves that the sibling RoboSim frontend is discovered without PYTHONPATH.
+        source_cwd=base/"source-cwd"; source_cwd.mkdir()
+        _run_contract("source layout",source_bridge,source,base/"source-program.h",base/"source-contract.json",base/"source-request.json",source_cwd)
+
+        inputs=base/"inputs"; inputs.mkdir(); exe=inputs/"RoboStudio.exe"; exe.write_bytes(b"fixture")
         (inputs/"VERSION").write_text("1.2.3\n",encoding="utf-8")
         resources=inputs/"resources"; (resources/"robot-isa").mkdir(parents=True); (resources/"robot-isa"/"target_profiles.json").write_text('{"targets":[]}\n',encoding="utf-8")
         runtime_bin,runtime_platformio=_make_runtime(inputs)
@@ -61,20 +86,13 @@ def main():
         check("ZIP contains Python", "runtime/bin/python.exe" in names)
         check("ZIP contains Python runtime DLL", any(name.startswith("runtime/bin/python") and name.endswith(".dll") for name in names))
         check("ZIP contains PlatformIO", "runtime/platformio/platforms/espressif32/" in names or any(n.startswith("runtime/platformio/platforms/espressif32/") for n in names))
-        source=base/"student.py"; source.write_text("import rcu\nrcu.SetMoveSpeed(50, 80)\nrcu.SetWaitForTime(1)\n",encoding="utf-8")
-        out=base/"program.h"; report=base/"contract.json"; extracted=base/"extracted"; extracted.mkdir()
+
+        extracted=base/"extracted"; extracted.mkdir()
         with zipfile.ZipFile(artifact) as z:z.extractall(extracted)
-        bridge=extracted/"compiler"/"robostudio_bridge.py"; request=base/"request.json"; request.write_text(json.dumps({"source":str(source),"output":str(out),"report":str(report),"source_kind":"robosim-python"}),encoding="utf-8")
-        proc=subprocess.run([sys.executable,str(bridge),"--request",str(request)],cwd=extracted,text=True,capture_output=True)
-        check("contract process succeeds",proc.returncode==0)
-        payload=json.loads(proc.stdout)
-        check("contract schema is stable",payload["schema"]=="antechkids.robostudio.compiler-contract")
-        check("contract version is stable",payload["contract_version"]==1)
-        check("contract returns PASS",payload["status"]=="PASS")
-        check("real compiler output exists",out.is_file() and out.stat().st_size>0)
-        check("contract report exists",report.is_file())
-        check("compiled output contains generated program",len(out.read_text(encoding="utf-8"))>0)
-        check("report records source kind",json.loads(report.read_text(encoding="utf-8"))["source_kind"]=="robosim-python")
+        packaged_bridge=extracted/"compiler"/"robostudio_bridge.py"
+        packaged_out=base/"program.h"; packaged_report=base/"contract.json"
+        _run_contract("packaged layout",packaged_bridge,source,packaged_out,packaged_report,base/"request.json",extracted)
+        check("compiled output contains generated program",len(packaged_out.read_text(encoding="utf-8"))>0)
     print("RSD-21.8 Real RoboStudio ↔ Compiler Contract checks: PASS")
     return 0
 if __name__=="__main__":raise SystemExit(main())
