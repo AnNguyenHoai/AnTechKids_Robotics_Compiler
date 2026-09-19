@@ -8,7 +8,11 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 MODULE_PATH = ROOT / "tools" / "one_click_production_zip.py"
+
+from tools import distribution_package, production_artifact_boundary
 
 
 def _load_module():
@@ -85,6 +89,53 @@ def main() -> int:
         (generated / "module.cpython-310.pyc").write_bytes(b"pyc")
         module._remove_forbidden(runtime)
         require(not generated.exists(), "post-provision runtime sanitization must remove generated __pycache__ payload")
+
+    # Third-party runtime packages can contain repository metadata such as
+    # .github/workflows with absolute CI paths. It is not a runtime dependency
+    # and must be removed at the production distribution boundary rather than
+    # weakening host-path validation.
+    with tempfile.TemporaryDirectory(prefix="b27-runtime-metadata-") as td:
+        base = Path(td)
+        source = base / "runtime-platformio"
+        package = source / "packages" / "tool-esptoolpy"
+        (package / ".github" / "workflows").mkdir(parents=True)
+        (package / ".github" / "workflows" / "build.yml").write_text(
+            "working-directory: /home/runner/esptool\n", encoding="utf-8"
+        )
+        (package / "package.json").write_text("{}\n", encoding="utf-8")
+        destination = base / "distribution-runtime"
+        distribution_package._copy_tree(source, destination, "PlatformIO fixture")
+        require((destination / "packages" / "tool-esptoolpy" / "package.json").is_file(), "runtime package files must remain")
+        require(not (destination / "packages" / "tool-esptoolpy" / ".github").exists(), "repository metadata must not cross production boundary")
+        require(".github" in production_artifact_boundary.FORBIDDEN_PAYLOAD_NAMES, "production boundary must forbid .github metadata")
+
+    # The embedded-Python esptool compatibility helpers are part of the firmware
+    # project contract. If platformio.ini enables the post script, both helpers
+    # must be included in the packaged firmware and a partial pair must fail.
+    with tempfile.TemporaryDirectory(prefix="b27-firmware-helpers-") as td:
+        base = Path(td)
+        firmware = base / "firmware"
+        (firmware / "main").mkdir(parents=True)
+        (firmware / "main" / "main.cpp").write_text("void setup(){}\nvoid loop(){}\n", encoding="utf-8")
+        (firmware / "wifi_config.py").write_text("Import('env')\n", encoding="utf-8")
+        (firmware / "platformio.ini").write_text(
+            "[env:esp32dev]\nplatform=espressif32@6.12.0\nextra_scripts=post:esptool_path_fix.py\n",
+            encoding="utf-8",
+        )
+        for name in distribution_package.ESPTOOL_FIRMWARE_HELPERS:
+            (firmware / name).write_text("# helper\n", encoding="utf-8")
+        packaged = base / "packaged"
+        distribution_package._copy_firmware(firmware, packaged)
+        for name in distribution_package.ESPTOOL_FIRMWARE_HELPERS:
+            require((packaged / name).is_file(), f"packaged firmware must include {name}")
+
+        (firmware / "esptool_runner.py").unlink()
+        try:
+            distribution_package._copy_firmware(firmware, base / "incomplete")
+        except distribution_package.DistributionPackageError as exc:
+            require("esptool integration is incomplete" in str(exc), "partial esptool helper pair must fail clearly")
+        else:
+            raise AssertionError("partial esptool helper pair must fail production packaging")
 
     # A partially extracted cached Xtensa package must never be accepted just
     # because packages/ is non-empty. This reproduces the Windows failure where
