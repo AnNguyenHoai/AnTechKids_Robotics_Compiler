@@ -22,7 +22,19 @@ _RUNTIME_PLATFORMIO = Path("runtime") / "platformio"
 _RUNTIME_RESOURCES = Path("runtime") / "resources"
 _SYSTEM_DLLS = {"advapi32.dll", "bcrypt.dll", "combase.dll", "comdlg32.dll", "crypt32.dll", "d3d9.dll", "dwmapi.dll", "gdi32.dll", "gdi32full.dll", "imm32.dll", "iphlpapi.dll", "kernel32.dll", "kernelbase.dll", "mpr.dll", "msimg32.dll", "msvcp_win.dll", "msvcrt.dll", "netapi32.dll", "ntdll.dll", "ole32.dll", "oleaut32.dll", "opengl32.dll", "powrprof.dll", "psapi.dll", "rpcrt4.dll", "secur32.dll", "shell32.dll", "shlwapi.dll", "user32.dll", "userenv.dll", "uxtheme.dll", "version.dll", "winhttp.dll", "wininet.dll", "winmm.dll", "winspool.drv", "ws2_32.dll", "wldap32.dll", "setupapi.dll", "cfgmgr32.dll", "comctl32.dll", "dxgi.dll", "d3d11.dll", "d3dcompiler_47.dll", "vcruntime140.dll", "vcruntime140_1.dll", "ucrtbase.dll"}
 _SYSTEM_DLL_PREFIXES = ("api-ms-win-", "ext-ms-win-")
-_HOST_PATH_PATTERNS = (re.compile(rb"(?i)[a-z]:[\\/]+users[\\/]+"), re.compile(rb"(?i)[a-z]:[\\/]+program files[\\/]+(?:python|platformio)"), re.compile(rb"(?i)[a-z]:[\\/]+programdata[\\/]+platformio"), re.compile(rb"(?i)[a-z]:[\\/]+(?:\.platformio|pypoetry)"), re.compile(rb"(?i)[\\/]home[\\/]+"), re.compile(rb"(?i)[\\/]users[\\/]+"))
+
+# Detect real host-owned absolute roots without treating an ordinary path segment
+# or URL segment named "home"/"users" as a leak.  The negative look-behind
+# requires the slash to begin a path token (start of string or punctuation), so
+# both ``runtime/.../platformio/home/...`` and ``https://host/home/...`` remain
+# valid while ``/home/alice/...`` and ``/Users/alice/...`` are still rejected.
+_HOST_PATH_PATTERNS = (
+    re.compile(rb"(?i)[a-z]:[\\/]+users[\\/]+"),
+    re.compile(rb"(?i)[a-z]:[\\/]+program files[\\/]+(?:python|platformio)"),
+    re.compile(rb"(?i)[a-z]:[\\/]+programdata[\\/]+platformio"),
+    re.compile(rb"(?i)[a-z]:[\\/]+(?:\.platformio|pypoetry)"),
+    re.compile(rb"(?i)(?<![A-Za-z0-9._~:/\\-])[\\/](?:home|users)[\\/]+"),
+)
 _TEXT_EXTENSIONS = (".json", ".txt", ".cfg", ".ini", ".toml", ".yaml", ".yml")
 
 class PortableReleaseProofError(RuntimeError):
