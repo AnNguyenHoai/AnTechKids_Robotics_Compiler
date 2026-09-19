@@ -89,6 +89,8 @@ class RobotCompiler(ast.NodeVisitor):
             self.program.emit(op.value, left, right, result)
             return result
         elif isinstance(expr, ast.UnaryOp):
+            if isinstance(expr.op, ast.Not):
+                return BoolHandler.logical_not(self, expr)
             operand = self.compile_expression(expr.operand)
             result = self.allocate_temp()
             if isinstance(expr.op, ast.USub):
