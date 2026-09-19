@@ -36,7 +36,11 @@ public:
     bool LoadProgram(const Program* program);
 
     /**
-     * Execute one instruction.
+     * Execute one bounded instruction/tick.
+     *
+     * Long-running instructions keep the program counter on the current
+     * instruction and return immediately so the platform loop can service
+     * network and control-plane work between ticks.
      */
     void Step();
 
@@ -82,6 +86,13 @@ private:
      * Execute current instruction.
      */
     void ExecuteInstruction(const Instruction& instruction);
+
+    /**
+     * Advance one pending cooperative line tick.
+     * Returns true when the current instruction was already pending and was
+     * therefore handled by this call.
+     */
+    bool ContinuePendingLineOperation();
 
 private:
 
