@@ -2,8 +2,8 @@
 
 The production release payload includes application-owned runtime assets. RSD-23
 moved Python and PlatformIO from target prerequisites into the application-owned
-release boundary so a clean Windows machine can run the product without a
-pre-installed developer environment. Developer-only payloads remain forbidden.
+release boundary so a clean Windows machine can run the product without a pre-
+installed developer environment. Developer-only payloads remain forbidden.
 """
 from __future__ import annotations
 
@@ -16,11 +16,12 @@ SCHEMA = "antechkids.robostudio.production-artifact-boundary"
 SCHEMA_VERSION = 1
 BOUNDARY_MANIFEST = "release-boundary.json"
 
-# These names are always development state and must never be copied into the
-# production artifact. Runtime/bin and runtime/platformio are now valid because
-# they are application-owned release payload roots under RSD-23.
+# These names are always development state or repository metadata and must never
+# be copied into the production artifact. Runtime/bin and runtime/platformio are
+# valid because they are application-owned release payload roots under RSD-23.
 FORBIDDEN_PAYLOAD_NAMES: frozenset[str] = frozenset({
     ".git",
+    ".github",
     ".venv",
     ".pio",
     "penv",
