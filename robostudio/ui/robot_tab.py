@@ -1,4 +1,4 @@
-"""RoboStudio Robot tab: stable deployment workflow and robot communication tools."""
+"""RoboStudio Robot tab: stable deployment workflow and multi-robot management."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,8 +11,9 @@ from PySide6.QtWidgets import (
 )
 
 from services.bootstrap_config_service import BootstrapConfigService
-from services.robot_deployment_service import RobotDeploymentService, DeploymentResult, RobotInfo
-from services.robot_discovery_service import RobotDiscoveryClient
+from services.robot_deployment_service import RobotDeploymentService, DeploymentResult
+from services.robot_discovery_service import RobotDiscoveryClient, RobotInfo
+from services.robot_registry_service import ManagedRobot, RobotRegistryError, RobotRegistryService
 from services.serial_console_service import SerialConsoleService
 from ui.serial_console import SerialConsoleWidget
 
@@ -64,20 +65,22 @@ class _DeploymentWorker(QThread):
 
 
 class RobotTab(QWidget):
-    """End-user Golden Path plus teacher-only first-flash and communication tools."""
+    """End-user Golden Path plus persistent multi-robot fleet selection."""
 
     def __init__(self, code_provider, parent=None):
         super().__init__(parent)
         self._code_provider = code_provider
-        self._robots: list[RobotInfo] = []
-        self._selected: RobotInfo | None = None
+        self._robots: list[ManagedRobot] = []
+        self._selected: ManagedRobot | None = None
         self._bootstrap_path: Path | None = None
         self._discovery_worker = None
         self._bootstrap_flash_worker = None
         self._deployment_worker = None
         self._bootstrap_service = BootstrapConfigService()
+        self._registry = RobotRegistryService()
         self._build_ui()
         self._refresh_usb_ports()
+        self._load_known_robots()
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -90,7 +93,8 @@ class RobotTab(QWidget):
         title.setStyleSheet("font-size: 19px; font-weight: 700;")
         header.addWidget(title)
         description = QLabel(
-            "First-flash a new robot once, discover it over Wi-Fi, then deploy student programs over OTA. "
+            "First-flash a new robot once, discover robots over Wi-Fi, then deploy student programs over OTA. "
+            "Known robots and the selected device are remembered across RoboStudio restarts; offline robots stay visible. "
             "Use the USB Serial Console for direct diagnostics and commands."
         )
         description.setWordWrap(True)
@@ -162,11 +166,11 @@ class RobotTab(QWidget):
         row.setSpacing(6)
         self.robot_combo = QComboBox()
         self.robot_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.robot_combo.setPlaceholderText("Select a discovered robot")
+        self.robot_combo.setPlaceholderText("Select a known robot")
         self.robot_combo.currentIndexChanged.connect(self._on_robot_selected)
         row.addWidget(self.robot_combo, 1)
         self.refresh_button = QPushButton("Discover")
-        self.refresh_button.setToolTip("Search the local network for available robots.")
+        self.refresh_button.setToolTip("Refresh online/offline state for all known robots on the local network.")
         self.refresh_button.clicked.connect(self.discover)
         row.addWidget(self.refresh_button)
         discovery_layout.addLayout(row)
@@ -204,7 +208,7 @@ class RobotTab(QWidget):
         run_layout.setSpacing(6)
         self.deploy_button = QPushButton("▶  RUN ON ROBOT")
         self.deploy_button.setMinimumHeight(44)
-        self.deploy_button.setToolTip("Compile and deploy the current program to the selected robot.")
+        self.deploy_button.setToolTip("Compile and deploy the current program to the selected online robot.")
         self.deploy_button.setEnabled(False)
         self.deploy_button.clicked.connect(self.deploy)
         run_layout.addWidget(self.deploy_button)
@@ -214,7 +218,7 @@ class RobotTab(QWidget):
         self.progress.setTextVisible(False)
         self.progress.setFixedHeight(5)
         run_layout.addWidget(self.progress)
-        self.result_label = QLabel("Ready — select a robot and compile a program to enable Run.")
+        self.result_label = QLabel("Ready — select an online robot and compile a program to enable Run.")
         self.result_label.setWordWrap(True)
         run_layout.addWidget(self.result_label)
         layout.addWidget(run_group)
@@ -265,6 +269,91 @@ class RobotTab(QWidget):
     def _console_font():
         from PySide6.QtGui import QFont
         return QFont("Courier New", 9)
+
+    def _load_known_robots(self):
+        self._robots = list(self._registry.robots())
+        self._render_robot_combo(
+            preferred_device_id=self._registry.selected_device_id,
+            select_first_if_none=False,
+        )
+        if self._registry.load_error:
+            self.robot_status.setText("Robot registry could not be loaded; starting with an empty registry.")
+            self.robot_details.setText(self._registry.load_error)
+            self.robot_details.setStyleSheet("color: #b36b00;")
+        elif not self._robots:
+            self.robot_status.setText("No known robots. Click Discover after the robot joins Wi-Fi.")
+        elif self._selected is None:
+            self.robot_status.setText(
+                f"{len(self._robots)} known robot(s). Click Discover to refresh Online/Offline state."
+            )
+
+    def _render_robot_combo(
+        self,
+        *,
+        preferred_device_id: str | None = None,
+        select_first_if_none: bool = False,
+    ) -> None:
+        self._robots = list(self._registry.robots())
+        target_id = preferred_device_id or self._registry.selected_device_id
+        self.robot_combo.blockSignals(True)
+        self.robot_combo.clear()
+        for item in self._robots:
+            robot = item.robot
+            if item.online:
+                readiness = "Ready" if robot.ready else "Not ready"
+                state = f"Online · {readiness}"
+            else:
+                state = "Offline"
+            self.robot_combo.addItem(
+                f"{item.display_label} — {state}", item.device_id
+            )
+
+        index = self.robot_combo.findData(target_id) if target_id else -1
+        if index < 0 and select_first_if_none and self.robot_combo.count():
+            index = 0
+        self.robot_combo.setCurrentIndex(index)
+        self.robot_combo.blockSignals(False)
+        device_id = self.robot_combo.itemData(index) if index >= 0 else None
+        self._apply_selected_device(device_id, persist=bool(device_id))
+
+    def _apply_selected_device(self, device_id: str | None, *, persist: bool) -> None:
+        self._selected = self._registry.get(device_id)
+        if persist:
+            try:
+                self._registry.set_selected(device_id)
+            except RobotRegistryError as exc:
+                self.result_label.setText(f"Robot selection could not be saved: {exc}")
+                self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
+        self._render_selected_details()
+
+    def _render_selected_details(self) -> None:
+        if self._selected is None:
+            self.robot_status.setText("No robot selected")
+            self.robot_details.setText("")
+            self.robot_details.setStyleSheet("color: #666666;")
+            self._refresh_deploy_enabled()
+            return
+
+        item = self._selected
+        robot = item.robot
+        capabilities = ", ".join(
+            name.replace("_", " ") for name, enabled in robot.capabilities.items() if enabled
+        ) or "None"
+        if item.online:
+            state = f"● Online · {'Ready' if robot.ready else 'Not ready'}"
+        else:
+            state = "○ Offline"
+        self.robot_status.setText(f"{state} | {robot.hostname} | {robot.ip}")
+        last_seen = item.last_seen_utc or "Never observed online in this registry"
+        self.robot_details.setText(
+            f"Device ID: {robot.device_id}\n"
+            f"Target: {robot.target}   Firmware: {robot.firmware}\n"
+            f"OTA: {'Available' if robot.ota else 'Unavailable'}\n"
+            f"Last seen: {last_seen}\n"
+            f"Capabilities: {capabilities}"
+        )
+        self.robot_details.setStyleSheet("color: #666666;")
+        self._refresh_deploy_enabled()
 
     def _refresh_usb_ports(self):
         """Populate first-flash choices from the same Qt serial inventory as the console."""
@@ -352,38 +441,61 @@ class RobotTab(QWidget):
         self.refresh_usb_button.setEnabled(True)
         self.refresh_button.setEnabled(True)
         self._refresh_usb_ports()
+        self._refresh_deploy_enabled()
 
     def _on_bootstrap_flash_finished(self, result):
         self.set_logs(result.output or "")
-        if result.success:
-            if result.verified_robot:
-                self.bootstrap_status.setText(
-                    "✓ First flash complete and robot discovered.\n"
-                    f"Robot: {result.verified_robot.display_label} @ {result.verified_robot.ip}"
-                )
-            else:
-                self.bootstrap_status.setText(
-                    "✓ First flash completed. Robot discovery timed out; "
-                    "wait for Wi-Fi and click Discover."
-                )
-            self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
-            self.result_label.setText("✓ First-flash upload completed.")
-            self.result_label.setStyleSheet("font-weight: bold; color: green;")
-        else:
+        if not result.success:
             self.bootstrap_status.setText(f"✗ First-flash failed: {result.error or 'unknown error'}")
             self.bootstrap_status.setStyleSheet("font-weight: bold; color: red;")
             self.result_label.setText("First-flash failed. Check the PlatformIO output.")
             self.result_label.setStyleSheet("font-weight: bold; color: red;")
+            return
+
+        registry_error = None
+        if result.verified_robot:
+            try:
+                self._registry.upsert(result.verified_robot, online=True)
+                self._registry.set_selected(result.verified_robot.device_id)
+            except RobotRegistryError as exc:
+                registry_error = str(exc)
+            self._render_robot_combo(
+                preferred_device_id=result.verified_robot.device_id,
+                select_first_if_none=False,
+            )
+            self.bootstrap_status.setText(
+                "✓ First flash complete and new robot uniquely identified.\n"
+                f"Robot: {result.verified_robot.display_label} @ {result.verified_robot.ip}"
+            )
+        else:
+            self.bootstrap_status.setText(
+                "✓ First flash completed. "
+                f"{result.error or 'Click Discover and select the flashed robot by identity.'}"
+            )
+        self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
+
+        if registry_error:
+            self.result_label.setText(
+                f"First flash succeeded, but robot registry update failed: {registry_error}"
+            )
+            self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
+        elif result.verified_robot:
+            self.result_label.setText("✓ First-flash upload completed and robot registered.")
+            self.result_label.setStyleSheet("font-weight: bold; color: green;")
+        else:
+            self.result_label.setText("✓ First-flash upload completed; discover the robot to bind its identity.")
+            self.result_label.setStyleSheet("font-weight: bold; color: green;")
 
     def discover(self):
         if self._discovery_worker and self._discovery_worker.isRunning():
             return
         self.refresh_button.setEnabled(False)
-        self.robot_combo.clear()
-        self._robots = []
-        self._selected = None
-        self.robot_status.setText("Searching for robots...")
-        self.robot_details.setText("")
+        self._registry.mark_all_offline()
+        self._render_robot_combo(
+            preferred_device_id=self._registry.selected_device_id,
+            select_first_if_none=False,
+        )
+        self.robot_status.setText("Searching for robots... known robots are temporarily marked Offline.")
         self.result_label.setText("Discovery in progress...")
         self.result_label.setStyleSheet("")
         self._refresh_deploy_enabled()
@@ -394,63 +506,69 @@ class RobotTab(QWidget):
         self._discovery_worker.start()
 
     def _on_discovered(self, robots):
-        self._robots = list(robots)
-        self.robot_combo.blockSignals(True)
-        self.robot_combo.clear()
-        for robot in self._robots:
-            state = "Ready" if robot.ready else "Not ready"
-            self.robot_combo.addItem(f"{robot.display_label} — {state}", robot.device_id)
-        self.robot_combo.blockSignals(False)
-        if self._robots:
-            self.robot_combo.setCurrentIndex(0)
-            self._on_robot_selected(0)
-            self.robot_status.setText(f"Found {len(self._robots)} robot(s).")
+        preferred = self._registry.selected_device_id
+        save_error = None
+        try:
+            self._registry.merge_discovery(robots)
+        except RobotRegistryError as exc:
+            save_error = str(exc)
+        self._render_robot_combo(
+            preferred_device_id=preferred,
+            select_first_if_none=True,
+        )
+        online = self._registry.online_count()
+        offline = len(self._robots) - online
+        if online:
+            suffix = f"; {offline} known offline" if offline else ""
+            self.robot_status.setText(f"Found {online} online robot(s){suffix}.")
+            self.result_label.setText("Discovery complete. Select an online robot to deploy.")
+            self.result_label.setStyleSheet("")
+        elif self._robots:
+            self.robot_status.setText(
+                f"No robots online. {len(self._robots)} known robot(s) retained as Offline."
+            )
+            self.result_label.setText("Discovery complete — no known robot is currently online.")
+            self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
         else:
             self.robot_status.setText(
                 "No robot found. Make sure the robot is powered on and connected to the same Wi-Fi network."
             )
-            self._refresh_deploy_enabled()
+            self.result_label.setText("Discovery complete — no robot found.")
+            self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
+        if save_error:
+            self.result_label.setText(f"Discovery succeeded, but registry persistence failed: {save_error}")
+            self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
+        self._refresh_deploy_enabled()
 
     def _on_discovery_failed(self, message):
-        self._selected = None
-        self.robot_combo.clear()
-        self.robot_status.setText(f"Discovery failed: {message}")
+        self._render_robot_combo(
+            preferred_device_id=self._registry.selected_device_id,
+            select_first_if_none=False,
+        )
+        self.robot_status.setText(
+            f"Discovery failed: {message}. Known robots were retained and marked Offline."
+        )
         self.result_label.setText("Discovery failed. Check the Wi-Fi network and try again.")
         self.result_label.setStyleSheet("font-weight: bold; color: red;")
         self._refresh_deploy_enabled()
 
     def _on_robot_selected(self, index):
-        self._selected = self._robots[index] if 0 <= index < len(self._robots) else None
-        if self._selected is None:
-            self.robot_status.setText("No robot selected")
-            self.robot_details.setText("")
-            self._refresh_deploy_enabled()
-            return
-        robot = self._selected
-        capabilities = ", ".join(
-            name.replace("_", " ") for name, enabled in robot.capabilities.items() if enabled
-        ) or "None"
-        self.robot_status.setText(
-            f"● {'Ready' if robot.ready else 'Not ready'} | {robot.hostname} | {robot.ip}"
-        )
-        self.robot_details.setText(
-            f"Device ID: {robot.device_id}\n"
-            f"Target: {robot.target}   Firmware: {robot.firmware}\n"
-            f"OTA: {'Available' if robot.ota else 'Unavailable'}\n"
-            f"Capabilities: {capabilities}"
-        )
-        self._refresh_deploy_enabled()
+        device_id = self.robot_combo.itemData(index) if 0 <= index < self.robot_combo.count() else None
+        self._apply_selected_device(device_id, persist=bool(device_id))
 
     def _refresh_deploy_enabled(self):
         code_available = bool(self._code_provider().strip())
+        item = self._selected
+        robot = item.robot if item is not None else None
         self.deploy_button.setEnabled(
-            self._selected is not None and self._selected.ready and
-            self._selected.ota and code_available and
+            item is not None and item.online and robot is not None and
+            robot.ready and robot.ota and code_available and
             not (self._deployment_worker and self._deployment_worker.isRunning())
         )
 
     def deploy(self):
-        robot = self._selected
+        item = self._selected
+        robot: RobotInfo | None = item.robot if item is not None and item.online else None
         code = self._code_provider()
         if robot is None or not code.strip():
             return
@@ -480,18 +598,42 @@ class RobotTab(QWidget):
     def _deployment_finished(self):
         self.progress.setVisible(False)
         self.refresh_button.setEnabled(True)
+        self._refresh_deploy_enabled()
 
     def _on_deploy_finished(self, result):
         self.set_logs(result.output or "")
-        if result.success:
-            verified = result.verified_robot
+        if not result.success:
+            self.result_label.setText(f"✗ {result.error or 'Deployment failed.'}")
+            self.result_label.setStyleSheet("font-weight: bold; color: red;")
+            self._refresh_deploy_enabled()
+            return
+
+        verified = result.verified_robot
+        registry_error = None
+        if verified is not None:
+            try:
+                self._registry.upsert(verified, online=True)
+                self._registry.set_selected(verified.device_id)
+            except RobotRegistryError as exc:
+                registry_error = str(exc)
+            self._render_robot_combo(
+                preferred_device_id=verified.device_id,
+                select_first_if_none=False,
+            )
+
+        if registry_error:
+            self.result_label.setText(
+                f"Deployment verified, but registry update failed: {registry_error}"
+            )
+            self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
+        elif verified is not None:
             self.result_label.setText(
                 f"✓ Deployment verified — {verified.display_label} is ready and running."
             )
             self.result_label.setStyleSheet("font-weight: bold; color: green;")
         else:
-            self.result_label.setText(f"✗ {result.error or 'Deployment failed.'}")
-            self.result_label.setStyleSheet("font-weight: bold; color: red;")
+            self.result_label.setText("✓ Deployment completed.")
+            self.result_label.setStyleSheet("font-weight: bold; color: green;")
         self._refresh_deploy_enabled()
 
     def set_logs(self, text: str):

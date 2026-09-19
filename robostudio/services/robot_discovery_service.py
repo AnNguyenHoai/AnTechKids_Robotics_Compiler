@@ -50,6 +50,25 @@ def _required_string(data: dict[str, Any], key: str) -> str:
     return value.strip()
 
 
+def serialize_robot_info(info: RobotInfo) -> dict[str, Any]:
+    """Serialize one validated identity snapshot using the canonical H27 schema."""
+    return {
+        "protocol": info.protocol,
+        "schema_version": info.schema_version,
+        "device_id": info.device_id,
+        "name": info.name,
+        "hostname": info.hostname,
+        "ip": info.ip,
+        "target": info.target,
+        "firmware": info.firmware,
+        "robot_ready": info.robot_ready,
+        "network_ready": info.network_ready,
+        "ready": info.ready,
+        "ota": info.ota,
+        "capabilities": dict(info.capabilities),
+    }
+
+
 def validate_robot_info(data: Any, source_ip: str | None = None) -> RobotInfo:
     """Validate the canonical H27-A identity payload."""
     if not isinstance(data, dict):
