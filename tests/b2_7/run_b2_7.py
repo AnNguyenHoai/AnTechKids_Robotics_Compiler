@@ -61,6 +61,20 @@ def main() -> int:
         else:
             raise AssertionError("PlatformIO production cache must reject whitespace paths")
 
+    # Merging PlatformIO's pinned Python tool payload must preserve both package
+    # directories and ordinary files; the full Windows build additionally probes
+    # the real esptool wrapper with the embedded interpreter.
+    with tempfile.TemporaryDirectory(prefix="b27-python-tool-") as td:
+        base = Path(td)
+        source_payload = base / "source"
+        destination_payload = base / "site-packages"
+        (source_payload / "pkg").mkdir(parents=True)
+        (source_payload / "pkg" / "module.py").write_text("VALUE=1\n", encoding="utf-8")
+        (source_payload / "marker.txt").write_text("ok\n", encoding="utf-8")
+        module._merge_tree(source_payload, destination_payload)
+        require((destination_payload / "pkg" / "module.py").is_file(), "Python payload merge must preserve package directories")
+        require((destination_payload / "marker.txt").is_file(), "Python payload merge must preserve ordinary files")
+
     # A partially extracted cached Xtensa package must never be accepted just
     # because packages/ is non-empty. This reproduces the Windows failure where
     # g++.exe exists but cannot CreateProcess its cc1plus child.
@@ -107,7 +121,7 @@ def main() -> int:
     require("must not contain spaces" in ps1, "Windows production cache override must reject whitespace paths")
     require("Clear-StalePlatformIOTemp" in ps1 and '".cache\\tmp"' in ps1, "PowerShell bootstrap must clean interrupted PlatformIO extraction temp state")
     require('$_ .Name' not in ps1, "PowerShell cache cleanup must not contain malformed member access")
-    require('$_ .Name' not in ps1 and '"pio-*"' in ps1 and '"platformio-*"' in ps1, "cache cleanup must cover both short and legacy PlatformIO cache names")
+    require('"pio-*"' in ps1 and '"platformio-*"' in ps1, "cache cleanup must cover both short and legacy PlatformIO cache names")
     require("Build cache :" in ps1, "PowerShell bootstrap must print the selected cache for diagnostics")
     require("pyinstaller" in requirements.lower() and "PySide6" in requirements, "build requirements must prepare the GUI freezer")
     for token in (
@@ -118,6 +132,10 @@ def main() -> int:
         "import platformio, yaml, pip",
         "_platformio_core_cache",
         'core_cache / "p"',
+        '"platformio", "pkg", "install"',
+        "_stage_esptool_python_runtime",
+        "ESPTOOL_PACKAGE",
+        "portable esptool runtime: PASS",
         '"-j", "1"',
         '"platformio", "run"',
         '"esp32dev"',
