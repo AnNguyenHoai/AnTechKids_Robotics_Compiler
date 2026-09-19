@@ -53,14 +53,22 @@ def validate_inputs(inputs:ProductionReleaseInputs,output_root:Path)->str:
         except ValueError:continue
         raise ProductionReleaseAssemblyError(f"Release output must not be inside an input source: {output_root}")
     return version
+def _proof_failure_message(proof:portable_release_proof.PortableReleaseProofReport)->str:
+    if not proof.findings:return "Portable release proof failed; artifact is not release-ready."
+    samples=[]
+    for finding in proof.findings[:12]:
+        samples.append(f"{finding.source}: {finding.dependency} ({finding.reason})")
+    suffix="" if len(proof.findings)<=12 else f"; +{len(proof.findings)-12} more finding(s)"
+    return "Portable release proof failed: " + "; ".join(samples) + suffix
 def assemble_release(inputs:ProductionReleaseInputs,output_root:Path)->dict[str,object]:
     output_root=_resolve(output_root); version=validate_inputs(inputs,output_root); output_root.mkdir(parents=True,exist_ok=True); distribution_root=output_root/"RoboStudio"; artifact=output_root/f"RoboStudio-{version}-Windows.zip"; proof_report=output_root/PROOF_REPORT_NAME; report_path=output_root/REPORT_NAME
     compiler_root=inputs.compiler_root or _default_compiler_root(); frontend_root=inputs.frontend_root or _default_frontend_root(); firmware_root=inputs.firmware_root or _default_firmware_root()
     try:
         distribution=production_distribution.build_production_distribution(production_distribution.ProductionDistributionInputs(_resolve(inputs.executable),_resolve(inputs.runtime_resources),_resolve(inputs.version_file),_resolve(inputs.runtime_bin),_resolve(inputs.runtime_platformio),_resolve(compiler_root),_resolve(frontend_root),_resolve(firmware_root)),distribution_root)
         release=release_package.build_release(distribution.distribution_root,artifact); provenance=release_provenance.write_provenance(distribution.distribution_root,release.manifest,release.artifact,artifact.with_name(release_provenance.PROVENANCE_MANIFEST),source_revision=inputs.source_revision); proof=portable_release_proof.prove_portable_release(release.artifact,manifest=release.manifest)
-        if not proof.passed:raise ProductionReleaseAssemblyError("Portable release proof failed; artifact is not release-ready.")
-        proof_payload=portable_release_proof.report_to_dict(proof); proof_report.write_text(json.dumps(proof_payload,indent=2)+"\n",encoding="utf-8"); report={"schema":REPORT_SCHEMA,"schema_version":REPORT_SCHEMA_VERSION,"status":"PASS","portable":True,"runtime_model":"application-owned","target_machine_host_toolchain_required":False,"artifact_model":"RoboStudio + Compiler + Application-Owned Runtime","host_prerequisites_packaged":True,"compiler":"compiler/main.py","compiler_contract":"compiler/robostudio_bridge.py","frontend":"compiler/frontend","firmware":"firmware/robot-platform","bundled_python":"runtime/bin/python.exe","bundled_platformio":"runtime/platformio","application":distribution.application,"application_version":distribution.application_version,"source_revision":inputs.source_revision,"distribution":str(distribution.distribution_root),"artifact":str(release.artifact),"artifact_sha256":release.sha256,"release_manifest":str(release.manifest),"release_provenance":str(provenance),"portable_proof_report":str(proof_report),"proof":proof_payload}; report_path.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8"); return report
+        proof_payload=portable_release_proof.report_to_dict(proof); proof_report.write_text(json.dumps(proof_payload,indent=2)+"\n",encoding="utf-8")
+        if not proof.passed:raise ProductionReleaseAssemblyError(_proof_failure_message(proof))
+        report={"schema":REPORT_SCHEMA,"schema_version":REPORT_SCHEMA_VERSION,"status":"PASS","portable":True,"runtime_model":"application-owned","target_machine_host_toolchain_required":False,"artifact_model":"RoboStudio + Compiler + Application-Owned Runtime","host_prerequisites_packaged":True,"compiler":"compiler/main.py","compiler_contract":"compiler/robostudio_bridge.py","frontend":"compiler/frontend","firmware":"firmware/robot-platform","bundled_python":"runtime/bin/python.exe","bundled_platformio":"runtime/platformio","application":distribution.application,"application_version":distribution.application_version,"source_revision":inputs.source_revision,"distribution":str(distribution.distribution_root),"artifact":str(release.artifact),"artifact_sha256":release.sha256,"release_manifest":str(release.manifest),"release_provenance":str(provenance),"portable_proof_report":str(proof_report),"proof":proof_payload}; report_path.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8"); return report
     except Exception as exc:
         if isinstance(exc,ProductionReleaseAssemblyError):raise
         raise ProductionReleaseAssemblyError(str(exc)) from exc

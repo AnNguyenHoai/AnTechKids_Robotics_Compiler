@@ -13,6 +13,19 @@ DISTRIBUTION_MANIFEST = "distribution-manifest.json"
 SCHEMA = "antechkids.robostudio.distribution"
 SCHEMA_VERSION = 2
 CANONICAL_PRODUCTION_ARTIFACT_MODEL = "RoboStudio + Compiler + Application-Owned Runtime"
+DEVELOPER_PAYLOAD_NAMES = frozenset({
+    ".git",
+    ".github",
+    ".circleci",
+    ".travis.yml",
+    ".pio",
+    "penv",
+    ".venv",
+    "__pycache__",
+    ".pytest_cache",
+})
+PLATFORMIO_NON_RUNTIME_NAMES = frozenset({"examples"})
+ESPTOOL_FIRMWARE_HELPERS = ("esptool_path_fix.py", "esptool_runner.py")
 
 
 class DistributionPackageError(RuntimeError):
@@ -33,18 +46,57 @@ class DistributionInputs:
     deployment_tools_root: Path | None = None
 
 
-def _copy_tree(source: Path, destination: Path, label: str) -> None:
+def _copy_tree(
+    source: Path,
+    destination: Path,
+    label: str,
+    *,
+    extra_ignored_names: frozenset[str] = frozenset(),
+) -> None:
+    """Copy a runtime tree while removing dependency/developer metadata."""
     if not source.is_dir():
         raise DistributionPackageError(f"Missing distribution input {label}: {source}")
     destination.mkdir(parents=True, exist_ok=True)
+    ignored_names = DEVELOPER_PAYLOAD_NAMES | frozenset(name.lower() for name in extra_ignored_names)
+    ignore = shutil.ignore_patterns(*ignored_names)
     for item in source.iterdir():
         target = destination / item.name
         if item.is_dir():
-            if item.name.lower() in {"penv", ".venv", ".pio", ".git"}:
-                raise DistributionPackageError(f"Host/development state is not allowed: {item}")
-            shutil.copytree(item, target, dirs_exist_ok=True)
+            if item.name.lower() in ignored_names:
+                continue
+            shutil.copytree(item, target, dirs_exist_ok=True, ignore=ignore)
         elif item.is_file():
+            if item.name.lower() in ignored_names:
+                continue
             shutil.copy2(item, target)
+
+
+def _copy_platformio_runtime(source: Path, destination: Path, label: str) -> None:
+    """Copy only executable PlatformIO runtime content.
+
+    Installed PlatformIO platforms/packages can carry repository examples and CI
+    metadata. They are useful to upstream developers but are not required to
+    build/upload RoboStudio's pinned firmware and can contain host-specific
+    paths. Prune them at the distribution boundary while preserving boards,
+    builders, manifests, frameworks and tools.
+    """
+    _copy_tree(
+        source,
+        destination,
+        label,
+        extra_ignored_names=PLATFORMIO_NON_RUNTIME_NAMES,
+    )
+
+
+def _firmware_esptool_helpers_required(source: Path) -> bool:
+    platformio = source / "platformio.ini"
+    if not platformio.is_file():
+        return False
+    try:
+        text = platformio.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return "esptool_path_fix.py" in text or (source / "esptool_path_fix.py").is_file()
 
 
 def _copy_firmware(source: Path, destination: Path) -> None:
@@ -58,12 +110,20 @@ def _copy_firmware(source: Path, destination: Path) -> None:
         raise DistributionPackageError("Production firmware project must contain wifi_config.py")
     if not (source / "main").is_dir():
         raise DistributionPackageError("Production firmware project must contain main/")
-    forbidden = {".git", ".pio", "penv", ".venv", "__pycache__", ".pytest_cache"}
+
+    if _firmware_esptool_helpers_required(source):
+        missing_helpers = [name for name in ESPTOOL_FIRMWARE_HELPERS if not (source / name).is_file()]
+        if missing_helpers:
+            raise DistributionPackageError(
+                "Production firmware esptool integration is incomplete: " + ", ".join(missing_helpers)
+            )
+
+    allowed_top_level = {"platformio.ini", "wifi_config.py", "main", *ESPTOOL_FIRMWARE_HELPERS}
     for path in source.rglob("*"):
         relative = path.relative_to(source)
-        if any(part.lower() in forbidden for part in relative.parts):
+        if any(part.lower() in DEVELOPER_PAYLOAD_NAMES for part in relative.parts):
             continue
-        if relative.parts[0] not in {"platformio.ini", "wifi_config.py", "main"}:
+        if relative.parts[0] not in allowed_top_level:
             continue
         target = destination / relative
         if path.is_dir():
@@ -71,7 +131,11 @@ def _copy_firmware(source: Path, destination: Path) -> None:
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target)
-    if any(part.lower() in forbidden for path in destination.rglob("*") for part in path.relative_to(destination).parts):
+    if any(
+        part.lower() in DEVELOPER_PAYLOAD_NAMES
+        for path in destination.rglob("*")
+        for part in path.relative_to(destination).parts
+    ):
         raise DistributionPackageError("Production firmware contains forbidden development payload")
 
 
@@ -139,7 +203,7 @@ def _copy_compiler(compiler_root: Path | None, frontend_root: Path | None, outpu
     destination = output / "compiler"
     if destination.exists():
         raise DistributionPackageError(f"Compiler destination already exists: {destination}")
-    shutil.copytree(source, destination, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".git", ".venv", ".pio", "penv"))
+    shutil.copytree(source, destination, ignore=shutil.ignore_patterns(*DEVELOPER_PAYLOAD_NAMES))
     if frontend_root is not None:
         frontend = Path(frontend_root).resolve()
         if not frontend.is_dir():
@@ -147,7 +211,7 @@ def _copy_compiler(compiler_root: Path | None, frontend_root: Path | None, outpu
         frontend_destination = destination / "frontend"
         if frontend_destination.exists():
             raise DistributionPackageError(f"Compiler source already contains frontend payload: {frontend_destination}")
-        shutil.copytree(frontend, frontend_destination, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".git", ".venv", ".pio", "penv"))
+        shutil.copytree(frontend, frontend_destination, ignore=shutil.ignore_patterns(*DEVELOPER_PAYLOAD_NAMES))
 
 
 def _validate_production_runtime(inputs: DistributionInputs) -> None:
@@ -195,7 +259,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
         _copy_launcher(inputs.launcher, output)
         _copy_compiler(inputs.compiler_root, inputs.frontend_root, output)
         _copy_tree(Path(inputs.runtime_bin), output / "runtime" / "bin", "portable Python")
-        _copy_tree(Path(inputs.runtime_platformio), output / "runtime" / "platformio", "PlatformIO runtime")
+        _copy_platformio_runtime(Path(inputs.runtime_platformio), output / "runtime" / "platformio", "PlatformIO runtime")
         _copy_tree(Path(inputs.runtime_resources), output / "runtime" / "resources", "application resources")
         _copy_tree(Path(inputs.deployment_tools_root), output / "tools", "deployment runtime tools")
         _normalize_production_resources(output / "runtime" / "resources")
@@ -210,7 +274,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
     else:
         _validate_legacy_runtime_inputs(inputs)
         _copy_tree(Path(inputs.runtime_bin), output / "runtime" / "bin", "portable Python")
-        _copy_tree(Path(inputs.runtime_platformio), output / "runtime" / "platformio", "PlatformIO")
+        _copy_platformio_runtime(Path(inputs.runtime_platformio), output / "runtime" / "platformio", "PlatformIO")
         _copy_tree(Path(inputs.runtime_resources), output / "runtime" / "resources", "runtime resources")
         runtime_resources.write_resource_manifest(output / "runtime" / "resources")
         if not (output / "runtime" / "platformio" / "deployment-runtime.json").is_file():
@@ -312,8 +376,15 @@ def validate_distribution_manifest(path: Path) -> dict:
                 raise DistributionPackageError(f"Production distribution {key} is missing")
         if manifest.get("frontend") and not (root / str(manifest["frontend"])).is_dir():
             raise DistributionPackageError("Production RoboSim frontend payload is missing")
-        if not manifest.get("firmware") or not (root / str(manifest["firmware"]) / "platformio.ini").is_file():
+        firmware_root = root / str(manifest.get("firmware") or "")
+        if not manifest.get("firmware") or not (firmware_root / "platformio.ini").is_file():
             raise DistributionPackageError("Production firmware payload is missing")
+        if _firmware_esptool_helpers_required(firmware_root):
+            missing_helpers = [name for name in ESPTOOL_FIRMWARE_HELPERS if not (firmware_root / name).is_file()]
+            if missing_helpers:
+                raise DistributionPackageError(
+                    "Production firmware esptool integration is incomplete: " + ", ".join(missing_helpers)
+                )
         if manifest.get("deployment_tools") != "tools" or not (root / "tools").is_dir():
             raise DistributionPackageError("Production deployment runtime tools are missing")
         for relative in (

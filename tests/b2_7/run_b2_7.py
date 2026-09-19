@@ -8,7 +8,11 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 MODULE_PATH = ROOT / "tools" / "one_click_production_zip.py"
+
+from tools import distribution_package, portable_release_proof, production_artifact_boundary
 
 
 def _load_module():
@@ -44,6 +48,118 @@ def main() -> int:
         (runtime / "python310.dll").write_bytes(b"dll")
         (runtime / "python310.zip").write_bytes(b"stdlib")
         require(module._portable_python_valid(runtime), "portable Python topology should be accepted")
+
+    # PlatformIO service state used during production provisioning must stay on
+    # a short whitespace-free path so the legacy ESP32 GCC driver can reliably
+    # spawn cc1plus/as on Windows.
+    with tempfile.TemporaryDirectory(prefix="b27-cache-") as td:
+        cache = Path(td) / "RSC"
+        core = module._platformio_core_cache(cache, "espressif32@6.12.0")
+        require(core.name == "pio-6.1.18-e32-6.12.0", "PlatformIO core cache name must stay deliberately short")
+        require(core.parent == cache, "PlatformIO core cache must live directly below the selected short cache")
+        spaced = Path(td) / "cache with spaces"
+        try:
+            module._platformio_core_cache(spaced, "espressif32@6.12.0")
+        except module.OneClickBuildError:
+            pass
+        else:
+            raise AssertionError("PlatformIO production cache must reject whitespace paths")
+
+    # Merging PlatformIO's pinned Python tool payload must preserve both package
+    # directories and ordinary files; the full Windows build additionally probes
+    # the real esptool wrapper with the embedded interpreter.
+    with tempfile.TemporaryDirectory(prefix="b27-python-tool-") as td:
+        base = Path(td)
+        source_payload = base / "source"
+        destination_payload = base / "site-packages"
+        (source_payload / "pkg").mkdir(parents=True)
+        (source_payload / "pkg" / "module.py").write_text("VALUE=1\n", encoding="utf-8")
+        (source_payload / "marker.txt").write_text("ok\n", encoding="utf-8")
+        module._merge_tree(source_payload, destination_payload)
+        require((destination_payload / "pkg" / "module.py").is_file(), "Python payload merge must preserve package directories")
+        require((destination_payload / "marker.txt").is_file(), "Python payload merge must preserve ordinary files")
+
+    # Runtime execution after pip installation regenerates bytecode caches.
+    # The production boundary must sanitize those only after the final embedded
+    # Python/PlatformIO/esptool execution, before B2.6 validates the runtime.
+    with tempfile.TemporaryDirectory(prefix="b27-runtime-clean-") as td:
+        runtime = Path(td)
+        generated = runtime / "Lib" / "site-packages" / "pkg" / "__pycache__"
+        generated.mkdir(parents=True)
+        (generated / "module.cpython-310.pyc").write_bytes(b"pyc")
+        module._remove_forbidden(runtime)
+        require(not generated.exists(), "post-provision runtime sanitization must remove generated __pycache__ payload")
+
+    # Third-party runtime packages can contain repository metadata such as
+    # .github/workflows with absolute CI paths. It is not a runtime dependency
+    # and must be removed at the production distribution boundary rather than
+    # weakening host-path validation.
+    with tempfile.TemporaryDirectory(prefix="b27-runtime-metadata-") as td:
+        base = Path(td)
+        source = base / "runtime-platformio"
+        package = source / "packages" / "tool-esptoolpy"
+        (package / ".github" / "workflows").mkdir(parents=True)
+        (package / ".github" / "workflows" / "build.yml").write_text(
+            "working-directory: /home/runner/esptool\n", encoding="utf-8"
+        )
+        (package / "package.json").write_text("{}\n", encoding="utf-8")
+        destination = base / "distribution-runtime"
+        distribution_package._copy_tree(source, destination, "PlatformIO fixture")
+        require((destination / "packages" / "tool-esptoolpy" / "package.json").is_file(), "runtime package files must remain")
+        require(not (destination / "packages" / "tool-esptoolpy" / ".github").exists(), "repository metadata must not cross production boundary")
+        require(".github" in production_artifact_boundary.FORBIDDEN_PAYLOAD_NAMES, "production boundary must forbid .github metadata")
+
+    # Portable proof must reject host-owned absolute roots, but must not confuse
+    # ordinary package-path or URL segments named "home" with /home/<user>.
+    with tempfile.TemporaryDirectory(prefix="b27-host-root-") as td:
+        base = Path(td)
+        package_path = base / "package-path.json"
+        package_path.write_text(
+            '{"path":"runtime/bin/Lib/site-packages/platformio/home/cli.py"}\n',
+            encoding="utf-8",
+        )
+        url_path = base / "url.json"
+        url_path.write_text(
+            '{"url":"https://inex.co.th/home/product/openkb/"}\n',
+            encoding="utf-8",
+        )
+        linux_home = base / "linux-home.json"
+        linux_home.write_text('{"developer":"/home/alice/project"}\n', encoding="utf-8")
+        linux_users = base / "linux-users.json"
+        linux_users.write_text('{"developer":"/Users/alice/project"}\n', encoding="utf-8")
+
+        require(not portable_release_proof._scan_host_paths(package_path), "platformio/home package segment must not be treated as a host root")
+        require(not portable_release_proof._scan_host_paths(url_path), "URL /home/ segment must not be treated as a host root")
+        require(portable_release_proof._scan_host_paths(linux_home), "absolute /home/<user> path must remain rejected")
+        require(portable_release_proof._scan_host_paths(linux_users), "absolute /Users/<user> path must remain rejected")
+
+    # The embedded-Python esptool compatibility helpers are part of the firmware
+    # project contract. If platformio.ini enables the post script, both helpers
+    # must be included in the packaged firmware and a partial pair must fail.
+    with tempfile.TemporaryDirectory(prefix="b27-firmware-helpers-") as td:
+        base = Path(td)
+        firmware = base / "firmware"
+        (firmware / "main").mkdir(parents=True)
+        (firmware / "main" / "main.cpp").write_text("void setup(){}\nvoid loop(){}\n", encoding="utf-8")
+        (firmware / "wifi_config.py").write_text("Import('env')\n", encoding="utf-8")
+        (firmware / "platformio.ini").write_text(
+            "[env:esp32dev]\nplatform=espressif32@6.12.0\nextra_scripts=post:esptool_path_fix.py\n",
+            encoding="utf-8",
+        )
+        for name in distribution_package.ESPTOOL_FIRMWARE_HELPERS:
+            (firmware / name).write_text("# helper\n", encoding="utf-8")
+        packaged = base / "packaged"
+        distribution_package._copy_firmware(firmware, packaged)
+        for name in distribution_package.ESPTOOL_FIRMWARE_HELPERS:
+            require((packaged / name).is_file(), f"packaged firmware must include {name}")
+
+        (firmware / "esptool_runner.py").unlink()
+        try:
+            distribution_package._copy_firmware(firmware, base / "incomplete")
+        except distribution_package.DistributionPackageError as exc:
+            require("esptool integration is incomplete" in str(exc), "partial esptool helper pair must fail clearly")
+        else:
+            raise AssertionError("partial esptool helper pair must fail production packaging")
 
     # A partially extracted cached Xtensa package must never be accepted just
     # because packages/ is non-empty. This reproduces the Windows failure where
@@ -86,24 +202,42 @@ def main() -> int:
     require("Build-ProductionZip.ps1" in cmd, "root launcher must delegate to the PowerShell bootstrap")
     require("-3.10" in ps1 and "ROBOSTUDIO_BUILD_PYTHON" in ps1, "PowerShell bootstrap must auto-detect a supported build Python")
     require("ROBOSTUDIO_BUILD_CACHE" in ps1, "PowerShell bootstrap must own the production build cache root")
-    require("LOCALAPPDATA" in ps1 and 'Join-Path $base "RSC"' in ps1, "Windows production cache must default to a short path outside the repository")
+    require("Test-CacheCandidate" in ps1, "Windows production cache selection must verify writability")
+    require("$env:PUBLIC" in ps1 and 'Join-Path $env:PUBLIC "RSC"' in ps1, "Windows production cache must prefer the short public profile path")
+    require("must not contain spaces" in ps1, "Windows production cache override must reject whitespace paths")
     require("Clear-StalePlatformIOTemp" in ps1 and '".cache\\tmp"' in ps1, "PowerShell bootstrap must clean interrupted PlatformIO extraction temp state")
+    require('$_ .Name' not in ps1, "PowerShell cache cleanup must not contain malformed member access")
+    require('"pio-*"' in ps1 and '"platformio-*"' in ps1, "cache cleanup must cover both short and legacy PlatformIO cache names")
     require("Build cache :" in ps1, "PowerShell bootstrap must print the selected cache for diagnostics")
     require("pyinstaller" in requirements.lower() and "PySide6" in requirements, "build requirements must prepare the GUI freezer")
     for token in (
         "python-{PYTHON_RUNTIME_VERSION}-embed-amd64.zip",
         "PyInstaller",
         "platformio=={PLATFORMIO_CORE_VERSION}",
+        '"pip>=24,<27"',
+        "import platformio, yaml, pip",
+        "_platformio_core_cache",
+        'core_cache / "p"',
+        '"platformio", "pkg", "install"',
+        "_stage_esptool_python_runtime",
+        "ESPTOOL_PACKAGE",
+        "portable esptool runtime: PASS",
+        '"-j", "1"',
         '"platformio", "run"',
         '"esp32dev"',
         "_probe_xtensa_toolchain",
         "_purge_xtensa_toolchain",
         "[repair] cached Xtensa toolchain is unusable",
+        "_remove_forbidden(runtime_python.parent)",
         '"target_profiles.json"',
         '"one_command_production_build.py"',
         '"RoboStudio-{version}-Windows.zip"',
     ):
         require(token in source, f"B2.7 orchestrator is missing required production stage: {token}")
+
+    workflow = (ROOT / ".github" / "workflows" / "robotics-ci.yml").read_text(encoding="utf-8")
+    require("Run B2.7 full Windows production ZIP build" in workflow, "CI must exercise the real one-click production build")
+    require("BUILD_PRODUCTION_ZIP.cmd --clean" in workflow, "CI must run the same production launcher used by Windows operators")
 
     print("B2.7 one-click production ZIP gate: PASS")
     return 0

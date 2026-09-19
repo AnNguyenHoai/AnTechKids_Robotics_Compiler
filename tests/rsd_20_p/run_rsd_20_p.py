@@ -100,11 +100,6 @@ def _copy_portable_python(runtime_root: Path, *, runnable: bool) -> None:
             ignore=shutil.ignore_patterns("__pycache__", "test", "tests"),
         )
 
-    # Never copy an installation-specific ._pth file. Embeddable Python files
-    # commonly contain paths relative to their original layout (for example
-    # pythonXY.zip), and a regular installation may contain site-package paths.
-    # Both layouts become incorrect once the interpreter is moved to
-    # runtime/bin. Generate the only path this fixture needs instead.
     versioned_name = f"python{sys.version_info.major}{sys.version_info.minor}._pth"
     (runtime_bin / versioned_name).write_text("..\\Lib\n", encoding="utf-8")
 
@@ -215,6 +210,16 @@ def main() -> int:
         check("system/non-packaged dependency findings are absent", not report.findings)
         check("release file count is recorded", report.file_count > 0)
         check("report is machine-readable", portable_release_proof.report_to_dict(report)["status"] == "PASS")
+
+        for dependency in ("Cabinet.dll", "msi.dll", "bcryptprimitives.dll"):
+            check(
+                f"Windows inbox dependency is classified as system: {dependency}",
+                portable_release_proof._is_system_dependency(dependency),
+            )
+        check(
+            "unknown application DLL is not classified as a Windows system dependency",
+            not portable_release_proof._is_system_dependency("robot-private-runtime.dll"),
+        )
 
         binary_metadata = base / "binary-metadata.bin"
         binary_metadata.write_bytes(b"compiled on C:\\Users\\Builder\\Python\\python.exe\0")

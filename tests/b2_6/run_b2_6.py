@@ -131,6 +131,28 @@ def test_contract_semantics() -> None:
         _expect_fail(lambda: copy_run_contract.validate_payload(absolute), "runtime.python")
 
 
+def test_release_host_path_filter_boundaries() -> None:
+    # PlatformIO legitimately contains a package path segment named `home`.
+    # The release manifest inventories that relative path, and it must not be
+    # mistaken for a leaked absolute Linux home directory.
+    relative_package_path = (
+        b'{"path":"runtime/bin/Lib/site-packages/platformio/home/app.py"}'
+    )
+    release_package._reject_forbidden_text(relative_package_path, "distribution-manifest.json")
+
+    for leaked in (
+        b'{"cache":"/home/alice/.platformio"}',
+        b'{"cache":"/Users/alice/.platformio"}',
+        b'config=/home/alice/build',
+    ):
+        try:
+            release_package._reject_forbidden_text(leaked, "fixture.json")
+        except release_package.ReleasePackageError:
+            pass
+        else:
+            raise AssertionError(f"Absolute host path must remain forbidden: {leaked!r}")
+
+
 def test_release_zip_contract() -> None:
     with tempfile.TemporaryDirectory(prefix="b2-6-zip-") as td:
         temp = Path(td)
@@ -244,6 +266,7 @@ def test_one_command_uses_b2_6_finalizer() -> None:
 def main() -> int:
     tests = [
         test_contract_semantics,
+        test_release_host_path_filter_boundaries,
         test_release_zip_contract,
         test_one_command_uses_b2_6_finalizer,
     ]
