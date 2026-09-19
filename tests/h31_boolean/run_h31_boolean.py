@@ -183,7 +183,7 @@ def test_boolean_results_are_normalized():
 
 def test_short_circuit_runtime_semantics():
     # If the second operand executes, the H31 executor deliberately fails on
-    # division by zero.  Passing therefore proves runtime branch short-circuit.
+    # division by zero. Passing therefore proves runtime branch short-circuit.
     expect_value(
         "and short-circuits false left operand",
         "result = 0 and (1 / 0)\n",
@@ -209,6 +209,31 @@ def test_nested_arithmetic_operands_use_expression_compiler():
     )
 
 
+def test_sensor_calls_are_boolean_operands():
+    # This is the regression boundary for the pre-H31 compiler.visit(expr)
+    # bug. Sensor calls must compile as value expressions inside BoolOps.
+    _compiler, program = compile_source(
+        "result = read_ultrasonic() and read_touch(1)\n"
+    )
+    names = [Opcode(ins.opcode).name for ins in program.instructions]
+    assert "ReadUltrasonic" in names, f"expected ReadUltrasonic, got {names}"
+    assert "ReadTouch" in names, f"expected ReadTouch, got {names}"
+    assert names.count("JumpIfFalse") >= 2, (
+        f"expected AND short-circuit around sensor values, got {names}"
+    )
+
+    _compiler, program = compile_source(
+        "result = get_trace_state(0, 1) or read_light(1)\n"
+    )
+    names = [Opcode(ins.opcode).name for ins in program.instructions]
+    assert "GetTraceState" in names, f"expected GetTraceState, got {names}"
+    assert "ReadLight" in names, f"expected ReadLight, got {names}"
+    assert names.count("JumpIfTrue") >= 2, (
+        f"expected OR short-circuit around sensor values, got {names}"
+    )
+    print("PASS: sensor-returning Robot APIs compose as Boolean operands")
+
+
 def test_nested_boolean_composition():
     expect_value(
         "mixed nested boolean expression",
@@ -231,6 +256,19 @@ d = 0
 result = not ((a and not b) and (c or (d and not a)))
 """,
         0,
+    )
+
+
+def test_boolean_composes_inside_comparison():
+    expect_value(
+        "Boolean result can be compared",
+        "a = 0\nb = 5\nresult = (a or b) == 1\n",
+        1,
+    )
+    expect_value(
+        "not result can be compared",
+        "a = 0\nresult = (not a) != 0\n",
+        1,
     )
 
 
@@ -314,7 +352,9 @@ def main() -> int:
     test_boolean_results_are_normalized()
     test_short_circuit_runtime_semantics()
     test_nested_arithmetic_operands_use_expression_compiler()
+    test_sensor_calls_are_boolean_operands()
     test_nested_boolean_composition()
+    test_boolean_composes_inside_comparison()
     test_python_precedence_shape_is_preserved()
     test_if_context()
     test_while_not_context()
