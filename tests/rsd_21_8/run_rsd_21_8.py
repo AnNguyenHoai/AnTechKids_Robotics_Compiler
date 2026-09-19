@@ -4,7 +4,10 @@ import json, subprocess, sys, tempfile, zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
+ROBOSTUDIO_ROOT=ROOT/"robostudio"
+if str(ROBOSTUDIO_ROOT) not in sys.path:sys.path.insert(0,str(ROBOSTUDIO_ROOT))
 from tools import production_distribution, release_package
+from services.build_worker import BuildWorker
 
 def check(name,condition):
     if not condition:raise AssertionError(name)
@@ -45,6 +48,33 @@ def _run_contract(name,bridge,source,out,report,request,cwd):
     check(f"{name} compiler output exists",out.is_file() and out.stat().st_size>0)
     check(f"{name} contract report exists",report.is_file())
     check(f"{name} report records source kind",json.loads(report.read_text(encoding="utf-8"))["source_kind"]=="robosim-python")
+    return payload,proc.stdout
+
+def _check_human_log(contract_stdout,payload):
+    details,summary=BuildWorker.format_result(contract_stdout,"",True)
+    check("compiler contract JSON is hidden from user log",details=="")
+    check("compile summary reports success","Compile successful" in summary)
+    check("compile summary reports instruction count",f"Instructions: {payload['instruction_count']}" in summary)
+    check("compile summary hides temporary paths","robostudio-compile-" not in summary and "rewritten_source" not in summary)
+    check("compile summary does not claim Arduino build","Arduino" not in summary and "upload" not in summary.lower())
+
+    fail_stdout=json.dumps({
+        "schema":"antechkids.robostudio.compiler-contract",
+        "contract_version":1,
+        "status":"FAIL",
+        "source_kind":"robosim-python",
+        "source":"C:/Temp/robostudio-compile-x/program.py",
+        "rewritten_source":None,
+        "output":None,
+        "report":None,
+        "instruction_count":0,
+        "error_code":"INVALID_SOURCE",
+        "error_message":"example syntax error",
+    },indent=2)
+    fail_details,fail_summary=BuildWorker.format_result(fail_stdout,"",False)
+    check("failed contract JSON is hidden from user log",fail_details=="")
+    check("failed summary preserves error code","INVALID_SOURCE" in fail_summary)
+    check("failed summary preserves useful error message","example syntax error" in fail_summary)
 
 def main():
     compiler_root=ROOT/"robot-compiler"; frontend_root=ROOT/"robot-frontend-robosim"/"frontend"
@@ -60,7 +90,8 @@ def main():
         # This guards against compiler.py shadowing the compiler package and also
         # proves that the sibling RoboSim frontend is discovered without PYTHONPATH.
         source_cwd=base/"source-cwd"; source_cwd.mkdir()
-        _run_contract("source layout",source_bridge,source,base/"source-program.h",base/"source-contract.json",base/"source-request.json",source_cwd)
+        source_payload,source_stdout=_run_contract("source layout",source_bridge,source,base/"source-program.h",base/"source-contract.json",base/"source-request.json",source_cwd)
+        _check_human_log(source_stdout,source_payload)
 
         inputs=base/"inputs"; inputs.mkdir(); exe=inputs/"RoboStudio.exe"; exe.write_bytes(b"fixture")
         (inputs/"VERSION").write_text("1.2.3\n",encoding="utf-8")
