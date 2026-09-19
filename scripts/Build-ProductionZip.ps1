@@ -27,7 +27,7 @@ function Resolve-BuildCacheRoot {
     # Keep the Windows cache path deliberately short. PlatformIO extracts the
     # Xtensa toolchain into very deep directory trees and classic Win32 APIs can
     # still fail near MAX_PATH even when long paths are enabled system-wide.
-    return (Join-Path $base "RSBuildCache")
+    return (Join-Path $base "RSC")
 }
 
 function Clear-StalePlatformIOTemp {
@@ -37,21 +37,21 @@ function Clear-StalePlatformIOTemp {
 
     Get-ChildItem -Path $CacheRoot -Directory -Filter "platformio-*" -ErrorAction SilentlyContinue | ForEach-Object {
         $tmp = Join-Path $_.FullName ".cache\tmp"
-        if (-not (Test-Path $tmp -PathType Container)) { return }
-
-        $removed = $false
-        for ($attempt = 1; $attempt -le 3; $attempt++) {
-            try {
-                Remove-Item -Path $tmp -Recurse -Force -ErrorAction Stop
-                $removed = $true
-                break
-            } catch {
-                Start-Sleep -Milliseconds (250 * $attempt)
+        if (Test-Path $tmp -PathType Container) {
+            $removed = $false
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+                try {
+                    Remove-Item -Path $tmp -Recurse -Force -ErrorAction Stop
+                    $removed = $true
+                    break
+                } catch {
+                    Start-Sleep -Milliseconds (250 * $attempt)
+                }
             }
-        }
 
-        if (-not $removed) {
-            Write-Warning "Could not remove stale PlatformIO temp directory: $tmp. The build will continue with the short cache root."
+            if (-not $removed) {
+                Write-Warning "Could not remove stale PlatformIO temp directory: $tmp. The build will continue with the short cache root."
+            }
         }
     }
 }
