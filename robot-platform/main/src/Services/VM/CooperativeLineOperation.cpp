@@ -88,6 +88,7 @@ bool StartIntersectionStop(int speed, int type) {
     }
 
     auto& follower = LineFollower::instance();
+    follower.reset();
     follower.setSpeed(speed);
     follower.stopAtIntersection();
     return Update();
@@ -100,6 +101,7 @@ bool StartTurnEncounterLine(int speed, int angle, int direction) {
     }
 
     auto& follower = LineFollower::instance();
+    follower.reset();
     follower.setSpeed(speed);
     follower.turnEncounterLine(direction);
     return Update();
@@ -159,10 +161,11 @@ bool Update() {
             return true;
 
         case Kind::TurnEncounterLine:
-            // The legacy blocking implementation finishes as soon as a line is
-            // visible. A second sensor sample here avoids exposing private line
-            // follower state while keeping each call bounded.
-            if (RobotAPI::GetTraceRaw(1) != 0) {
+            // LineFollower clears its turn request in the same control tick that
+            // reacquires a line. Query that state rather than sampling the sensor
+            // a second time, so cooperative execution preserves legacy completion
+            // semantics exactly for the mask that drove the motor update.
+            if (!follower.isTurnRequested()) {
                 clearState();
                 return false;
             }

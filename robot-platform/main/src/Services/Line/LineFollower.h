@@ -25,6 +25,7 @@ public:
     void stop();
     bool isStopped() const { return _stopped; }
     bool isBmpActive() const { return _bmpActive; }
+    bool isTurnRequested() const { return _turnRequested; }
 
     // Tuning
     void setPIDGains(float kp, float ki, float kd);

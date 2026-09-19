@@ -63,6 +63,8 @@ def test_long_running_line_opcodes_use_state_machine() -> None:
             "line state machine must retain the existing 20 ms control cadence")
     require("RobotAPI::LineBasis(g_state.speed)" in coop,
             "each cooperative update must execute one bounded line-control tick")
+    require("!follower.isTurnRequested()" in coop,
+            "turn completion must use the same line-follower tick state, not a second sensor sample")
     require("delay(" not in coop, "cooperative line operation must never delay")
     require("while (" not in coop and "while(" not in coop,
             "cooperative line operation must never contain an internal loop")
