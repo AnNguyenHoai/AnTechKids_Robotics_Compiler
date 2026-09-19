@@ -50,6 +50,7 @@ def main()->int:
     tests.append(ROOT/"tests"/"b2_5"/"run_b2_5.py")
     tests.append(ROOT/"tests"/"b2_6"/"run_b2_6.py")
     tests.append(ROOT/"tests"/"b2_7"/"run_b2_7.py")
+    tests.append(ROOT/"tests"/"b2_7"/"run_firmware_source_transients.py")
     tests.append(ROOT/"tests"/"h29_runtime"/"run_h29_runtime.py")
     tests.append(ROOT/"tests"/"h30_multi_robot"/"run_h30_multi_robot.py")
     tests.append(ROOT/"tests"/"h31_boolean"/"run_h31_boolean.py")
