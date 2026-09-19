@@ -83,6 +83,10 @@ jobs:
         shell: pwsh
         run: python tests/b2_7/run_b2_7.py
 
+      - name: Run B2.7 full Windows production ZIP build
+        shell: cmd
+        run: BUILD_PRODUCTION_ZIP.cmd --clean
+
       - name: Run repository regression suite
         shell: pwsh
         run: python run_all_tests.py
