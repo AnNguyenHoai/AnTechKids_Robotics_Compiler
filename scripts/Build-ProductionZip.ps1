@@ -73,25 +73,27 @@ function Clear-StalePlatformIOTemp {
 
     if (-not (Test-Path $CacheRoot -PathType Container)) { return }
 
-    Get-ChildItem -Path $CacheRoot -Directory -Filter "platformio-*" -ErrorAction SilentlyContinue | ForEach-Object {
-        $tmp = Join-Path $_.FullName ".cache\tmp"
-        if (Test-Path $tmp -PathType Container) {
-            $removed = $false
-            for ($attempt = 1; $attempt -le 3; $attempt++) {
-                try {
-                    Remove-Item -Path $tmp -Recurse -Force -ErrorAction Stop
-                    $removed = $true
-                    break
-                } catch {
-                    Start-Sleep -Milliseconds (250 * $attempt)
+    Get-ChildItem -Path $CacheRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "pio-*" -or $_.Name -like "platformio-*" } |
+        ForEach-Object {
+            $tmp = Join-Path $_.FullName ".cache\tmp"
+            if (Test-Path $tmp -PathType Container) {
+                $removed = $false
+                for ($attempt = 1; $attempt -le 3; $attempt++) {
+                    try {
+                        Remove-Item -Path $tmp -Recurse -Force -ErrorAction Stop
+                        $removed = $true
+                        break
+                    } catch {
+                        Start-Sleep -Milliseconds (250 * $attempt)
+                    }
+                }
+
+                if (-not $removed) {
+                    Write-Warning "Could not remove stale PlatformIO temp directory: $tmp."
                 }
             }
-
-            if (-not $removed) {
-                Write-Warning "Could not remove stale PlatformIO temp directory: $tmp."
-            }
         }
-    }
 }
 
 function Test-BuildPython {
