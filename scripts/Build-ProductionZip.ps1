@@ -15,19 +15,57 @@ if (-not (Test-Path $Orchestrator -PathType Leaf)) {
     throw "Missing B2.7 orchestrator: $Orchestrator"
 }
 
+function Test-CacheCandidate {
+    param([string]$Path)
+
+    if (-not $Path) { return $null }
+    $full = [System.IO.Path]::GetFullPath($Path)
+    if ($full -match '\s') { return $null }
+
+    try {
+        New-Item -ItemType Directory -Force -Path $full | Out-Null
+        $probe = Join-Path $full (".write-test-" + [Guid]::NewGuid().ToString("N"))
+        [System.IO.File]::WriteAllText($probe, "ok")
+        Remove-Item -Path $probe -Force -ErrorAction SilentlyContinue
+        return $full
+    } catch {
+        return $null
+    }
+}
+
 function Resolve-BuildCacheRoot {
     if ($env:ROBOSTUDIO_BUILD_CACHE) {
-        return [System.IO.Path]::GetFullPath($env:ROBOSTUDIO_BUILD_CACHE)
+        $override = [System.IO.Path]::GetFullPath($env:ROBOSTUDIO_BUILD_CACHE)
+        if ($override -match '\s') {
+            throw "ROBOSTUDIO_BUILD_CACHE must not contain spaces because the ESP32 Xtensa GCC toolchain can fail to spawn child processes from a spaced path. Current value: $override"
+        }
+        $resolved = Test-CacheCandidate -Path $override
+        if (-not $resolved) {
+            throw "ROBOSTUDIO_BUILD_CACHE is not writable: $override"
+        }
+        return $resolved
     }
 
-    $base = $env:LOCALAPPDATA
-    if (-not $base) { $base = $env:TEMP }
-    if (-not $base) { $base = [System.IO.Path]::GetTempPath() }
+    $candidates = @()
+    if ($env:PUBLIC) {
+        $candidates += (Join-Path $env:PUBLIC "RSC")
+    }
 
-    # Keep the Windows cache path deliberately short. PlatformIO extracts the
-    # Xtensa toolchain into very deep directory trees and classic Win32 APIs can
-    # still fail near MAX_PATH even when long paths are enabled system-wide.
-    return (Join-Path $base "RSC")
+    $repoDrive = [System.IO.Path]::GetPathRoot($RepoRoot)
+    if ($repoDrive) {
+        $candidates += (Join-Path $repoDrive "RSC")
+    }
+
+    if ($env:ProgramData) {
+        $candidates += (Join-Path $env:ProgramData "RSC")
+    }
+
+    foreach ($candidate in $candidates) {
+        $resolved = Test-CacheCandidate -Path $candidate
+        if ($resolved) { return $resolved }
+    }
+
+    throw "Unable to create a short space-free build cache. Set ROBOSTUDIO_BUILD_CACHE to a writable path without spaces, for example D:\RSC."
 }
 
 function Clear-StalePlatformIOTemp {
@@ -35,7 +73,7 @@ function Clear-StalePlatformIOTemp {
 
     if (-not (Test-Path $CacheRoot -PathType Container)) { return }
 
-    Get-ChildItem -Path $CacheRoot -Directory -Filter "platformio-*" -ErrorAction SilentlyContinue | ForEach-Object {
+    Get-ChildItem -Path $CacheRoot -Directory -Filter "pio-*" -ErrorAction SilentlyContinue | ForEach-Object {
         $tmp = Join-Path $_.FullName ".cache\tmp"
         if (Test-Path $tmp -PathType Container) {
             $removed = $false
@@ -50,7 +88,7 @@ function Clear-StalePlatformIOTemp {
             }
 
             if (-not $removed) {
-                Write-Warning "Could not remove stale PlatformIO temp directory: $tmp. The build will continue with the short cache root."
+                Write-Warning "Could not remove stale PlatformIO temp directory: $tmp."
             }
         }
     }
