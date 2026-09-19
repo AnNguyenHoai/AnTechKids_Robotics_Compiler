@@ -1,14 +1,27 @@
 #include "VM.h"
+#include "CooperativeLineOperation.h"
 #include "../Robot/RobotAPI.h"
 #include "../../../include/generated/opcode.h"
-#include <Arduino.h> 
+#include <Arduino.h>
 
-// Bật trace để debug (có thể comment để tắt)
-#define VM_TRACE_ENABLED 1
+// Instruction tracing is disabled in production by default. Tight forever
+// loops must not flood Serial and starve the cooperative runtime. Developers
+// can enable it explicitly at build time with -DVM_TRACE_ENABLED=1.
+#ifndef VM_TRACE_ENABLED
+#define VM_TRACE_ENABLED 0
+#endif
+
+namespace {
+bool deadlineReached(uint32_t now, uint32_t deadline)
+{
+    return static_cast<int32_t>(now - deadline) >= 0;
+}
+}
 
 VM::VM() : mProgram(nullptr) {}
 
 void VM::Reset() {
+    CooperativeLineOperation::Cancel(true);
     mContext.Reset();
 }
 
@@ -48,10 +61,16 @@ const char* VM::GetErrorMessage() const
 
 // ---- DIAGNOSTIC: manual control ----
 void VM::SetRunning(bool running) {
+    if (!running) {
+        CooperativeLineOperation::Cancel(true);
+        mContext.ClearPendingOperation();
+    }
     mContext.mRunning = running;
 }
 
 void VM::Start() {
+    CooperativeLineOperation::Cancel(true);
+    mContext.ClearPendingOperation();
     mContext.mRunning = true;
     mContext.mProgramCounter = 0;
     mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
@@ -63,9 +82,12 @@ void VM::Step()
 {
     if (!IsRunning()) return;
 
-    // Nếu đã hết chương trình → dừng bình thường (không lỗi)
+    // If the program has ended, stop normally and tear down any cooperative
+    // operation that might have been left active by a malformed program.
     if (mContext.mProgramCounter >= mProgram->mInstructionCount)
     {
+        CooperativeLineOperation::Cancel(true);
+        mContext.ClearPendingOperation();
         mContext.mRunning = false;
         mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
         return;
@@ -73,18 +95,34 @@ void VM::Step()
 
     const Instruction& instruction = mProgram->mInstructions[mContext.mProgramCounter];
 
-#ifdef VM_TRACE_ENABLED
+#if VM_TRACE_ENABLED
     Serial.printf("[TRACE] PC=%03d | Opcode=%d\n", mContext.mProgramCounter, (uint8_t)instruction.opcode);
 #endif
 
     ExecuteInstruction(instruction);
 
-    // Nếu sau khi execute mà lỗi thực sự (khác 0) thì dừng
+    // Stop on a real VM error and release any pending cooperative actuator.
     if (mContext.mErrorCode != ToErrorCode(VMErrorCode::None)) {
+        CooperativeLineOperation::Cancel(true);
+        mContext.ClearPendingOperation();
         mContext.mRunning = false;
         Serial.printf("[VM] Error code: %d (%s)\n", mContext.mErrorCode, GetErrorId());
     }
 }
+
+bool VM::ContinuePendingLineOperation()
+{
+    if (mContext.mPendingOperation != VMPendingOperation::Line) {
+        return false;
+    }
+
+    if (!CooperativeLineOperation::Update()) {
+        mContext.ClearPendingOperation();
+        mContext.mProgramCounter++;
+    }
+    return true;
+}
+
 void VM::ExecuteInstruction(const Instruction& instruction)
 {
     switch (instruction.opcode)
@@ -115,14 +153,32 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             break;
 
         case Opcode::Stop:
+            CooperativeLineOperation::Cancel(false);
             RobotAPI::Stop();
             mContext.mProgramCounter++;
             break;
 
         case Opcode::Wait:
-            RobotAPI::Wait(mContext.mVariables[instruction.p1]);
-            mContext.mProgramCounter++;
+        {
+            const int32_t requestedMs = mContext.mVariables[instruction.p1];
+
+            if (mContext.mPendingOperation == VMPendingOperation::None) {
+                if (requestedMs <= 0) {
+                    mContext.mProgramCounter++;
+                    break;
+                }
+                mContext.mPendingOperation = VMPendingOperation::Wait;
+                mContext.mPendingDeadlineMs = millis() + static_cast<uint32_t>(requestedMs);
+                break;
+            }
+
+            if (mContext.mPendingOperation == VMPendingOperation::Wait &&
+                deadlineReached(millis(), mContext.mPendingDeadlineMs)) {
+                mContext.ClearPendingOperation();
+                mContext.mProgramCounter++;
+            }
             break;
+        }
 
         case Opcode::CompareEQ:
             mContext.mVariables[instruction.p3] =
@@ -165,12 +221,10 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             uint16_t target = instruction.p2;
 
             if (target > mProgram->mInstructionCount) {
-                // Target vượt quá END thật sự là invalid
                 mContext.mRunning = false;
                 mContext.mErrorCode = ToErrorCode(VMErrorCode::InvalidJump);
             }
             else if (target == mProgram->mInstructionCount) {
-                // Jump tới END label = kết thúc chương trình bình thường
                 mContext.mRunning = false;
                 mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
             }
@@ -187,12 +241,10 @@ void VM::ExecuteInstruction(const Instruction& instruction)
                 uint16_t target = instruction.p2;
 
                 if (target > mProgram->mInstructionCount) {
-                    // Invalid jump target
                     mContext.mRunning = false;
                     mContext.mErrorCode = ToErrorCode(VMErrorCode::InvalidJump);
                 }
                 else if (target == mProgram->mInstructionCount) {
-                    // Jump to END = normal program termination
                     mContext.mRunning = false;
                     mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
                 }
@@ -213,12 +265,10 @@ void VM::ExecuteInstruction(const Instruction& instruction)
                 uint16_t target = instruction.p2;
 
                 if (target > mProgram->mInstructionCount) {
-                    // Invalid jump target
                     mContext.mRunning = false;
                     mContext.mErrorCode = ToErrorCode(VMErrorCode::InvalidJump);
                 }
                 else if (target == mProgram->mInstructionCount) {
-                    // Jump to END = normal program termination
                     mContext.mRunning = false;
                     mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
                 }
@@ -320,6 +370,7 @@ void VM::ExecuteInstruction(const Instruction& instruction)
                 mContext.mErrorCode = ToErrorCode(VMErrorCode::InvalidReturn);
             }
             break;
+
         case Opcode::ReadUltrasonic: {
             int16_t value = RobotAPI::ReadUltrasonic();
             mContext.mVariables[instruction.p1] = value;
@@ -350,11 +401,13 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             mContext.mVariables[instruction.p2] = RobotAPI::ReadLine(mContext.mVariables[instruction.p1]);
             mContext.mProgramCounter++;
             break;
+
         case Opcode::SetMotorSpeed:
             RobotAPI::SetMotorSpeed(mContext.mVariables[instruction.p1],
                                     mContext.mVariables[instruction.p2]);
             mContext.mProgramCounter++;
             break;
+
         case Opcode::SetServo:
             RobotAPI::SetServo(mContext.mVariables[instruction.p1],
                                mContext.mVariables[instruction.p2]);
@@ -382,14 +435,23 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             break;
 
         case Opcode::LineIntersectionStop:
-            RobotAPI::LineIntersectionStop(mContext.mVariables[instruction.p1],
-                                           mContext.mVariables[instruction.p2]);
-            mContext.mProgramCounter++;
+            if (ContinuePendingLineOperation()) {
+                break;
+            }
+            if (CooperativeLineOperation::StartIntersectionStop(
+                    mContext.mVariables[instruction.p1],
+                    mContext.mVariables[instruction.p2])) {
+                mContext.mPendingOperation = VMPendingOperation::Line;
+            } else {
+                mContext.mProgramCounter++;
+            }
             break;
+
         case Opcode::SetMp3Play:
             RobotAPI::SetMp3Play(mContext.mVariables[instruction.p1]);
             mContext.mProgramCounter++;
             break;
+
         case Opcode::GetTraceValue:
             mContext.mVariables[instruction.p3] = RobotAPI::GetTraceValue(
                 mContext.mVariables[instruction.p1],
@@ -412,6 +474,7 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             );
             mContext.mProgramCounter++;
             break;
+
         case Opcode::LineBasis:
             RobotAPI::LineBasis(mContext.mVariables[instruction.p1]);
             mContext.mProgramCounter++;
@@ -423,33 +486,51 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             break;
 
         case Opcode::LineMillisecond:
-            RobotAPI::LineMillisecond(
-                mContext.mVariables[instruction.p1],
-                mContext.mVariables[instruction.p2]
-            );
-            mContext.mProgramCounter++;
+            if (ContinuePendingLineOperation()) {
+                break;
+            }
+            if (CooperativeLineOperation::StartMillisecond(
+                    mContext.mVariables[instruction.p1],
+                    mContext.mVariables[instruction.p2])) {
+                mContext.mPendingOperation = VMPendingOperation::Line;
+            } else {
+                mContext.mProgramCounter++;
+            }
             break;
 
         case Opcode::LineStop:
+            CooperativeLineOperation::Cancel(false);
             RobotAPI::LineStop();
             mContext.mProgramCounter++;
             break;
+
         case Opcode::LineTurnEncounterLine:
-            RobotAPI::LineTurnEncounterLine(
-                mContext.mVariables[instruction.p1],
-                mContext.mVariables[instruction.p2],
-                mContext.mVariables[instruction.p3]
-            );
-            mContext.mProgramCounter++;
+            if (ContinuePendingLineOperation()) {
+                break;
+            }
+            if (CooperativeLineOperation::StartTurnEncounterLine(
+                    mContext.mVariables[instruction.p1],
+                    mContext.mVariables[instruction.p2],
+                    mContext.mVariables[instruction.p3])) {
+                mContext.mPendingOperation = VMPendingOperation::Line;
+            } else {
+                mContext.mProgramCounter++;
+            }
             break;
 
         case Opcode::LineForBmp:
-            RobotAPI::LineForBmp(
-                mContext.mVariables[instruction.p1],
-                mContext.mVariables[instruction.p2]
-            );
-            mContext.mProgramCounter++;
+            if (ContinuePendingLineOperation()) {
+                break;
+            }
+            if (CooperativeLineOperation::StartBmp(
+                    mContext.mVariables[instruction.p1],
+                    mContext.mVariables[instruction.p2])) {
+                mContext.mPendingOperation = VMPendingOperation::Line;
+            } else {
+                mContext.mProgramCounter++;
+            }
             break;
+
         default:
             mContext.mRunning = false;
             mContext.mErrorCode = ToErrorCode(VMErrorCode::InvalidOpcode);

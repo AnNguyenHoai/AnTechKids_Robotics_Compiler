@@ -22,6 +22,17 @@ constexpr uint8_t MAX_LOOP_DEPTH = 8;
 constexpr uint8_t MAX_CALL_STACK = 8;
 
 /*----------------------------------------------------------------------------
+ * Cooperative execution state
+ *---------------------------------------------------------------------------*/
+
+enum class VMPendingOperation : uint8_t
+{
+    None = 0,
+    Wait,
+    Line,
+};
+
+/*----------------------------------------------------------------------------
  * Loop Frame
  *---------------------------------------------------------------------------*/
 
@@ -57,6 +68,13 @@ public:
         mFramePointer = 0;
         mReturnAddress = 0;
         mErrorCode = 0;
+        ClearPendingOperation();
+    }
+
+    void ClearPendingOperation()
+    {
+        mPendingOperation = VMPendingOperation::None;
+        mPendingDeadlineMs = 0;
     }
 
 public:
@@ -65,6 +83,12 @@ public:
     bool mFlag;
     uint16_t mProgramCounter;
     bool mRunning;
+
+    // Cooperative execution state. While an operation is pending the VM keeps
+    // the program counter on the current instruction and returns control to the
+    // Arduino loop after every bounded Step().
+    VMPendingOperation mPendingOperation;
+    uint32_t mPendingDeadlineMs;
 
     // Loop stack (for break/continue)
     LoopFrame mLoopStack[MAX_LOOP_DEPTH];
