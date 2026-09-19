@@ -2,6 +2,7 @@
 """EPIC H30 Multi-Robot Management regression contract."""
 from __future__ import annotations
 
+import ast
 import json
 import sys
 import tempfile
@@ -138,6 +139,20 @@ def test_first_flash_never_binds_arbitrary_existing_robot() -> None:
           "first flash refuses ambiguous multiple new robots")
 
 
+def has_positional_robot_zero_index(source: str) -> bool:
+    """Detect executable ``robots[0]`` access without matching comments/strings."""
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Subscript):
+            continue
+        if not isinstance(node.value, ast.Name) or node.value.id != "robots":
+            continue
+        index = node.slice
+        if isinstance(index, ast.Constant) and index.value == 0:
+            return True
+    return False
+
+
 def test_ui_and_runtime_contract_source() -> None:
     ui = (ROOT / "robostudio" / "ui" / "robot_tab.py").read_text(encoding="utf-8")
     deploy = (ROOT / "robostudio" / "services" / "robot_deployment_service.py").read_text(encoding="utf-8")
@@ -146,7 +161,8 @@ def test_ui_and_runtime_contract_source() -> None:
     check("Offline" in ui and "Online" in ui, "Robot tab exposes Online/Offline state")
     check("item.online" in ui, "OTA Run is gated by live discovery state")
     check("self._robots = []" not in ui, "Discover no longer destroys known robot state")
-    check("robots[0]" not in deploy, "first-flash path no longer binds first discovered robot")
+    check(not has_positional_robot_zero_index(deploy),
+          "first-flash path no longer binds first discovered robot")
     check("selected_device_id" in registry and "device_id" in registry,
           "registry persistence is keyed by stable device identity")
     check("prepare_user_data_root" in registry,
