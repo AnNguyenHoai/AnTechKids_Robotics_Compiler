@@ -41,7 +41,7 @@ jobs:
       - name: Validate test topology
         shell: pwsh
         run: |
-          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests','tests/b2_2/run_b2_2.py','tests/b2_2/run_portable_child_closure.py','tests/b2_3/run_b2_3.py','tests/b2_3/run_settings_isolation.py','tests/b2_4/run_b2_4.py','tests/b2_4/run_packaged_flash_boundary.py','tests/b2_5/run_b2_5.py','tests/b2_6/run_b2_6.py','tests/b2_7/run_b2_7.py','tests/h30_multi_robot/run_h30_multi_robot.py','tools/hardware_preflight.py','tools/clean_machine_physical_e2e.py','tools/copy_run_contract.py','tools/copy_run_release.py','tools/one_click_production_zip.py','BUILD_PRODUCTION_ZIP.cmd','scripts/Build-ProductionZip.ps1','run_all_tests.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing test boundaries/runner: {missing}'; print('PASS: test topology boundaries')"
+          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests','tests/b2_2/run_b2_2.py','tests/b2_2/run_portable_child_closure.py','tests/b2_3/run_b2_3.py','tests/b2_3/run_settings_isolation.py','tests/b2_4/run_b2_4.py','tests/b2_4/run_packaged_flash_boundary.py','tests/b2_5/run_b2_5.py','tests/b2_6/run_b2_6.py','tests/b2_7/run_b2_7.py','tests/h30_multi_robot/run_h30_multi_robot.py','tests/h31_boolean/run_h31_boolean.py','tools/hardware_preflight.py','tools/clean_machine_physical_e2e.py','tools/copy_run_contract.py','tools/copy_run_release.py','tools/one_click_production_zip.py','BUILD_PRODUCTION_ZIP.cmd','scripts/Build-ProductionZip.ps1','run_all_tests.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing test boundaries/runner: {missing}'; print('PASS: test topology boundaries')"
 
       - name: Run B2.2 dependency closure gate
         shell: pwsh
@@ -86,6 +86,10 @@ jobs:
       - name: Run H30 multi-robot management gate
         shell: pwsh
         run: python tests/h30_multi_robot/run_h30_multi_robot.py
+
+      - name: Run H31 boolean expression completeness gate
+        shell: pwsh
+        run: python tests/h31_boolean/run_h31_boolean.py
 
       - name: Run B2.7 full Windows production ZIP build
         shell: cmd
