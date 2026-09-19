@@ -16,12 +16,14 @@ SCHEMA = "antechkids.robostudio.production-artifact-boundary"
 SCHEMA_VERSION = 1
 BOUNDARY_MANIFEST = "release-boundary.json"
 
-# These names are always development state or repository metadata and must never
-# be copied into the production artifact. Runtime/bin and runtime/platformio are
-# valid because they are application-owned release payload roots under RSD-23.
+# These names are always development state or repository/CI metadata and must
+# never be copied into the production artifact. Runtime/bin and
+# runtime/platformio are valid because they are application-owned release roots.
 FORBIDDEN_PAYLOAD_NAMES: frozenset[str] = frozenset({
     ".git",
     ".github",
+    ".circleci",
+    ".travis.yml",
     ".venv",
     ".pio",
     "penv",
