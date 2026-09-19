@@ -15,7 +15,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 from services.robot_discovery_service import RobotDiscoveryClient, RobotInfo
 from tools import runtime_paths
@@ -30,6 +30,26 @@ class DeploymentResult:
     output: str
     error: str | None = None
     verified_robot: RobotInfo | None = None
+
+
+def select_unique_new_robot(
+    known_device_ids: set[str], robots: Iterable[RobotInfo]
+) -> RobotInfo | None:
+    """Return the one newly appeared robot, never an arbitrary LAN peer.
+
+    During first-flash a classroom can already contain many online robots. The
+    USB upload itself has no LAN ``device_id`` mapping, so RoboStudio may only
+    auto-bind the result when discovery observes exactly one identity that was
+    not present before the flash.
+    """
+    new_by_id = {
+        robot.device_id: robot
+        for robot in robots
+        if robot.device_id not in known_device_ids
+    }
+    if len(new_by_id) != 1:
+        return None
+    return next(iter(new_by_id.values()))
 
 
 class RobotDeploymentService:
@@ -115,6 +135,17 @@ class RobotDeploymentService:
         except (OSError, json.JSONDecodeError) as exc:
             return DeploymentResult(False, "", f"Invalid bootstrap config: {exc}")
 
+        # H30: snapshot identities already visible on the LAN. After USB flash we
+        # only auto-bind a unique newly appeared device_id; selecting robots[0]
+        # is unsafe in a classroom with multiple robots.
+        known_device_ids: set[str] = set()
+        try:
+            known_device_ids = {robot.device_id for robot in self.discovery.discover()}
+        except Exception:
+            # Failure to establish a baseline merely disables automatic binding.
+            # The USB flash can still succeed and the user can Discover manually.
+            pass
+
         try:
             command = python_command(
                 str(self._runtime_tool("deploy_robot.py")),
@@ -137,19 +168,25 @@ class RobotDeploymentService:
             return DeploymentResult(False, output, "First-flash failed.")
 
         # The robot has just rebooted and may need a few seconds to associate.
-        # Discovery is product-level verification; do not claim network success
-        # merely because PlatformIO accepted the USB upload.
+        # Discovery is product-level verification; do not claim one arbitrary
+        # robot merely because PlatformIO accepted the USB upload.
         deadline = time.monotonic() + 20.0
         while time.monotonic() < deadline:
             try:
                 robots = self.discovery.discover()
-                if robots:
-                    return DeploymentResult(True, output, verified_robot=robots[0])
+                verified = select_unique_new_robot(known_device_ids, robots)
+                if verified is not None:
+                    return DeploymentResult(True, output, verified_robot=verified)
             except Exception:
                 pass
             time.sleep(1.0)
 
-        return DeploymentResult(True, output, "First-flash completed; robot discovery timed out.")
+        return DeploymentResult(
+            True,
+            output,
+            "First-flash upload completed; RoboStudio could not uniquely identify "
+            "the newly flashed robot on the LAN. Click Discover and select it by identity.",
+        )
 
     def deploy_ota(self, code: str, robot: RobotInfo, wifi_ssid: str,
                    wifi_password: str, ota_password: str,
