@@ -137,6 +137,8 @@ def test_first_flash_never_binds_arbitrary_existing_robot() -> None:
           "first flash does not claim an existing robot")
     check(select_unique_new_robot(known, [r1, r2, r3, r4]) is None,
           "first flash refuses ambiguous multiple new robots")
+    check(select_unique_new_robot(None, [r1]) is None,
+          "first flash disables auto-bind when pre-flash discovery baseline is unavailable")
 
 
 def has_positional_robot_zero_index(source: str) -> bool:
@@ -163,6 +165,8 @@ def test_ui_and_runtime_contract_source() -> None:
     check("self._robots = []" not in ui, "Discover no longer destroys known robot state")
     check(not has_positional_robot_zero_index(deploy),
           "first-flash path no longer binds first discovered robot")
+    check("known_device_ids: set[str] | None = None" in deploy,
+          "first-flash distinguishes unavailable baseline from a successful empty scan")
     check("selected_device_id" in registry and "device_id" in registry,
           "registry persistence is keyed by stable device identity")
     check("prepare_user_data_root" in registry,
