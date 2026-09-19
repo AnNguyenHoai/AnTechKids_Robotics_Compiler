@@ -16,12 +16,15 @@ CANONICAL_PRODUCTION_ARTIFACT_MODEL = "RoboStudio + Compiler + Application-Owned
 DEVELOPER_PAYLOAD_NAMES = frozenset({
     ".git",
     ".github",
+    ".circleci",
+    ".travis.yml",
     ".pio",
     "penv",
     ".venv",
     "__pycache__",
     ".pytest_cache",
 })
+PLATFORMIO_NON_RUNTIME_NAMES = frozenset({"examples"})
 ESPTOOL_FIRMWARE_HELPERS = ("esptool_path_fix.py", "esptool_runner.py")
 
 
@@ -43,26 +46,46 @@ class DistributionInputs:
     deployment_tools_root: Path | None = None
 
 
-def _copy_tree(source: Path, destination: Path, label: str) -> None:
-    """Copy a runtime tree while removing dependency/developer metadata.
-
-    Third-party PlatformIO/Python packages can legitimately ship repository
-    metadata such as ``.github/workflows``. Those files are not executable
-    runtime dependencies and may contain CI-machine paths (for example
-    ``/home/...``), so they must not cross the production artifact boundary.
-    """
+def _copy_tree(
+    source: Path,
+    destination: Path,
+    label: str,
+    *,
+    extra_ignored_names: frozenset[str] = frozenset(),
+) -> None:
+    """Copy a runtime tree while removing dependency/developer metadata."""
     if not source.is_dir():
         raise DistributionPackageError(f"Missing distribution input {label}: {source}")
     destination.mkdir(parents=True, exist_ok=True)
-    ignore = shutil.ignore_patterns(*DEVELOPER_PAYLOAD_NAMES)
+    ignored_names = DEVELOPER_PAYLOAD_NAMES | frozenset(name.lower() for name in extra_ignored_names)
+    ignore = shutil.ignore_patterns(*ignored_names)
     for item in source.iterdir():
         target = destination / item.name
         if item.is_dir():
-            if item.name.lower() in DEVELOPER_PAYLOAD_NAMES:
+            if item.name.lower() in ignored_names:
                 continue
             shutil.copytree(item, target, dirs_exist_ok=True, ignore=ignore)
         elif item.is_file():
+            if item.name.lower() in ignored_names:
+                continue
             shutil.copy2(item, target)
+
+
+def _copy_platformio_runtime(source: Path, destination: Path, label: str) -> None:
+    """Copy only executable PlatformIO runtime content.
+
+    Installed PlatformIO platforms/packages can carry repository examples and CI
+    metadata. They are useful to upstream developers but are not required to
+    build/upload RoboStudio's pinned firmware and can contain host-specific
+    paths. Prune them at the distribution boundary while preserving boards,
+    builders, manifests, frameworks and tools.
+    """
+    _copy_tree(
+        source,
+        destination,
+        label,
+        extra_ignored_names=PLATFORMIO_NON_RUNTIME_NAMES,
+    )
 
 
 def _firmware_esptool_helpers_required(source: Path) -> bool:
@@ -236,7 +259,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
         _copy_launcher(inputs.launcher, output)
         _copy_compiler(inputs.compiler_root, inputs.frontend_root, output)
         _copy_tree(Path(inputs.runtime_bin), output / "runtime" / "bin", "portable Python")
-        _copy_tree(Path(inputs.runtime_platformio), output / "runtime" / "platformio", "PlatformIO runtime")
+        _copy_platformio_runtime(Path(inputs.runtime_platformio), output / "runtime" / "platformio", "PlatformIO runtime")
         _copy_tree(Path(inputs.runtime_resources), output / "runtime" / "resources", "application resources")
         _copy_tree(Path(inputs.deployment_tools_root), output / "tools", "deployment runtime tools")
         _normalize_production_resources(output / "runtime" / "resources")
@@ -251,7 +274,7 @@ def assemble_distribution(inputs: DistributionInputs, output: Path) -> Path:
     else:
         _validate_legacy_runtime_inputs(inputs)
         _copy_tree(Path(inputs.runtime_bin), output / "runtime" / "bin", "portable Python")
-        _copy_tree(Path(inputs.runtime_platformio), output / "runtime" / "platformio", "PlatformIO")
+        _copy_platformio_runtime(Path(inputs.runtime_platformio), output / "runtime" / "platformio", "PlatformIO")
         _copy_tree(Path(inputs.runtime_resources), output / "runtime" / "resources", "runtime resources")
         runtime_resources.write_resource_manifest(output / "runtime" / "resources")
         if not (output / "runtime" / "platformio" / "deployment-runtime.json").is_file():
