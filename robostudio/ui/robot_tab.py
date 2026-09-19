@@ -280,12 +280,12 @@ class RobotTab(QWidget):
             self.robot_status.setText("Robot registry could not be loaded; starting with an empty registry.")
             self.robot_details.setText(self._registry.load_error)
             self.robot_details.setStyleSheet("color: #b36b00;")
-        elif self._robots:
+        elif not self._robots:
+            self.robot_status.setText("No known robots. Click Discover after the robot joins Wi-Fi.")
+        elif self._selected is None:
             self.robot_status.setText(
                 f"{len(self._robots)} known robot(s). Click Discover to refresh Online/Offline state."
             )
-        else:
-            self.robot_status.setText("No known robots. Click Discover after the robot joins Wi-Fi.")
 
     def _render_robot_combo(
         self,
@@ -445,39 +445,46 @@ class RobotTab(QWidget):
 
     def _on_bootstrap_flash_finished(self, result):
         self.set_logs(result.output or "")
-        if result.success:
-            if result.verified_robot:
-                try:
-                    self._registry.upsert(result.verified_robot, online=True)
-                    self._registry.set_selected(result.verified_robot.device_id)
-                except RobotRegistryError as exc:
-                    self.result_label.setText(f"First flash succeeded, but robot registry update failed: {exc}")
-                    self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
-                self._render_robot_combo(
-                    preferred_device_id=result.verified_robot.device_id,
-                    select_first_if_none=False,
-                )
-                self.bootstrap_status.setText(
-                    "✓ First flash complete and new robot uniquely identified.\n"
-                    f"Robot: {result.verified_robot.display_label} @ {result.verified_robot.ip}"
-                )
-            else:
-                self.bootstrap_status.setText(
-                    "✓ First flash completed. "
-                    f"{result.error or 'Click Discover and select the flashed robot by identity.'}"
-                )
-            self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
-            if not result.verified_robot:
-                self.result_label.setText("✓ First-flash upload completed; discover the robot to bind its identity.")
-                self.result_label.setStyleSheet("font-weight: bold; color: green;")
-            elif not self.result_label.styleSheet().endswith("#b36b00;"):
-                self.result_label.setText("✓ First-flash upload completed and robot registered.")
-                self.result_label.setStyleSheet("font-weight: bold; color: green;")
-        else:
+        if not result.success:
             self.bootstrap_status.setText(f"✗ First-flash failed: {result.error or 'unknown error'}")
             self.bootstrap_status.setStyleSheet("font-weight: bold; color: red;")
             self.result_label.setText("First-flash failed. Check the PlatformIO output.")
             self.result_label.setStyleSheet("font-weight: bold; color: red;")
+            return
+
+        registry_error = None
+        if result.verified_robot:
+            try:
+                self._registry.upsert(result.verified_robot, online=True)
+                self._registry.set_selected(result.verified_robot.device_id)
+            except RobotRegistryError as exc:
+                registry_error = str(exc)
+            self._render_robot_combo(
+                preferred_device_id=result.verified_robot.device_id,
+                select_first_if_none=False,
+            )
+            self.bootstrap_status.setText(
+                "✓ First flash complete and new robot uniquely identified.\n"
+                f"Robot: {result.verified_robot.display_label} @ {result.verified_robot.ip}"
+            )
+        else:
+            self.bootstrap_status.setText(
+                "✓ First flash completed. "
+                f"{result.error or 'Click Discover and select the flashed robot by identity.'}"
+            )
+        self.bootstrap_status.setStyleSheet("font-weight: bold; color: green;")
+
+        if registry_error:
+            self.result_label.setText(
+                f"First flash succeeded, but robot registry update failed: {registry_error}"
+            )
+            self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
+        elif result.verified_robot:
+            self.result_label.setText("✓ First-flash upload completed and robot registered.")
+            self.result_label.setStyleSheet("font-weight: bold; color: green;")
+        else:
+            self.result_label.setText("✓ First-flash upload completed; discover the robot to bind its identity.")
+            self.result_label.setStyleSheet("font-weight: bold; color: green;")
 
     def discover(self):
         if self._discovery_worker and self._discovery_worker.isRunning():
@@ -595,30 +602,38 @@ class RobotTab(QWidget):
 
     def _on_deploy_finished(self, result):
         self.set_logs(result.output or "")
-        if result.success:
-            verified = result.verified_robot
-            if verified is not None:
-                try:
-                    self._registry.upsert(verified, online=True)
-                    self._registry.set_selected(verified.device_id)
-                except RobotRegistryError as exc:
-                    self.result_label.setText(f"Deployment verified, but registry update failed: {exc}")
-                    self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
-                self._render_robot_combo(
-                    preferred_device_id=verified.device_id,
-                    select_first_if_none=False,
-                )
-                if not self.result_label.styleSheet().endswith("#b36b00;"):
-                    self.result_label.setText(
-                        f"✓ Deployment verified — {verified.display_label} is ready and running."
-                    )
-                    self.result_label.setStyleSheet("font-weight: bold; color: green;")
-            else:
-                self.result_label.setText("✓ Deployment completed.")
-                self.result_label.setStyleSheet("font-weight: bold; color: green;")
-        else:
+        if not result.success:
             self.result_label.setText(f"✗ {result.error or 'Deployment failed.'}")
             self.result_label.setStyleSheet("font-weight: bold; color: red;")
+            self._refresh_deploy_enabled()
+            return
+
+        verified = result.verified_robot
+        registry_error = None
+        if verified is not None:
+            try:
+                self._registry.upsert(verified, online=True)
+                self._registry.set_selected(verified.device_id)
+            except RobotRegistryError as exc:
+                registry_error = str(exc)
+            self._render_robot_combo(
+                preferred_device_id=verified.device_id,
+                select_first_if_none=False,
+            )
+
+        if registry_error:
+            self.result_label.setText(
+                f"Deployment verified, but registry update failed: {registry_error}"
+            )
+            self.result_label.setStyleSheet("font-weight: bold; color: #b36b00;")
+        elif verified is not None:
+            self.result_label.setText(
+                f"✓ Deployment verified — {verified.display_label} is ready and running."
+            )
+            self.result_label.setStyleSheet("font-weight: bold; color: green;")
+        else:
+            self.result_label.setText("✓ Deployment completed.")
+            self.result_label.setStyleSheet("font-weight: bold; color: green;")
         self._refresh_deploy_enabled()
 
     def set_logs(self, text: str):
