@@ -33,15 +33,19 @@ class DeploymentResult:
 
 
 def select_unique_new_robot(
-    known_device_ids: set[str], robots: Iterable[RobotInfo]
+    known_device_ids: set[str] | None, robots: Iterable[RobotInfo]
 ) -> RobotInfo | None:
-    """Return the one newly appeared robot, never an arbitrary LAN peer.
+    """Return one newly appeared robot only when the pre-flash baseline is known.
 
     During first-flash a classroom can already contain many online robots. The
     USB upload itself has no LAN ``device_id`` mapping, so RoboStudio may only
-    auto-bind the result when discovery observes exactly one identity that was
-    not present before the flash.
+    auto-bind the result when a successful pre-flash discovery established the
+    existing identities and the post-flash scan contains exactly one new one.
+    A missing baseline is ambiguous and must never be interpreted as an empty
+    classroom.
     """
+    if known_device_ids is None:
+        return None
     new_by_id = {
         robot.device_id: robot
         for robot in robots
@@ -135,15 +139,15 @@ class RobotDeploymentService:
         except (OSError, json.JSONDecodeError) as exc:
             return DeploymentResult(False, "", f"Invalid bootstrap config: {exc}")
 
-        # H30: snapshot identities already visible on the LAN. After USB flash we
-        # only auto-bind a unique newly appeared device_id; selecting robots[0]
-        # is unsafe in a classroom with multiple robots.
-        known_device_ids: set[str] = set()
+        # H30: snapshot identities already visible on the LAN. ``None`` means
+        # discovery failed, which is different from a successful empty scan.
+        # Without a trustworthy baseline automatic identity binding is disabled.
+        known_device_ids: set[str] | None = None
         try:
             known_device_ids = {robot.device_id for robot in self.discovery.discover()}
         except Exception:
-            # Failure to establish a baseline merely disables automatic binding.
-            # The USB flash can still succeed and the user can Discover manually.
+            # The USB flash can still succeed. Post-flash discovery may be used
+            # for visibility, but identity binding requires manual selection.
             pass
 
         try:
