@@ -51,9 +51,11 @@ Robot tab phải:
 
 USB upload không tự cung cấp mapping sang LAN `device_id`.
 
-Vì vậy RoboStudio không được dùng `robots[0]` sau first-flash. Trước khi flash, RoboStudio snapshot các robot đang có trên LAN. Sau reboot, chỉ khi có đúng một `device_id` mới xuất hiện thì mới được auto-bind robot đó.
+Vì vậy RoboStudio không được dùng vị trí phần tử trong danh sách discovery làm identity sau first-flash. Trước khi flash, RoboStudio snapshot các robot đang có trên LAN. Sau reboot, chỉ khi **pre-flash discovery thành công** và có đúng một `device_id` mới xuất hiện thì mới được auto-bind robot đó.
 
-Nếu không có robot mới hoặc có nhiều robot mới cùng lúc, first-flash vẫn có thể thành công nhưng RoboStudio phải yêu cầu người dùng `Discover` và chọn robot theo identity.
+Một scan thành công nhưng không thấy robot nào là baseline rỗng hợp lệ. Ngược lại, nếu pre-flash discovery bị lỗi thì baseline là **unknown**, không được xem như tập rỗng; automatic binding phải bị vô hiệu hóa để tránh nhận nhầm một robot cũ là robot vừa flash.
+
+Nếu không có robot mới, có nhiều robot mới cùng lúc, hoặc baseline không đáng tin cậy, first-flash vẫn có thể thành công nhưng RoboStudio phải yêu cầu người dùng `Discover` và chọn robot theo identity.
 
 Quy tắc này ưu tiên tránh deploy nhầm robot hơn là tự động hóa bằng suy đoán.
 
@@ -91,7 +93,7 @@ Automated acceptance phải chứng minh:
 3. restart không tự nhận robot là Online;
 4. IP change không tạo duplicate;
 5. discovery giữ robot Offline thay vì xóa;
-6. first-flash không bind arbitrary robot;
+6. first-flash không bind arbitrary robot và fail-closed khi không có baseline pre-flash;
 7. Robot tab dùng registry và gate OTA bằng trạng thái Online;
 8. full repository regression và Windows production ZIP build vẫn PASS.
 
