@@ -90,7 +90,7 @@ result = a < b and b > 0
 """)
     names = opcode_names(program)
     assert names.count("JumpIfFalse") >= 2, (
-        f"and expression must short-circuit each non-final operand, got {names}"
+        f"and expression must short-circuit each operand, got {names}"
     )
     assert "CompareLT" in names and "CompareGT" in names, (
         f"Expected both comparison operands, got {names}"
@@ -98,12 +98,18 @@ result = a < b and b > 0
     print("PASS: boolean and expression")
 
 
-def test_boolean_or_is_explicitly_rejected():
-    expect_error(
-        "boolean or",
-        "a = 1\nb = 2\nresult = a > b or b > 0\n",
-        "Unsupported boolean operator: Or",
+def test_boolean_or_compiles_after_h31():
+    program = compile_source("""
+a = 1
+b = 2
+result = a > b or b > 0
+""")
+    names = opcode_names(program)
+    assert names.count("JumpIfTrue") >= 2, (
+        f"or expression must short-circuit each operand, got {names}"
     )
+    assert "CompareGT" in names, f"Expected comparison operands, got {names}"
+    print("PASS: boolean or expression")
 
 
 def test_unary_negation_compiles():
@@ -140,7 +146,7 @@ def main() -> int:
     test_chained_comparison_is_rejected()
     test_comparison_inside_if_is_preserved()
     test_boolean_and_compiles()
-    test_boolean_or_is_explicitly_rejected()
+    test_boolean_or_compiles_after_h31()
     test_unary_negation_compiles()
     test_unsupported_unary_is_rejected()
     test_nested_expression_is_compiled_without_truncation()
