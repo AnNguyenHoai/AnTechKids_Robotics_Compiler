@@ -75,6 +75,17 @@ def main() -> int:
         require((destination_payload / "pkg" / "module.py").is_file(), "Python payload merge must preserve package directories")
         require((destination_payload / "marker.txt").is_file(), "Python payload merge must preserve ordinary files")
 
+    # Runtime execution after pip installation regenerates bytecode caches.
+    # The production boundary must sanitize those only after the final embedded
+    # Python/PlatformIO/esptool execution, before B2.6 validates the runtime.
+    with tempfile.TemporaryDirectory(prefix="b27-runtime-clean-") as td:
+        runtime = Path(td)
+        generated = runtime / "Lib" / "site-packages" / "pkg" / "__pycache__"
+        generated.mkdir(parents=True)
+        (generated / "module.cpython-310.pyc").write_bytes(b"pyc")
+        module._remove_forbidden(runtime)
+        require(not generated.exists(), "post-provision runtime sanitization must remove generated __pycache__ payload")
+
     # A partially extracted cached Xtensa package must never be accepted just
     # because packages/ is non-empty. This reproduces the Windows failure where
     # g++.exe exists but cannot CreateProcess its cc1plus child.
@@ -142,6 +153,7 @@ def main() -> int:
         "_probe_xtensa_toolchain",
         "_purge_xtensa_toolchain",
         "[repair] cached Xtensa toolchain is unusable",
+        "_remove_forbidden(runtime_python.parent)",
         '"target_profiles.json"',
         '"one_command_production_build.py"',
         '"RoboStudio-{version}-Windows.zip"',
