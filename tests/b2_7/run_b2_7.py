@@ -45,6 +45,22 @@ def main() -> int:
         (runtime / "python310.zip").write_bytes(b"stdlib")
         require(module._portable_python_valid(runtime), "portable Python topology should be accepted")
 
+    # PlatformIO service state used during production provisioning must stay on
+    # a short whitespace-free path so the legacy ESP32 GCC driver can reliably
+    # spawn cc1plus/as on Windows.
+    with tempfile.TemporaryDirectory(prefix="b27-cache-") as td:
+        cache = Path(td) / "RSC"
+        core = module._platformio_core_cache(cache, "espressif32@6.12.0")
+        require(core.name == "pio-6.1.18-e32-6.12.0", "PlatformIO core cache name must stay deliberately short")
+        require(core.parent == cache, "PlatformIO core cache must live directly below the selected short cache")
+        spaced = Path(td) / "cache with spaces"
+        try:
+            module._platformio_core_cache(spaced, "espressif32@6.12.0")
+        except module.OneClickBuildError:
+            pass
+        else:
+            raise AssertionError("PlatformIO production cache must reject whitespace paths")
+
     # A partially extracted cached Xtensa package must never be accepted just
     # because packages/ is non-empty. This reproduces the Windows failure where
     # g++.exe exists but cannot CreateProcess its cc1plus child.
@@ -90,12 +106,19 @@ def main() -> int:
     require("$env:PUBLIC" in ps1 and 'Join-Path $env:PUBLIC "RSC"' in ps1, "Windows production cache must prefer the short public profile path")
     require("must not contain spaces" in ps1, "Windows production cache override must reject whitespace paths")
     require("Clear-StalePlatformIOTemp" in ps1 and '".cache\\tmp"' in ps1, "PowerShell bootstrap must clean interrupted PlatformIO extraction temp state")
+    require('$_ .Name' not in ps1, "PowerShell cache cleanup must not contain malformed member access")
+    require('$_ .Name' not in ps1 and '"pio-*"' in ps1 and '"platformio-*"' in ps1, "cache cleanup must cover both short and legacy PlatformIO cache names")
     require("Build cache :" in ps1, "PowerShell bootstrap must print the selected cache for diagnostics")
     require("pyinstaller" in requirements.lower() and "PySide6" in requirements, "build requirements must prepare the GUI freezer")
     for token in (
         "python-{PYTHON_RUNTIME_VERSION}-embed-amd64.zip",
         "PyInstaller",
         "platformio=={PLATFORMIO_CORE_VERSION}",
+        '"pip>=24,<27"',
+        "import platformio, yaml, pip",
+        "_platformio_core_cache",
+        'core_cache / "p"',
+        '"-j", "1"',
         '"platformio", "run"',
         '"esp32dev"',
         "_probe_xtensa_toolchain",
@@ -106,6 +129,10 @@ def main() -> int:
         '"RoboStudio-{version}-Windows.zip"',
     ):
         require(token in source, f"B2.7 orchestrator is missing required production stage: {token}")
+
+    workflow = (ROOT / ".github" / "workflows" / "robotics-ci.yml").read_text(encoding="utf-8")
+    require("Run B2.7 full Windows production ZIP build" in workflow, "CI must exercise the real one-click production build")
+    require("BUILD_PRODUCTION_ZIP.cmd --clean" in workflow, "CI must run the same production launcher used by Windows operators")
 
     print("B2.7 one-click production ZIP gate: PASS")
     return 0
