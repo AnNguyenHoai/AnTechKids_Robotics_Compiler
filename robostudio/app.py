@@ -290,16 +290,16 @@ class RoboStudioApp(QMainWindow):
             self.set_status("Failed", color="red")
             return
 
-        self.ui.build_output.clear()
-        self.set_status("Building...", color="blue")
+        self.ui.build_output.setPlainText("Compiling RoboSim program...\n")
+        self.set_status("Compiling...", color="blue")
         self.is_building = True
         self.ui.compile_button.setEnabled(False)
-        self.ui.compile_button.setText("Building...")
+        self.ui.compile_button.setText("Compiling...")
         QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
         try:
             cmd, env, temp_file = self.build_service.get_command(code)
         except Exception as e:
-            self._build_finished(success=False, summary=f"Error preparing build: {e}")
+            self._build_finished(success=False, summary=f"Error preparing compile: {e}")
             return
 
         self.worker = BuildWorker(cmd, env, temp_file)
@@ -319,23 +319,22 @@ class RoboStudioApp(QMainWindow):
         self._refresh_capability_status()
         self.ui.compile_button.setText("Compile")
         QApplication.restoreOverrideCursor()
+        self.ui.build_output.append("\n" + "="*40)
+        self.ui.build_output.append(summary)
         if success:
-            self.set_status("Success", color="green")
-            self.ui.build_output.append("\n" + "="*40)
-            self.ui.build_output.append(summary)
-            self.ui.build_output.append("Arduino Ready – you can now upload.")
+            self.set_status("Compiled", color="green")
+            self.ui.build_output.append("Ready for deployment to robot.")
         else:
             self.set_status("Failed", color="red")
-            self.ui.build_output.append("\n" + "="*40)
-            self.ui.build_output.append(summary)
-            self.ui.build_output.append("\nCheck the log above for details.")
+            self.ui.build_output.append("\nCheck the compiler message above for details.")
 
     def _build_error(self, error_msg):
         self.is_building = False
         self._refresh_capability_status()
+        self.ui.compile_button.setText("Compile")
         QApplication.restoreOverrideCursor()
         self.set_status("Error", color="red")
-        self.ui.build_output.append(f"\nError: {error_msg}")
+        self.ui.build_output.append(f"\nCompile error: {error_msg}")
 
     def on_open_firmware(self):
         try:
