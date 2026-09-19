@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import re
 import sys
 import zipfile
 from dataclasses import dataclass
@@ -16,7 +17,8 @@ RELEASE_SCHEMA_VERSION = 1
 ARTIFACT_SUFFIX = ".zip"
 DETERMINISTIC_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 _FORBIDDEN_PARTS = {".git", ".pio", "penv", "__pycache__", ".venv"}
-_FORBIDDEN_TEXT = ("\\AppData\\Local\\Programs\\Python", "\\AppData\\Local\\pypoetry", "\\.platformio", "/home/", "/Users/")
+_FORBIDDEN_TEXT = ("\\AppData\\Local\\Programs\\Python", "\\AppData\\Local\\pypoetry", "\\.platformio")
+_FORBIDDEN_POSIX_ROOTS = ("/home/", "/Users/")
 class ReleasePackageError(RuntimeError): pass
 @dataclass(frozen=True)
 class ReleaseArtifact:
@@ -35,6 +37,17 @@ def _safe_member(name: str) -> bool:
     path = Path(name.replace("/", "\\"))
     return not path.is_absolute() and ".." not in path.parts and not any(part.lower() in _FORBIDDEN_PARTS for part in path.parts)
 
+def _contains_posix_host_root(text: str, marker: str) -> bool:
+    """Match an absolute host root without flagging an artifact path segment.
+
+    Distribution manifests legitimately inventory packages such as
+    ``runtime/.../platformio/home/...``. A raw substring search for ``/home/``
+    therefore produces a false positive. A real leaked POSIX host path starts
+    at a value/token boundary (for example ``\"/home/user`` or ``=/home/user``),
+    not immediately after a filename/path character.
+    """
+    return re.search(rf"(?<![A-Za-z0-9._-]){re.escape(marker)}", text) is not None
+
 def _reject_forbidden_text(data: bytes, name: str) -> None:
     if not name.lower().endswith((".json", ".txt", ".cfg", ".ini", ".toml", ".yaml", ".yml")): return
     try: text = data.decode("utf-8")
@@ -42,6 +55,8 @@ def _reject_forbidden_text(data: bytes, name: str) -> None:
     normalized = text.replace("\\", "/")
     for marker in _FORBIDDEN_TEXT:
         if marker.replace("\\", "/") in normalized: raise ReleasePackageError(f"Release contains host-specific path in {name}: {marker}")
+    for marker in _FORBIDDEN_POSIX_ROOTS:
+        if _contains_posix_host_root(normalized, marker): raise ReleasePackageError(f"Release contains host-specific path in {name}: {marker}")
 
 def _archive_entries(root: Path) -> tuple[list[tuple[Path, str]], list[str]]:
     files, directories = [], []
