@@ -51,6 +51,7 @@ def main()->int:
     tests.append(ROOT/"tests"/"b2_6"/"run_b2_6.py")
     tests.append(ROOT/"tests"/"b2_7"/"run_b2_7.py")
     tests.append(ROOT/"tests"/"h29_runtime"/"run_h29_runtime.py")
+    tests.append(ROOT/"tests"/"h30_multi_robot"/"run_h30_multi_robot.py")
     for name in ["h26_a","h26_b","h26_c","h26_d","h26_e","h26_f","h26_g","h26_h","h26_i","h26_j","h26_k","h26_l","h26_m","h26_ota","h26_o","h27_a1","h27_b0","h27_b","h28_b","h29_a","h29_b","h29_c","h29_d"]:tests.append(ROOT/"tests"/name/f"run_{name}.py")
     missing=[p.relative_to(ROOT) for p in tests if not p.exists()]
     if missing:
