@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 MODULE_PATH = ROOT / "tools" / "one_click_production_zip.py"
 
-from tools import distribution_package, production_artifact_boundary
+from tools import distribution_package, portable_release_proof, production_artifact_boundary
 
 
 def _load_module():
@@ -108,6 +108,30 @@ def main() -> int:
         require((destination / "packages" / "tool-esptoolpy" / "package.json").is_file(), "runtime package files must remain")
         require(not (destination / "packages" / "tool-esptoolpy" / ".github").exists(), "repository metadata must not cross production boundary")
         require(".github" in production_artifact_boundary.FORBIDDEN_PAYLOAD_NAMES, "production boundary must forbid .github metadata")
+
+    # Portable proof must reject host-owned absolute roots, but must not confuse
+    # ordinary package-path or URL segments named "home" with /home/<user>.
+    with tempfile.TemporaryDirectory(prefix="b27-host-root-") as td:
+        base = Path(td)
+        package_path = base / "package-path.json"
+        package_path.write_text(
+            '{"path":"runtime/bin/Lib/site-packages/platformio/home/cli.py"}\n',
+            encoding="utf-8",
+        )
+        url_path = base / "url.json"
+        url_path.write_text(
+            '{"url":"https://inex.co.th/home/product/openkb/"}\n',
+            encoding="utf-8",
+        )
+        linux_home = base / "linux-home.json"
+        linux_home.write_text('{"developer":"/home/alice/project"}\n', encoding="utf-8")
+        linux_users = base / "linux-users.json"
+        linux_users.write_text('{"developer":"/Users/alice/project"}\n', encoding="utf-8")
+
+        require(not portable_release_proof._scan_host_paths(package_path), "platformio/home package segment must not be treated as a host root")
+        require(not portable_release_proof._scan_host_paths(url_path), "URL /home/ segment must not be treated as a host root")
+        require(portable_release_proof._scan_host_paths(linux_home), "absolute /home/<user> path must remain rejected")
+        require(portable_release_proof._scan_host_paths(linux_users), "absolute /Users/<user> path must remain rejected")
 
     # The embedded-Python esptool compatibility helpers are part of the firmware
     # project contract. If platformio.ini enables the post script, both helpers
