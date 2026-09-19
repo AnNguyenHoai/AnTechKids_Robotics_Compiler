@@ -507,6 +507,12 @@ def _prepare_platformio_payload(root: Path, runtime_python: Path, work: Path, ca
     _copy_tree_clean(platforms, destination / "platforms")
     _copy_tree_clean(packages, destination / "packages")
     shutil.rmtree(probe_root, ignore_errors=True)
+
+    # PlatformIO and esptool execute the artifact-owned interpreter while
+    # provisioning. Those executions legitimately create __pycache__/pyc files,
+    # but B2.6 intentionally forbids mutable/development payload in the release.
+    # Sanitize after the final runtime execution, not only after pip install.
+    _remove_forbidden(runtime_python.parent)
     return destination
 
 
