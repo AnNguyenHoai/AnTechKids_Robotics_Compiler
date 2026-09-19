@@ -8,11 +8,57 @@ import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-# The bridge is a relocatable application entry point. Always prefer the
-# packaged compiler directory over the caller's working directory/PYTHONPATH.
-_APPLICATION_ROOT = Path(__file__).resolve().parent
-if str(_APPLICATION_ROOT) not in sys.path:
-    sys.path.insert(0, str(_APPLICATION_ROOT))
+
+def _bootstrap_import_paths() -> None:
+    """Make the compiler contract relocatable in source and packaged layouts.
+
+    Source checkout:
+        robot-compiler/compiler/robostudio_bridge.py
+        robot-frontend-robosim/frontend/
+
+    Production distribution:
+        compiler/robostudio_bridge.py
+        compiler/compiler/
+        compiler/frontend/
+
+    The bridge is executed directly as a script, so it must establish package
+    roots before importing ``compiler`` and ``frontend``.  Never add the inner
+    source ``compiler/`` directory itself: doing so shadows the package with
+    ``compiler.py`` and breaks its relative imports.
+    """
+    bridge_dir = Path(__file__).resolve().parent
+
+    packaged_layout = (
+        (bridge_dir / "compiler" / "__init__.py").is_file()
+        and (bridge_dir / "frontend" / "__init__.py").is_file()
+    )
+    if packaged_layout:
+        roots = (bridge_dir,)
+    else:
+        compiler_root = bridge_dir.parent
+        repository_root = compiler_root.parent
+        frontend_root = repository_root / "robot-frontend-robosim"
+        source_layout = (
+            (compiler_root / "compiler" / "__init__.py").is_file()
+            and (frontend_root / "frontend" / "__init__.py").is_file()
+        )
+        if not source_layout:
+            raise RuntimeError(
+                "Unable to locate RoboStudio compiler/frontend packages relative to "
+                f"compiler contract: {Path(__file__).resolve()}"
+            )
+        roots = (compiler_root, frontend_root)
+
+    # Keep application-owned packages ahead of cwd/PYTHONPATH while preserving
+    # the declared root order.
+    for root in reversed(roots):
+        value = str(root)
+        while value in sys.path:
+            sys.path.remove(value)
+        sys.path.insert(0, value)
+
+
+_bootstrap_import_paths()
 
 from compiler.compiler import RobotCompiler
 from compiler.emitter import HeaderEmitter
