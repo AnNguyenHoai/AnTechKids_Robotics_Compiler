@@ -147,13 +147,19 @@ def _validate_runtime_platformio(runtime_platformio: Path) -> None:
 
 
 def _validate_firmware(firmware: Path) -> None:
+    """Validate required source markers without requiring a pristine workspace.
+
+    PlatformIO legitimately creates transient development state such as ``.pio``
+    inside the firmware source tree during the production build itself. Source
+    validation therefore verifies only the application-owned firmware contract.
+    The distribution boundary remains fail-closed: ``distribution_package``
+    filters developer payload while staging and rejects it if any reaches the
+    packaged firmware artifact.
+    """
     _require_directory(firmware, "application-owned firmware project")
     _require_file(firmware / "platformio.ini", "firmware platformio.ini")
     _require_file(firmware / "wifi_config.py", "firmware wifi_config.py")
     _require_directory(firmware / "main", "firmware main source")
-    forbidden = {".git", ".pio", "penv", ".venv", "__pycache__", ".pytest_cache"}
-    if any(part.lower() in forbidden for path in firmware.rglob("*") for part in path.relative_to(firmware).parts):
-        raise ProductionDistributionError("Firmware project contains forbidden development payload")
 
 
 def _validate_deployment_tool_sources() -> Path:
