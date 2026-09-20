@@ -2,10 +2,14 @@
 
 H25-A intentionally keeps the registry UI-agnostic. Future tabs, profiles and
 macro generators consume this registry rather than duplicating device metadata.
+The stable feature metadata is shared with packaged deployment tools so source
+and EXE modes use one hardware contract.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Optional, Tuple
+
+from tools.hardware_feature_config import HARDWARE_FEATURES
 
 
 @dataclass(frozen=True)
@@ -22,35 +26,15 @@ class DeviceDefinition:
 class DeviceRegistry:
     """Central registry for supported hardware features."""
 
-    _DEVICES: Tuple[DeviceDefinition, ...] = (
+    _DEVICES: Tuple[DeviceDefinition, ...] = tuple(
         DeviceDefinition(
-            "motor", "Motor", "motion", True,
-            "Main left/right drive motors.",
-        ),
-        DeviceDefinition(
-            "encoder", "Motor Encoder", "motion", False,
-            "Wheel or motor feedback encoder support.",
-        ),
-        DeviceDefinition(
-            "line_sensor", "Line Sensor", "sensors", True,
-            "Reflective line sensor array.",
-        ),
-        DeviceDefinition(
-            "ultrasonic", "Ultrasonic Sensor", "sensors", False,
-            "Distance measurement sensor.",
-        ),
-        DeviceDefinition(
-            "imu", "MPU6050 IMU", "sensors", False,
-            "Inertial measurement unit for heading and motion assistance.",
-        ),
-        DeviceDefinition(
-            "servo", "Servo", "expansion", False,
-            "Servo actuator support.",
-        ),
-        DeviceDefinition(
-            "buzzer", "Buzzer", "expansion", False,
-            "Audio/buzzer output support.",
-        ),
+            feature.device_id,
+            feature.display_name,
+            feature.category,
+            feature.default_enabled,
+            feature.description,
+        )
+        for feature in HARDWARE_FEATURES
     )
     _BY_ID: Dict[str, DeviceDefinition] = {d.device_id: d for d in _DEVICES}
 
