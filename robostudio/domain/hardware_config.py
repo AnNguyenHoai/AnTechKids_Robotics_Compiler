@@ -28,6 +28,8 @@ class HardwareConfig:
 
     def __post_init__(self) -> None:
         self.version = int(self.version)
+        if self.version != DEVICE_CONFIG_VERSION:
+            raise ValueError(f"Unsupported hardware configuration version: {self.version}")
         if not self.devices:
             self.devices = {
                 device_id: DeviceConfig(device_id, enabled)
@@ -45,6 +47,13 @@ class HardwareConfig:
             raise ValueError("Hardware configuration must be a JSON object")
 
         version = data.get("version", DEVICE_CONFIG_VERSION)
+        try:
+            version = int(version)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Hardware configuration version must be an integer") from exc
+        if version != DEVICE_CONFIG_VERSION:
+            raise ValueError(f"Unsupported hardware configuration version: {version}")
+
         raw_devices = data.get("devices", {})
         if not isinstance(raw_devices, dict):
             raise ValueError("'devices' must be an object")

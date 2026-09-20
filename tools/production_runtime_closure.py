@@ -22,6 +22,7 @@ REQUIRED_DEPLOYMENT_TOOL_FILES: tuple[str, ...] = (
     "deployment_contract.py",
     "deployment_runtime.py",
     "firmware_workspace.py",
+    "hardware_feature_config.py",
     "hardware_preflight.py",
     "runtime_paths.py",
     "runtime_resources.py",
