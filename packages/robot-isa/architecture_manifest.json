@@ -3,14 +3,28 @@
   "task": "H26-I",
   "production": {
     "isa_source_of_truth": "packages/robot-isa/canonical_isa.json",
+    "api_source_of_truth": "robot-language/specification/api.yaml",
+    "capability_source_of_truth": "packages/robot-isa/capability_model.json",
+    "target_profile_source_of_truth": "packages/robot-isa/target_profiles.json",
     "compiler_entrypoint": "tools/compile.py",
     "build_entrypoint": "tools/build.py",
     "firmware_build_entrypoint": "tools/firmware_build.py",
     "deployment_entrypoint": "tools/flash.py",
     "runtime_boundary": "robot-platform/main/src"
   },
+  "platform_contract": {
+    "task": "H32",
+    "status": "generated-read-only-projection",
+    "generator": "tools/platform_contract.py",
+    "projection_output": "artifacts/platform_contract.json",
+    "checked_in_projection": false,
+    "policy": "The projection joins canonical identities for validation and evidence only. Production/compiler/runtime code must consume the canonical source that owns each concern."
+  },
   "canonical_paths": [
+    "robot-language/specification/api.yaml",
     "packages/robot-isa/canonical_isa.json",
+    "packages/robot-isa/capability_model.json",
+    "packages/robot-isa/target_profiles.json",
     "packages/robot-isa/include/CanonicalOpcodeAdapter.h",
     "robot-compiler/compiler/canonical_opcode_adapter.py"
   ],
@@ -20,7 +34,8 @@
     "robot-platform/main/src"
   ],
   "validation_paths": [
-    "tools/architecture_migration_gate.py"
+    "tools/architecture_migration_gate.py",
+    "tools/platform_contract.py"
   ],
   "legacy_components": [
     {
