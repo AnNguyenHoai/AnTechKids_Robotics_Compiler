@@ -68,6 +68,13 @@ def apply_user_hardware_config(workspace:Path)->Path:
  header=hardware_feature_config.regenerate_user_device_config_header()
  return firmware_workspace.install_device_config_header(header,workspace)
 
+def cleanup_firmware_run(workspace:Path,project_name:str)->None:
+ """Best-effort cleanup; a Windows handle must never fail the deployment."""
+ try:removed=firmware_workspace.cleanup_firmware_workspace(workspace,project_name)
+ except firmware_workspace.FirmwareWorkspaceError as exc:
+  print(f"WARNING: firmware workspace cleanup was skipped safely: {exc}",flush=True);return
+ if not removed:print("INFO: firmware workspace cleanup deferred because Windows still has it in use; the next deployment will use a fresh workspace.",flush=True)
+
 def deployment_environment(project_name:str)->dict[str,str]:
  # RSD-11: explicitly materialize the writable build workspace before
  # resolving the PlatformIO deployment environment.
@@ -81,9 +88,12 @@ def flash_bootstrap(config_path:Path,port:str|None)->int:
  except hardware_preflight.HardwarePreflightError as exc:raise RuntimeError(str(exc)) from exc
  selected_port=preflight.selected_port.port
  env.update({"ROBOT_BOOTSTRAP_CONFIG":str(config_path.resolve()),"ROBOT_WIFI_SSID":str(config["wifi"]["ssid"]),"ROBOT_WIFI_PASSWORD":str(config["wifi"].get("password","")),"ROBOT_OTA_PASSWORD":str(config["ota"]["password"])})
- workspace=firmware_workspace.prepare_firmware_workspace(firmware_template(),project);apply_user_hardware_config(workspace)
- command=platformio_command("run","-e","esp32dev_bootstrap","-t","upload","--upload-port",selected_port)
- run(command,cwd=workspace,env=env);print(f"FIRST-FLASH BOOTSTRAP PASS ({selected_port})");return 0
+ workspace=firmware_workspace.prepare_firmware_workspace(firmware_template(),project)
+ try:
+  apply_user_hardware_config(workspace)
+  command=platformio_command("run","-e","esp32dev_bootstrap","-t","upload","--upload-port",selected_port)
+  run(command,cwd=workspace,env=env);print(f"FIRST-FLASH BOOTSTRAP PASS ({selected_port})");return 0
+ finally:cleanup_firmware_run(workspace,project)
 
 def http_ota_upload(host:str,password:str,firmware:Path,timeout:float=180.0)->str:
  host=normalize_robot_host(host)
@@ -148,13 +158,16 @@ def main()->int:
   try:selected_usb_port=hardware_preflight.require_serial_port(a.port,timeout=min(a.process_timeout,30.0)).selected_port.port
   except hardware_preflight.HardwarePreflightError as exc:p.error(str(exc))
  project=source.stem;build_isolation.prepare_build_workspace(project);build_dir=build_isolation.build_root(project);header=compile_program(source,build_dir,a.process_timeout);capabilities=infer_capabilities(header);manifest_path=build_dir/"deployment_manifest.json";manifest=create_manifest(build_dir,"esp32",capabilities,source_path=source,platformio_environment="esp32dev_ota" if a.mode=="ota" else "esp32dev");write_manifest(manifest,manifest_path);validate_manifest(manifest_path,expected_target="esp32")
- workspace=firmware_workspace.prepare_firmware_workspace(firmware_template(),project);firmware_workspace.install_generated_header(header,workspace);apply_user_hardware_config(workspace);env=deployment_environment(project)
- if ssid:env.update({"ROBOT_WIFI_SSID":ssid,"ROBOT_WIFI_PASSWORD":wifi_password})
- if ota_password:env["ROBOT_OTA_PASSWORD"]=ota_password
- if a.mode=="build":run(platformio_command("run","-e","esp32dev"),cwd=workspace,env=env,timeout=a.process_timeout)
- elif a.mode=="usb":run(platformio_command("run","-e","esp32dev","-t","upload","--upload-port",selected_usb_port),cwd=workspace,env=env,timeout=a.process_timeout)
- else:
-  preflight_robot(a.robot);run(platformio_command("run","-e","esp32dev_ota"),cwd=workspace,env=env,timeout=a.process_timeout);firmware=build_isolation.firmware_path(project,"esp32dev_ota");http_ota_upload(a.robot,ota_password,firmware);wait_for_robot(a.robot,a.verify_timeout)
+ workspace=firmware_workspace.prepare_firmware_workspace(firmware_template(),project)
+ try:
+  firmware_workspace.install_generated_header(header,workspace);apply_user_hardware_config(workspace);env=deployment_environment(project)
+  if ssid:env.update({"ROBOT_WIFI_SSID":ssid,"ROBOT_WIFI_PASSWORD":wifi_password})
+  if ota_password:env["ROBOT_OTA_PASSWORD"]=ota_password
+  if a.mode=="build":run(platformio_command("run","-e","esp32dev"),cwd=workspace,env=env,timeout=a.process_timeout)
+  elif a.mode=="usb":run(platformio_command("run","-e","esp32dev","-t","upload","--upload-port",selected_usb_port),cwd=workspace,env=env,timeout=a.process_timeout)
+  else:
+   preflight_robot(a.robot);run(platformio_command("run","-e","esp32dev_ota"),cwd=workspace,env=env,timeout=a.process_timeout);firmware=build_isolation.firmware_path(project,"esp32dev_ota");http_ota_upload(a.robot,ota_password,firmware);wait_for_robot(a.robot,a.verify_timeout)
+ finally:cleanup_firmware_run(workspace,project)
  firmware=build_isolation.firmware_path(project,"esp32dev_ota" if a.mode=="ota" else "esp32dev")
  if firmware.is_file():
   data=manifest.to_dict();data.setdefault("artifacts",{})["firmware"]={"path":str(firmware),"size":firmware.stat().st_size,"sha256":sha256_file(firmware)};manifest_path.write_text(json.dumps(data,indent=2)+"\n",encoding="utf-8")
