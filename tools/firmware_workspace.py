@@ -1,7 +1,8 @@
-"""Prepare an isolated, writable PlatformIO firmware project."""
+"""Prepare isolated, writable PlatformIO firmware projects."""
 from __future__ import annotations
 
 import shutil
+import uuid
 from pathlib import Path
 
 from tools import build_isolation
@@ -9,6 +10,8 @@ from tools import build_isolation
 FORBIDDEN_NAMES = frozenset(
     {".git", ".venv", ".pio", "penv", "__pycache__", ".pytest_cache"}
 )
+RUNS_DIRECTORY = "runs"
+FIRMWARE_DIRECTORY = "firmware"
 
 
 class FirmwareWorkspaceError(RuntimeError):
@@ -44,32 +47,102 @@ def validate_firmware_template(root: Path) -> Path:
     return root
 
 
+def _runs_root(project_name: str) -> Path:
+    """Return the per-project root that owns disposable firmware source copies."""
+    return build_isolation.build_workspace(project_name) / RUNS_DIRECTORY
+
+
 def prepare_firmware_workspace(template_root: Path, project_name: str) -> Path:
+    """Create a fresh firmware source workspace for one deployment run.
+
+    Older implementations reused ``<platformio>/firmware`` and deleted it before
+    every run. On Windows, a PlatformIO/esptool descendant can briefly outlive
+    its parent while keeping its current working directory or another handle
+    inside that tree. Deleting the fixed workspace then fails with WinError 32.
+
+    Every deployment now gets a new source workspace. Build/cache/libdeps paths
+    remain governed by ``build_isolation`` and are therefore unchanged. A stale
+    or locked source workspace from an earlier run cannot block a new run.
+    """
     template = validate_firmware_template(template_root)
-    destination = build_isolation.build_workspace(project_name) / "firmware"
-    if destination.exists():
-        if not destination.is_dir():
-            raise FirmwareWorkspaceError(
-                f"Firmware workspace is not a directory: {destination}"
+    runs_root = _runs_root(project_name)
+    try:
+        runs_root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise FirmwareWorkspaceError(
+            f"Unable to create firmware run workspace root {runs_root}: {exc}"
+        ) from exc
+
+    # uuid4 collisions are practically impossible, but retry a few times so the
+    # function remains fail-closed if a fixture or filesystem injects one.
+    last_error: OSError | None = None
+    for _ in range(4):
+        run_root = runs_root / uuid.uuid4().hex
+        destination = run_root / FIRMWARE_DIRECTORY
+        try:
+            shutil.copytree(
+                template,
+                destination,
+                ignore=shutil.ignore_patterns(*FORBIDDEN_NAMES),
             )
-        shutil.rmtree(destination)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(
-        template,
-        destination,
-        ignore=shutil.ignore_patterns(*FORBIDDEN_NAMES),
+        except FileExistsError as exc:
+            last_error = exc
+            continue
+        except OSError as exc:
+            shutil.rmtree(run_root, ignore_errors=True)
+            raise FirmwareWorkspaceError(
+                f"Unable to prepare firmware workspace {destination}: {exc}"
+            ) from exc
+
+        # The source tree may contain transient local artifacts, but the staged
+        # firmware workspace is a strict boundary: none of them may cross it.
+        forbidden = _find_forbidden(destination)
+        if forbidden:
+            shutil.rmtree(run_root, ignore_errors=True)
+            raise FirmwareWorkspaceError(
+                "Staged firmware workspace contains forbidden developer/build payload: "
+                + ", ".join(sorted(forbidden))
+            )
+        return destination
+
+    raise FirmwareWorkspaceError(
+        f"Unable to allocate a unique firmware workspace below {runs_root}: {last_error}"
     )
 
-    # The source tree may contain transient local artifacts, but the staged
-    # firmware workspace is a strict boundary: none of them may cross it.
-    forbidden = _find_forbidden(destination)
-    if forbidden:
-        shutil.rmtree(destination, ignore_errors=True)
+
+def cleanup_firmware_workspace(firmware_root: Path, project_name: str) -> bool:
+    """Best-effort removal of one per-run firmware workspace.
+
+    Cleanup is intentionally non-fatal. Windows may keep a directory handle open
+    for a short time after PlatformIO/esptool exits. A cleanup failure must not
+    turn an otherwise successful flash into an error, and because workspaces are
+    per-run it cannot block the next deployment.
+
+    Returns ``True`` when the run workspace is absent after cleanup, otherwise
+    ``False`` when the OS still has it locked.
+    """
+    firmware = Path(firmware_root).expanduser().resolve()
+    expected_runs = _runs_root(project_name).expanduser().resolve()
+    run_root = firmware.parent
+    if (
+        firmware.name != FIRMWARE_DIRECTORY
+        or run_root.parent != expected_runs
+        or not run_root.name
+    ):
         raise FirmwareWorkspaceError(
-            "Staged firmware workspace contains forbidden developer/build payload: "
-            + ", ".join(sorted(forbidden))
+            f"Refusing to clean unsafe firmware workspace: {firmware}"
         )
-    return destination
+    if not run_root.exists():
+        return True
+    if not run_root.is_dir():
+        raise FirmwareWorkspaceError(
+            f"Firmware run workspace is not a directory: {run_root}"
+        )
+    try:
+        shutil.rmtree(run_root)
+    except OSError:
+        return False
+    return not run_root.exists()
 
 
 def _copy_generated_header(header: Path, destination: Path, *, label: str) -> Path:
