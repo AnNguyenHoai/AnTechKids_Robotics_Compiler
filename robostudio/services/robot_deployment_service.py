@@ -41,6 +41,69 @@ def deployment_operation_busy() -> bool:
     return _DEPLOYMENT_OPERATION_LOCK.locked()
 
 
+def windows_serial_port_busy_error(port: str) -> str | None:
+    """Return an actionable diagnostic when Windows cannot open ``port`` exclusively.
+
+    QSerialPort and PlatformIO/esptool both require exclusive ownership of a
+    Windows COM device. A Serial Console left connected to the same robot can
+    therefore make a first-flash fail only after an expensive firmware build.
+    Probe the handle before spawning the deployment child instead. This helper
+    intentionally does not manipulate Qt objects from the worker thread.
+    """
+    if os.name != "nt":
+        return None
+
+    value = (port or "").strip()
+    if not value:
+        return None
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_file = kernel32.CreateFileW
+        create_file.argtypes = (
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.HANDLE,
+        )
+        create_file.restype = wintypes.HANDLE
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+
+        generic_read = 0x80000000
+        generic_write = 0x40000000
+        open_existing = 3
+        device_path = value if value.startswith("\\\\.\\") else f"\\\\.\\{value}"
+        handle = create_file(
+            device_path,
+            generic_read | generic_write,
+            0,  # no sharing: match PlatformIO/QSerialPort ownership semantics
+            None,
+            open_existing,
+            0,
+            None,
+        )
+        invalid_handle = wintypes.HANDLE(-1).value
+        if handle == invalid_handle:
+            error_code = ctypes.get_last_error()
+            return (
+                f"Serial port {value} is busy or unavailable (Windows error {error_code}). "
+                "If the RoboStudio USB Serial Console is connected to this port, click Disconnect first; "
+                "also close any other serial monitor using the robot, then retry First-Flash."
+            )
+        close_handle(handle)
+        return None
+    except (AttributeError, OSError, ValueError) as exc:
+        return f"Unable to verify exclusive access to serial port {value}: {exc}"
+
+
 @dataclass(frozen=True)
 class DeploymentResult:
     success: bool
@@ -159,6 +222,10 @@ class RobotDeploymentService:
                 "",
                 "Select a detected USB/COM port before first-flash. RoboStudio never guesses a port.",
             )
+
+        serial_error = windows_serial_port_busy_error(usb_port)
+        if serial_error:
+            return DeploymentResult(False, "", serial_error)
 
         try:
             config = json.loads(config_path.read_text(encoding="utf-8"))
