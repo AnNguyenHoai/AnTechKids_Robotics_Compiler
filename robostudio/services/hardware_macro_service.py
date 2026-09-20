@@ -1,8 +1,10 @@
 """H25-C service for synchronizing hardware.json into firmware macros.
 
-In a packaged RoboStudio build the application tree is immutable. Generated
-hardware feature headers therefore live under the external RoboStudio state
-root and are overlaid onto an isolated firmware workspace during deployment.
+Mutable hardware state has one contract in both source-development and packaged
+RoboStudio: generated user headers live under ``ROBOSTUDIO_STATE_ROOT`` (or the
+platform default user-data root) and are later overlaid into an isolated
+firmware workspace. The repository/release firmware header is only a read-only
+default template.
 """
 from __future__ import annotations
 
@@ -11,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from tools import runtime_paths
+from tools.hardware_feature_config import generated_header_path
 
 # RoboStudio historically supports two import layouts: the packaged namespace
 # (``robostudio.services``) used by integration tests and the top-level
@@ -52,23 +55,17 @@ class HardwareMacroService:
 
     @classmethod
     def default_output_path(cls) -> Path:
-        """Return the canonical generated header path for the current mode."""
-        if cls._packaged_mode() or os.environ.get(runtime_paths.STATE_ROOT_ENV):
-            return (
-                runtime_paths.user_data_root(
-                    application_root_override=runtime_paths.application_root(),
-                    enforce_external=cls._packaged_mode(),
-                )
-                / "generated"
-                / "generated_device_config.h"
-            )
-        # Preserve the source-development workflow. Production never reaches
-        # this repository-relative path.
-        return HardwareMacroGenerator.default_output_path()
+        """Return the canonical mutable generated-header path for every mode."""
+        return generated_header_path()
 
     @classmethod
     def _validate_output_path(cls, output_path: Path) -> Path:
-        """Require packaged generated output to remain inside external state."""
+        """Require packaged generated output to remain inside external state.
+
+        Source/integration callers may still supply an explicit temporary output
+        path. Normal source-mode usage reaches ``default_output_path`` and thus
+        uses the exact same user-state location as RoboStudio.exe.
+        """
         candidate = Path(output_path).expanduser().resolve()
         if not cls._packaged_mode():
             return candidate
