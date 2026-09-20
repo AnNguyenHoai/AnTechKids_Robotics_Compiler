@@ -1,10 +1,8 @@
-"""
-BuildWorker – non-blocking compiler contract runner using QProcess.
+"""BuildWorker – non-blocking compiler contract runner using QProcess.
 
-The compiler process always runs from the disposable workspace that owns the
-request/source files. Compiler-contract JSON is an internal machine interface;
-RoboStudio presents a concise human-readable compile result instead of dumping
-that JSON into the Build Output panel.
+Compiler-contract JSON remains an internal machine interface. Successful output
+artifacts are copied out of the disposable compiler workspace before cleanup so
+RoboStudio can show useful, durable paths to the user.
 """
 
 import json
@@ -12,10 +10,16 @@ import shutil
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, Signal
+from tools import runtime_paths
 
 
 CONTRACT_SCHEMA = "antechkids.robostudio.compiler-contract"
 CONTRACT_VERSION = 1
+ARTIFACT_FIELDS = (
+    ("output", "Program header", "program.h"),
+    ("report", "Compile report", "compile_report.json"),
+    ("rewritten_source", "Rewritten source", "rewritten_source.py"),
+)
 
 
 class BuildWorker(QObject):
@@ -52,7 +56,6 @@ class BuildWorker(QObject):
             pass
 
     def start(self):
-        """Start the compiler process from external compiler state."""
         env_list = [f"{k}={v}" for k, v in self.env.items()]
         self.process.setEnvironment(env_list)
         self.process.setWorkingDirectory(str(self._workspace()))
@@ -60,45 +63,17 @@ class BuildWorker(QObject):
 
     def _on_stdout(self):
         data = self.process.readAllStandardOutput()
-        text = data.data().decode("utf-8", errors="replace")
-        self._stdout_chunks.append(text)
-        # stdout belongs to the stable compiler contract and is intentionally
-        # buffered until completion so raw JSON never leaks into the user log.
+        self._stdout_chunks.append(data.data().decode("utf-8", errors="replace"))
 
     def _on_stderr(self):
         data = self.process.readAllStandardError()
         text = data.data().decode("utf-8", errors="replace")
         self._stderr_chunks.append(text)
-        # stderr may contain useful runtime diagnostics, so keep it live.
         if text:
             self.output_received.emit(text)
 
-    def _on_finished(self, exit_code, exit_status):
-        stdout = "".join(self._stdout_chunks)
-        stderr = "".join(self._stderr_chunks)
-        self._cleanup_temp_state()
-
-        if exit_status == QProcess.CrashExit:
-            self.error_occurred.emit("Compiler process crashed.")
-            return
-
-        details, summary = self.format_result(
-            stdout=stdout,
-            stderr=stderr,
-            success=(exit_code == 0),
-        )
-        if details:
-            self.output_received.emit(details if details.endswith("\n") else details + "\n")
-        self.build_finished.emit(exit_code == 0, summary)
-
-    def _on_process_error(self, error):
-        self._cleanup_temp_state()
-        msg = self.process.errorString()
-        self.error_occurred.emit(f"Compiler process error: {msg}")
-
     @staticmethod
     def _parse_contract(stdout: str):
-        """Return compiler-contract JSON when stdout is exactly that contract."""
         text = stdout.strip()
         if not text:
             return None
@@ -108,11 +83,32 @@ class BuildWorker(QObject):
             return None
         if not isinstance(payload, dict):
             return None
-        if payload.get("schema") != CONTRACT_SCHEMA:
-            return None
-        if payload.get("contract_version") != CONTRACT_VERSION:
+        if payload.get("schema") != CONTRACT_SCHEMA or payload.get("contract_version") != CONTRACT_VERSION:
             return None
         return payload
+
+    @classmethod
+    def _publish_contract_artifacts(cls, payload: dict) -> dict:
+        """Copy successful compiler outputs to stable user state and rewrite paths.
+
+        The compiler itself writes into a disposable workspace. Exposing those
+        paths after deleting the workspace would be misleading, so only files
+        that actually exist are published under ``artifacts/compile/latest``.
+        """
+        destination_root = runtime_paths.prepare_user_data_root() / "artifacts" / "compile" / "latest"
+        destination_root.mkdir(parents=True, exist_ok=True)
+        published = dict(payload)
+        for field, _label, filename in ARTIFACT_FIELDS:
+            value = payload.get(field)
+            if not value:
+                continue
+            source = Path(str(value)).expanduser()
+            if not source.is_file():
+                continue
+            destination = destination_root / filename
+            shutil.copy2(source, destination)
+            published[field] = str(destination.resolve())
+        return published
 
     @staticmethod
     def _contract_summary(payload: dict, success: bool) -> str:
@@ -123,6 +119,14 @@ class BuildWorker(QObject):
             instruction_count = payload.get("instruction_count")
             if isinstance(instruction_count, int):
                 lines.append(f"Instructions: {instruction_count}")
+            artifacts = []
+            for field, label, _filename in ARTIFACT_FIELDS:
+                value = payload.get(field)
+                if value:
+                    artifacts.append(f"  {label}: {value}")
+            if artifacts:
+                lines.append("Output artifacts:")
+                lines.extend(artifacts)
             lines.append("Robot program generated successfully.")
             return "\n".join(lines)
 
@@ -139,15 +143,35 @@ class BuildWorker(QObject):
             lines.append("Compiler returned an unsuccessful contract response.")
         return "\n".join(lines)
 
+    def _on_finished(self, exit_code, exit_status):
+        stdout = "".join(self._stdout_chunks)
+        stderr = "".join(self._stderr_chunks)
+
+        if exit_status == QProcess.CrashExit:
+            self._cleanup_temp_state()
+            self.error_occurred.emit("Compiler process crashed.")
+            return
+
+        payload = self._parse_contract(stdout)
+        if payload is not None and exit_code == 0 and payload.get("status") == "PASS":
+            try:
+                payload = self._publish_contract_artifacts(payload)
+                stdout = json.dumps(payload)
+            except OSError as exc:
+                stderr += f"\nWARNING: unable to publish compiler artifacts: {exc}\n"
+
+        details, summary = self.format_result(stdout=stdout, stderr=stderr, success=(exit_code == 0))
+        self._cleanup_temp_state()
+        if details:
+            self.output_received.emit(details if details.endswith("\n") else details + "\n")
+        self.build_finished.emit(exit_code == 0, summary)
+
+    def _on_process_error(self, error):
+        self._cleanup_temp_state()
+        self.error_occurred.emit(f"Compiler process error: {self.process.errorString()}")
+
     @classmethod
     def format_result(cls, stdout: str, stderr: str, success: bool):
-        """Return (visible details, concise summary) for RoboStudio's log UI.
-
-        Stable compiler-contract JSON stays machine-readable internally and is
-        converted to a short user-facing summary. Unknown/non-contract output
-        remains visible so legacy or infrastructure failures are still
-        diagnosable.
-        """
         payload = cls._parse_contract(stdout)
         if payload is not None:
             return "", cls._contract_summary(payload, success)
@@ -157,13 +181,7 @@ class BuildWorker(QObject):
         if success:
             summary = "✅ Compile completed"
         else:
-            error_lines = [
-                line
-                for line in lines
-                if "error" in line.lower()
-                or "exception" in line.lower()
-                or "failed" in line.lower()
-            ]
+            error_lines = [line for line in lines if "error" in line.lower() or "exception" in line.lower() or "failed" in line.lower()]
             if error_lines:
                 summary = "❌ Compile failed\n" + "\n".join(error_lines[:3])
             else:
