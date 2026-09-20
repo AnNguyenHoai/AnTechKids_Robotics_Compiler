@@ -99,6 +99,14 @@ jobs:
         shell: cmd
         run: BUILD_PRODUCTION_ZIP.cmd --clean
 
+      - name: Upload Windows production build
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoboStudio-Production-Windows
+          path: releases/production/
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Run repository regression suite
         shell: pwsh
         run: python run_all_tests.py
