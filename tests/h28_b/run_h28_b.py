@@ -91,7 +91,16 @@ def test_bootstrap_propagates_generated_credentials_to_platformio():
     assert "upload" in captured["command"]
     assert "--upload-port" in captured["command"]
     assert "COM4" in captured["command"]
-    assert captured["cwd"] == build_isolation.build_workspace("bootstrap") / "firmware"
+
+    # B2.3/#282: bootstrap source staging is per-run so a stale Windows handle
+    # can never block the next deployment. PlatformIO must run from
+    # platformio/runs/<run-id>/firmware, not the retired fixed
+    # platformio/firmware path.
+    expected_runs = build_isolation.build_workspace("bootstrap") / firmware_workspace.RUNS_DIRECTORY
+    assert captured["cwd"].name == firmware_workspace.FIRMWARE_DIRECTORY
+    assert captured["cwd"].parent.parent == expected_runs
+    assert captured["cwd"].parent.name
+
     assert captured["env"]["ROBOT_BOOTSTRAP_CONFIG"] == str(config_path.resolve())
     assert captured["env"]["ROBOT_WIFI_SSID"] == "classroom-wifi"
     assert captured["env"]["ROBOT_WIFI_PASSWORD"] == "wifi-secret"

@@ -41,7 +41,7 @@ jobs:
       - name: Validate test topology
         shell: pwsh
         run: |
-          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests','tests/b2_2/run_b2_2.py','tests/b2_2/run_portable_child_closure.py','tests/b2_3/run_b2_3.py','tests/b2_3/run_settings_isolation.py','tests/b2_3/run_hardware_runtime_path_contract.py','tests/b2_3/run_firmware_workspace_lock_regression.py','tests/b2_4/run_b2_4.py','tests/b2_4/run_packaged_flash_boundary.py','tests/b2_5/run_b2_5.py','tests/b2_6/run_b2_6.py','tests/b2_7/run_b2_7.py','tests/b2_7/run_firmware_source_transients.py','tests/h30_multi_robot/run_h30_multi_robot.py','tests/h31_boolean/run_h31_boolean.py','tools/hardware_feature_config.py','tools/hardware_preflight.py','tools/clean_machine_physical_e2e.py','tools/copy_run_contract.py','tools/copy_run_release.py','tools/one_click_production_zip.py','BUILD_PRODUCTION_ZIP.cmd','scripts/Build-ProductionZip.ps1','run_all_tests.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing test boundaries/runner: {missing}'; print('PASS: test topology boundaries')"
+          python -c "from pathlib import Path; required=['robot-language/tests','robot-compiler/tests','robot-frontend-robosim/test','robostudio/tests','tests','tests/b2_2/run_b2_2.py','tests/b2_2/run_portable_child_closure.py','tests/b2_3/run_b2_3.py','tests/b2_3/run_settings_isolation.py','tests/b2_3/run_hardware_runtime_path_contract.py','tests/b2_3/run_firmware_workspace_lock_regression.py','tests/b2_3/run_deployment_concurrency.py','tests/b2_4/run_b2_4.py','tests/b2_4/run_packaged_flash_boundary.py','tests/b2_5/run_b2_5.py','tests/b2_6/run_b2_6.py','tests/b2_7/run_b2_7.py','tests/b2_7/run_firmware_source_transients.py','tests/h28_b/run_h28_b.py','tests/h30_multi_robot/run_h30_multi_robot.py','tests/h31_boolean/run_h31_boolean.py','tools/hardware_feature_config.py','tools/hardware_preflight.py','tools/clean_machine_physical_e2e.py','tools/copy_run_contract.py','tools/copy_run_release.py','tools/one_click_production_zip.py','BUILD_PRODUCTION_ZIP.cmd','scripts/Build-ProductionZip.ps1','run_all_tests.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing test boundaries/runner: {missing}'; print('PASS: test topology boundaries')"
 
       - name: Run B2.2 dependency closure gate
         shell: pwsh
@@ -66,6 +66,14 @@ jobs:
       - name: Run B2.3 locked firmware workspace gate
         shell: pwsh
         run: python tests/b2_3/run_firmware_workspace_lock_regression.py
+
+      - name: Run B2.3 deployment concurrency gate
+        shell: pwsh
+        run: python tests/b2_3/run_deployment_concurrency.py
+
+      - name: Run H28-B deployment runtime hardening gate
+        shell: pwsh
+        run: python tests/h28_b/run_h28_b.py
 
       - name: Run B2.4 hardware and flash portability gate
         shell: pwsh

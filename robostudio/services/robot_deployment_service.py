@@ -6,12 +6,18 @@ operation because it provisions a new robot before normal LAN discovery.
 
 Deployment subprocesses are streamed through Qt-safe callbacks so the UI can
 show live PlatformIO output instead of appearing frozen during a build/upload.
+
+Only one destructive/building robot deployment may run inside a RoboStudio
+process at a time. The UI has separate workers for first-flash and OTA, so this
+service-level guard is the final safety boundary if both controls are triggered
+close together.
 """
 from __future__ import annotations
 
 import json
 import os
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +28,80 @@ from tools import runtime_paths
 from tools.deployment_runtime import DeploymentRuntimeError, python_command, run_process
 
 DeploymentOutputCallback = Callable[[str], None]
+
+_DEPLOYMENT_OPERATION_LOCK = threading.Lock()
+_DEPLOYMENT_BUSY_MESSAGE = (
+    "Another robot deployment is already in progress. Wait for the current "
+    "First-Flash or OTA operation to finish before starting another deployment."
+)
+
+
+def deployment_operation_busy() -> bool:
+    """Return whether this RoboStudio process already owns the deployment lane."""
+    return _DEPLOYMENT_OPERATION_LOCK.locked()
+
+
+def windows_serial_port_busy_error(port: str) -> str | None:
+    """Return an actionable diagnostic when Windows cannot open ``port`` exclusively.
+
+    QSerialPort and PlatformIO/esptool both require exclusive ownership of a
+    Windows COM device. A Serial Console left connected to the same robot can
+    therefore make a first-flash fail only after an expensive firmware build.
+    Probe the handle before spawning the deployment child instead. This helper
+    intentionally does not manipulate Qt objects from the worker thread.
+    """
+    if os.name != "nt":
+        return None
+
+    value = (port or "").strip()
+    if not value:
+        return None
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_file = kernel32.CreateFileW
+        create_file.argtypes = (
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.HANDLE,
+        )
+        create_file.restype = wintypes.HANDLE
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+
+        generic_read = 0x80000000
+        generic_write = 0x40000000
+        open_existing = 3
+        device_path = value if value.startswith("\\\\.\\") else f"\\\\.\\{value}"
+        handle = create_file(
+            device_path,
+            generic_read | generic_write,
+            0,  # no sharing: match PlatformIO/QSerialPort ownership semantics
+            None,
+            open_existing,
+            0,
+            None,
+        )
+        invalid_handle = wintypes.HANDLE(-1).value
+        if handle == invalid_handle:
+            error_code = ctypes.get_last_error()
+            return (
+                f"Serial port {value} is busy or unavailable (Windows error {error_code}). "
+                "If the RoboStudio USB Serial Console is connected to this port, click Disconnect first; "
+                "also close any other serial monitor using the robot, then retry First-Flash."
+            )
+        close_handle(handle)
+        return None
+    except (AttributeError, OSError, ValueError) as exc:
+        return f"Unable to verify exclusive access to serial port {value}: {exc}"
 
 
 @dataclass(frozen=True)
@@ -119,6 +199,19 @@ class RobotDeploymentService:
     def flash_first_robot(self, config_path: Path, usb_port: str = "",
                           on_output: DeploymentOutputCallback | None = None) -> DeploymentResult:
         """Build and USB-flash a first-boot firmware containing bootstrap data."""
+        if not _DEPLOYMENT_OPERATION_LOCK.acquire(blocking=False):
+            return DeploymentResult(False, "", _DEPLOYMENT_BUSY_MESSAGE)
+        try:
+            return self._flash_first_robot_locked(config_path, usb_port, on_output)
+        finally:
+            _DEPLOYMENT_OPERATION_LOCK.release()
+
+    def _flash_first_robot_locked(
+        self,
+        config_path: Path,
+        usb_port: str,
+        on_output: DeploymentOutputCallback | None,
+    ) -> DeploymentResult:
         config_path = config_path.resolve()
         if not config_path.is_file():
             return DeploymentResult(False, "", f"Bootstrap config not found: {config_path}")
@@ -129,6 +222,10 @@ class RobotDeploymentService:
                 "",
                 "Select a detected USB/COM port before first-flash. RoboStudio never guesses a port.",
             )
+
+        serial_error = windows_serial_port_busy_error(usb_port)
+        if serial_error:
+            return DeploymentResult(False, "", serial_error)
 
         try:
             config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -196,6 +293,24 @@ class RobotDeploymentService:
                    wifi_password: str, ota_password: str,
                    on_output: DeploymentOutputCallback | None = None) -> DeploymentResult:
         """Compile, build, OTA-upload and verify the selected robot."""
+        if not _DEPLOYMENT_OPERATION_LOCK.acquire(blocking=False):
+            return DeploymentResult(False, "", _DEPLOYMENT_BUSY_MESSAGE)
+        try:
+            return self._deploy_ota_locked(
+                code, robot, wifi_ssid, wifi_password, ota_password, on_output
+            )
+        finally:
+            _DEPLOYMENT_OPERATION_LOCK.release()
+
+    def _deploy_ota_locked(
+        self,
+        code: str,
+        robot: RobotInfo,
+        wifi_ssid: str,
+        wifi_password: str,
+        ota_password: str,
+        on_output: DeploymentOutputCallback | None,
+    ) -> DeploymentResult:
         if not robot.ota:
             return DeploymentResult(False, "", "Selected robot does not advertise OTA support.")
         if not robot.network_ready:
