@@ -228,20 +228,35 @@ def _stage_application(executable: Path, version_file: Path, stage: Path) -> Pat
 
 
 def _stage_compiler(compiler: Path, frontend: Path, stage: Path) -> tuple[Path, Path]:
+    """Stage compiler and frontend as separate packager inputs.
+
+    ``distribution_package`` owns the final merge into ``compiler/frontend``.
+    Keeping these staging roots separate prevents double-inserting the frontend
+    payload and preserves one clear assembly boundary.
+    """
     staged_compiler = stage / COMPILER_ROOT_NAME
     if staged_compiler.exists():
         shutil.rmtree(staged_compiler)
-    shutil.copytree(compiler, staged_compiler, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".git", ".venv"))
+    shutil.copytree(
+        compiler,
+        staged_compiler,
+        ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".git", ".venv", FRONTEND_ROOT_NAME),
+    )
     contract = _contract_source(compiler)
     contract_target = staged_compiler / CONTRACT_ENTRY_NAME
     if contract.resolve() != (compiler / CONTRACT_ENTRY_NAME).resolve():
         shutil.copy2(contract, contract_target)
     elif not contract_target.is_file():
         raise ProductionDistributionError(f"Compiler contract staging failed: {contract_target}")
-    staged_frontend = staged_compiler / FRONTEND_ROOT_NAME
+
+    staged_frontend = stage / "compiler-frontend"
     if staged_frontend.exists():
         shutil.rmtree(staged_frontend)
-    shutil.copytree(frontend, staged_frontend, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".git", ".venv"))
+    shutil.copytree(
+        frontend,
+        staged_frontend,
+        ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".git", ".venv"),
+    )
     return staged_compiler, staged_frontend
 
 
