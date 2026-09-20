@@ -2,6 +2,7 @@
 """Regression for one hardware-config path contract across source and EXE modes."""
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -23,16 +24,6 @@ def check(label: str, condition: bool) -> None:
     print(f"PASS: {label}")
 
 
-def generated_in(workspace: Path) -> Path:
-    return (
-        workspace
-        / "main"
-        / "include"
-        / "generated"
-        / "generated_device_config.h"
-    )
-
-
 def configure_user_state(*, ultrasonic: bool, servo: bool, buzzer: bool) -> HardwareConfigService:
     service = HardwareConfigService()
     config = service.load()
@@ -43,6 +34,33 @@ def configure_user_state(*, ultrasonic: bool, servo: bool, buzzer: bool) -> Hard
     config.set_enabled("buzzer", buzzer)
     service.save(config)
     return service
+
+
+def default_template_contract() -> None:
+    default_json = json.loads(
+        (ROOT / "robostudio" / "config" / "hardware.json").read_text(encoding="utf-8")
+    )
+    normalized = hardware_feature_config.normalize_hardware_payload(default_json)
+    check(
+        "shipped hardware.json defaults match shared runtime defaults",
+        normalized == hardware_feature_config.defaults(),
+    )
+
+    expected_header = hardware_feature_config.render_generated_header(
+        hardware_feature_config.defaults()
+    )
+    template_header = (
+        ROOT
+        / "robot-platform"
+        / "main"
+        / "include"
+        / "generated"
+        / "generated_device_config.h"
+    ).read_text(encoding="utf-8")
+    check(
+        "firmware default header matches shared runtime defaults",
+        template_header == expected_header,
+    )
 
 
 def source_mode_contract(base: Path) -> None:
@@ -67,13 +85,23 @@ def source_mode_contract(base: Path) -> None:
     expected = state.resolve() / "generated" / "generated_device_config.h"
     check("source mode generated header uses user state", output == expected)
     text = output.read_text(encoding="utf-8")
-    check("source mode generated state reflects current hardware.json", "ROBOT_FEATURE_SERVO              1" in text and "ROBOT_FEATURE_ULTRASONIC         0" in text)
-    check("source mode never mutates repository firmware template", template.read_bytes() == template_before)
+    check(
+        "source mode generated state reflects current hardware.json",
+        "ROBOT_FEATURE_SERVO              1" in text
+        and "ROBOT_FEATURE_ULTRASONIC         0" in text,
+    )
+    check(
+        "source mode never mutates repository firmware template",
+        template.read_bytes() == template_before,
+    )
 
     # Reproduce the original bug: leave a stale generated header from an older
     # EXE/source session, then change hardware.json. Deployment must regenerate
     # from hardware.json before staging instead of copying the stale header.
-    output.write_text("// STALE HEADER MUST NOT WIN\n#define ROBOT_FEATURE_SERVO 1\n", encoding="utf-8")
+    output.write_text(
+        "// STALE HEADER MUST NOT WIN\n#define ROBOT_FEATURE_SERVO 1\n",
+        encoding="utf-8",
+    )
     config = config_service.load()
     config.set_enabled("servo", False)
     config.set_enabled("ultrasonic", True)
@@ -84,9 +112,17 @@ def source_mode_contract(base: Path) -> None:
     installed = apply_user_hardware_config(workspace)
     current = expected.read_text(encoding="utf-8")
     staged = installed.read_text(encoding="utf-8")
-    check("deployment regenerates stale user header from hardware.json", "STALE HEADER" not in current and "ROBOT_FEATURE_SERVO              0" in current and "ROBOT_FEATURE_ULTRASONIC         1" in current)
+    check(
+        "deployment regenerates stale user header from hardware.json",
+        "STALE HEADER" not in current
+        and "ROBOT_FEATURE_SERVO              0" in current
+        and "ROBOT_FEATURE_ULTRASONIC         1" in current,
+    )
     check("source deployment stages freshly regenerated hardware header", staged == current)
-    check("source template remains unchanged after deployment staging", template.read_bytes() == template_before)
+    check(
+        "source template remains unchanged after deployment staging",
+        template.read_bytes() == template_before,
+    )
 
 
 def packaged_mode_contract(base: Path) -> None:
@@ -95,10 +131,30 @@ def packaged_mode_contract(base: Path) -> None:
     package_config = app / "config"
     package_config.mkdir(parents=True)
     (package_config / "hardware.json").write_text(
-        """{\n  \"version\": 1,\n  \"devices\": {\n    \"motor\": true,\n    \"encoder\": false,\n    \"line_sensor\": true,\n    \"ultrasonic\": false,\n    \"imu\": false,\n    \"servo\": false,\n    \"buzzer\": false\n  }\n}\n""",
+        """{
+  "version": 1,
+  "devices": {
+    "motor": true,
+    "encoder": false,
+    "line_sensor": true,
+    "ultrasonic": true,
+    "imu": false,
+    "servo": false,
+    "buzzer": true
+  }
+}
+""",
         encoding="utf-8",
     )
-    immutable_header = app / "firmware" / "robot-platform" / "main" / "include" / "generated" / "generated_device_config.h"
+    immutable_header = (
+        app
+        / "firmware"
+        / "robot-platform"
+        / "main"
+        / "include"
+        / "generated"
+        / "generated_device_config.h"
+    )
     immutable_header.parent.mkdir(parents=True)
     immutable_header.write_text("// immutable packaged default\n", encoding="utf-8")
     app_snapshot = immutable_header.read_bytes()
@@ -114,30 +170,54 @@ def packaged_mode_contract(base: Path) -> None:
     output = macro.generate()
     expected = state.resolve() / "generated" / "generated_device_config.h"
     check("packaged mode uses same canonical generated-state layout", output == expected)
-    check("packaged generated header is outside immutable application", app.resolve() not in output.resolve().parents)
+    check(
+        "packaged generated header is outside immutable application",
+        app.resolve() not in output.resolve().parents,
+    )
 
-    # A stale generated file must also be corrected in packaged mode.
     output.write_text("// STALE PACKAGED HEADER\n", encoding="utf-8")
     workspace = base / "packaged deployment workspace"
     installed = apply_user_hardware_config(workspace)
     staged = installed.read_text(encoding="utf-8")
-    check("packaged deployment regenerates stale hardware header", "STALE PACKAGED HEADER" not in staged and "ROBOT_FEATURE_SERVO              1" in staged and "ROBOT_FEATURE_BUZZER             1" in staged)
-    check("packaged deployment never mutates release template", immutable_header.read_bytes() == app_snapshot)
+    check(
+        "packaged deployment regenerates stale hardware header",
+        "STALE PACKAGED HEADER" not in staged
+        and "ROBOT_FEATURE_SERVO              1" in staged
+        and "ROBOT_FEATURE_BUZZER             1" in staged,
+    )
+    check(
+        "packaged deployment never mutates release template",
+        immutable_header.read_bytes() == app_snapshot,
+    )
 
 
 def renderer_contract() -> None:
     state = hardware_feature_config.defaults()
-    state["ultrasonic"] = True
-    state["buzzer"] = True
     text = hardware_feature_config.render_generated_header(state)
-    check("shared renderer emits every registered hardware feature", all(hardware_feature_config.macro_name(device_id) in text for device_id in hardware_feature_config.feature_ids()))
-    check("shared renderer keeps deterministic boolean values", "ROBOT_FEATURE_ULTRASONIC         1" in text and "ROBOT_FEATURE_ENCODER            0" in text)
+    check(
+        "shared renderer emits every registered hardware feature",
+        all(
+            hardware_feature_config.macro_name(device_id) in text
+            for device_id in hardware_feature_config.feature_ids()
+        ),
+    )
+    check(
+        "shared renderer keeps canonical standard-robot defaults",
+        "ROBOT_FEATURE_MOTOR              1" in text
+        and "ROBOT_FEATURE_LINE_SENSOR        1" in text
+        and "ROBOT_FEATURE_ULTRASONIC         1" in text
+        and "ROBOT_FEATURE_BUZZER             1" in text
+        and "ROBOT_FEATURE_ENCODER            0" in text
+        and "ROBOT_FEATURE_IMU                0" in text
+        and "ROBOT_FEATURE_SERVO              0" in text,
+    )
 
 
 def main() -> int:
     previous = os.environ.copy()
     try:
         renderer_contract()
+        default_template_contract()
         with tempfile.TemporaryDirectory(prefix="robostudio-hw-path-") as tmp:
             base = Path(tmp)
             source_mode_contract(base / "source mode")
