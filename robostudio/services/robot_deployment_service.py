@@ -6,12 +6,18 @@ operation because it provisions a new robot before normal LAN discovery.
 
 Deployment subprocesses are streamed through Qt-safe callbacks so the UI can
 show live PlatformIO output instead of appearing frozen during a build/upload.
+
+Only one destructive/building robot deployment may run inside a RoboStudio
+process at a time. The UI has separate workers for first-flash and OTA, so this
+service-level guard is the final safety boundary if both controls are triggered
+close together.
 """
 from __future__ import annotations
 
 import json
 import os
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +28,17 @@ from tools import runtime_paths
 from tools.deployment_runtime import DeploymentRuntimeError, python_command, run_process
 
 DeploymentOutputCallback = Callable[[str], None]
+
+_DEPLOYMENT_OPERATION_LOCK = threading.Lock()
+_DEPLOYMENT_BUSY_MESSAGE = (
+    "Another robot deployment is already in progress. Wait for the current "
+    "First-Flash or OTA operation to finish before starting another deployment."
+)
+
+
+def deployment_operation_busy() -> bool:
+    """Return whether this RoboStudio process already owns the deployment lane."""
+    return _DEPLOYMENT_OPERATION_LOCK.locked()
 
 
 @dataclass(frozen=True)
@@ -119,6 +136,19 @@ class RobotDeploymentService:
     def flash_first_robot(self, config_path: Path, usb_port: str = "",
                           on_output: DeploymentOutputCallback | None = None) -> DeploymentResult:
         """Build and USB-flash a first-boot firmware containing bootstrap data."""
+        if not _DEPLOYMENT_OPERATION_LOCK.acquire(blocking=False):
+            return DeploymentResult(False, "", _DEPLOYMENT_BUSY_MESSAGE)
+        try:
+            return self._flash_first_robot_locked(config_path, usb_port, on_output)
+        finally:
+            _DEPLOYMENT_OPERATION_LOCK.release()
+
+    def _flash_first_robot_locked(
+        self,
+        config_path: Path,
+        usb_port: str,
+        on_output: DeploymentOutputCallback | None,
+    ) -> DeploymentResult:
         config_path = config_path.resolve()
         if not config_path.is_file():
             return DeploymentResult(False, "", f"Bootstrap config not found: {config_path}")
@@ -196,6 +226,24 @@ class RobotDeploymentService:
                    wifi_password: str, ota_password: str,
                    on_output: DeploymentOutputCallback | None = None) -> DeploymentResult:
         """Compile, build, OTA-upload and verify the selected robot."""
+        if not _DEPLOYMENT_OPERATION_LOCK.acquire(blocking=False):
+            return DeploymentResult(False, "", _DEPLOYMENT_BUSY_MESSAGE)
+        try:
+            return self._deploy_ota_locked(
+                code, robot, wifi_ssid, wifi_password, ota_password, on_output
+            )
+        finally:
+            _DEPLOYMENT_OPERATION_LOCK.release()
+
+    def _deploy_ota_locked(
+        self,
+        code: str,
+        robot: RobotInfo,
+        wifi_ssid: str,
+        wifi_password: str,
+        ota_password: str,
+        on_output: DeploymentOutputCallback | None,
+    ) -> DeploymentResult:
         if not robot.ota:
             return DeploymentResult(False, "", "Selected robot does not advertise OTA support.")
         if not robot.network_ready:
