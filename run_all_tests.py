@@ -47,6 +47,7 @@ def main()->int:
     tests.append(ROOT/"tests"/"b2_3"/"run_settings_isolation.py")
     tests.append(ROOT/"tests"/"b2_3"/"run_hardware_runtime_path_contract.py")
     tests.append(ROOT/"tests"/"b2_3"/"run_firmware_workspace_lock_regression.py")
+    tests.append(ROOT/"tests"/"b2_3"/"run_deployment_concurrency.py")
     tests.append(ROOT/"tests"/"b2_4"/"run_b2_4.py")
     tests.append(ROOT/"tests"/"b2_4"/"run_packaged_flash_boundary.py")
     tests.append(ROOT/"tests"/"b2_5"/"run_b2_5.py")
