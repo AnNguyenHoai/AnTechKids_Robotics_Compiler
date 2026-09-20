@@ -56,7 +56,7 @@ HARDWARE_FEATURES: tuple[HardwareFeatureDefinition, ...] = (
         "ultrasonic",
         "Ultrasonic Sensor",
         "sensors",
-        False,
+        True,
         "Distance measurement sensor.",
     ),
     HardwareFeatureDefinition(
@@ -77,7 +77,7 @@ HARDWARE_FEATURES: tuple[HardwareFeatureDefinition, ...] = (
         "buzzer",
         "Buzzer",
         "expansion",
-        False,
+        True,
         "Audio/buzzer output support.",
     ),
 )
