@@ -9,64 +9,31 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 
 def _configure_utf8_output() -> None:
-    os.environ["PYTHONUTF8"]="1"
-    os.environ["PYTHONIOENCODING"]="utf-8"
+    os.environ["PYTHONUTF8"]="1"; os.environ["PYTHONIOENCODING"]="utf-8"
     for stream in (sys.stdout,sys.stderr):
         reconfigure=getattr(stream,"reconfigure",None)
-        if reconfigure is not None:
-            reconfigure(encoding="utf-8",errors="strict")
-
+        if reconfigure is not None: reconfigure(encoding="utf-8",errors="strict")
 
 def _child_environment() -> dict[str,str]:
-    env=os.environ.copy()
-    env["PYTHONUTF8"]="1"
-    env["PYTHONIOENCODING"]="utf-8"
-    root=str(ROOT)
-    existing=env.get("PYTHONPATH")
-    env["PYTHONPATH"]=root if not existing else root+os.pathsep+existing
-    return env
-
+    env=os.environ.copy(); env["PYTHONUTF8"]="1"; env["PYTHONIOENCODING"]="utf-8"; root=str(ROOT); existing=env.get("PYTHONPATH"); env["PYTHONPATH"]=root if not existing else root+os.pathsep+existing; return env
 
 def run_script(path:Path)->bool:
-    print(f"\n=== Running {path.relative_to(ROOT)} ===")
-    result=subprocess.run([sys.executable,str(path)],cwd=ROOT,text=True,env=_child_environment())
-    if result.returncode!=0:
-        print(f"FAILED: {path.relative_to(ROOT)} (exit {result.returncode})",file=sys.stderr)
-        return False
-    print(f"PASS: {path.relative_to(ROOT)}")
-    return True
-
+    print(f"\n=== Running {path.relative_to(ROOT)} ==="); result=subprocess.run([sys.executable,str(path)],cwd=ROOT,text=True,env=_child_environment())
+    if result.returncode!=0: print(f"FAILED: {path.relative_to(ROOT)} (exit {result.returncode})",file=sys.stderr); return False
+    print(f"PASS: {path.relative_to(ROOT)}"); return True
 
 def main()->int:
     _configure_utf8_output()
     tests=[ROOT/"robot-compiler"/"tests"/"run_tests.py",ROOT/"robot-frontend-robosim"/"test"/"run_tests.py",ROOT/"robot-compiler"/"integration"/"end_to_end"/"run_integration_tests.py",ROOT/"tests"/"c4"/"test_language_semantics.py",ROOT/"tests"/"c5"/"test_c5_pipeline.py"]
     for name in ["rsd_02","rsd_03","rsd_04","rsd_05","rsd_06","rsd_07","rsd_08","rsd_09","rsd_10","rsd_11","rsd_12","rsd_13","rsd_14","rsd_15","rsd_16","rsd_17","rsd_18","rsd_19","rsd_20_p","rsd_20_p1","rsd_20","rsd_21","rsd_21_2","rsd_21_3","rsd_21_4","rsd_21_5","rsd_21_6","rsd_21_7","rsd_21_8"]:tests.append(ROOT/"tests"/name/f"run_{name}.py")
-    tests.append(ROOT/"tests"/"b2_2"/"run_b2_2.py")
-    tests.append(ROOT/"tests"/"b2_2"/"run_portable_child_closure.py")
-    tests.append(ROOT/"tests"/"b2_3"/"run_b2_3.py")
-    tests.append(ROOT/"tests"/"b2_3"/"run_settings_isolation.py")
-    tests.append(ROOT/"tests"/"b2_3"/"run_hardware_runtime_path_contract.py")
-    tests.append(ROOT/"tests"/"b2_3"/"run_firmware_workspace_lock_regression.py")
-    tests.append(ROOT/"tests"/"b2_3"/"run_deployment_concurrency.py")
-    tests.append(ROOT/"tests"/"b2_4"/"run_b2_4.py")
-    tests.append(ROOT/"tests"/"b2_4"/"run_packaged_flash_boundary.py")
-    tests.append(ROOT/"tests"/"b2_5"/"run_b2_5.py")
-    tests.append(ROOT/"tests"/"b2_6"/"run_b2_6.py")
-    tests.append(ROOT/"tests"/"b2_7"/"run_b2_7.py")
-    tests.append(ROOT/"tests"/"b2_7"/"run_firmware_source_transients.py")
-    tests.append(ROOT/"tests"/"h29_runtime"/"run_h29_runtime.py")
-    tests.append(ROOT/"tests"/"h30_multi_robot"/"run_h30_multi_robot.py")
-    tests.append(ROOT/"tests"/"h31_boolean"/"run_h31_boolean.py")
+    for script in ["run_b2_3.py","run_settings_isolation.py","run_hardware_runtime_path_contract.py","run_firmware_workspace_lock_regression.py","run_deployment_concurrency.py","run_artifact_output_contract.py"]: tests.append(ROOT/"tests"/"b2_3"/script)
+    tests.append(ROOT/"tests"/"b2_2"/"run_b2_2.py"); tests.append(ROOT/"tests"/"b2_2"/"run_portable_child_closure.py")
+    tests.append(ROOT/"tests"/"b2_4"/"run_b2_4.py"); tests.append(ROOT/"tests"/"b2_4"/"run_packaged_flash_boundary.py"); tests.append(ROOT/"tests"/"b2_5"/"run_b2_5.py"); tests.append(ROOT/"tests"/"b2_6"/"run_b2_6.py"); tests.append(ROOT/"tests"/"b2_7"/"run_b2_7.py"); tests.append(ROOT/"tests"/"b2_7"/"run_firmware_source_transients.py"); tests.append(ROOT/"tests"/"h29_runtime"/"run_h29_runtime.py"); tests.append(ROOT/"tests"/"h30_multi_robot"/"run_h30_multi_robot.py"); tests.append(ROOT/"tests"/"h31_boolean"/"run_h31_boolean.py")
     for name in ["h26_a","h26_b","h26_c","h26_d","h26_e","h26_f","h26_g","h26_h","h26_i","h26_j","h26_k","h26_l","h26_m","h26_ota","h26_o","h27_a1","h27_b0","h27_b","h28_b","h29_a","h29_b","h29_c","h29_d"]:tests.append(ROOT/"tests"/name/f"run_{name}.py")
     missing=[p.relative_to(ROOT) for p in tests if not p.exists()]
-    if missing:
-        print("Missing required test runner(s):",file=sys.stderr)
-        [print(f"  - {p}",file=sys.stderr) for p in missing]
-        return 2
+    if missing: print("Missing required test runner(s):",file=sys.stderr); [print(f"  - {p}",file=sys.stderr) for p in missing]; return 2
     for test in tests:
-        if not run_script(test):
-            return 1
-    print("\nALL TESTS PASSED")
-    return 0
+        if not run_script(test): return 1
+    print("\nALL TESTS PASSED"); return 0
 
 if __name__=="__main__":raise SystemExit(main())
