@@ -218,9 +218,20 @@ def _launcher_text(executable_name: str) -> str:
 
 
 def _stage_application(executable: Path, version_file: Path, stage: Path) -> Path:
+    """Stage the application exactly as the downstream packager expects it.
+
+    ``distribution_package`` deliberately discovers application-local DLLs next
+    to the executable. The production staging layer must therefore preserve
+    those siblings instead of reducing the application input to the EXE alone.
+    This matters for non-onefile builds and keeps the generic production
+    distribution contract independent of today's PyInstaller layout.
+    """
     stage.mkdir(parents=True, exist_ok=True)
     staged_executable = stage / executable.name
     shutil.copy2(executable, staged_executable)
+    for dependency in sorted(executable.parent.glob("*.dll"), key=lambda item: item.name.lower()):
+        if dependency.is_file():
+            shutil.copy2(dependency, stage / dependency.name)
     shutil.copy2(version_file, stage / DEFAULT_VERSION_FILE)
     launcher = stage / LAUNCHER_NAME
     launcher.write_text(_launcher_text(executable.name), encoding="utf-8", newline="")
