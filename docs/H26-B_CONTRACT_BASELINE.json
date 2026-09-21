@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "task": "H26-B",
-  "baseline_commit": "93fa908ebba21cfe76c384627b951af7e9f41072",
+  "baseline_commit": "b6af9c63f8171bdda3a360790143fc44d65b633f",
   "purpose": "Protect the currently working production Golden Path while allowing future architecture migration to proceed incrementally.",
   "protected_files": {
     "robot-compiler/compiler/generated/function_registry.py": "cbcbbba21ee19a108caf4aafebbfb355bc0238ed",
     "robot-compiler/compiler/generated/opcode.py": "5440f6ec43567ef749ac586f91e056256a756a47",
-    "tools/build.py": "a4de23ac985c498439bd91e4d7f99dd87d4e3023",
-    "tools/compile.py": "1da55e4cdb5699b690fa7f38dd015a868002c599",
+    "tools/build.py": "e4aec0b7c2c7cb54481d838ae8741bb1ec821c9e",
+    "tools/compile.py": "1a3a7fd3098e20fc5ea5a9fded3b2233ad7624c5",
     "tools/flash.py": "d6cf65e72d6347e5cb5f7d95e2e04127585e5298"
   },
   "validated_generated_artifacts": {
@@ -19,7 +19,7 @@
   "known_future_migrations": [
     "canonical ISA/opcode reconciliation",
     "binary ABI reconciliation",
-    "capability model completion",
+    "post-H33 capability evolution",
     "firmware build integration"
   ]
 }
