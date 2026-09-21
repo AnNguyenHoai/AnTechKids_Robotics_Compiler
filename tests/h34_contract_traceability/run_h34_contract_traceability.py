@@ -29,7 +29,7 @@ def main() -> int:
     check("machine-readable traceability evidence is emitted", OUTPUT.is_file())
 
     report = json.loads(OUTPUT.read_text(encoding="utf-8"))
-    check("traceability schema is stable", report.get("schema_version") == 1)
+    check("traceability schema is stable", report.get("schema_version") == 2)
     check("traceability task identity is H34", report.get("task") == "H34")
     check("traceability status is PASS", report.get("status") == "PASS")
     check("traceability has zero contract errors", report.get("summary", {}).get("error_count") == 0)
@@ -41,10 +41,42 @@ def main() -> int:
     for row in rows:
         api = row["api"]
         check(f"{api} reaches canonical ISA", bool(row.get("canonical_id")))
-        check(f"{api} reaches compiler registry", row.get("compiler_registry") == row.get("opcode"))
+        check(f"{api} reaches compiler registry", row.get("compiler_registry") == row.get("logical_opcode"))
+        check(f"{api} reaches compiler handler", bool(row.get("compiler_handler")))
         check(f"{api} reaches capability model", bool(row.get("capability")))
         check(f"{api} has at least one supported target", bool(row.get("targets")))
-        check(f"{api} reaches VM dispatch", bool(row.get("vm_dispatch")))
+
+        semantic = row.get("semantic")
+        emitted = row.get("emitted_opcodes", [])
+        lowering_kind = row.get("lowering_kind")
+        if semantic == "Native":
+            check(f"{api} preserves Native opcode through lowering", emitted == [row.get("logical_opcode")])
+            check(f"{api} Native lowering is classified native", lowering_kind == "native")
+        else:
+            check(
+                f"{api} non-Native semantic has explicit lowering classification",
+                lowering_kind in {"degraded", "no_emit", "native"},
+            )
+
+        dispatch = row.get("emitted_dispatch", [])
+        check(f"{api} has dispatch evidence for every emitted opcode", len(dispatch) == len(emitted))
+        for emitted_row in dispatch:
+            check(
+                f"{api}:{emitted_row['opcode']} reaches VM dispatch",
+                bool(emitted_row.get("runtime_endpoints")),
+            )
+
+    by_api = {row["api"]: row for row in rows}
+    check("GUI update_var is explicitly no-emit", by_api["update_var"]["lowering_kind"] == "no_emit")
+    check("GUI display_variable is explicitly no-emit", by_api["display_variable"]["lowering_kind"] == "no_emit")
+    check(
+        "dummy light sensor API traces actual LoadConst lowering",
+        by_api["get_light_sensor_data"]["emitted_opcodes"] == ["LoadConst"],
+    )
+    check(
+        "stub servo API does not falsely claim SetServo runtime dispatch",
+        by_api["set_servo"]["emitted_opcodes"] == ["Nop"],
+    )
 
     source = report.get("source_of_truth", {})
     check("API SSoT is declared", source.get("api") == "robot-language/specification/api.yaml")
