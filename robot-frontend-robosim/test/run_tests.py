@@ -80,7 +80,9 @@ def test_trace_channel_normalization():
                 f"Expected RoboSim {api_name} channel {channel} to normalize "
                 f"to canonical channel {canonical_channel}; output={output!r}"
             )
-    print("PASS: RoboSim trace channels 1..7 normalize to canonical channels 0..6")
+    output = rewrite_source("import rcu\nvalue = rcu.GetTraceV2I2CState(1, +1)\n")
+    assert "get_trace_state(1, 0)" in output
+    print("PASS: RoboSim trace channels 1..7 and unary +1 normalize to canonical channels")
 
 
 def test_invalid_trace_channels_rejected():
