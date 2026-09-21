@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """H34 contract traceability checker and evidence generator.
 
-Builds a read-only trace graph across the canonical contract owners and the
-runtime implementation boundary:
+Builds a read-only trace graph across canonical contract owners and the actual
+compiler/runtime implementation boundary:
 
-  Robot API -> compiler registry -> canonical opcode -> capability -> targets
-            -> VM dispatch -> runtime endpoint
+  Robot API -> compiler registry -> compiler handler/lowering
+            -> canonical opcode/capability/targets
+            -> emitted opcode(s) -> VM dispatch -> runtime endpoint
 
 The checker fails closed when a public API becomes orphaned or contradictory.
-It does not create a second source of truth; the emitted JSON is evidence only.
+Generated JSON is evidence only; it is not a second source of truth.
 """
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 from pathlib import Path
@@ -26,6 +28,7 @@ ISA_PATH = ROOT / "packages" / "robot-isa" / "canonical_isa.json"
 CAPABILITY_PATH = ROOT / "packages" / "robot-isa" / "capability_model.json"
 TARGET_PATH = ROOT / "packages" / "robot-isa" / "target_profiles.json"
 REGISTRY_PATH = ROOT / "robot-compiler" / "compiler" / "generated" / "function_registry.py"
+HANDLER_ROOT = ROOT / "robot-compiler" / "compiler" / "handlers"
 OPCODE_PATH = ROOT / "robot-compiler" / "compiler" / "generated" / "opcode.py"
 VM_PATH = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VM.cpp"
 DEFAULT_OUTPUT = ROOT / ".build" / "h34" / "contract-traceability.json"
@@ -57,18 +60,33 @@ def _load_api() -> dict[str, dict[str, Any]]:
     return result
 
 
-def _parse_registry() -> dict[str, str]:
+def _parse_registry() -> tuple[dict[str, dict[str, str]], dict[str, str]]:
     text = REGISTRY_PATH.read_text(encoding="utf-8")
+    imports = {
+        class_name: module_name
+        for module_name, class_name in re.findall(
+            r"from\s+compiler\.handlers\.([A-Za-z_][A-Za-z0-9_]*)\s+import\s+([A-Za-z_][A-Za-z0-9_]*)",
+            text,
+        )
+    }
     pattern = re.compile(
         r'^\s{4}"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*\{(.*?)^\s{4}\},',
         re.MULTILINE | re.DOTALL,
     )
-    result: dict[str, str] = {}
+    result: dict[str, dict[str, str]] = {}
     for name, body in pattern.findall(text):
-        match = re.search(r'"opcode"\s*:\s*"([A-Za-z_][A-Za-z0-9_]*)"', body)
-        if match:
-            result[name] = match.group(1)
-    return result
+        opcode = re.search(r'"opcode"\s*:\s*"([A-Za-z_][A-Za-z0-9_]*)"', body)
+        handler = re.search(
+            r'"handler"\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)',
+            body,
+        )
+        if opcode and handler:
+            result[name] = {
+                "opcode": opcode.group(1),
+                "handler_class": handler.group(1),
+                "handler_method": handler.group(2),
+            }
+    return result, imports
 
 
 def _parse_generated_opcodes() -> dict[str, int]:
@@ -81,6 +99,74 @@ def _parse_generated_opcodes() -> dict[str, int]:
             re.MULTILINE,
         )
     }
+
+
+def _opcode_name_from_emit(call: ast.Call) -> str | None:
+    if not isinstance(call.func, ast.Attribute) or call.func.attr != "emit":
+        return None
+    if not call.args:
+        return None
+    node = call.args[0]
+    # Opcode.Name.value
+    if (
+        isinstance(node, ast.Attribute)
+        and node.attr == "value"
+        and isinstance(node.value, ast.Attribute)
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "Opcode"
+    ):
+        return node.value.attr
+    return None
+
+
+def _parse_handler_lowering(
+    registry: dict[str, dict[str, str]],
+    imports: dict[str, str],
+) -> dict[str, dict[str, Any]]:
+    parsed_modules: dict[str, ast.Module] = {}
+    result: dict[str, dict[str, Any]] = {}
+
+    for api_name, binding in registry.items():
+        handler_class = binding["handler_class"]
+        handler_method = binding["handler_method"]
+        module_name = imports.get(handler_class)
+        if module_name is None:
+            result[api_name] = {
+                "handler": f"{handler_class}.{handler_method}",
+                "handler_file": None,
+                "emitted_opcodes": [],
+                "found": False,
+            }
+            continue
+
+        path = HANDLER_ROOT / f"{module_name}.py"
+        if module_name not in parsed_modules:
+            parsed_modules[module_name] = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = parsed_modules[module_name]
+
+        method_node: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and node.name == handler_class:
+                for member in node.body:
+                    if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == handler_method:
+                        method_node = member
+                        break
+
+        emitted: list[str] = []
+        if method_node is not None:
+            for node in ast.walk(method_node):
+                if isinstance(node, ast.Call):
+                    opcode_name = _opcode_name_from_emit(node)
+                    if opcode_name is not None and opcode_name not in emitted:
+                        emitted.append(opcode_name)
+
+        result[api_name] = {
+            "handler": f"{handler_class}.{handler_method}",
+            "handler_file": str(path.relative_to(ROOT)).replace("\\", "/"),
+            "emitted_opcodes": emitted,
+            "found": method_node is not None,
+        }
+    return result
 
 
 def _parse_vm_dispatch() -> dict[str, list[str]]:
@@ -109,7 +195,8 @@ def build_traceability() -> tuple[dict[str, Any], list[str]]:
     isa = _load_json(ISA_PATH)
     capabilities = _load_json(CAPABILITY_PATH)
     targets = _load_json(TARGET_PATH)
-    registry = _parse_registry()
+    registry, registry_imports = _parse_registry()
+    lowering = _parse_handler_lowering(registry, registry_imports)
     generated_opcodes = _parse_generated_opcodes()
     vm_dispatch = _parse_vm_dispatch()
 
@@ -180,51 +267,95 @@ def build_traceability() -> tuple[dict[str, Any], list[str]]:
     rows: list[dict[str, Any]] = []
     for api_name in sorted(api):
         api_spec = api[api_name]
-        opcode_name = api_spec["opcode"]
+        logical_opcode = api_spec["opcode"]
         opcode_id = api_spec["opcode_id"]
-        canonical = isa_by_name.get(opcode_name)
-        registry_opcode = registry.get(api_name)
-        generated_id = generated_opcodes.get(opcode_name)
+        semantic = api_spec["semantic"]
+        canonical = isa_by_name.get(logical_opcode)
+        registry_binding = registry.get(api_name)
+        registry_opcode = registry_binding["opcode"] if registry_binding else None
+        generated_id = generated_opcodes.get(logical_opcode)
         capability = capability_by_opcode.get(opcode_id)
-        dispatch = vm_dispatch.get(opcode_name)
+        lowering_info = lowering.get(api_name)
+        emitted_opcodes = lowering_info["emitted_opcodes"] if lowering_info else []
 
         if canonical is None:
-            errors.append(f"API {api_name} opcode {opcode_name} missing from canonical ISA")
-        else:
-            if canonical["opcode_id"] != opcode_id:
-                errors.append(
-                    f"API {api_name} opcode id mismatch: api={opcode_id}, canonical={canonical['opcode_id']}"
-                )
-        if registry_opcode is None:
-            errors.append(f"API {api_name} missing from generated compiler registry")
-        elif registry_opcode != opcode_name:
+            errors.append(f"API {api_name} opcode {logical_opcode} missing from canonical ISA")
+        elif canonical["opcode_id"] != opcode_id:
             errors.append(
-                f"API {api_name} registry opcode mismatch: api={opcode_name}, registry={registry_opcode}"
+                f"API {api_name} opcode id mismatch: api={opcode_id}, canonical={canonical['opcode_id']}"
             )
+
+        if registry_binding is None:
+            errors.append(f"API {api_name} missing from generated compiler registry")
+        elif registry_opcode != logical_opcode:
+            errors.append(
+                f"API {api_name} registry opcode mismatch: api={logical_opcode}, registry={registry_opcode}"
+            )
+
         if generated_id is None:
-            errors.append(f"API {api_name} opcode {opcode_name} missing from generated Opcode enum")
+            errors.append(f"API {api_name} opcode {logical_opcode} missing from generated Opcode enum")
         elif generated_id != opcode_id:
             errors.append(
                 f"API {api_name} generated opcode id mismatch: api={opcode_id}, generated={generated_id}"
             )
+
         if capability is None:
             errors.append(f"API {api_name} opcode {opcode_id} has no capability binding")
-        if dispatch is None:
-            errors.append(f"API {api_name} opcode {opcode_name} has no VM dispatch case")
+
+        if lowering_info is None or not lowering_info["found"]:
+            errors.append(f"API {api_name} compiler handler implementation is missing")
+
+        # Native means the public contract must survive lowering unchanged.
+        if semantic == "Native":
+            if emitted_opcodes != [logical_opcode]:
+                errors.append(
+                    f"API {api_name} is Native but lowers to {emitted_opcodes or ['<no emit>']} "
+                    f"instead of {logical_opcode}"
+                )
+        elif semantic not in {"Stub", "Dummy", "Approximation", "NOP"}:
+            errors.append(f"API {api_name} has unsupported semantic classification {semantic!r}")
+
+        emitted_dispatch: list[dict[str, Any]] = []
+        for emitted_opcode in emitted_opcodes:
+            emitted_id = generated_opcodes.get(emitted_opcode)
+            if emitted_id is None:
+                errors.append(f"API {api_name} lowers to unknown generated opcode {emitted_opcode}")
+                endpoints: list[str] = []
+            else:
+                if emitted_opcode not in isa_by_name:
+                    errors.append(f"API {api_name} lowers to opcode {emitted_opcode} missing from canonical ISA")
+                endpoints = vm_dispatch.get(emitted_opcode, [])
+                if not endpoints:
+                    errors.append(f"API {api_name} emitted opcode {emitted_opcode} has no VM dispatch case")
+            emitted_dispatch.append(
+                {
+                    "opcode": emitted_opcode,
+                    "opcode_id": emitted_id,
+                    "runtime_endpoints": endpoints,
+                }
+            )
+
+        lowering_kind = "no_emit" if not emitted_opcodes else (
+            "native" if emitted_opcodes == [logical_opcode] else "degraded"
+        )
 
         rows.append(
             {
                 "api": api_name,
                 "api_category": api_spec["category"],
-                "semantic": api_spec["semantic"],
+                "semantic": semantic,
                 "canonical_id": canonical["canonical_id"] if canonical else None,
-                "opcode": opcode_name,
-                "opcode_id": opcode_id,
+                "logical_opcode": logical_opcode,
+                "logical_opcode_id": opcode_id,
                 "compiler_registry": registry_opcode,
+                "compiler_handler": lowering_info["handler"] if lowering_info else None,
+                "compiler_handler_file": lowering_info["handler_file"] if lowering_info else None,
+                "lowering_kind": lowering_kind,
+                "emitted_opcodes": emitted_opcodes,
+                "emitted_dispatch": emitted_dispatch,
                 "capability": capability,
                 "targets": sorted(targets_by_capability.get(capability, [])) if capability else [],
                 "resources": sorted(resource_by_api.get(api_name, [])),
-                "vm_dispatch": dispatch or [],
             }
         )
 
@@ -234,7 +365,7 @@ def build_traceability() -> tuple[dict[str, Any], list[str]]:
         errors.append(f"compiler registry exposes APIs absent from api.yaml: {extra_registry}")
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "task": "H34",
         "kind": "contract_traceability_evidence",
         "status": "PASS" if not errors else "FAIL",
@@ -246,6 +377,7 @@ def build_traceability() -> tuple[dict[str, Any], list[str]]:
         },
         "implementation_evidence": {
             "compiler_registry": str(REGISTRY_PATH.relative_to(ROOT)).replace("\\", "/"),
+            "compiler_handlers": str(HANDLER_ROOT.relative_to(ROOT)).replace("\\", "/"),
             "generated_opcode": str(OPCODE_PATH.relative_to(ROOT)).replace("\\", "/"),
             "vm_dispatch": str(VM_PATH.relative_to(ROOT)).replace("\\", "/"),
         },
@@ -255,6 +387,8 @@ def build_traceability() -> tuple[dict[str, Any], list[str]]:
             "canonical_opcode_count": len(isa_by_name),
             "capability_count": len(capability_ids),
             "target_count": len(profile_ids),
+            "native_count": sum(1 for row in rows if row["semantic"] == "Native"),
+            "degraded_or_no_emit_count": sum(1 for row in rows if row["lowering_kind"] != "native"),
             "error_count": len(errors),
         },
         "rows": rows,
@@ -270,7 +404,7 @@ def main() -> int:
 
     try:
         report, errors = build_traceability()
-    except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError) as exc:
+    except (OSError, ValueError, SyntaxError, json.JSONDecodeError, yaml.YAMLError) as exc:
         print(f"H34 ERROR: {exc}")
         return 2
 
@@ -285,6 +419,8 @@ def main() -> int:
         "H34 traceability: "
         f"APIs={summary['public_api_count']} "
         f"rows={summary['trace_row_count']} "
+        f"native={summary['native_count']} "
+        f"degraded/no-emit={summary['degraded_or_no_emit_count']} "
         f"capabilities={summary['capability_count']} "
         f"targets={summary['target_count']} "
         f"errors={summary['error_count']}"
