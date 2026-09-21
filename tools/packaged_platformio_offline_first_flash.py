@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Verify that the packaged RoboStudio runtime can build first-flash offline.
 
-This is a production-release gate, not a source-tree compile test.  It uses the
+This is a production-release gate, not a source-tree compile test. It uses the
 already assembled ``releases/production/RoboStudio`` distribution, a completely
 fresh external RoboStudio state root, the bundled Python interpreter, and the
-bundled PlatformIO platform/package stores.  Network proxies are deliberately
+bundled PlatformIO platform/package stores. Network proxies are deliberately
 poisoned so a missing dependency cannot be hidden by the CI/build machine.
 
-The gate also verifies PlatformIO's installation metadata (``.piopm``).  A
+The gate also verifies PlatformIO's installation metadata (``.piopm``). A
 ``package.json`` alone is not enough for PlatformIO Package Manager to consider
 a package installed; losing ``.piopm`` during packaging can make first-flash
 silently download hundreds of megabytes on the target PC.
@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -31,10 +32,17 @@ if __package__ in (None, ""):
 else:
     ROOT = Path(__file__).resolve().parents[1]
 
-from tools import dependency_closure, production_platformio_closure, release_package, runtime_paths
+from tools import (
+    build_isolation,
+    dependency_closure,
+    deployment_runtime,
+    production_platformio_closure,
+    release_package,
+    runtime_paths,
+)
 
 REPORT_SCHEMA = "antechkids.robostudio.packaged-platformio-offline-first-flash"
-REPORT_SCHEMA_VERSION = 1
+REPORT_SCHEMA_VERSION = 2
 FORBIDDEN_PROVISIONING_MARKERS = (
     "tool manager: installing",
     "platform manager: installing",
@@ -99,7 +107,9 @@ def _validate_package_install_metadata(
                 f"Bundled PlatformIO package metadata mismatch for {name}: "
                 f"package={name}@{version}, .piopm={installed_name}@{installed_version}"
             )
-        archived_piopm = (Path("runtime") / "platformio" / metadata_relative.parent / ".piopm").as_posix()
+        archived_piopm = (
+            Path("runtime") / "platformio" / metadata_relative.parent / ".piopm"
+        ).as_posix()
         if archived_piopm not in archived:
             raise OfflineFirstFlashError(
                 f"Production ZIP inventory dropped PlatformIO installation metadata: {archived_piopm}"
@@ -134,6 +144,21 @@ def _bootstrap_config(path: Path) -> None:
     )
 
 
+def _short_state_root(work_root: Path) -> Path:
+    """Allocate clean state on a path representative of packaged deployment.
+
+    Windows ESP32 GCC 8.4 has a known child-process sensitivity to long paths.
+    RoboStudio therefore uses state-owned short dependency junctions in
+    production. Keep the acceptance state itself short as well so this gate
+    tests the intended runtime model instead of the very long repository path.
+    """
+    token = f"{os.getpid():x}-{time.time_ns() & 0xFFFFFF:x}"
+    if os.name == "nt":
+        base = Path(os.environ.get("PUBLIC") or tempfile.gettempdir()) / "RSF"
+        return base / token
+    return work_root / "state" / token
+
+
 def _kill_process_tree(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
@@ -162,7 +187,7 @@ def _run_offline_bootstrap_build(
     work_root: Path,
     *,
     timeout: float,
-) -> tuple[str, Path, float]:
+) -> tuple[str, Path, float, dict[str, str], Path]:
     python = distribution / "runtime" / "bin" / "python.exe"
     if not python.is_file():
         raise OfflineFirstFlashError(f"Bundled Python is missing: {python}")
@@ -171,13 +196,14 @@ def _run_offline_bootstrap_build(
     if not firmware_source.is_dir():
         raise OfflineFirstFlashError(f"Packaged firmware project is missing: {firmware_source}")
 
-    project = work_root / "project"
-    state = work_root / "state"
     if work_root.exists():
         shutil.rmtree(work_root, ignore_errors=True)
+    work_root.mkdir(parents=True, exist_ok=True)
+    state = _short_state_root(work_root)
+    state.mkdir(parents=True, exist_ok=True)
+    project = state / "build" / "bootstrap" / "platformio" / "runs" / "gate" / "firmware"
     project.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(firmware_source, project)
-    state.mkdir(parents=True, exist_ok=True)
 
     bootstrap = state / "bootstrap.json"
     _bootstrap_config(bootstrap)
@@ -189,10 +215,16 @@ def _run_offline_bootstrap_build(
     base_env[runtime_paths.DEPENDENCY_MODE_ENV] = "artifact-closed"
     try:
         env, _ = dependency_closure.build_closed_environment(distribution, base_env)
-    except dependency_closure.DependencyClosureError as exc:
+        env = deployment_runtime.prepare_platformio_dependency_aliases(distribution, env)
+        env = build_isolation.build_environment("bootstrap", env)
+    except (
+        dependency_closure.DependencyClosureError,
+        deployment_runtime.DeploymentRuntimeError,
+        build_isolation.BuildIsolationError,
+    ) as exc:
         raise OfflineFirstFlashError(f"Unable to construct packaged dependency closure: {exc}") from exc
 
-    # Fail closed on any attempted registry/network fallback.  A correct
+    # Fail closed on any attempted registry/network fallback. A correct
     # production artifact has every required platform/package locally.
     dead_proxy = "http://127.0.0.1:9"
     env.update(
@@ -268,7 +300,7 @@ def _run_offline_bootstrap_build(
         raise OfflineFirstFlashError(
             f"Packaged offline build completed without firmware.bin: {firmware}"
         )
-    return output, firmware, elapsed
+    return output, firmware, elapsed, env, state
 
 
 def verify(
@@ -294,14 +326,16 @@ def verify(
         report_path = build_root / "offline-first-flash-report.json"
     report_path = Path(report_path).expanduser().resolve()
     report_path.parent.mkdir(parents=True, exist_ok=True)
+    state: Path | None = None
 
     try:
-        output, firmware, elapsed = _run_offline_bootstrap_build(
+        output, firmware, elapsed, env, state = _run_offline_bootstrap_build(
             distribution,
             work_root,
             timeout=timeout,
         )
         log_path.write_text(output, encoding="utf-8")
+        alias_root = env.get(deployment_runtime.PLATFORMIO_DEPENDENCY_ALIAS_ROOT_ENV, "")
         report = {
             "schema": REPORT_SCHEMA,
             "schema_version": REPORT_SCHEMA_VERSION,
@@ -312,6 +346,9 @@ def verify(
             "network_fallback_allowed": False,
             "dependency_provisioning_observed": False,
             "package_install_metadata_verified": True,
+            "windows_short_dependency_alias": alias_root,
+            "platforms_dir": env.get("PLATFORMIO_PLATFORMS_DIR", ""),
+            "packages_dir": env.get("PLATFORMIO_PACKAGES_DIR", ""),
             "verified_packages": package_evidence,
             "verified_package_count": len(package_evidence),
             "firmware_size": firmware.stat().st_size,
@@ -322,6 +359,8 @@ def verify(
         return report
     finally:
         shutil.rmtree(work_root, ignore_errors=True)
+        if state is not None:
+            shutil.rmtree(state, ignore_errors=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -341,9 +380,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--timeout must be greater than zero")
     try:
         report = verify(args.release_dir, timeout=args.timeout, report_path=args.report)
-    except (OfflineFirstFlashError, Exception) as exc:
-        # Keep the public CLI diagnostic compact; detailed PlatformIO output is
-        # already included in failures raised by the operational build.
+    except Exception as exc:
         print(f"Packaged PlatformIO offline first-flash gate: FAIL: {exc}", file=sys.stderr)
         return 1
     print(
