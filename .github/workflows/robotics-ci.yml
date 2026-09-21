@@ -123,6 +123,10 @@ jobs:
         shell: pwsh
         run: python tests/h33_capability_compiler/run_h33_capability_compiler.py
 
+      - name: Run H34 contract traceability gate
+        shell: pwsh
+        run: python tests/h34_contract_traceability/run_h34_contract_traceability.py
+
       - name: Run H26-A golden path baseline gate
         shell: pwsh
         run: python tests/h26_a/run_h26_a.py

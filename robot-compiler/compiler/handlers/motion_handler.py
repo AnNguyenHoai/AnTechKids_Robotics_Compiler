@@ -31,12 +31,11 @@ class MotionHandler:
 
     @staticmethod
     def set_move_initialize(compiler, node):
-        # Stub: compiles successfully
+        # Stub: accepted by the language, intentionally emits no runtime bytecode.
         compiler.validate_argument_count(node, "set_move_initialize", 3)
-        compiler.program.emit(Opcode.Nop.value, 0, 0, 0)
 
     @staticmethod
     def set_move_run_angle(compiler, node):
-        # Approximation: compiles successfully
+        # Approximation placeholder: accepted until a real runtime lowering exists.
+        # Do not emit Opcode.Nop because the physical VM does not dispatch Nop.
         compiler.validate_argument_count(node, "set_move_run_angle", 3)
-        compiler.program.emit(Opcode.Nop.value, 0, 0, 0)
