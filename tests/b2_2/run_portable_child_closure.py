@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import dependency_closure, deployment_runtime
+from tools import dependency_closure, deployment_runtime, runtime_paths
 
 
 def check(name: str, condition: bool) -> None:
@@ -39,23 +39,55 @@ def main() -> int:
         base = Path(temp)
         artifact = base / "RoboStudio"
         host = base / "HostTools"
+        state = base / "RoboStudioState"
         artifact_tool = artifact / "runtime" / "bin" / tool_name()
         host_tool = host / tool_name()
         write_tool(artifact_tool)
         write_tool(host_tool)
-        (artifact / "runtime" / "platformio" / "platforms").mkdir(parents=True)
-        (artifact / "runtime" / "platformio" / "packages").mkdir(parents=True)
+        platforms = artifact / "runtime" / "platformio" / "platforms"
+        packages = artifact / "runtime" / "platformio" / "packages"
+        platforms.mkdir(parents=True)
+        packages.mkdir(parents=True)
 
         hostile = os.environ.copy()
         hostile["PATH"] = str(host)
         hostile["PYTHONPATH"] = str(base / "HostProject")
+        hostile[runtime_paths.STATE_ROOT_ENV] = str(state)
         closed, _ = dependency_closure.build_closed_environment(artifact, hostile)
+
+        # Create the real Windows dependency aliases before Popen is replaced
+        # by the process-boundary fake below.  subprocess.run() internally uses
+        # subprocess.Popen, so preparing aliases after monkeypatching Popen would
+        # make the junction helper execute through FakePopen instead of Windows.
+        aliased = deployment_runtime.prepare_platformio_dependency_aliases(
+            artifact, closed
+        )
+        if os.name == "nt":
+            alias_root = Path(
+                aliased[deployment_runtime.PLATFORMIO_DEPENDENCY_ALIAS_ROOT_ENV]
+            ).resolve()
+            check(
+                "portable child alias root is external to immutable artifact",
+                artifact.resolve() not in alias_root.parents and alias_root != artifact.resolve(),
+            )
+            check(
+                "portable child package alias resolves to bundled packages",
+                Path(aliased["PLATFORMIO_PACKAGES_DIR"]).resolve() == packages.resolve(),
+            )
+            check(
+                "portable child platform alias resolves to bundled platforms",
+                Path(aliased["PLATFORMIO_PLATFORMS_DIR"]).resolve() == platforms.resolve(),
+            )
 
         # Simulate a portable-Python helper that is not frozen but inherited
         # the production marker, then accidentally receives poisoned values.
-        contaminated = dict(closed)
+        # Keep the explicit state root so the re-sealed environment reuses the
+        # already-created junctions rather than provisioning aliases while
+        # FakePopen is active.
+        contaminated = dict(aliased)
         contaminated["PATH"] = str(host)
         contaminated["PYTHONPATH"] = str(base / "HostProject")
+        contaminated[runtime_paths.STATE_ROOT_ENV] = str(state)
 
         captured: list[dict[str, str]] = []
 
@@ -85,21 +117,54 @@ def main() -> int:
                 [str(artifact_tool)], cwd=artifact, env=contaminated, timeout=1.0
             )
             explicit = captured[-1]
-            explicit_path = [Path(value).resolve() for value in explicit["PATH"].split(os.pathsep) if value]
-            check("portable child marker re-seals caller PATH", host.resolve() not in explicit_path)
-            check("portable child marker strips caller PYTHONPATH", "PYTHONPATH" not in explicit)
+            explicit_path = [
+                Path(value).resolve()
+                for value in explicit["PATH"].split(os.pathsep)
+                if value
+            ]
+            check(
+                "portable child marker re-seals caller PATH",
+                host.resolve() not in explicit_path,
+            )
+            check(
+                "portable child marker strips caller PYTHONPATH",
+                "PYTHONPATH" not in explicit,
+            )
             check(
                 "portable child keeps dependency-closed mode",
                 explicit.get("ROBOSTUDIO_DEPENDENCY_MODE") == "artifact-closed",
             )
+            if os.name == "nt":
+                check(
+                    "portable child re-seal preserves package short-path alias",
+                    Path(explicit["PLATFORMIO_PACKAGES_DIR"]).resolve()
+                    == packages.resolve(),
+                )
+                check(
+                    "portable child re-seal preserves platform short-path alias",
+                    Path(explicit["PLATFORMIO_PLATFORMS_DIR"]).resolve()
+                    == platforms.resolve(),
+                )
 
             os.environ.clear()
             os.environ.update(contaminated)
-            deployment_runtime.run_process([str(artifact_tool)], cwd=artifact, timeout=1.0)
+            deployment_runtime.run_process(
+                [str(artifact_tool)], cwd=artifact, timeout=1.0
+            )
             implicit = captured[-1]
-            implicit_path = [Path(value).resolve() for value in implicit["PATH"].split(os.pathsep) if value]
-            check("portable child env=None is re-sealed", host.resolve() not in implicit_path)
-            check("portable child env=None strips PYTHONPATH", "PYTHONPATH" not in implicit)
+            implicit_path = [
+                Path(value).resolve()
+                for value in implicit["PATH"].split(os.pathsep)
+                if value
+            ]
+            check(
+                "portable child env=None is re-sealed",
+                host.resolve() not in implicit_path,
+            )
+            check(
+                "portable child env=None strips PYTHONPATH",
+                "PYTHONPATH" not in implicit,
+            )
         finally:
             os.environ.clear()
             os.environ.update(original_environment)

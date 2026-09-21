@@ -20,6 +20,25 @@ def check(name: str, condition: bool) -> None:
     print(f"PASS: {name}")
 
 
+def _packaged_base_env(state: Path) -> dict[str, str]:
+    """Build a hostile packaged fixture without deleting required OS identity.
+
+    Production dependency closure intentionally strips host tool lookup, but on
+    Windows the short PlatformIO dependency alias is created through the
+    OS-owned ``cmd.exe`` under ``SystemRoot\\System32``.  Keep only the Windows
+    system-root identity needed to locate that trusted OS helper; do not restore
+    the host PATH or any host PlatformIO/Python state.
+    """
+    env = {"PATH": "host-path", runtime_paths.STATE_ROOT_ENV: str(state)}
+    if os.name == "nt":
+        system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+        if not system_root:
+            raise AssertionError("Windows RSD-04 fixture requires SystemRoot/WINDIR")
+        env["SystemRoot"] = system_root
+        env["WINDIR"] = system_root
+    return env
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp) / "RoboStudio"
@@ -31,7 +50,7 @@ def main() -> int:
         with patch.dict(os.environ, {runtime_paths.APPLICATION_HOME_ENV: str(root)}, clear=False):
             with patch.object(deployment_runtime, "is_frozen", return_value=True):
                 env = deployment_runtime.deployment_runtime_environment(
-                    {"PATH": "host-path", runtime_paths.STATE_ROOT_ENV: str(state)}
+                    _packaged_base_env(state)
                 )
                 payload = root / "runtime" / "platformio"
                 mutable_core = state / "platformio" / "core"
@@ -53,6 +72,25 @@ def main() -> int:
                     Path(env["PLATFORMIO_PLATFORMS_DIR"]).resolve()
                     == (payload / "platforms").resolve(),
                 )
+                if os.name == "nt":
+                    alias_root = Path(
+                        env[deployment_runtime.PLATFORMIO_DEPENDENCY_ALIAS_ROOT_ENV]
+                    ).resolve()
+                    check(
+                        "Windows short dependency alias is external",
+                        root.resolve() not in alias_root.parents
+                        and alias_root != root.resolve(),
+                    )
+                    check(
+                        "Windows package alias resolves to immutable payload",
+                        Path(env["PLATFORMIO_PACKAGES_DIR"]).resolve()
+                        == (payload / "packages").resolve(),
+                    )
+                    check(
+                        "Windows platform alias resolves to immutable payload",
+                        Path(env["PLATFORMIO_PLATFORMS_DIR"]).resolve()
+                        == (payload / "platforms").resolve(),
+                    )
                 check(
                     "default mutable workspace is external",
                     Path(env["PLATFORMIO_WORKSPACE_DIR"]).resolve()

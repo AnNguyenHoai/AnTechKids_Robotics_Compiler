@@ -251,6 +251,31 @@ def test_final_process_boundary(base: Path) -> None:
     artifact, state, env, tool = test_dependency_and_platformio_state_split(base)
     unrelated = base / "Unrelated CWD"
     unrelated.mkdir(parents=True)
+
+    # Junction provisioning uses subprocess.run(), which itself uses Popen.
+    # Build the real dependency aliases before this test replaces Popen with a
+    # fake process boundary, then let run_process() re-seal and reuse them.
+    aliased = deployment_runtime.prepare_platformio_dependency_aliases(artifact, env)
+    packaged_pio = artifact / "runtime" / "platformio"
+    if os.name == "nt":
+        alias_root = Path(
+            aliased[deployment_runtime.PLATFORMIO_DEPENDENCY_ALIAS_ROOT_ENV]
+        ).resolve()
+        check(
+            "final boundary short-path alias root stays external",
+            not _inside(alias_root, artifact),
+        )
+        check(
+            "final boundary package alias resolves to bundled packages",
+            Path(aliased["PLATFORMIO_PACKAGES_DIR"]).resolve()
+            == (packaged_pio / "packages").resolve(),
+        )
+        check(
+            "final boundary platform alias resolves to bundled platforms",
+            Path(aliased["PLATFORMIO_PLATFORMS_DIR"]).resolve()
+            == (packaged_pio / "platforms").resolve(),
+        )
+
     captured: list[dict[str, str]] = []
 
     class FakePopen:
@@ -272,7 +297,7 @@ def test_final_process_boundary(base: Path) -> None:
         deployment_runtime.application_root = lambda: artifact
         deployment_runtime.subprocess.Popen = FakePopen
         result = deployment_runtime.run_process(
-            [str(tool)], cwd=unrelated, env=env, timeout=1.0
+            [str(tool)], cwd=unrelated, env=aliased, timeout=1.0
         )
     finally:
         deployment_runtime.application_root = original_root
@@ -293,6 +318,17 @@ def test_final_process_boundary(base: Path) -> None:
         "final process never restores release-local cache",
         not _inside(spawned["PLATFORMIO_CACHE_DIR"], artifact),
     )
+    if os.name == "nt":
+        check(
+            "final process keeps package short-path alias",
+            Path(spawned["PLATFORMIO_PACKAGES_DIR"]).resolve()
+            == (packaged_pio / "packages").resolve(),
+        )
+        check(
+            "final process keeps platform short-path alias",
+            Path(spawned["PLATFORMIO_PLATFORMS_DIR"]).resolve()
+            == (packaged_pio / "platforms").resolve(),
+        )
 
 
 def test_build_and_firmware_workspace_do_not_mutate_release(base: Path) -> None:
