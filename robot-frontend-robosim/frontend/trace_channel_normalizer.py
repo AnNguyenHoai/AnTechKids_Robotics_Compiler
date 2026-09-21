@@ -11,6 +11,24 @@ ROBOSIM_TRACE_CHANNEL_MIN = 1
 ROBOSIM_TRACE_CHANNEL_MAX = 7
 
 
+def _integer_literal_value(node):
+    """Return an integer source literal value, including unary +/- forms."""
+    if isinstance(node, ast.Constant) and type(node.value) is int:
+        return node.value
+
+    if (
+        isinstance(node, ast.UnaryOp)
+        and isinstance(node.operand, ast.Constant)
+        and type(node.operand.value) is int
+    ):
+        if isinstance(node.op, ast.USub):
+            return -node.operand.value
+        if isinstance(node.op, ast.UAdd):
+            return node.operand.value
+
+    return None
+
+
 class RoboSimTraceChannelNormalizer(ast.NodeTransformer):
     """Normalize RoboSim 1-based trace channels to canonical 0-based channels.
 
@@ -38,8 +56,8 @@ class RoboSimTraceChannelNormalizer(ast.NodeTransformer):
             return node
 
         channel_arg = node.args[1]
-        if isinstance(channel_arg, ast.Constant) and type(channel_arg.value) is int:
-            channel = channel_arg.value
+        channel = _integer_literal_value(channel_arg)
+        if channel is not None:
             if not ROBOSIM_TRACE_CHANNEL_MIN <= channel <= ROBOSIM_TRACE_CHANNEL_MAX:
                 raise SyntaxError(
                     f"RoboSim API '{api_name}()' received invalid trace channel {channel}; "
