@@ -8,6 +8,7 @@ firmware a second time.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,7 +28,7 @@ def main() -> int:
     check(
         "offline first-flash schema is stable",
         report.get("schema") == "antechkids.robostudio.packaged-platformio-offline-first-flash"
-        and report.get("schema_version") == 1,
+        and report.get("schema_version") == 2,
     )
     check("offline first-flash status is PASS", report.get("status") == "PASS")
     check("bootstrap environment is exercised", report.get("environment") == "esp32dev_bootstrap")
@@ -47,6 +48,13 @@ def main() -> int:
         "every required package carries archived .piopm metadata",
         all(str(item.get("piopm", "")).endswith("/.piopm") for item in packages),
     )
+    if os.name == "nt":
+        alias = str(report.get("windows_short_dependency_alias", "")).strip()
+        platforms = str(report.get("platforms_dir", "")).strip()
+        package_dir = str(report.get("packages_dir", "")).strip()
+        check("Windows first-flash records short dependency alias", bool(alias))
+        check("Windows platforms resolve through short alias", bool(platforms) and Path(alias) in Path(platforms).parents)
+        check("Windows packages resolve through short alias", bool(package_dir) and Path(alias) in Path(package_dir).parents)
     check("offline first-flash produced firmware", int(report.get("firmware_size", 0)) > 0)
     check("offline first-flash log exists", LOG.is_file())
     log = LOG.read_text(encoding="utf-8", errors="replace").casefold()
