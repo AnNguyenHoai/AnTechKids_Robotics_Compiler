@@ -65,5 +65,43 @@
         "gui.variable"
       ]
     }
+  ],
+  "resources": [
+    {
+      "id": "sensor.line.channel",
+      "capability": "sensor.line",
+      "description": "Canonical zero-based trace/line sensor channel index.",
+      "bindings": [
+        {
+          "api": "read_line",
+          "argument_index": 0
+        },
+        {
+          "api": "get_trace_value",
+          "argument_index": 1
+        },
+        {
+          "api": "get_trace_state",
+          "argument_index": 1
+        }
+      ],
+      "targets": {
+        "robosim": {
+          "min": 0,
+          "max": 6,
+          "dynamic": "reject"
+        },
+        "esp32": {
+          "min": 0,
+          "max": 2,
+          "dynamic": "reject"
+        },
+        "arduino": {
+          "min": 0,
+          "max": 2,
+          "dynamic": "reject"
+        }
+      }
+    }
   ]
 }

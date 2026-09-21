@@ -9,23 +9,21 @@ TRACE_CHANNEL_APIS = {
 
 ROBOSIM_TRACE_CHANNEL_MIN = 1
 ROBOSIM_TRACE_CHANNEL_MAX = 7
-REAL_TRACE_CHANNEL_MIN = 0
-REAL_TRACE_CHANNEL_MAX = 2
 
 
 class RoboSimTraceChannelNormalizer(ast.NodeTransformer):
-    """Normalize RoboSim 1-based trace channels to real-robot 0-based channels.
+    """Normalize RoboSim 1-based trace channels to canonical 0-based channels.
 
-    RoboSim exposes trace channels 1..7, while the current real robot exposes
-    only channels 0..2. Therefore only RoboSim channels 1..3 can be compiled
-    for the real target:
+    RoboSim exposes trace channels 1..7. The frontend only normalizes source
+    representation:
 
-        RoboSim 1 -> real 0
-        RoboSim 2 -> real 1
-        RoboSim 3 -> real 2
+        RoboSim 1 -> canonical 0
+        ...
+        RoboSim 7 -> canonical 6
 
-    Channels 4..7 are valid in RoboSim but do not exist on the real target and
-    must fail compilation instead of being silently clamped or wrapped.
+    H33 deliberately moves target availability out of the frontend. The
+    compiler target contract decides whether a canonical channel exists on the
+    selected target (for example 0..2 on ESP32 versus 0..6 in RoboSim).
     """
 
     def visit_Call(self, node):
@@ -40,27 +38,24 @@ class RoboSimTraceChannelNormalizer(ast.NodeTransformer):
             return node
 
         channel_arg = node.args[1]
-        if not (isinstance(channel_arg, ast.Constant) and type(channel_arg.value) is int):
-            raise SyntaxError(
-                f"RoboSim API '{api_name}()' requires a literal trace channel for "
-                "real-robot compilation; supported RoboSim channels are 1..3 "
-                "(mapped to real channels 0..2)"
+        if isinstance(channel_arg, ast.Constant) and type(channel_arg.value) is int:
+            channel = channel_arg.value
+            if not ROBOSIM_TRACE_CHANNEL_MIN <= channel <= ROBOSIM_TRACE_CHANNEL_MAX:
+                raise SyntaxError(
+                    f"RoboSim API '{api_name}()' received invalid trace channel {channel}; "
+                    "RoboSim trace channels are 1..7"
+                )
+            normalized = ast.Constant(value=channel - 1)
+        else:
+            # Representation normalization only. Target/resource safety remains
+            # compiler-owned, so preserve a dynamic expression and let H33
+            # reject it fail-closed until runtime bounds validation exists.
+            normalized = ast.BinOp(
+                left=channel_arg,
+                op=ast.Sub(),
+                right=ast.Constant(value=1),
             )
 
-        channel = channel_arg.value
-        if not ROBOSIM_TRACE_CHANNEL_MIN <= channel <= ROBOSIM_TRACE_CHANNEL_MAX:
-            raise SyntaxError(
-                f"RoboSim API '{api_name}()' received invalid trace channel {channel}; "
-                "RoboSim trace channels are 1..7"
-            )
-
-        if channel > REAL_TRACE_CHANNEL_MAX + 1:
-            raise SyntaxError(
-                f"RoboSim trace channel {channel} is not available on the real robot; "
-                "supported RoboSim channels are 1..3 (mapped to real channels 0..2)"
-            )
-
-        normalized = ast.Constant(value=channel - 1)
         node.args[1] = ast.copy_location(normalized, channel_arg)
         return node
 

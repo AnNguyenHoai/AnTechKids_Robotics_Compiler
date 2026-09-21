@@ -13,7 +13,16 @@ def main():
         print(f"Building {py_file.name}...")
         build_script = ROOT / "tools" / "build.py"
         build_dir = ROOT / "build" / py_file.stem
-        cmd = [sys.executable, str(build_script), "--input", str(py_file), "--build-dir", str(build_dir)]
+        cmd = [
+            sys.executable,
+            str(build_script),
+            "--input",
+            str(py_file),
+            "--build-dir",
+            str(build_dir),
+            "--target",
+            "robosim",
+        ]
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         report_path = build_dir / "compile_report.json"
