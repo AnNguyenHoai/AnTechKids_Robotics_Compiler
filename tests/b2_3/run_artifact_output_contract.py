@@ -49,11 +49,16 @@ def main() -> int:
         finally:
             runtime_paths.prepare_user_data_root = original
 
+        canonical_state = state.resolve()
+        expected_root = (canonical_state / "artifacts" / "compile" / "latest").resolve()
+        canonical_workspace = workspace.resolve()
+
         for field in ("output", "report", "rewritten_source"):
-            path = Path(published[field])
+            path = Path(published[field]).resolve()
             check(f"{field} is published", path.is_file())
-            check(f"{field} is durable user state", state in path.parents)
-            check(f"{field} is outside disposable workspace", workspace not in path.parents)
+            check(f"{field} is durable user state", canonical_state in path.parents)
+            check(f"{field} is published under compile/latest", path.parent == expected_root)
+            check(f"{field} is outside disposable workspace", canonical_workspace not in path.parents)
 
         summary = BuildWorker._contract_summary(published, True)
         check("summary labels artifact section", "Output artifacts:" in summary)
