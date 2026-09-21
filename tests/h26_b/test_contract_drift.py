@@ -8,7 +8,6 @@ an explicit baseline update.
 
 from __future__ import annotations
 
-import re
 import sys
 import unittest
 from pathlib import Path
