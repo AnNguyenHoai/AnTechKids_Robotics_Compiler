@@ -49,6 +49,5 @@ class LineHandler:
 
     @staticmethod
     def line_set_initialize(compiler, node):
-        # Stub: compiles successfully
+        # Stub: accepted by the language, intentionally emits no runtime bytecode.
         compiler.validate_argument_count(node, "line_set_initialize", 3)
-        compiler.program.emit(Opcode.Nop.value, 0, 0, 0)

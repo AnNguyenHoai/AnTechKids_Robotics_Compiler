@@ -9,5 +9,5 @@ class PeripheralHandler:
 
     @staticmethod
     def set_lizard(compiler, node):
+        # Stub: accepted by the language, intentionally emits no runtime bytecode.
         compiler.validate_argument_count(node, "set_lizard", 1)
-        compiler.program.emit(Opcode.Nop.value, 0, 0, 0)
