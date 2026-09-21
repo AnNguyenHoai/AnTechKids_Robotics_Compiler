@@ -13,6 +13,7 @@ def main():
     parser.add_argument("--output", help="Header output (optional)")
     parser.add_argument("--build-dir", help="Build directory (optional)")
     parser.add_argument("--copy", action="store_true", help="Copy header to robot-platform after build")
+    parser.add_argument("--target", default="esp32", help="Compile target profile (default: esp32)")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -30,16 +31,37 @@ def main():
     report_output = build_dir / "compile_report.json"
 
     # Rewrite
-    subprocess.check_call([sys.executable, str(rewrite_script), "--input", str(input_path), "--output", str(rewrite_output)])
+    subprocess.check_call([
+        sys.executable,
+        str(rewrite_script),
+        "--input",
+        str(input_path),
+        "--output",
+        str(rewrite_output),
+    ])
     # Compile
-    subprocess.check_call([sys.executable, str(compile_script), "--input", str(rewrite_output), "--output", str(header_output), "--report", str(report_output)])
+    subprocess.check_call([
+        sys.executable,
+        str(compile_script),
+        "--input",
+        str(rewrite_output),
+        "--output",
+        str(header_output),
+        "--report",
+        str(report_output),
+        "--target",
+        args.target,
+    ])
 
     if args.copy:
         platform_header = ROOT / "robot-platform" / "main" / "src" / "Application" / "generated_program.h"
         shutil.copy2(header_output, platform_header)
         print(f"Copied header to {platform_header}")
 
-    print(f"Build completed. Header: {header_output}, Report: {report_output}")
+    print(
+        f"Build completed for target '{args.target}'. "
+        f"Header: {header_output}, Report: {report_output}"
+    )
 
 if __name__ == "__main__":
     main()

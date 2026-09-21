@@ -11,7 +11,7 @@ from compiler.compiler import RobotCompiler
 from compiler.emitter import HeaderEmitter
 import argparse
 
-def compile_file(input_path, output_header=None, report_path=None):
+def compile_file(input_path, output_header=None, report_path=None, target="robosim"):
     input_path = Path(input_path)
     if output_header is None:
         build_dir = ROOT / "build" / input_path.stem
@@ -24,7 +24,7 @@ def compile_file(input_path, output_header=None, report_path=None):
             report_path = output_header.parent / "compile_report.json"
 
     start = time.time()
-    compiler = RobotCompiler()
+    compiler = RobotCompiler(target=target)
     program = compiler.compile(str(input_path))
     compile_time = time.time() - start
 
@@ -33,6 +33,7 @@ def compile_file(input_path, output_header=None, report_path=None):
     report = {
         "input": str(input_path),
         "output": str(output_header),
+        "target": compiler.target,
         "compile_time_seconds": compile_time,
         "instruction_count": len(program.instructions),
         "variable_count": compiler.global_scope.next_index,
@@ -48,8 +49,9 @@ def main():
     parser.add_argument("--input", required=True, help="Input .rewrite.py file")
     parser.add_argument("--output", help="Output header file (optional)")
     parser.add_argument("--report", help="Output JSON report file (optional)")
+    parser.add_argument("--target", default="robosim", help="Compile target profile")
     args = parser.parse_args()
-    compile_file(args.input, args.output, args.report)
+    compile_file(args.input, args.output, args.report, args.target)
     print("Compilation complete.")
 
 if __name__ == "__main__":

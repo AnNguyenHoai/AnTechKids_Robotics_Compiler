@@ -42,7 +42,8 @@ def main():
         subprocess.run(cmd_rewrite, check=True)
         results[name] = {"rewrite": "PASS"}
 
-        # 2. Compile
+        # 2. Compile for the physical ESP32 target. H33 keeps generic compiler
+        # defaults simulation-friendly, so physical boundaries bind explicitly.
         header_output = build_dir / "program.h"
         report_output = build_dir / "compile_report.json"
         cmd_compile = [
@@ -50,7 +51,8 @@ def main():
             str(ROOT / "tools" / "compile.py"),
             "--input", str(rewrite_output),
             "--output", str(header_output),
-            "--report", str(report_output)
+            "--report", str(report_output),
+            "--target", "esp32"
         ]
         subprocess.run(cmd_compile, check=True)
         results[name]["compile"] = "PASS"

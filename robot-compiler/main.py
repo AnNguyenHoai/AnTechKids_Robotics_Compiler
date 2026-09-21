@@ -11,12 +11,14 @@ if str(COMPILER_ROOT) not in sys.path:
 
 from compiler.compiler import RobotCompiler
 from compiler.emitter import HeaderEmitter
+from compiler.error import CompilerError
 
 def main():
     parser = argparse.ArgumentParser(description="Robot Compiler")
     parser.add_argument("--file", required=True, help="Source .rewrite.py file")
     parser.add_argument("--output", help="Output header file path (optional)")
     parser.add_argument("--report", help="Output JSON report file (optional)")
+    parser.add_argument("--target", default="robosim", help="Compile target profile (default: robosim)")
     args = parser.parse_args()
 
     source_path = Path(args.file)
@@ -34,14 +36,19 @@ def main():
         report_file = build_dir / "compile_report.json"
 
     start = time.time()
-    compiler = RobotCompiler()
-    program = compiler.compile(source_path)
+    try:
+        compiler = RobotCompiler(target=args.target)
+        program = compiler.compile(source_path)
+    except CompilerError as exc:
+        print(json.dumps(exc.to_diagnostic(), sort_keys=True), file=sys.stderr)
+        return 1
     compile_time = time.time() - start
     HeaderEmitter().emit(program, output_file)
 
     report = {
         "input": str(source_path),
         "output": str(output_file),
+        "target": compiler.target,
         "compile_time_seconds": compile_time,
         "instruction_count": len(program.instructions),
         "variable_count": compiler.global_scope.next_index,
@@ -51,7 +58,7 @@ def main():
     with open(report_file, "w") as f:
         json.dump(report, f, indent=2)
 
-    print(f"[OK] Compiled successfully! Output written to {output_file}")
+    print(f"[OK] Compiled successfully for target '{compiler.target}'! Output written to {output_file}")
     print(f"[OK] Report written to {report_file}")
     return 0
 

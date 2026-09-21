@@ -6,11 +6,14 @@ from .error import CompilerError
 from .generated.function_registry import FUNCTION_REGISTRY
 from .handlers.bool_handler import BoolHandler
 from .generated.opcode import Opcode
+from .target_contract import TargetContract
 
 
 class RobotCompiler(ast.NodeVisitor):
 
-    def __init__(self):
+    def __init__(self, target="robosim"):
+        self.target_contract = TargetContract(target)
+        self.target = self.target_contract.target_id
         self.program = Program()
         self.global_scope = Scope()
         self.current_scope = self.global_scope
@@ -257,6 +260,7 @@ class RobotCompiler(ast.NodeVisitor):
         actual = len(node.args)
         if actual != expected:
             raise CompilerError(f"{func}() expects exactly {expected} argument(s).")
+        self.target_contract.validate_api_call(func, info, node)
         info["handler"](self, node)
 
     # ---------- Function call (expression level) ----------
@@ -274,6 +278,7 @@ class RobotCompiler(ast.NodeVisitor):
         actual = len(node.args)
         if actual != expected:
             raise CompilerError(f"{func}() expects exactly {expected} argument(s).")
+        self.target_contract.validate_api_call(func, info, node)
         result = info["handler"](self, node)
         if result is None:
             raise CompilerError(f"Robot API '{func}()' does not return a value.")
