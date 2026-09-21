@@ -7,6 +7,7 @@ output streaming, plus an application-owned PlatformIO runtime environment.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import signal
 import subprocess
@@ -32,6 +33,7 @@ PLATFORMIO_DISABLE_PROGRESSBAR_ENV = "PLATFORMIO_DISABLE_PROGRESSBAR"
 PLATFORMIO_NO_ANSI_ENV = "PLATFORMIO_NO_ANSI"
 DEPENDENCY_MODE_ENV = "ROBOSTUDIO_DEPENDENCY_MODE"
 DEPENDENCY_MODE_CLOSED = "artifact-closed"
+PLATFORMIO_DEPENDENCY_ALIAS_ROOT_ENV = "ROBOSTUDIO_PLATFORMIO_DEPENDENCY_ALIAS_ROOT"
 
 
 class DeploymentRuntimeError(RuntimeError):
@@ -99,6 +101,133 @@ def _dependency_closed_mode(base_env: Mapping[str, str] | None = None) -> bool:
     return is_frozen() or environment.get(DEPENDENCY_MODE_ENV) == DEPENDENCY_MODE_CLOSED
 
 
+def _same_directory(left: Path, right: Path) -> bool:
+    try:
+        return os.path.samefile(left, right)
+    except (OSError, ValueError):
+        return False
+
+
+def _windows_cmd(environment: Mapping[str, str]) -> Path:
+    system_root = environment.get("SystemRoot") or environment.get("WINDIR")
+    if not system_root:
+        raise DeploymentRuntimeError(
+            "Windows SystemRoot is unavailable; cannot create the short PlatformIO dependency alias."
+        )
+    command = Path(system_root) / "System32" / "cmd.exe"
+    if not command.is_file():
+        raise DeploymentRuntimeError(
+            f"Windows command processor is unavailable for PlatformIO dependency aliasing: {command}"
+        )
+    return command
+
+
+def _ensure_windows_junction(
+    alias: Path,
+    target: Path,
+    environment: Mapping[str, str],
+) -> Path:
+    """Create one state-owned directory junction without copying immutable payload.
+
+    Espressif's legacy Windows Xtensa GCC driver can fail to spawn ``cc1plus`` or
+    ``as`` when the PlatformIO package path is long, even though the package is
+    complete. The release itself may live in an arbitrarily named directory, so
+    packaged execution exposes the immutable platform/package stores through a
+    short junction below external RoboStudio state. The junction is only an
+    alias: package bytes remain application-owned and are never copied or edited.
+    """
+    target = target.resolve()
+    if not target.is_dir():
+        raise DeploymentRuntimeError(f"Bundled PlatformIO dependency directory is missing: {target}")
+    alias.parent.mkdir(parents=True, exist_ok=True)
+
+    if os.path.lexists(alias):
+        if _same_directory(alias, target):
+            return alias
+        raise DeploymentRuntimeError(
+            f"PlatformIO short-path alias already exists with a different target: {alias}"
+        )
+
+    command = _windows_cmd(environment)
+    result = subprocess.run(
+        [str(command), "/d", "/c", "mklink", "/J", str(alias), str(target)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=15.0,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if result.returncode != 0 or not _same_directory(alias, target):
+        detail = result.stdout.strip()
+        suffix = f": {detail}" if detail else ""
+        raise DeploymentRuntimeError(
+            f"Unable to create short PlatformIO dependency alias {alias} -> {target}{suffix}"
+        )
+    return alias
+
+
+def prepare_platformio_dependency_aliases(
+    root: Path,
+    environment: Mapping[str, str],
+) -> dict[str, str]:
+    """Return a packaged environment with Windows-safe short dependency paths.
+
+    On non-Windows systems the canonical artifact paths are returned unchanged.
+    On Windows, ``platforms`` and ``packages`` are exposed through state-owned
+    directory junctions. ``Path.resolve``/``samefile`` still resolves those
+    aliases to the immutable artifact, preserving dependency ownership while the
+    Xtensa toolchain receives a much shorter launch path.
+    """
+    env = dict(environment)
+    if os.name != "nt":
+        return env
+
+    artifact_root = Path(root).expanduser().resolve()
+    platforms = artifact_root / "runtime" / "platformio" / "platforms"
+    packages = artifact_root / "runtime" / "platformio" / "packages"
+    try:
+        dependency_closure.assert_artifact_owned(
+            platforms, artifact_root, label="PlatformIO platforms"
+        )
+        dependency_closure.assert_artifact_owned(
+            packages, artifact_root, label="PlatformIO packages"
+        )
+        state = runtime_paths.prepare_user_data_root(
+            base_env=env,
+            application_root_override=artifact_root,
+            enforce_external=True,
+        )
+    except (dependency_closure.DependencyClosureError, runtime_paths.RuntimePathError) as exc:
+        raise DeploymentRuntimeError(f"Unable to prepare PlatformIO dependency aliases: {exc}") from exc
+
+    identity = hashlib.sha256(str(artifact_root).casefold().encode("utf-8")).hexdigest()[:8]
+    alias_root = state / "p" / identity
+    platform_alias = _ensure_windows_junction(alias_root / "f", platforms, env)
+    package_alias = _ensure_windows_junction(alias_root / "k", packages, env)
+
+    env[PLATFORMIO_PLATFORMS_DIR_ENV] = str(platform_alias)
+    env[PLATFORMIO_PACKAGES_DIR_ENV] = str(package_alias)
+    env[PLATFORMIO_DEPENDENCY_ALIAS_ROOT_ENV] = str(alias_root)
+
+    # Prefer short tool-package bin directories during child-process/DLL lookup.
+    # Package identity still resolves through the junction to the artifact.
+    package_bins = [
+        child / "bin"
+        for child in package_alias.iterdir()
+        if child.is_dir() and (child / "bin").is_dir()
+    ]
+    if package_bins:
+        existing = env.get("PATH", "")
+        env["PATH"] = os.pathsep.join(
+            [*(str(path) for path in package_bins), *( [existing] if existing else [])]
+        )
+    return env
+
+
 def deployment_runtime_environment(
     base_env: Mapping[str, str] | None = None,
     *,
@@ -121,6 +250,7 @@ def deployment_runtime_environment(
             env, _ = dependency_closure.build_closed_environment(application_root(), base_env)
         except dependency_closure.DependencyClosureError as exc:
             raise DeploymentRuntimeError(f"Packaged dependency closure failed: {exc}") from exc
+        env = prepare_platformio_dependency_aliases(application_root(), env)
     else:
         env = dict(os.environ if base_env is None else base_env)
 
