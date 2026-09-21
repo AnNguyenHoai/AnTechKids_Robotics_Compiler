@@ -11,9 +11,14 @@ $env:PYTHONUTF8 = "1"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Orchestrator = Join-Path $RepoRoot "tools\one_click_production_zip.py"
+$OfflineFirstFlashGate = Join-Path $RepoRoot "tools\packaged_platformio_offline_first_flash.py"
 if (-not (Test-Path $Orchestrator -PathType Leaf)) {
     throw "Missing B2.7 orchestrator: $Orchestrator"
 }
+if (-not (Test-Path $OfflineFirstFlashGate -PathType Leaf)) {
+    throw "Missing packaged PlatformIO offline first-flash gate: $OfflineFirstFlashGate"
+}
+$IsPlan = $ForwardArgs -contains "--plan"
 
 function Test-CacheCandidate {
     param([string]$Path)
@@ -152,13 +157,28 @@ Push-Location $RepoRoot
 try {
     & $selected.Exe @($selected.Prefix) $Orchestrator @ForwardArgs
     $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0 -and -not $IsPlan) {
+        Write-Host "" -ForegroundColor Cyan
+        Write-Host "Verifying packaged PlatformIO offline first-flash closure..." -ForegroundColor Cyan
+        & $selected.Exe @($selected.Prefix) $OfflineFirstFlashGate --release-dir (Join-Path $RepoRoot "releases\production")
+        $gateExitCode = $LASTEXITCODE
+        if ($gateExitCode -ne 0) {
+            $exitCode = $gateExitCode
+        }
+    }
 } finally {
     Pop-Location
 }
 
 if ($exitCode -eq 0) {
     Write-Host "" -ForegroundColor Green
-    Write-Host "Production ZIP completed successfully." -ForegroundColor Green
+    if ($IsPlan) {
+        Write-Host "Production ZIP plan completed successfully." -ForegroundColor Green
+    } else {
+        Write-Host "Production ZIP completed successfully." -ForegroundColor Green
+        Write-Host "Offline first-flash closure: PASS" -ForegroundColor Green
+    }
     Write-Host "Output: $RepoRoot\releases\production" -ForegroundColor Green
 } else {
     Write-Host "" -ForegroundColor Red
