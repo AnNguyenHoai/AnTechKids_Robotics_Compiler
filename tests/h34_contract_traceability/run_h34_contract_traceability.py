@@ -74,9 +74,25 @@ def main() -> int:
         by_api["get_light_sensor_data"]["emitted_opcodes"] == ["LoadConst"],
     )
     check(
-        "stub servo API does not falsely claim SetServo runtime dispatch",
-        by_api["set_servo"]["emitted_opcodes"] == ["Nop"],
+        "stub servo API is explicitly no-emit instead of undeliverable Nop",
+        by_api["set_servo"]["lowering_kind"] == "no_emit"
+        and by_api["set_servo"]["emitted_opcodes"] == [],
     )
+    for api in (
+        "set_move_initialize",
+        "set_move_run_angle",
+        "set_seering_engine",
+        "set_seering_engine_time",
+        "set_motor",
+        "set_motor_servo",
+        "set_motor_straight_angle",
+        "line_set_initialize",
+        "set_lizard",
+    ):
+        check(
+            f"{api} placeholder is explicit no-emit",
+            by_api[api]["lowering_kind"] == "no_emit" and by_api[api]["emitted_opcodes"] == [],
+        )
 
     source = report.get("source_of_truth", {})
     check("API SSoT is declared", source.get("api") == "robot-language/specification/api.yaml")
