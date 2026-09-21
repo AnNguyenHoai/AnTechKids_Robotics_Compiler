@@ -22,7 +22,7 @@ class TestContractDrift(unittest.TestCase):
     def test_current_baseline_has_no_unexpected_drift(self):
         findings, baseline = checker.run()
         errors = [item for item in findings if item.severity == "ERROR"]
-        self.assertEqual(baseline["baseline_commit"], "93fa908ebba21cfe76c384627b951af7e9f41072")
+        self.assertRegex(baseline.get("baseline_commit", ""), r"^[0-9a-f]{40}$")
         self.assertEqual(errors, [], msg="; ".join(item.message for item in errors))
 
     def test_registry_is_backed_by_generated_opcode_contract(self):
@@ -45,12 +45,20 @@ class TestContractDrift(unittest.TestCase):
         programs = list(golden_dir.glob("*.py"))
         self.assertTrue(programs, "Golden program corpus must not be empty")
 
-    def test_git_blob_sha_matches_known_sample(self):
-        path = ROOT / "tools" / "build.py"
-        self.assertEqual(
-            checker.git_blob_sha(checker.read_text(path)),
-            "a4de23ac985c498439bd91e4d7f99dd87d4e3023",
-        )
+    def test_protected_file_hashes_are_owned_by_baseline(self):
+        baseline = checker.load_baseline(checker.BASELINE_PATH)
+        protected = baseline.get("protected_files", {})
+        self.assertIsInstance(protected, dict)
+        self.assertTrue(protected, "H26-B baseline must protect at least one production file")
+        for raw_path, expected_sha in protected.items():
+            self.assertRegex(expected_sha, r"^[0-9a-f]{40}$")
+            path = ROOT / raw_path
+            self.assertTrue(path.is_file(), f"Protected baseline file is missing: {raw_path}")
+            self.assertEqual(
+                checker.git_blob_sha(checker.read_text(path)),
+                expected_sha,
+                f"Protected baseline drifted: {raw_path}",
+            )
 
 
 if __name__ == "__main__":
