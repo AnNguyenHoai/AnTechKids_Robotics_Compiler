@@ -62,49 +62,49 @@ def test_invalid_sensor_args():
 
 
 def test_trace_channel_normalization():
-    source = """import rcu
-state = rcu.GetTraceV2I2CState(1, 1)
-value = rcu.GetTraceV2I2C(1, 2)
-line = rcu.GetTraceV2I2CChxState(1, 3)
-"""
-    output = rewrite_source(source)
-    assert "get_trace_state(1, 0)" in output
-    assert "get_trace_value(1, 1)" in output
-    assert "read_line(2)" in output
-    print("PASS: RoboSim trace channels 1..3 map to real channels 0..2")
+    """RoboSim owns only 1-based -> 0-based representation normalization."""
+    api_targets = {
+        "GetTraceV2I2CState": "get_trace_state",
+        "GetTraceV2I2C": "get_trace_value",
+        "GetTraceV2I2CChxState": "read_line",
+    }
+    for api_name, target_name in api_targets.items():
+        for channel in range(1, 8):
+            output = rewrite_source(
+                f"import rcu\nvalue = rcu.{api_name}(1, {channel})\n"
+            )
+            canonical_channel = channel - 1
+            assert f"{target_name}(1, {canonical_channel})" in output or (
+                target_name == "read_line" and f"read_line({canonical_channel})" in output
+            ), (
+                f"Expected RoboSim {api_name} channel {channel} to normalize "
+                f"to canonical channel {canonical_channel}; output={output!r}"
+            )
+    print("PASS: RoboSim trace channels 1..7 normalize to canonical channels 0..6")
 
 
-def test_unsupported_trace_channels_rejected():
-    for channel in range(4, 8):
-        source = f"import rcu\nstate = rcu.GetTraceV2I2CState(1, {channel})\n"
-        try:
-            rewrite_source(source)
-            assert False, f"Expected SyntaxError for RoboSim trace channel {channel}"
-        except SyntaxError as e:
-            assert f"RoboSim trace channel {channel} is not available on the real robot" in str(e)
-            print(f"PASS: unsupported RoboSim trace channel {channel} rejected")
-
-    for api_name in ("GetTraceV2I2C", "GetTraceV2I2CChxState"):
-        source = f"import rcu\nvalue = rcu.{api_name}(1, 4)\n"
-        try:
-            rewrite_source(source)
-            assert False, f"Expected SyntaxError for {api_name} channel 4"
-        except SyntaxError as e:
-            assert "RoboSim trace channel 4 is not available on the real robot" in str(e)
-            print(f"PASS: unsupported {api_name} channel rejected")
+def test_invalid_trace_channels_rejected():
+    """Frontend rejects only channels outside RoboSim's own 1..7 representation."""
+    for api_name in ("GetTraceV2I2CState", "GetTraceV2I2C", "GetTraceV2I2CChxState"):
+        for channel in (0, 8, -1):
+            source = f"import rcu\nvalue = rcu.{api_name}(1, {channel})\n"
+            try:
+                rewrite_source(source)
+                assert False, f"Expected SyntaxError for invalid RoboSim trace channel {channel}"
+            except SyntaxError as e:
+                assert "RoboSim trace channels are 1..7" in str(e)
+                print(f"PASS: invalid {api_name} channel {channel} rejected")
 
 
-def test_dynamic_trace_channel_rejected():
+def test_dynamic_trace_channel_normalized():
+    """Dynamic channel stays dynamic; compiler target contract owns resource safety."""
     source = """import rcu
 channel = 2
 state = rcu.GetTraceV2I2CState(1, channel)
 """
-    try:
-        rewrite_source(source)
-        assert False, "Expected SyntaxError for dynamic RoboSim trace channel"
-    except SyntaxError as e:
-        assert "requires a literal trace channel for real-robot compilation" in str(e)
-        print("PASS: dynamic RoboSim trace channel rejected")
+    output = rewrite_source(source)
+    assert "get_trace_state(1, channel - 1)" in output
+    print("PASS: dynamic RoboSim trace channel is representation-normalized for compiler validation")
 
 
 def test_set_motor_speed():
@@ -176,8 +176,8 @@ def main():
             print(f"SKIP: {py_file.name} (no golden)")
     test_invalid_sensor_args()
     test_trace_channel_normalization()
-    test_unsupported_trace_channels_rejected()
-    test_dynamic_trace_channel_rejected()
+    test_invalid_trace_channels_rejected()
+    test_dynamic_trace_channel_normalized()
     test_set_motor_speed()
     test_set_wait_for_time_conversion()
     test_new_apis()
