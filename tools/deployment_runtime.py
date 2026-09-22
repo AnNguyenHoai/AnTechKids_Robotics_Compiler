@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from tools import build_isolation, dependency_closure, platformio_short_path, runtime_paths
+from tools import build_isolation, dependency_closure, runtime_paths
 from tools.runtime_paths import platformio_command as resolve_platformio_command
 
 DEFAULT_PROCESS_TIMEOUT_SECONDS = 300.0
@@ -34,6 +34,8 @@ PLATFORMIO_NO_ANSI_ENV = "PLATFORMIO_NO_ANSI"
 DEPENDENCY_MODE_ENV = "ROBOSTUDIO_DEPENDENCY_MODE"
 DEPENDENCY_MODE_CLOSED = "artifact-closed"
 PLATFORMIO_DEPENDENCY_ALIAS_ROOT_ENV = "ROBOSTUDIO_PLATFORMIO_DEPENDENCY_ALIAS_ROOT"
+WINDOWS_SHORT_ALIAS_DIRECTORY = "RSC"
+WINDOWS_MAX_SAFE_ALIAS_BASE_LENGTH = 80
 
 
 class DeploymentRuntimeError(RuntimeError):
@@ -122,6 +124,58 @@ def _windows_cmd(environment: Mapping[str, str]) -> Path:
     return command
 
 
+def _windows_alias_base_is_safe(path: Path) -> bool:
+    text = str(path)
+    return (
+        path.is_absolute()
+        and len(text) <= WINDOWS_MAX_SAFE_ALIAS_BASE_LENGTH
+        and not any(char.isspace() for char in text)
+    )
+
+
+def _windows_dependency_alias_base(
+    state: Path,
+    environment: Mapping[str, str],
+) -> Path:
+    """Select a short whitespace-free base for PlatformIO dependency junctions.
+
+    Keep aliases under RoboStudio state when that path is already safe. If a
+    Windows account/profile contains whitespace (for example ``EASTVN - An
+    Nguyen``) or is too long for the legacy Xtensa toolchain, fall back to the
+    Public profile. Failing closed is safer than silently recreating the same
+    broken include/tool path on the target PC.
+    """
+    state_candidate = Path(state).expanduser().resolve() / "p"
+    if _windows_alias_base_is_safe(state_candidate):
+        try:
+            state_candidate.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise DeploymentRuntimeError(
+                f"Unable to create PlatformIO dependency alias root {state_candidate}: {exc}"
+            ) from exc
+        return state_candidate
+
+    public_value = str(environment.get("PUBLIC", "")).strip()
+    if not public_value:
+        raise DeploymentRuntimeError(
+            "Windows PUBLIC profile is unavailable and RoboStudio state is not a short "
+            "whitespace-free path for ESP32 PlatformIO dependencies."
+        )
+    public_candidate = Path(public_value).expanduser().resolve() / WINDOWS_SHORT_ALIAS_DIRECTORY
+    if not _windows_alias_base_is_safe(public_candidate):
+        raise DeploymentRuntimeError(
+            "Windows PUBLIC profile is not a short whitespace-free PlatformIO alias root: "
+            f"{public_candidate}"
+        )
+    try:
+        public_candidate.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise DeploymentRuntimeError(
+            f"Unable to create Windows PlatformIO short-path root {public_candidate}: {exc}"
+        ) from exc
+    return public_candidate
+
+
 def _ensure_windows_junction(
     alias: Path,
     target: Path,
@@ -181,9 +235,9 @@ def prepare_platformio_dependency_aliases(
     On Windows, ``platforms`` and ``packages`` are exposed through external
     directory junctions. If the RoboStudio state path is already short and has
     no whitespace it is used directly. Otherwise a short Public-profile root is
-    selected so usernames such as ``EASTVN - An Nguyen`` cannot leak into GCC
-    include/tool paths. ``Path.resolve``/``samefile`` still resolves aliases to
-    the immutable artifact, preserving dependency ownership.
+    selected so usernames containing spaces cannot leak into GCC include/tool
+    paths. ``Path.resolve``/``samefile`` still resolves aliases to the immutable
+    artifact, preserving dependency ownership.
     """
     env = dict(environment)
     if os.name != "nt":
@@ -204,12 +258,8 @@ def prepare_platformio_dependency_aliases(
             application_root_override=artifact_root,
             enforce_external=True,
         )
-        alias_base = platformio_short_path.select_windows_alias_base(state, env)
-    except (
-        dependency_closure.DependencyClosureError,
-        runtime_paths.RuntimePathError,
-        platformio_short_path.PlatformIOShortPathError,
-    ) as exc:
+        alias_base = _windows_dependency_alias_base(state, env)
+    except (dependency_closure.DependencyClosureError, runtime_paths.RuntimePathError) as exc:
         raise DeploymentRuntimeError(f"Unable to prepare PlatformIO dependency aliases: {exc}") from exc
 
     identity = hashlib.sha256(str(artifact_root).casefold().encode("utf-8")).hexdigest()[:8]
