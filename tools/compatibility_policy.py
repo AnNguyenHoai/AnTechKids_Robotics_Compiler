@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """H35 compatibility/upgrade policy checker and evidence generator.
 
-This checker deliberately treats compatibility as an allow-list.  Version
+This checker deliberately treats compatibility as an allow-list. Version
 ordering, semantic-version similarity, or a larger schema number never implies
-compatibility.  Any contract drift requires an explicit H35 policy update.
+compatibility. Any contract drift requires an explicit H35 policy update.
 """
 from __future__ import annotations
 
@@ -27,7 +27,16 @@ class CompatibilityPolicyError(RuntimeError):
 
 
 def _git_blob_sha1(path: Path) -> str:
-    data = path.read_bytes()
+    """Return the canonical Git blob SHA-1 for one governed text contract.
+
+    GitHub's blob identity is based on repository bytes, while a Windows
+    checkout may materialize the same text file with CRLF line endings. H35
+    fingerprints must describe the repository contract rather than the host
+    checkout convention, so normalize CRLF to canonical LF before constructing
+    the Git blob object. Lone CR bytes are intentionally left untouched: they
+    are content and therefore remain visible as contract drift.
+    """
+    data = path.read_bytes().replace(b"\r\n", b"\n")
     header = f"blob {len(data)}\0".encode("ascii")
     return hashlib.sha1(header + data).hexdigest()
 
