@@ -34,6 +34,14 @@ PLATFORMIO_NO_ANSI_ENV = "PLATFORMIO_NO_ANSI"
 DEPENDENCY_MODE_ENV = "ROBOSTUDIO_DEPENDENCY_MODE"
 DEPENDENCY_MODE_CLOSED = "artifact-closed"
 PLATFORMIO_DEPENDENCY_ALIAS_ROOT_ENV = "ROBOSTUDIO_PLATFORMIO_DEPENDENCY_ALIAS_ROOT"
+ESP32_FRAMEWORK_PACKAGE = "framework-arduinoespressif32"
+ESP32_USB_TOOL_PACKAGES = (
+    "tool-esptoolpy",
+    "tool-mkspiffs",
+    "tool-mklittlefs",
+    "tool-mkfatfs",
+    "tool-scons",
+)
 
 
 class DeploymentRuntimeError(RuntimeError):
@@ -122,6 +130,70 @@ def _windows_cmd(environment: Mapping[str, str]) -> Path:
     return command
 
 
+def _validate_esp32_runtime_payload(packages: Path) -> None:
+    """Fail before PlatformIO when the packaged ESP32 payload is incomplete.
+
+    ``package.json``/``.piopm`` metadata alone does not prove the framework can
+    compile the selected board. In particular, ``esp32-hal-gpio.h`` includes
+    ``pins_arduino.h`` from the board variant. A partially staged framework can
+    therefore look installed to PlatformIO and only fail deep inside GCC.
+    """
+    framework = packages / ESP32_FRAMEWORK_PACKAGE
+    required = (
+        framework / ".piopm",
+        framework / "cores" / "esp32" / "Arduino.h",
+        framework / "variants" / "esp32" / "pins_arduino.h",
+        *(packages / name / ".piopm" for name in ESP32_USB_TOOL_PACKAGES),
+    )
+    missing = [path for path in required if not path.is_file()]
+    if missing:
+        details = ", ".join(str(path) for path in missing)
+        raise DeploymentRuntimeError(
+            "Bundled ESP32 PlatformIO runtime is incomplete. Rebuild/reinstall the RoboStudio "
+            "production release; first-flash is blocked before compilation. Missing: " + details
+        )
+
+
+def _windows_dependency_alias_base(environment: Mapping[str, str]) -> Path:
+    """Return a writable, whitespace-free public alias root for legacy ESP32 GCC.
+
+    The previous alias lived below the per-user AppData directory. User profile
+    names can contain spaces, so the resulting path was still long and could
+    trigger Windows path/argument failures in the legacy Xtensa/SCons toolchain.
+    Keep mutable build state in the normal RoboStudio state root, but expose only
+    immutable PlatformIO dependencies through this deliberately short junction
+    root.
+    """
+    candidates: list[Path] = []
+    public = str(environment.get("PUBLIC", "")).strip()
+    if public:
+        candidates.append(Path(public) / "RSP")
+    drive = str(environment.get("SystemDrive", "C:")).strip() or "C:"
+    candidates.append(Path(drive + "\\") / "Users" / "Public" / "RSP")
+
+    failures: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        text = str(candidate)
+        key = os.path.normcase(text)
+        if key in seen:
+            continue
+        seen.add(key)
+        if any(char.isspace() for char in text):
+            failures.append(f"contains whitespace: {candidate}")
+            continue
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate.resolve()
+        except OSError as exc:
+            failures.append(f"{candidate}: {exc}")
+
+    detail = "; ".join(failures) if failures else "no usable Public directory"
+    raise DeploymentRuntimeError(
+        "Unable to create a short whitespace-free PlatformIO dependency alias root: " + detail
+    )
+
+
 def _ensure_windows_junction(
     alias: Path,
     target: Path,
@@ -133,8 +205,8 @@ def _ensure_windows_junction(
     ``as`` when the PlatformIO package path is long, even though the package is
     complete. The release itself may live in an arbitrarily named directory, so
     packaged execution exposes the immutable platform/package stores through a
-    short junction below external RoboStudio state. The junction is only an
-    alias: package bytes remain application-owned and are never copied or edited.
+    short junction. The junction is only an alias: package bytes remain
+    application-owned and are never copied or edited.
     """
     target = target.resolve()
     if not target.is_dir():
@@ -177,15 +249,12 @@ def prepare_platformio_dependency_aliases(
     """Return a packaged environment with Windows-safe short dependency paths.
 
     On non-Windows systems the canonical artifact paths are returned unchanged.
-    On Windows, ``platforms`` and ``packages`` are exposed through state-owned
-    directory junctions. ``Path.resolve``/``samefile`` still resolves those
-    aliases to the immutable artifact, preserving dependency ownership while the
-    Xtensa toolchain receives a much shorter launch path.
+    On Windows, ``platforms`` and ``packages`` are exposed through public
+    whitespace-free directory junctions. ``Path.resolve``/``samefile`` still
+    resolves those aliases to the immutable artifact, preserving dependency
+    ownership while the Xtensa toolchain receives a genuinely short path.
     """
     env = dict(environment)
-    if os.name != "nt":
-        return env
-
     artifact_root = Path(root).expanduser().resolve()
     platforms = artifact_root / "runtime" / "platformio" / "platforms"
     packages = artifact_root / "runtime" / "platformio" / "packages"
@@ -204,8 +273,13 @@ def prepare_platformio_dependency_aliases(
     except (dependency_closure.DependencyClosureError, runtime_paths.RuntimePathError) as exc:
         raise DeploymentRuntimeError(f"Unable to prepare PlatformIO dependency aliases: {exc}") from exc
 
-    identity = hashlib.sha256(str(artifact_root).casefold().encode("utf-8")).hexdigest()[:8]
-    alias_root = state / "p" / identity
+    _validate_esp32_runtime_payload(packages)
+    if os.name != "nt":
+        return env
+
+    identity_source = f"{artifact_root}|{state}".casefold().encode("utf-8")
+    identity = hashlib.sha256(identity_source).hexdigest()[:8]
+    alias_root = _windows_dependency_alias_base(env) / identity
     platform_alias = _ensure_windows_junction(alias_root / "f", platforms, env)
     package_alias = _ensure_windows_junction(alias_root / "k", packages, env)
 
@@ -223,7 +297,7 @@ def prepare_platformio_dependency_aliases(
     if package_bins:
         existing = env.get("PATH", "")
         env["PATH"] = os.pathsep.join(
-            [*(str(path) for path in package_bins), *( [existing] if existing else [])]
+            [*(str(path) for path in package_bins), *([existing] if existing else [])]
         )
     return env
 
@@ -277,10 +351,12 @@ def validate_deployment_runtime() -> Path:
         raise DeploymentRuntimeError(
             f"RoboStudio deployment runtime is missing platforms: {root / 'platforms'}"
         )
-    if not (root / "packages").is_dir():
+    packages = root / "packages"
+    if not packages.is_dir():
         raise DeploymentRuntimeError(
-            f"RoboStudio deployment runtime is missing packages: {root / 'packages'}"
+            f"RoboStudio deployment runtime is missing packages: {packages}"
         )
+    _validate_esp32_runtime_payload(packages)
     return root
 
 
