@@ -131,7 +131,7 @@ def _windows_cmd(environment: Mapping[str, str]) -> Path:
 
 
 def _validate_esp32_runtime_payload(packages: Path) -> None:
-    """Fail before PlatformIO when the packaged ESP32 payload is incomplete.
+    """Fail before firmware deployment when the packaged ESP32 payload is incomplete.
 
     ``package.json``/``.piopm`` metadata alone does not prove the framework can
     compile the selected board. In particular, ``esp32-hal-gpio.h`` includes
@@ -150,7 +150,7 @@ def _validate_esp32_runtime_payload(packages: Path) -> None:
         details = ", ".join(str(path) for path in missing)
         raise DeploymentRuntimeError(
             "Bundled ESP32 PlatformIO runtime is incomplete. Rebuild/reinstall the RoboStudio "
-            "production release; first-flash is blocked before compilation. Missing: " + details
+            "production release; firmware deployment is blocked before compilation. Missing: " + details
         )
 
 
@@ -199,7 +199,7 @@ def _ensure_windows_junction(
     target: Path,
     environment: Mapping[str, str],
 ) -> Path:
-    """Create one state-owned directory junction without copying immutable payload.
+    """Create one directory junction without copying immutable payload.
 
     Espressif's legacy Windows Xtensa GCC driver can fail to spawn ``cc1plus`` or
     ``as`` when the PlatformIO package path is long, even though the package is
@@ -248,13 +248,15 @@ def prepare_platformio_dependency_aliases(
 ) -> dict[str, str]:
     """Return a packaged environment with Windows-safe short dependency paths.
 
-    On non-Windows systems the canonical artifact paths are returned unchanged.
-    On Windows, ``platforms`` and ``packages`` are exposed through public
-    whitespace-free directory junctions. ``Path.resolve``/``samefile`` still
-    resolves those aliases to the immutable artifact, preserving dependency
-    ownership while the Xtensa toolchain receives a genuinely short path.
+    This function owns path aliasing only. It deliberately does not enforce a
+    firmware-specific package set because the same dependency environment is
+    also used by compiler-only RoboStudio flows. Physical firmware deployment
+    validates the stricter ESP32 payload through :func:`validate_deployment_runtime`.
     """
     env = dict(environment)
+    if os.name != "nt":
+        return env
+
     artifact_root = Path(root).expanduser().resolve()
     platforms = artifact_root / "runtime" / "platformio" / "platforms"
     packages = artifact_root / "runtime" / "platformio" / "packages"
@@ -272,10 +274,6 @@ def prepare_platformio_dependency_aliases(
         )
     except (dependency_closure.DependencyClosureError, runtime_paths.RuntimePathError) as exc:
         raise DeploymentRuntimeError(f"Unable to prepare PlatformIO dependency aliases: {exc}") from exc
-
-    _validate_esp32_runtime_payload(packages)
-    if os.name != "nt":
-        return env
 
     identity_source = f"{artifact_root}|{state}".casefold().encode("utf-8")
     identity = hashlib.sha256(identity_source).hexdigest()[:8]
@@ -343,7 +341,7 @@ def isolated_deployment_environment(
 
 
 def validate_deployment_runtime() -> Path:
-    """Validate that the packaged PlatformIO runtime has its required layout."""
+    """Validate the complete packaged ESP32 firmware deployment runtime."""
     root = deployment_runtime_root()
     if not root.is_dir():
         raise DeploymentRuntimeError(f"RoboStudio deployment runtime is missing: {root}")
