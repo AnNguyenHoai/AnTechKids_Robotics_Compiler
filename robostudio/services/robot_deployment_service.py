@@ -88,7 +88,7 @@ def windows_serial_port_busy_error(port: str) -> str | None:
         handle = create_file(
             device_path,
             generic_read | generic_write,
-            0,
+            0,  # no sharing: match PlatformIO/QSerialPort ownership semantics
             None,
             open_existing,
             0,
