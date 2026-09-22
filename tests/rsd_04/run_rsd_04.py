@@ -25,7 +25,7 @@ def _packaged_base_env(state: Path) -> dict[str, str]:
 
     Production dependency closure intentionally strips host tool lookup, but on
     Windows the short PlatformIO dependency alias is created through the
-    OS-owned ``cmd.exe`` under ``SystemRoot\\System32``.  Keep only the Windows
+    OS-owned ``cmd.exe`` under ``SystemRoot\\System32``. Keep only the Windows
     system-root identity needed to locate that trusted OS helper; do not restore
     the host PATH or any host PlatformIO/Python state.
     """
@@ -36,7 +36,34 @@ def _packaged_base_env(state: Path) -> dict[str, str]:
             raise AssertionError("Windows RSD-04 fixture requires SystemRoot/WINDIR")
         env["SystemRoot"] = system_root
         env["WINDIR"] = system_root
+        public = os.environ.get("PUBLIC")
+        if public:
+            env["PUBLIC"] = public
     return env
+
+
+def _prepare_esp32_payload(packages: Path) -> None:
+    """Create the minimum physical ESP32 package contract for this fixture.
+
+    RSD-04 tests path/state ownership, not PlatformIO package installation. Its
+    packaged-runtime fixture must nevertheless satisfy the same fail-closed
+    physical deployment contract as a real production artifact before calling
+    ``validate_deployment_runtime``.
+    """
+    framework = packages / deployment_runtime.ESP32_FRAMEWORK_PACKAGE
+    for relative in (
+        Path(".piopm"),
+        Path("cores") / "esp32" / "Arduino.h",
+        Path("variants") / "esp32" / "pins_arduino.h",
+    ):
+        path = framework / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("fixture\n", encoding="utf-8")
+
+    for name in deployment_runtime.ESP32_USB_TOOL_PACKAGES:
+        metadata = packages / name / ".piopm"
+        metadata.parent.mkdir(parents=True, exist_ok=True)
+        metadata.write_text("{}\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -46,7 +73,10 @@ def main() -> int:
         root.mkdir()
         (root / "runtime" / "bin").mkdir(parents=True)
         (root / "runtime" / "platformio" / "platforms").mkdir(parents=True)
-        (root / "runtime" / "platformio" / "packages").mkdir(parents=True)
+        packages = root / "runtime" / "platformio" / "packages"
+        packages.mkdir(parents=True)
+        _prepare_esp32_payload(packages)
+
         with patch.dict(os.environ, {runtime_paths.APPLICATION_HOME_ENV: str(root)}, clear=False):
             with patch.object(deployment_runtime, "is_frozen", return_value=True):
                 env = deployment_runtime.deployment_runtime_environment(
@@ -80,6 +110,10 @@ def main() -> int:
                         "Windows short dependency alias is external",
                         root.resolve() not in alias_root.parents
                         and alias_root != root.resolve(),
+                    )
+                    check(
+                        "Windows short dependency alias contains no whitespace",
+                        not any(char.isspace() for char in str(alias_root)),
                     )
                     check(
                         "Windows package alias resolves to immutable payload",
