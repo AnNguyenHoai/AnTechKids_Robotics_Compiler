@@ -194,6 +194,19 @@ def _minimal_one_command_inputs(root: Path) -> dict[str, Path]:
     runtime_platformio = root / "runtime-platformio"
     (runtime_platformio / "platforms").mkdir(parents=True)
     (runtime_platformio / "packages").mkdir(parents=True)
+
+    # B2.6's one-command builder now owns a physical ESP32 first-flash payload
+    # contract. Keep this fixture minimal, but structurally complete enough to
+    # prove the finalizer path without weakening that production validation.
+    required = one_command_production_build.first_flash_runtime_contract.REQUIRED_RUNTIME_FILES
+    for relative in required:
+        path = runtime_platformio / relative
+        if relative.endswith("platforms/espressif32/boards/esp32dev.json"):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"build": {"variant": "esp32"}}), encoding="utf-8")
+        else:
+            _write(path)
+
     runtime_resources = root / "resources"
     runtime_resources.mkdir()
     firmware = root / "firmware"
