@@ -1,9 +1,9 @@
 """Runtime projection of the H35 compatibility policy.
 
 The authoritative compatibility matrix lives in
-``packages/robot-isa/compatibility_policy.json``.  This module is deliberately
+``packages/robot-isa/compatibility_policy.json``. This module is deliberately
 small so frozen RoboStudio builds can enforce the same policy without reading
-repository files at runtime.  The H35 CI gate verifies this projection against
+repository files at runtime. The H35 CI gate verifies this projection against
 the authoritative policy and fails on drift.
 """
 from __future__ import annotations
@@ -12,20 +12,24 @@ CURRENT_RELEASE = "0.1.1"
 CURRENT_COMPILER_GENERATION = 1
 CURRENT_FIRMWARE_GENERATION = 1
 LEGACY_UNVERSIONED_FIRMWARE_GENERATION = 0
+KNOWN_FIRMWARE_GENERATIONS = frozenset({0, 1})
 SUPPORTED_OTA_SOURCE_GENERATIONS = frozenset({0, 1})
 
 
 def normalize_firmware_generation(value: object | None) -> int:
-    """Return a validated firmware generation.
+    """Return a validated, explicitly known firmware generation.
 
-    Firmware shipped before H35 did not advertise a generation.  Missing data
+    Firmware shipped before H35 did not advertise a generation. Missing data
     is therefore the one explicitly defined legacy generation (0), not an
-    arbitrary wildcard.  Invalid or future values fail closed.
+    arbitrary wildcard. Any explicit unknown/future generation fails closed so
+    compatibility is never inferred from numeric ordering or semantic version.
     """
     if value is None:
         return LEGACY_UNVERSIONED_FIRMWARE_GENERATION
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError("invalid robot compatibility generation")
+    if value not in KNOWN_FIRMWARE_GENERATIONS:
+        raise ValueError(f"unsupported robot compatibility generation: {value}")
     return value
 
 
