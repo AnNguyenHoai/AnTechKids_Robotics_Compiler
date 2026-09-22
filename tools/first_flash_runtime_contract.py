@@ -2,9 +2,11 @@
 
 Metadata/version closure is necessary but not sufficient: an interrupted or
 incorrectly staged PlatformIO package can still carry ``package.json`` while
-missing board/framework files that the compiler needs. This module verifies the
-small set of physical files required by RoboStudio's pinned ``esp32dev`` Arduino
-first-flash path before a release can be accepted.
+missing board/framework files that the compiler needs. PlatformIO also enables
+several filesystem tools dynamically on the ESP32 USB upload path although they
+are optional in the platform manifest. This module verifies both the physical
+framework/toolchain files and every package RoboStudio expects to be available
+offline before a release can be accepted.
 """
 from __future__ import annotations
 
@@ -28,6 +30,12 @@ REQUIRED_RUNTIME_FILES: tuple[str, ...] = (
     "packages/tool-esptoolpy/esptool.py",
     "packages/tool-scons/.piopm",
     "packages/tool-scons/package.json",
+    "packages/tool-mkspiffs/.piopm",
+    "packages/tool-mkspiffs/package.json",
+    "packages/tool-mklittlefs/.piopm",
+    "packages/tool-mklittlefs/package.json",
+    "packages/tool-mkfatfs/.piopm",
+    "packages/tool-mkfatfs/package.json",
 )
 
 
@@ -75,6 +83,13 @@ def validate_esp32dev_first_flash_payload(runtime_platformio: Path) -> dict[str,
         "variant": variant,
         "required_files": list(REQUIRED_RUNTIME_FILES),
         "required_file_count": len(REQUIRED_RUNTIME_FILES),
+        "usb_upload_packages": [
+            "tool-esptoolpy",
+            "tool-mkspiffs",
+            "tool-mklittlefs",
+            "tool-mkfatfs",
+            "tool-scons",
+        ],
     }
 
 
