@@ -128,9 +128,11 @@ def build(executable: Path, runtime_bin: Path, runtime_platformio: Path, runtime
 
 
 def _source_revision(value: str | None) -> str:
-    if value and value.strip():return value.strip()
+    if value and value.strip():
+        return value.strip()
     env = os.environ.get("RSD_SOURCE_REVISION", "").strip()
-    if env:return env
+    if env:
+        return env
     raise OneCommandProductionBuildError("Source revision is required; pass --source-revision or set RSD_SOURCE_REVISION.")
 
 
