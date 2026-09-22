@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "task": "H35",
+  "kind": "robot_compatibility_upgrade_policy",
+  "policy_version": "1.0.0",
+  "current_release": "0.1.1",
+  "current": {
+    "robot_language_version": "1.0.0",
+    "platform_contract_generation": 1,
+    "compiler_generation": 1,
+    "firmware_generation": 1,
+    "discovery_protocol": "antechkids.robot.v1",
+    "discovery_schema": 1
+  },
+  "legacy": {
+    "unversioned_firmware_generation": 0,
+    "description": "Firmware shipped before H35 did not advertise compatibility_generation. It is accepted only as an OTA upgrade source into generation 1."
+  },
+  "contract_fingerprints": {
+    "robot_api": {
+      "path": "robot-language/specification/api.yaml",
+      "git_blob_sha1": "3ff04702b1c9cd9a2ae43399a3ee13cf3824c627"
+    },
+    "canonical_isa": {
+      "path": "packages/robot-isa/canonical_isa.json",
+      "git_blob_sha1": "558d05710aacf0f63ae62b76974a01e933745575"
+    },
+    "capability_model": {
+      "path": "packages/robot-isa/capability_model.json",
+      "git_blob_sha1": "7e6958918e8f5f1280a07a5b62d14b5bf79d7191"
+    },
+    "target_profiles": {
+      "path": "packages/robot-isa/target_profiles.json",
+      "git_blob_sha1": "a986e5d423b6f60cab7c5c4df3544d44edc7d86e"
+    }
+  },
+  "supported_pairs": [
+    {
+      "compiler_generation": 1,
+      "firmware_generation": 1,
+      "status": "supported",
+      "operations": ["compile", "first_flash", "ota", "run"]
+    },
+    {
+      "compiler_generation": 1,
+      "firmware_generation": 0,
+      "status": "upgrade_only",
+      "operations": ["ota_upgrade"]
+    }
+  ],
+  "upgrade_rules": {
+    "forward_compatibility": "explicit_only",
+    "backward_compatibility": "explicit_only",
+    "unknown_generation": "reject",
+    "contract_change_requires_generation_bump": true,
+    "generation_change_requires_explicit_pair": true,
+    "migration_adapter_required_for_schema_change": true,
+    "downgrade": "reject_unless_explicitly_listed",
+    "semantic_version_alone_never_implies_compatibility": true
+  },
+  "migrations": [
+    {
+      "from_firmware_generation": 0,
+      "to_firmware_generation": 1,
+      "method": "ota_full_firmware",
+      "status": "supported",
+      "notes": "Legacy H34 firmware uses the same discovery protocol/schema but omits compatibility_generation. H35 treats absence as generation 0 only for one-way OTA upgrade."
+    }
+  ]
+}

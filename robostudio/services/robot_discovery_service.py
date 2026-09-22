@@ -11,6 +11,11 @@ import socket
 from dataclasses import dataclass, field
 from typing import Any
 
+from domain.compatibility import (
+    LEGACY_UNVERSIONED_FIRMWARE_GENERATION,
+    normalize_firmware_generation,
+)
+
 DISCOVERY_PORT = 4210
 DISCOVERY_REQUEST = b"ANTECHKIDS_ROBOT_DISCOVER_V1"
 DISCOVERY_RESPONSE_PREFIX = "ANTECHKIDS_ROBOT_INFO_V1"
@@ -35,6 +40,7 @@ class RobotInfo:
     ready: bool
     ota: bool
     capabilities: dict[str, bool] = field(default_factory=dict)
+    compatibility_generation: int = LEGACY_UNVERSIONED_FIRMWARE_GENERATION
     schema_version: int = DISCOVERY_SCHEMA
     protocol: str = "antechkids.robot.v1"
 
@@ -51,10 +57,11 @@ def _required_string(data: dict[str, Any], key: str) -> str:
 
 
 def serialize_robot_info(info: RobotInfo) -> dict[str, Any]:
-    """Serialize one validated identity snapshot using the canonical H27 schema."""
+    """Serialize one validated identity snapshot using the canonical H27/H35 schema."""
     return {
         "protocol": info.protocol,
         "schema_version": info.schema_version,
+        "compatibility_generation": info.compatibility_generation,
         "device_id": info.device_id,
         "name": info.name,
         "hostname": info.hostname,
@@ -70,7 +77,12 @@ def serialize_robot_info(info: RobotInfo) -> dict[str, Any]:
 
 
 def validate_robot_info(data: Any, source_ip: str | None = None) -> RobotInfo:
-    """Validate the canonical H27-A identity payload."""
+    """Validate the canonical H27-A identity payload and H35 generation.
+
+    Pre-H35 firmware did not advertise ``compatibility_generation``. H35 maps
+    that single historical absence to generation 0 so it can be upgraded. Any
+    malformed explicit generation still fails closed.
+    """
     if not isinstance(data, dict):
         raise ValueError("identity payload must be an object")
     if data.get("protocol") != "antechkids.robot.v1":
@@ -83,6 +95,9 @@ def validate_robot_info(data: Any, source_ip: str | None = None) -> RobotInfo:
     hostname = _required_string(data, "hostname")
     target = _required_string(data, "target")
     firmware = _required_string(data, "firmware")
+    compatibility_generation = normalize_firmware_generation(
+        data.get("compatibility_generation")
+    )
 
     ip = data.get("ip")
     if not isinstance(ip, str) or not ip.strip():
@@ -113,6 +128,7 @@ def validate_robot_info(data: Any, source_ip: str | None = None) -> RobotInfo:
         ready=data["ready"],
         ota=data["ota"],
         capabilities=dict(capabilities),
+        compatibility_generation=compatibility_generation,
         schema_version=data["schema_version"],
         protocol=data["protocol"],
     )

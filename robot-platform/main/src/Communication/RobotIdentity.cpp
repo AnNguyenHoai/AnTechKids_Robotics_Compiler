@@ -73,6 +73,7 @@ String infoJson(bool robotReady, bool networkReady, bool otaReady) {
     const bool aggregateReady = robotReady && networkReady;
     String body = "{\"protocol\":\"antechkids.robot.v1\",\"schema_version\":" +
                   String(kSchemaVersion) +
+                  ",\"compatibility_generation\":" + String(kCompatibilityGeneration) +
                   ",\"device_id\":\"" + g_deviceId +
                   "\",\"name\":\"" + g_displayName +
                   "\",\"hostname\":\"" + g_hostname +
