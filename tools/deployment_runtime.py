@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from tools import build_isolation, dependency_closure, runtime_paths
+from tools import build_isolation, dependency_closure, platformio_short_path, runtime_paths
 from tools.runtime_paths import platformio_command as resolve_platformio_command
 
 DEFAULT_PROCESS_TIMEOUT_SECONDS = 300.0
@@ -127,14 +127,15 @@ def _ensure_windows_junction(
     target: Path,
     environment: Mapping[str, str],
 ) -> Path:
-    """Create one state-owned directory junction without copying immutable payload.
+    """Create one external directory junction without copying immutable payload.
 
     Espressif's legacy Windows Xtensa GCC driver can fail to spawn ``cc1plus`` or
-    ``as`` when the PlatformIO package path is long, even though the package is
-    complete. The release itself may live in an arbitrarily named directory, so
-    packaged execution exposes the immutable platform/package stores through a
-    short junction below external RoboStudio state. The junction is only an
-    alias: package bytes remain application-owned and are never copied or edited.
+    resolve Arduino variant headers when the PlatformIO package path is long or
+    contains whitespace. The release itself may live in an arbitrarily named
+    directory, and the Windows user profile may also contain spaces, so packaged
+    execution exposes immutable platform/package stores through a short external
+    junction. The junction is only an alias: package bytes remain application-
+    owned and are never copied or edited.
     """
     target = target.resolve()
     if not target.is_dir():
@@ -177,10 +178,12 @@ def prepare_platformio_dependency_aliases(
     """Return a packaged environment with Windows-safe short dependency paths.
 
     On non-Windows systems the canonical artifact paths are returned unchanged.
-    On Windows, ``platforms`` and ``packages`` are exposed through state-owned
-    directory junctions. ``Path.resolve``/``samefile`` still resolves those
-    aliases to the immutable artifact, preserving dependency ownership while the
-    Xtensa toolchain receives a much shorter launch path.
+    On Windows, ``platforms`` and ``packages`` are exposed through external
+    directory junctions. If the RoboStudio state path is already short and has
+    no whitespace it is used directly. Otherwise a short Public-profile root is
+    selected so usernames such as ``EASTVN - An Nguyen`` cannot leak into GCC
+    include/tool paths. ``Path.resolve``/``samefile`` still resolves aliases to
+    the immutable artifact, preserving dependency ownership.
     """
     env = dict(environment)
     if os.name != "nt":
@@ -201,11 +204,16 @@ def prepare_platformio_dependency_aliases(
             application_root_override=artifact_root,
             enforce_external=True,
         )
-    except (dependency_closure.DependencyClosureError, runtime_paths.RuntimePathError) as exc:
+        alias_base = platformio_short_path.select_windows_alias_base(state, env)
+    except (
+        dependency_closure.DependencyClosureError,
+        runtime_paths.RuntimePathError,
+        platformio_short_path.PlatformIOShortPathError,
+    ) as exc:
         raise DeploymentRuntimeError(f"Unable to prepare PlatformIO dependency aliases: {exc}") from exc
 
     identity = hashlib.sha256(str(artifact_root).casefold().encode("utf-8")).hexdigest()[:8]
-    alias_root = state / "p" / identity
+    alias_root = alias_base / identity
     platform_alias = _ensure_windows_junction(alias_root / "f", platforms, env)
     package_alias = _ensure_windows_junction(alias_root / "k", packages, env)
 
@@ -223,7 +231,7 @@ def prepare_platformio_dependency_aliases(
     if package_bins:
         existing = env.get("PATH", "")
         env["PATH"] = os.pathsep.join(
-            [*(str(path) for path in package_bins), *( [existing] if existing else [])]
+            [*(str(path) for path in package_bins), *([existing] if existing else [])]
         )
     return env
 
