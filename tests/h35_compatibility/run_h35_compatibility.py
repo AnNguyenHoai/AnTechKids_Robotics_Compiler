@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,9 +22,10 @@ from domain.compatibility import (  # noqa: E402
     normalize_firmware_generation,
     ota_compatibility_error,
 )
+from services.robot_deployment_service import RobotDeploymentService  # noqa: E402
 from services.robot_discovery_service import (  # noqa: E402
-    validate_robot_info,
     serialize_robot_info,
+    validate_robot_info,
 )
 
 EVIDENCE = ROOT / ".build" / "h35" / "compatibility-report.json"
@@ -110,6 +112,24 @@ def main() -> int:
         check("future robot is rejected at discovery boundary", "unsupported robot compatibility generation" in str(exc))
     else:
         raise AssertionError("future robot is rejected at discovery boundary")
+
+    # Defense in depth: even a RobotInfo constructed outside normal discovery
+    # must not bypass the compatibility matrix at the destructive OTA boundary.
+    future = replace(current, compatibility_generation=2)
+    service = RobotDeploymentService(ROOT)
+    blocked = service._deploy_ota_locked(
+        "from rcu import *\n",
+        future,
+        "classroom-wifi",
+        "wifi-password",
+        "ota-password",
+        None,
+    )
+    check("future firmware is blocked before OTA build/deploy", not blocked.success)
+    check(
+        "OTA compatibility rejection is actionable",
+        blocked.error is not None and "compatibility generation 2" in blocked.error,
+    )
 
     checks = report.get("checks", [])
     check("compatibility evidence contains contract checks", len(checks) >= 20)
