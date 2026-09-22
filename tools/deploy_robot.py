@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
 from tools.deployment_contract import create_manifest,sha256_file,validate_manifest,write_manifest
-from tools.deployment_runtime import DEFAULT_PROCESS_TIMEOUT_SECONDS,DeploymentRuntimeError,deployment_runtime_environment,platformio_command,run_process
+from tools.deployment_runtime import DEFAULT_PROCESS_TIMEOUT_SECONDS,DeploymentRuntimeError,deployment_runtime_environment,platformio_command,run_process,validate_deployment_runtime
 from tools import build_isolation,firmware_workspace,hardware_feature_config,hardware_preflight,runtime_paths
 CAPABILITY_BY_OPCODE={"Forward":"motion.basic","Backward":"motion.basic","TurnLeft":"motion.basic","TurnRight":"motion.basic","SetMotorSpeed":"motion.speed","MoveInitialize":"motion.encoder_angle","MoveRunAngle":"motion.encoder_angle","ReadUltrasonic":"sensor.ultrasonic","ReadTouch":"sensor.touch","ReadLight":"sensor.light","ReadColor":"sensor.color","ReadLine":"sensor.line","GetTraceValue":"sensor.line","GetTraceState":"sensor.line","GetTraceRaw":"sensor.line","GetLightSensorData":"sensor.light","LineBasis":"line.follow","LineFollow":"line.follow","LineStop":"line.follow","LineMillisecond":"line.follow","LineIntersectionStop":"line.follow","LineTurnEncounterLine":"line.follow","LineForBmp":"line.follow","LineSetInitialize":"line.follow","Set3CLed":"actuator.led","SetLightSensorLed":"actuator.led","SetServo":"actuator.servo","SetSeeringEngine":"actuator.servo","SetSeeringEngineTime":"actuator.servo","SetMotor":"actuator.motor","SetMotorServo":"actuator.motor","SetMotorStraightAngle":"actuator.motor","SetMp3Play":"peripheral.mp3","SetLizard":"peripheral.lizard","DisplayVariable":"gui.variable"}
 
@@ -82,8 +82,15 @@ def deployment_environment(project_name:str)->dict[str,str]:
  env=deployment_runtime_environment(os.environ.copy(),project_name=project_name)
  env.update(build_isolation.build_environment(project_name,env));return env
 
+def validate_packaged_firmware_runtime()->None:
+ """Fail early only for packaged physical firmware deployment paths."""
+ closed=os.environ.get(runtime_paths.DEPENDENCY_MODE_ENV)=="artifact-closed"
+ if not (closed or runtime_paths.is_frozen()):return
+ try:validate_deployment_runtime()
+ except DeploymentRuntimeError as exc:raise RuntimeError(str(exc)) from exc
+
 def flash_bootstrap(config_path:Path,port:str|None)->int:
- config=validate_bootstrap_config(config_path.resolve());project="bootstrap";env=deployment_environment(project)
+ config=validate_bootstrap_config(config_path.resolve());project="bootstrap";validate_packaged_firmware_runtime();env=deployment_environment(project)
  try:preflight=hardware_preflight.require_serial_port(port,base_env=env)
  except hardware_preflight.HardwarePreflightError as exc:raise RuntimeError(str(exc)) from exc
  selected_port=preflight.selected_port.port
@@ -152,6 +159,7 @@ def main()->int:
   if not a.robot or not ssid:p.error("--mode ota requires --robot and --ssid (or ROBOT_WIFI_SSID)")
   if not ota_password:p.error("--mode ota requires --ota-password or ROBOT_OTA_PASSWORD")
   normalize_robot_host(a.robot)
+ if a.mode in ("usb","ota"):validate_packaged_firmware_runtime()
  selected_usb_port=""
  if a.mode=="usb":
   if not (a.port or "").strip():p.error("--mode usb requires --port; RoboStudio never guesses a COM port")

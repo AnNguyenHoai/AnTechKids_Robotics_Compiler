@@ -327,7 +327,7 @@ def isolated_deployment_environment(
 
 
 def validate_deployment_runtime() -> Path:
-    """Validate that the packaged PlatformIO runtime has its required layout."""
+    """Validate the complete packaged ESP32 firmware deployment runtime."""
     root = deployment_runtime_root()
     if not root.is_dir():
         raise DeploymentRuntimeError(f"RoboStudio deployment runtime is missing: {root}")
@@ -335,10 +335,12 @@ def validate_deployment_runtime() -> Path:
         raise DeploymentRuntimeError(
             f"RoboStudio deployment runtime is missing platforms: {root / 'platforms'}"
         )
-    if not (root / "packages").is_dir():
+    packages = root / "packages"
+    if not packages.is_dir():
         raise DeploymentRuntimeError(
-            f"RoboStudio deployment runtime is missing packages: {root / 'packages'}"
+            f"RoboStudio deployment runtime is missing packages: {packages}"
         )
+    _validate_esp32_runtime_payload(packages)
     return root
 
 

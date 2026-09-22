@@ -54,8 +54,24 @@ def _prepare_artifact(root: Path) -> Path:
     tool = root / "runtime" / "bin" / _tool_name()
     tool.parent.mkdir(parents=True, exist_ok=True)
     tool.write_bytes(b"b23-packaged-tool")
-    (root / "runtime" / "platformio" / "platforms").mkdir(parents=True)
-    (root / "runtime" / "platformio" / "packages").mkdir(parents=True)
+    runtime = root / "runtime" / "platformio"
+    (runtime / "platforms").mkdir(parents=True)
+    packages = runtime / "packages"
+    packages.mkdir(parents=True)
+    (runtime / "deployment-runtime.json").write_text("{}\n", encoding="utf-8")
+    framework = packages / deployment_runtime.ESP32_FRAMEWORK_PACKAGE
+    for relative in (
+        Path(".piopm"),
+        Path("cores") / "esp32" / "Arduino.h",
+        Path("variants") / "esp32" / "pins_arduino.h",
+    ):
+        path = framework / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("fixture\n", encoding="utf-8")
+    for name in deployment_runtime.ESP32_USB_TOOL_PACKAGES:
+        metadata = packages / name / ".piopm"
+        metadata.parent.mkdir(parents=True, exist_ok=True)
+        metadata.write_text("{}\n", encoding="utf-8")
     firmware = root / "firmware" / "robot-platform"
     (firmware / "main").mkdir(parents=True)
     (firmware / "platformio.ini").write_text(
@@ -264,6 +280,10 @@ def test_final_process_boundary(base: Path) -> None:
         check(
             "final boundary short-path alias root stays external",
             not _inside(alias_root, artifact),
+        )
+        check(
+            "final boundary short-path alias contains no whitespace",
+            not any(char.isspace() for char in str(alias_root)),
         )
         check(
             "final boundary package alias resolves to bundled packages",

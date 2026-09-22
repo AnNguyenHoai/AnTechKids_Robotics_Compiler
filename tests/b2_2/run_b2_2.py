@@ -60,8 +60,25 @@ def _write_tool(path: Path) -> None:
 def _prepare_artifact(root: Path) -> Path:
     tool = root / "runtime" / "bin" / _tool_name()
     _write_tool(tool)
-    (root / "runtime" / "platformio" / "platforms").mkdir(parents=True, exist_ok=True)
-    (root / "runtime" / "platformio" / "packages").mkdir(parents=True, exist_ok=True)
+    runtime = root / "runtime" / "platformio"
+    (runtime / "platforms").mkdir(parents=True, exist_ok=True)
+    packages = runtime / "packages"
+    packages.mkdir(parents=True, exist_ok=True)
+    (runtime / "deployment-runtime.json").write_text("{}\n", encoding="utf-8")
+
+    framework = packages / deployment_runtime.ESP32_FRAMEWORK_PACKAGE
+    for relative in (
+        Path(".piopm"),
+        Path("cores") / "esp32" / "Arduino.h",
+        Path("variants") / "esp32" / "pins_arduino.h",
+    ):
+        path = framework / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("fixture\n", encoding="utf-8")
+    for name in deployment_runtime.ESP32_USB_TOOL_PACKAGES:
+        metadata = packages / name / ".piopm"
+        metadata.parent.mkdir(parents=True, exist_ok=True)
+        metadata.write_text("{}\n", encoding="utf-8")
     return tool
 
 
@@ -155,6 +172,7 @@ def test_deployment_environment(base: Path) -> None:
     if os.name == "nt":
         alias_root = Path(env[deployment_runtime.PLATFORMIO_DEPENDENCY_ALIAS_ROOT_ENV])
         check("Windows PlatformIO short-path alias root is external", not _inside(alias_root, artifact))
+        check("Windows PlatformIO short-path alias contains no whitespace", not any(char.isspace() for char in str(alias_root)))
         check("Windows package alias resolves to immutable artifact packages", os.path.samefile(env["PLATFORMIO_PACKAGES_DIR"], artifact / "runtime" / "platformio" / "packages"))
         check("Windows platform alias resolves to immutable artifact platforms", os.path.samefile(env["PLATFORMIO_PLATFORMS_DIR"], artifact / "runtime" / "platformio" / "platforms"))
 
@@ -165,6 +183,18 @@ def test_deployment_environment(base: Path) -> None:
     finally:
         deployment_runtime.is_frozen = original_is_frozen
     check("source development mode retains developer PATH", developer["PATH"] == hostile["PATH"])
+
+
+def test_incomplete_esp32_payload_fails_before_platformio(base: Path) -> None:
+    artifact = base / "RoboStudio"
+    _prepare_artifact(artifact)
+    missing = artifact / "runtime" / "platformio" / "packages" / deployment_runtime.ESP32_FRAMEWORK_PACKAGE / "variants" / "esp32" / "pins_arduino.h"
+    missing.unlink()
+    expect_runtime_error(
+        "packaged runtime missing pins_arduino.h fails before PlatformIO",
+        lambda: deployment_runtime._validate_esp32_runtime_payload(artifact / "runtime" / "platformio" / "packages"),
+        "pins_arduino.h",
+    )
 
 
 def test_run_process_seals_frozen_boundary(base: Path) -> None:
@@ -196,9 +226,6 @@ def test_run_process_seals_frozen_boundary(base: Path) -> None:
         deployment_runtime.is_frozen = lambda: True
         deployment_runtime.application_root = lambda: artifact
 
-        # Prepare actual short-path junctions before replacing Popen. subprocess.run()
-        # uses subprocess.Popen internally; patching first would mock the mklink /J
-        # boundary and make this process-runner unit test fail for the wrong reason.
         deployment_runtime.deployment_runtime_environment(hostile)
         deployment_runtime.subprocess.Popen = FakePopen
 
@@ -280,6 +307,7 @@ def main() -> int:
         base = Path(temp)
         test_closed_environment(base / "closed")
         test_deployment_environment(base / "deployment")
+        test_incomplete_esp32_payload_fails_before_platformio(base / "payload")
         test_run_process_seals_frozen_boundary(base / "runner")
         test_packaged_python_command(base / "python")
         test_robot_deployment_service_source_contract()
