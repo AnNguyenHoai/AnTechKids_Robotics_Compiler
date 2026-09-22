@@ -34,6 +34,22 @@ def write_tool(path: Path) -> None:
         path.chmod(0o755)
 
 
+def prepare_esp32_payload(packages: Path) -> None:
+    framework = packages / deployment_runtime.ESP32_FRAMEWORK_PACKAGE
+    for relative in (
+        Path(".piopm"),
+        Path("cores") / "esp32" / "Arduino.h",
+        Path("variants") / "esp32" / "pins_arduino.h",
+    ):
+        path = framework / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("fixture\n", encoding="utf-8")
+    for name in deployment_runtime.ESP32_USB_TOOL_PACKAGES:
+        metadata = packages / name / ".piopm"
+        metadata.parent.mkdir(parents=True, exist_ok=True)
+        metadata.write_text("{}\n", encoding="utf-8")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="robostudio-b22-child-") as temp:
         base = Path(temp)
@@ -44,10 +60,13 @@ def main() -> int:
         host_tool = host / tool_name()
         write_tool(artifact_tool)
         write_tool(host_tool)
-        platforms = artifact / "runtime" / "platformio" / "platforms"
-        packages = artifact / "runtime" / "platformio" / "packages"
+        runtime = artifact / "runtime" / "platformio"
+        platforms = runtime / "platforms"
+        packages = runtime / "packages"
         platforms.mkdir(parents=True)
         packages.mkdir(parents=True)
+        (runtime / "deployment-runtime.json").write_text("{}\n", encoding="utf-8")
+        prepare_esp32_payload(packages)
 
         hostile = os.environ.copy()
         hostile["PATH"] = str(host)
@@ -56,7 +75,7 @@ def main() -> int:
         closed, _ = dependency_closure.build_closed_environment(artifact, hostile)
 
         # Create the real Windows dependency aliases before Popen is replaced
-        # by the process-boundary fake below.  subprocess.run() internally uses
+        # by the process-boundary fake below. subprocess.run() internally uses
         # subprocess.Popen, so preparing aliases after monkeypatching Popen would
         # make the junction helper execute through FakePopen instead of Windows.
         aliased = deployment_runtime.prepare_platformio_dependency_aliases(
@@ -69,6 +88,10 @@ def main() -> int:
             check(
                 "portable child alias root is external to immutable artifact",
                 artifact.resolve() not in alias_root.parents and alias_root != artifact.resolve(),
+            )
+            check(
+                "portable child alias root contains no whitespace",
+                not any(char.isspace() for char in str(alias_root)),
             )
             check(
                 "portable child package alias resolves to bundled packages",
