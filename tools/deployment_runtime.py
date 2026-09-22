@@ -34,14 +34,8 @@ PLATFORMIO_NO_ANSI_ENV = "PLATFORMIO_NO_ANSI"
 DEPENDENCY_MODE_ENV = "ROBOSTUDIO_DEPENDENCY_MODE"
 DEPENDENCY_MODE_CLOSED = "artifact-closed"
 PLATFORMIO_DEPENDENCY_ALIAS_ROOT_ENV = "ROBOSTUDIO_PLATFORMIO_DEPENDENCY_ALIAS_ROOT"
-ESP32_FRAMEWORK_PACKAGE = "framework-arduinoespressif32"
-ESP32_USB_TOOL_PACKAGES = (
-    "tool-esptoolpy",
-    "tool-mkspiffs",
-    "tool-mklittlefs",
-    "tool-mkfatfs",
-    "tool-scons",
-)
+WINDOWS_SHORT_ALIAS_DIRECTORY = "RSC"
+WINDOWS_MAX_SAFE_ALIAS_BASE_LENGTH = 80
 
 
 class DeploymentRuntimeError(RuntimeError):
@@ -130,68 +124,56 @@ def _windows_cmd(environment: Mapping[str, str]) -> Path:
     return command
 
 
-def _validate_esp32_runtime_payload(packages: Path) -> None:
-    """Fail before firmware deployment when the packaged ESP32 payload is incomplete.
-
-    ``package.json``/``.piopm`` metadata alone does not prove the framework can
-    compile the selected board. In particular, ``esp32-hal-gpio.h`` includes
-    ``pins_arduino.h`` from the board variant. A partially staged framework can
-    therefore look installed to PlatformIO and only fail deep inside GCC.
-    """
-    framework = packages / ESP32_FRAMEWORK_PACKAGE
-    required = (
-        framework / ".piopm",
-        framework / "cores" / "esp32" / "Arduino.h",
-        framework / "variants" / "esp32" / "pins_arduino.h",
-        *(packages / name / ".piopm" for name in ESP32_USB_TOOL_PACKAGES),
+def _windows_alias_base_is_safe(path: Path) -> bool:
+    text = str(path)
+    return (
+        path.is_absolute()
+        and len(text) <= WINDOWS_MAX_SAFE_ALIAS_BASE_LENGTH
+        and not any(char.isspace() for char in text)
     )
-    missing = [path for path in required if not path.is_file()]
-    if missing:
-        details = ", ".join(str(path) for path in missing)
-        raise DeploymentRuntimeError(
-            "Bundled ESP32 PlatformIO runtime is incomplete. Rebuild/reinstall the RoboStudio "
-            "production release; firmware deployment is blocked before compilation. Missing: " + details
-        )
 
 
-def _windows_dependency_alias_base(environment: Mapping[str, str]) -> Path:
-    """Return a writable, whitespace-free public alias root for legacy ESP32 GCC.
+def _windows_dependency_alias_base(
+    state: Path,
+    environment: Mapping[str, str],
+) -> Path:
+    """Select a short whitespace-free base for PlatformIO dependency junctions.
 
-    The previous alias lived below the per-user AppData directory. User profile
-    names can contain spaces, so the resulting path was still long and could
-    trigger Windows path/argument failures in the legacy Xtensa/SCons toolchain.
-    Keep mutable build state in the normal RoboStudio state root, but expose only
-    immutable PlatformIO dependencies through this deliberately short junction
-    root.
+    Keep aliases under RoboStudio state when that path is already safe. If a
+    Windows account/profile contains whitespace (for example ``EASTVN - An
+    Nguyen``) or is too long for the legacy Xtensa toolchain, fall back to the
+    Public profile. Failing closed is safer than silently recreating the same
+    broken include/tool path on the target PC.
     """
-    candidates: list[Path] = []
-    public = str(environment.get("PUBLIC", "")).strip()
-    if public:
-        candidates.append(Path(public) / "RSP")
-    drive = str(environment.get("SystemDrive", "C:")).strip() or "C:"
-    candidates.append(Path(drive + "\\") / "Users" / "Public" / "RSP")
-
-    failures: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        text = str(candidate)
-        key = os.path.normcase(text)
-        if key in seen:
-            continue
-        seen.add(key)
-        if any(char.isspace() for char in text):
-            failures.append(f"contains whitespace: {candidate}")
-            continue
+    state_candidate = Path(state).expanduser().resolve() / "p"
+    if _windows_alias_base_is_safe(state_candidate):
         try:
-            candidate.mkdir(parents=True, exist_ok=True)
-            return candidate.resolve()
+            state_candidate.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            failures.append(f"{candidate}: {exc}")
+            raise DeploymentRuntimeError(
+                f"Unable to create PlatformIO dependency alias root {state_candidate}: {exc}"
+            ) from exc
+        return state_candidate
 
-    detail = "; ".join(failures) if failures else "no usable Public directory"
-    raise DeploymentRuntimeError(
-        "Unable to create a short whitespace-free PlatformIO dependency alias root: " + detail
-    )
+    public_value = str(environment.get("PUBLIC", "")).strip()
+    if not public_value:
+        raise DeploymentRuntimeError(
+            "Windows PUBLIC profile is unavailable and RoboStudio state is not a short "
+            "whitespace-free path for ESP32 PlatformIO dependencies."
+        )
+    public_candidate = Path(public_value).expanduser().resolve() / WINDOWS_SHORT_ALIAS_DIRECTORY
+    if not _windows_alias_base_is_safe(public_candidate):
+        raise DeploymentRuntimeError(
+            "Windows PUBLIC profile is not a short whitespace-free PlatformIO alias root: "
+            f"{public_candidate}"
+        )
+    try:
+        public_candidate.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise DeploymentRuntimeError(
+            f"Unable to create Windows PlatformIO short-path root {public_candidate}: {exc}"
+        ) from exc
+    return public_candidate
 
 
 def _ensure_windows_junction(
@@ -199,14 +181,15 @@ def _ensure_windows_junction(
     target: Path,
     environment: Mapping[str, str],
 ) -> Path:
-    """Create one directory junction without copying immutable payload.
+    """Create one external directory junction without copying immutable payload.
 
     Espressif's legacy Windows Xtensa GCC driver can fail to spawn ``cc1plus`` or
-    ``as`` when the PlatformIO package path is long, even though the package is
-    complete. The release itself may live in an arbitrarily named directory, so
-    packaged execution exposes the immutable platform/package stores through a
-    short junction. The junction is only an alias: package bytes remain
-    application-owned and are never copied or edited.
+    resolve Arduino variant headers when the PlatformIO package path is long or
+    contains whitespace. The release itself may live in an arbitrarily named
+    directory, and the Windows user profile may also contain spaces, so packaged
+    execution exposes immutable platform/package stores through a short external
+    junction. The junction is only an alias: package bytes remain application-
+    owned and are never copied or edited.
     """
     target = target.resolve()
     if not target.is_dir():
@@ -248,10 +231,13 @@ def prepare_platformio_dependency_aliases(
 ) -> dict[str, str]:
     """Return a packaged environment with Windows-safe short dependency paths.
 
-    This function owns path aliasing only. It deliberately does not enforce a
-    firmware-specific package set because the same dependency environment is
-    also used by compiler-only RoboStudio flows. Physical firmware deployment
-    validates the stricter ESP32 payload through :func:`validate_deployment_runtime`.
+    On non-Windows systems the canonical artifact paths are returned unchanged.
+    On Windows, ``platforms`` and ``packages`` are exposed through external
+    directory junctions. If the RoboStudio state path is already short and has
+    no whitespace it is used directly. Otherwise a short Public-profile root is
+    selected so usernames containing spaces cannot leak into GCC include/tool
+    paths. ``Path.resolve``/``samefile`` still resolves aliases to the immutable
+    artifact, preserving dependency ownership.
     """
     env = dict(environment)
     if os.name != "nt":
@@ -272,12 +258,12 @@ def prepare_platformio_dependency_aliases(
             application_root_override=artifact_root,
             enforce_external=True,
         )
+        alias_base = _windows_dependency_alias_base(state, env)
     except (dependency_closure.DependencyClosureError, runtime_paths.RuntimePathError) as exc:
         raise DeploymentRuntimeError(f"Unable to prepare PlatformIO dependency aliases: {exc}") from exc
 
-    identity_source = f"{artifact_root}|{state}".casefold().encode("utf-8")
-    identity = hashlib.sha256(identity_source).hexdigest()[:8]
-    alias_root = _windows_dependency_alias_base(env) / identity
+    identity = hashlib.sha256(str(artifact_root).casefold().encode("utf-8")).hexdigest()[:8]
+    alias_root = alias_base / identity
     platform_alias = _ensure_windows_junction(alias_root / "f", platforms, env)
     package_alias = _ensure_windows_junction(alias_root / "k", packages, env)
 

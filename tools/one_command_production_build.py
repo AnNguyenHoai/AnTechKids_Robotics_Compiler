@@ -12,7 +12,7 @@ if __package__ in (None, ""):
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-from tools import copy_run_release, production_release_assembly
+from tools import copy_run_release, first_flash_runtime_contract, production_release_assembly
 
 FORBIDDEN_NAMES = {".git", ".venv", ".pio", "penv", "__pycache__", ".pytest_cache"}
 DEPLOYMENT_MANIFEST = "deployment-runtime.json"
@@ -81,6 +81,10 @@ def validate_inputs(executable: Path, runtime_bin: Path, runtime_platformio: Pat
     firmware_root = _require_directory(firmware_root, "application-owned firmware project")
     _validate_python_runtime(runtime_bin)
     _validate_platformio_runtime(runtime_platformio)
+    try:
+        first_flash_runtime_contract.validate_esp32dev_first_flash_payload(runtime_platformio)
+    except first_flash_runtime_contract.FirstFlashRuntimeContractError as exc:
+        raise OneCommandProductionBuildError(f"ESP32 first-flash runtime contract failed: {exc}") from exc
     _require_directory(runtime_resources, "application resources")
     _require_file(firmware_root / "platformio.ini", "firmware platformio.ini")
     _require_file(firmware_root / "wifi_config.py", "firmware wifi_config.py")
