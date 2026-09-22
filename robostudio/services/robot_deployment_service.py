@@ -23,6 +23,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
+from domain.compatibility import (
+    flashed_firmware_compatibility_error,
+    ota_compatibility_error,
+)
 from services.robot_discovery_service import RobotDiscoveryClient, RobotInfo
 from tools import runtime_paths
 from tools.deployment_runtime import DeploymentRuntimeError, python_command, run_process
@@ -84,7 +88,7 @@ def windows_serial_port_busy_error(port: str) -> str | None:
         handle = create_file(
             device_path,
             generic_read | generic_write,
-            0,  # no sharing: match PlatformIO/QSerialPort ownership semantics
+            0,
             None,
             open_existing,
             0,
@@ -138,11 +142,6 @@ def select_unique_new_robot(
 
 class RobotDeploymentService:
     def __init__(self, root: Path | None = None):
-        # In a frozen/PyInstaller build ``__file__`` can point at the temporary
-        # bundle extraction tree. Production deployment assets live beside the
-        # installed/extracted RoboStudio executable, so use the canonical
-        # application root unless a test/integration caller explicitly supplies
-        # a root.
         self.root = (
             Path(root).expanduser().resolve()
             if root is not None
@@ -236,15 +235,10 @@ class RobotDeploymentService:
         except (OSError, json.JSONDecodeError) as exc:
             return DeploymentResult(False, "", f"Invalid bootstrap config: {exc}")
 
-        # H30: snapshot identities already visible on the LAN. ``None`` means
-        # discovery failed, which is different from a successful empty scan.
-        # Without a trustworthy baseline automatic identity binding is disabled.
         known_device_ids: set[str] | None = None
         try:
             known_device_ids = {robot.device_id for robot in self.discovery.discover()}
         except Exception:
-            # The USB flash can still succeed. Post-flash discovery may be used
-            # for visibility, but identity binding requires manual selection.
             pass
 
         try:
@@ -268,15 +262,22 @@ class RobotDeploymentService:
         if completed.returncode != 0:
             return DeploymentResult(False, output, "First-flash failed.")
 
-        # The robot has just rebooted and may need a few seconds to associate.
-        # Discovery is product-level verification; do not claim one arbitrary
-        # robot merely because PlatformIO accepted the USB upload.
         deadline = time.monotonic() + 20.0
         while time.monotonic() < deadline:
             try:
                 robots = self.discovery.discover()
                 verified = select_unique_new_robot(known_device_ids, robots)
                 if verified is not None:
+                    compatibility_error = flashed_firmware_compatibility_error(
+                        verified.compatibility_generation
+                    )
+                    if compatibility_error:
+                        return DeploymentResult(
+                            False,
+                            output,
+                            f"First-flash verification failed: {compatibility_error}",
+                            verified,
+                        )
                     return DeploymentResult(True, output, verified_robot=verified)
             except Exception:
                 pass
@@ -315,6 +316,11 @@ class RobotDeploymentService:
             return DeploymentResult(False, "", "Selected robot does not advertise OTA support.")
         if not robot.network_ready:
             return DeploymentResult(False, "", "Selected robot is not network-ready.")
+
+        compatibility_error = ota_compatibility_error(robot.compatibility_generation)
+        if compatibility_error:
+            return DeploymentResult(False, "", compatibility_error)
+
         if not wifi_ssid.strip():
             return DeploymentResult(False, "", "Wi-Fi SSID is required for OTA deployment.")
         if not ota_password:
@@ -322,8 +328,6 @@ class RobotDeploymentService:
         if not code.strip():
             return DeploymentResult(False, "", "No student program is available to deploy.")
 
-        # Student source is temporary user/process state. It is deliberately not
-        # created under the immutable application root.
         fd, temp_name = tempfile.mkstemp(prefix="robostudio_", suffix=".py", text=True)
         os.close(fd)
         source = Path(temp_name)
@@ -373,6 +377,17 @@ class RobotDeploymentService:
                     verified)
             if not verified.ready:
                 return DeploymentResult(False, output, "Robot rebooted but is not ready.", verified)
+
+            compatibility_error = flashed_firmware_compatibility_error(
+                verified.compatibility_generation
+            )
+            if compatibility_error:
+                return DeploymentResult(
+                    False,
+                    output,
+                    f"Deployment verification failed: {compatibility_error}",
+                    verified,
+                )
             return DeploymentResult(True, output, verified_robot=verified)
         except (OSError, DeploymentRuntimeError) as exc:
             return DeploymentResult(False, "", f"Unable to start deployment: {exc}")
