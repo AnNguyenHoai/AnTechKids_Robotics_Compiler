@@ -3,20 +3,24 @@ RoboStudio Main Window UI – coded manually with PySide6.
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit,
-    QPushButton, QTextEdit, QLabel, QFrame, QMenuBar, QMenu, QMessageBox, QFileDialog, QTabWidget, QGroupBox, QComboBox
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPlainTextEdit,
+    QPushButton, QTextEdit, QLabel, QFrame, QMenuBar, QMenu, QMessageBox,
+    QFileDialog, QTabWidget, QGroupBox, QComboBox, QSizePolicy
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QAction, QCursor
 
-from ui.hardware_tab import HardwareTab
+from ui.responsive import make_scroll_area
+from ui.responsive_hardware_tab import ResponsiveHardwareTab
 
 
 class Ui_MainWindow:
     def setupUi(self, MainWindow):
         MainWindow.setWindowTitle("RoboStudio")
-        MainWindow.resize(1100, 760)
-        MainWindow.setMinimumSize(980, 680)
+        MainWindow.resize(1180, 780)
+        # Phase 1 deliberately permits compact desktop sizes. Individual tabs
+        # now scroll/stack instead of relying on a near-1000px window floor.
+        MainWindow.setMinimumSize(760, 540)
 
         # Menu Bar
         menubar = QMenuBar(MainWindow)
@@ -48,33 +52,46 @@ class Ui_MainWindow:
         self.main_tabs.setDocumentMode(True)
         main_layout.addWidget(self.main_tabs, 1)
 
-        # Program tab
+        # Program tab. The content itself can scroll vertically at compact
+        # heights; long target/capability text therefore never competes with
+        # editor/output hard minimums.
         self.program_tab = QWidget()
-        program_layout = QVBoxLayout(self.program_tab)
-        program_layout.setSpacing(10)
-        program_layout.setContentsMargins(0, 0, 0, 0)
+        program_root = QVBoxLayout(self.program_tab)
+        program_root.setContentsMargins(0, 0, 0, 0)
+        program_root.setSpacing(0)
 
-        # H26-L target selector
-        target_layout = QHBoxLayout()
-        target_layout.setSpacing(8)
-        target_layout.addWidget(QLabel("Target:"))
+        program_content = QWidget()
+        program_layout = QVBoxLayout(program_content)
+        program_layout.setSpacing(10)
+        program_layout.setContentsMargins(4, 4, 4, 4)
+
+        # H26-L target selector. Description sits on its own row so a long
+        # target description cannot squeeze the selector horizontally.
+        target_grid = QGridLayout()
+        target_grid.setHorizontalSpacing(8)
+        target_grid.setVerticalSpacing(4)
+        target_grid.addWidget(QLabel("Target:"), 0, 0)
         self.target_combo = QComboBox()
         self.target_combo.setObjectName("target_combo")
-        self.target_combo.setMinimumWidth(180)
-        target_layout.addWidget(self.target_combo)
+        self.target_combo.setMinimumWidth(140)
+        self.target_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        target_grid.addWidget(self.target_combo, 0, 1)
+        target_grid.setColumnStretch(1, 1)
+
         self.target_description = QLabel("")
         self.target_description.setWordWrap(True)
         self.target_description.setStyleSheet("color: #666666;")
-        target_layout.addWidget(self.target_description, 1)
-        program_layout.addLayout(target_layout)
+        target_grid.addWidget(self.target_description, 1, 0, 1, 2)
+        program_layout.addLayout(target_grid)
 
         # Code Editor
         self.code_editor = QPlainTextEdit()
         self.code_editor.setPlaceholderText("Paste your RoboSim Python code here...")
         font = QFont("Courier New", 11)
         self.code_editor.setFont(font)
-        self.code_editor.setMinimumHeight(250)
-        program_layout.addWidget(self.code_editor, 1)
+        self.code_editor.setMinimumHeight(180)
+        self.code_editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        program_layout.addWidget(self.code_editor, 3)
 
         # H25-J / H26-L capability status
         self.capability_group = QGroupBox("Hardware & Target Capability")
@@ -104,12 +121,12 @@ class Ui_MainWindow:
         button_layout.setSpacing(10)
 
         self.compile_button = QPushButton("Compile")
-        self.compile_button.setMinimumWidth(100)
+        self.compile_button.setMinimumWidth(90)
         self.compile_button.setEnabled(True)
         button_layout.addWidget(self.compile_button)
 
         self.open_firmware_button = QPushButton("Open Firmware")
-        self.open_firmware_button.setMinimumWidth(100)
+        self.open_firmware_button.setMinimumWidth(90)
         button_layout.addWidget(self.open_firmware_button)
 
         button_layout.addStretch()
@@ -127,19 +144,25 @@ class Ui_MainWindow:
         self.build_output.setPlaceholderText("Build output will appear here...")
         font_output = QFont("Courier New", 10)
         self.build_output.setFont(font_output)
-        self.build_output.setMinimumHeight(150)
-        program_layout.addWidget(self.build_output)
+        self.build_output.setMinimumHeight(110)
+        self.build_output.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        program_layout.addWidget(self.build_output, 2)
 
+        self.program_scroll = make_scroll_area(program_content)
+        self.program_scroll.setObjectName("program_scroll")
+        program_root.addWidget(self.program_scroll, 1)
         self.main_tabs.addTab(self.program_tab, "Program")
 
-        # Hardware tab (H25-B)
-        self.hardware_tab = HardwareTab()
+        # Hardware tab keeps the existing hardware behaviour but places long
+        # device lists/status text inside a vertical scroll container.
+        self.hardware_tab = ResponsiveHardwareTab()
         self.main_tabs.addTab(self.hardware_tab, "Hardware")
 
         # Status Bar
         status_layout = QHBoxLayout()
         status_layout.addWidget(QLabel("Status:"))
         self.status_label = QLabel("Ready")
+        self.status_label.setWordWrap(True)
         self.status_label.setStyleSheet("font-weight: bold; color: green;")
         status_layout.addWidget(self.status_label)
         status_layout.addStretch()
