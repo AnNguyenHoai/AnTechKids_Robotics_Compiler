@@ -1,7 +1,7 @@
 """Responsive presentation layer for the existing Robot deployment workflow.
 
 The class intentionally inherits all discovery, first-flash, OTA, registry and
-serial behaviour from ``RobotTab``.  Phase 1 changes only how those controls are
+serial behaviour from ``RobotTab``. Phase 1 changes only how those controls are
 laid out so resize/DPI pressure cannot force unrelated widgets into each other.
 """
 from __future__ import annotations
@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -97,22 +98,27 @@ class ResponsiveRobotTab(RobotTab):
         self.usb_port_combo.currentIndexChanged.connect(self._refresh_bootstrap_flash_enabled)
         usb_layout.addWidget(self.usb_port_combo)
 
-        usb_actions = QHBoxLayout()
-        usb_actions.setSpacing(6)
+        # Keep first-flash actions in a 2x2 grid. This remains usable inside the
+        # narrow deployment column at high Windows DPI, unlike the old single
+        # row that required all three action buttons to fit at once.
+        usb_actions = QGridLayout()
+        usb_actions.setHorizontalSpacing(6)
+        usb_actions.setVerticalSpacing(6)
         self.refresh_usb_button = QPushButton("Refresh USB")
         self.refresh_usb_button.setToolTip("Refresh USB/COM devices visible to Windows.")
         self.refresh_usb_button.clicked.connect(self._refresh_usb_ports)
-        usb_actions.addWidget(self.refresh_usb_button)
+        usb_actions.addWidget(self.refresh_usb_button, 0, 0)
 
         self.generate_bootstrap_button = QPushButton("Generate Config")
         self.generate_bootstrap_button.clicked.connect(self.generate_bootstrap)
-        usb_actions.addWidget(self.generate_bootstrap_button)
+        usb_actions.addWidget(self.generate_bootstrap_button, 0, 1)
 
         self.flash_bootstrap_button = QPushButton("Flash via USB")
         self.flash_bootstrap_button.setEnabled(False)
         self.flash_bootstrap_button.clicked.connect(self.flash_bootstrap)
-        usb_actions.addWidget(self.flash_bootstrap_button)
-        usb_actions.addStretch(1)
+        usb_actions.addWidget(self.flash_bootstrap_button, 1, 0, 1, 2)
+        usb_actions.setColumnStretch(0, 1)
+        usb_actions.setColumnStretch(1, 1)
         usb_layout.addLayout(usb_actions)
         bootstrap_form.addRow("USB Port:", usb_container)
 
