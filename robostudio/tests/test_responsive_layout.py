@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -16,6 +17,7 @@ for path in (str(ROOT), str(ROBOSTUDIO)):
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
+from domain.hardware_config_service import HardwareConfigService
 from ui.responsive import AdaptiveSplitter, LayoutMode, layout_mode_for_width
 from ui.responsive_hardware_tab import ResponsiveHardwareTab
 from ui.responsive_serial_console import ResponsiveSerialConsoleWidget
@@ -49,7 +51,9 @@ def test_serial_console_has_no_wide_hard_minimum():
 
 
 def test_hardware_tab_is_scrollable():
-    widget = ResponsiveHardwareTab()
-    assert widget.scroll_area.widgetResizable()
-    assert widget.scroll_area.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
-    widget.close()
+    with tempfile.TemporaryDirectory() as temp:
+        config_service = HardwareConfigService(Path(temp) / "hardware.json")
+        widget = ResponsiveHardwareTab(config_service=config_service)
+        assert widget.scroll_area.widgetResizable()
+        assert widget.scroll_area.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+        widget.close()
