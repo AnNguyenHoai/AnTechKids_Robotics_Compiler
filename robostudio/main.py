@@ -30,7 +30,7 @@ bootstrap(validate_runtime=True)
 
 from PySide6.QtWidgets import QApplication
 from app import RoboStudioApp
-from ui.robot_tab import RobotTab
+from ui.responsive_robot_tab import ResponsiveRobotTab as RobotTab
 
 
 ACCEPTANCE_PROBE_ARG = "--acceptance-probe"
