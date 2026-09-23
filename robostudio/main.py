@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RoboStudio MVP - Entry Point
+RoboStudio - Entry Point
 """
 
 import sys
@@ -23,9 +23,6 @@ else:
 
 from tools.runtime_bootstrap import bootstrap
 
-# A packaged executable must never start against a partial runtime. Source
-# development keeps the historical non-frozen behavior; RSD-06 validates the
-# application-owned distribution before the GUI imports any services.
 bootstrap(validate_runtime=True)
 
 from PySide6.QtWidgets import QApplication
@@ -37,11 +34,6 @@ ACCEPTANCE_PROBE_ARG = "--acceptance-probe"
 
 
 def main() -> int:
-    # B2.5 needs a bounded, non-interactive way to prove that the *packaged GUI
-    # application itself* can initialize on an independent clean machine.  The
-    # probe constructs the real window/Robot tab and processes Qt events, but it
-    # does not enter the indefinite GUI event loop.  Normal launches are
-    # unchanged and still use app.exec().
     acceptance_probe = ACCEPTANCE_PROBE_ARG in sys.argv
     qt_argv = [arg for arg in sys.argv if arg != ACCEPTANCE_PROBE_ARG]
 
@@ -51,7 +43,9 @@ def main() -> int:
 
     window = RoboStudioApp()
     robot_tab = RobotTab(lambda: window.ui.code_editor.toPlainText(), window)
-    window.ui.main_tabs.addTab(robot_tab, "Robot")
+    # Primary navigation follows the daily task order: write program, run on
+    # robot, then adjust hardware/advanced configuration when needed.
+    window.ui.main_tabs.insertTab(1, robot_tab, "Robot")
     window.ui.code_editor.textChanged.connect(robot_tab.refresh_code_state)
 
     if acceptance_probe:
