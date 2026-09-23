@@ -90,7 +90,10 @@ class RoboStudioApp(QMainWindow):
         self.ui.code_editor.textChanged.connect(self._refresh_capability_status)
         self.ui.hardware_tab.configuration_saved.connect(self._refresh_capability_status)
         self.ui.target_combo.currentIndexChanged.connect(self._refresh_capability_status)
+        # Keep the compatibility button connected for existing source contracts,
+        # but expose firmware editing only from the Advanced menu in Phase 2.
         self.ui.open_firmware_button.clicked.connect(self.on_open_firmware)
+        self.ui.open_firmware_action.triggered.connect(self.on_open_firmware)
         self.ui.about_action.triggered.connect(self.on_about)
 
         self._setup_file_menu()
@@ -317,7 +320,7 @@ class RoboStudioApp(QMainWindow):
     def _build_finished(self, success, summary):
         self.is_building = False
         self._refresh_capability_status()
-        self.ui.compile_button.setText("Compile")
+        self.ui.compile_button.setText("Compile Program")
         QApplication.restoreOverrideCursor()
         self.ui.build_output.append("\n" + "="*40)
         self.ui.build_output.append(summary)
@@ -331,7 +334,7 @@ class RoboStudioApp(QMainWindow):
     def _build_error(self, error_msg):
         self.is_building = False
         self._refresh_capability_status()
-        self.ui.compile_button.setText("Compile")
+        self.ui.compile_button.setText("Compile Program")
         QApplication.restoreOverrideCursor()
         self.set_status("Error", color="red")
         self.ui.build_output.append(f"\nCompile error: {error_msg}")
@@ -356,7 +359,7 @@ class RoboStudioApp(QMainWindow):
     def on_about(self):
         QMessageBox.about(
             self, "About RoboStudio",
-            "RoboStudio MVP\n\nA simple launcher for Robot Compiler.\nVersion: M4.2\nLicense: MIT"
+            "RoboStudio\n\nRobot programming and deployment workspace.\nVersion: M4.2\nLicense: MIT"
         )
 
     def set_status(self, text, color="black"):

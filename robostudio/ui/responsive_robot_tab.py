@@ -1,8 +1,9 @@
-"""Responsive presentation layer for the existing Robot deployment workflow.
+"""Production-oriented responsive presentation for the Robot workflow.
 
-The class intentionally inherits all discovery, first-flash, OTA, registry and
-serial behaviour from ``RobotTab``. Phase 1 changes only how those controls are
-laid out so resize/DPI pressure cannot force unrelated widgets into each other.
+Phase 2 keeps discovery, first-flash, OTA, registry and serial behaviour in the
+existing ``RobotTab``. This module changes information hierarchy only: everyday
+Run actions stay visible, one-time setup moves to a guided flow, and diagnostics
+are available on demand without competing for screen space.
 """
 from __future__ import annotations
 
@@ -10,7 +11,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -19,18 +19,21 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
-    QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from ui import theme
+from ui.components import DisclosureButton, StatusBadge, SummaryCard
+from ui.first_flash_dialog import FirstFlashSetupDialog
 from ui.responsive import AdaptiveSplitter, make_scroll_area
 from ui.responsive_serial_console import ResponsiveSerialConsoleWidget
 from ui.robot_tab import RobotTab
 
 
 class ResponsiveRobotTab(RobotTab):
-    """Robot tab with adaptive wide/stacked workspace and scrolling forms."""
+    """Robot tab focused on the daily select-and-run golden path."""
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -39,18 +42,18 @@ class ResponsiveRobotTab(RobotTab):
 
         header = QVBoxLayout()
         header.setSpacing(3)
-        title = QLabel("Robot Deployment & Console")
-        title.setStyleSheet("font-size: 19px; font-weight: 700;")
+        title = QLabel("Robot")
+        title.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {theme.TEXT_PRIMARY};")
         header.addWidget(title)
         description = QLabel(
-            "First-flash a new robot once, discover robots over Wi-Fi, then deploy student programs over OTA. "
-            "Known robots and the selected device are remembered across RoboStudio restarts; offline robots stay visible. "
-            "Use the USB Serial Console for direct diagnostics and commands."
+            "Select a robot and run the current program. New-robot setup and diagnostics are available when needed."
         )
         description.setWordWrap(True)
-        description.setStyleSheet("color: #666666;")
+        description.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
         header.addWidget(description)
         root.addLayout(header)
+
+        self._build_first_flash_flow()
 
         self.responsive_splitter = AdaptiveSplitter()
         deployment_scroll = make_scroll_area(self._build_deployment_panel())
@@ -61,108 +64,78 @@ class ResponsiveRobotTab(RobotTab):
         self.responsive_splitter.setStretchFactor(1, 3)
         root.addWidget(self.responsive_splitter, 1)
 
+    def _build_first_flash_flow(self) -> None:
+        self.first_flash_dialog = FirstFlashSetupDialog(
+            self,
+            on_refresh_usb=self._refresh_usb_ports,
+            on_flash=self._start_first_flash,
+        )
+        # Preserve the inherited RobotTab field contract. The guided dialog owns
+        # the widgets, while the existing deployment methods continue to use the
+        # same attribute names and service boundaries.
+        self.bootstrap_ssid_edit = self.first_flash_dialog.ssid_edit
+        self.bootstrap_wifi_password_edit = self.first_flash_dialog.wifi_password_edit
+        self.bootstrap_ota_password_edit = self.first_flash_dialog.ota_password_edit
+        self.usb_port_combo = self.first_flash_dialog.usb_port_combo
+        self.refresh_usb_button = self.first_flash_dialog.refresh_usb_button
+        self.generate_bootstrap_button = self.first_flash_dialog.generate_compat_button
+        self.flash_bootstrap_button = self.first_flash_dialog.flash_button
+        self.bootstrap_status = self.first_flash_dialog.status_label
+        self.usb_port_combo.currentIndexChanged.connect(self._refresh_bootstrap_flash_enabled)
+
     def _build_deployment_panel(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 5, 0)
-        layout.setSpacing(9)
+        layout.setSpacing(10)
 
-        bootstrap_group = QGroupBox("0 · First-Flash Setup")
-        bootstrap_form = QFormLayout(bootstrap_group)
-        bootstrap_form.setContentsMargins(10, 8, 10, 8)
-        bootstrap_form.setVerticalSpacing(7)
-        bootstrap_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
-
-        self.bootstrap_ssid_edit = QLineEdit()
-        self.bootstrap_ssid_edit.setPlaceholderText("Classroom Wi-Fi network")
-        bootstrap_form.addRow("Wi-Fi SSID:", self.bootstrap_ssid_edit)
-
-        self.bootstrap_wifi_password_edit = QLineEdit()
-        self.bootstrap_wifi_password_edit.setEchoMode(QLineEdit.Password)
-        self.bootstrap_wifi_password_edit.setPlaceholderText("Leave empty if open")
-        bootstrap_form.addRow("Wi-Fi Password:", self.bootstrap_wifi_password_edit)
-
-        self.bootstrap_ota_password_edit = QLineEdit()
-        self.bootstrap_ota_password_edit.setEchoMode(QLineEdit.Password)
-        self.bootstrap_ota_password_edit.setPlaceholderText("OTA password for this robot fleet")
-        bootstrap_form.addRow("OTA Password:", self.bootstrap_ota_password_edit)
-
-        usb_container = QWidget()
-        usb_layout = QVBoxLayout(usb_container)
-        usb_layout.setContentsMargins(0, 0, 0, 0)
-        usb_layout.setSpacing(6)
-
-        self.usb_port_combo = QComboBox()
-        self.usb_port_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.usb_port_combo.setPlaceholderText("No USB/COM port detected")
-        self.usb_port_combo.currentIndexChanged.connect(self._refresh_bootstrap_flash_enabled)
-        usb_layout.addWidget(self.usb_port_combo)
-
-        # Keep first-flash actions in a 2x2 grid. This remains usable inside the
-        # narrow deployment column at high Windows DPI, unlike the old single
-        # row that required all three action buttons to fit at once.
-        usb_actions = QGridLayout()
-        usb_actions.setHorizontalSpacing(6)
-        usb_actions.setVerticalSpacing(6)
-        self.refresh_usb_button = QPushButton("Refresh USB")
-        self.refresh_usb_button.setToolTip("Refresh USB/COM devices visible to Windows.")
-        self.refresh_usb_button.clicked.connect(self._refresh_usb_ports)
-        usb_actions.addWidget(self.refresh_usb_button, 0, 0)
-
-        self.generate_bootstrap_button = QPushButton("Generate Config")
-        self.generate_bootstrap_button.clicked.connect(self.generate_bootstrap)
-        usb_actions.addWidget(self.generate_bootstrap_button, 0, 1)
-
-        self.flash_bootstrap_button = QPushButton("Flash via USB")
-        self.flash_bootstrap_button.setEnabled(False)
-        self.flash_bootstrap_button.clicked.connect(self.flash_bootstrap)
-        usb_actions.addWidget(self.flash_bootstrap_button, 1, 0, 1, 2)
-        usb_actions.setColumnStretch(0, 1)
-        usb_actions.setColumnStretch(1, 1)
-        usb_layout.addLayout(usb_actions)
-        bootstrap_form.addRow("USB Port:", usb_container)
-
-        self.bootstrap_status = QLabel("No first-flash configuration generated")
-        self.bootstrap_status.setWordWrap(True)
-        self.bootstrap_status.setMinimumHeight(30)
-        bootstrap_form.addRow("Status:", self.bootstrap_status)
-        layout.addWidget(bootstrap_group)
-
-        discovery_group = QGroupBox("1 · Select Robot")
-        discovery_layout = QVBoxLayout(discovery_group)
-        discovery_layout.setContentsMargins(10, 8, 10, 8)
-        discovery_layout.setSpacing(6)
-
-        row = QHBoxLayout()
-        row.setSpacing(6)
+        robot_card = SummaryCard("My Robot")
+        robot_row = QHBoxLayout()
+        robot_row.setSpacing(6)
         self.robot_combo = QComboBox()
         self.robot_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.robot_combo.setPlaceholderText("Select a known robot")
         self.robot_combo.currentIndexChanged.connect(self._on_robot_selected)
-        row.addWidget(self.robot_combo, 1)
+        robot_row.addWidget(self.robot_combo, 1)
         self.refresh_button = QPushButton("Discover")
-        self.refresh_button.setToolTip("Refresh online/offline state for all known robots on the local network.")
+        self.refresh_button.setToolTip("Refresh online/offline state for known robots on the local network.")
+        self.refresh_button.setStyleSheet(theme.secondary_button_style())
         self.refresh_button.clicked.connect(self.discover)
-        row.addWidget(self.refresh_button)
-        discovery_layout.addLayout(row)
+        robot_row.addWidget(self.refresh_button)
+        robot_card.layout.addLayout(robot_row)
+
+        state_row = QHBoxLayout()
+        self.robot_badge = StatusBadge("No robot selected", "neutral")
+        state_row.addWidget(self.robot_badge)
+        state_row.addStretch(1)
+        self.robot_details_toggle = DisclosureButton("Robot details")
+        state_row.addWidget(self.robot_details_toggle)
+        robot_card.layout.addLayout(state_row)
 
         self.robot_status = QLabel("No robot selected")
         self.robot_status.setWordWrap(True)
-        self.robot_status.setStyleSheet("font-weight: 600;")
-        discovery_layout.addWidget(self.robot_status)
+        self.robot_status.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; border: none;")
+        robot_card.add_widget(self.robot_status)
 
         self.robot_details = QLabel("")
         self.robot_details.setWordWrap(True)
         self.robot_details.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.robot_details.setStyleSheet("color: #666666;")
-        discovery_layout.addWidget(self.robot_details)
-        layout.addWidget(discovery_group)
+        self.robot_details.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; border: none;")
+        self.robot_details.setVisible(False)
+        self.robot_details_toggle.toggled.connect(self.robot_details.setVisible)
+        robot_card.add_widget(self.robot_details)
+        layout.addWidget(robot_card)
 
-        connection_group = QGroupBox("2 · Wi-Fi / OTA")
+        connection_group = QGroupBox("Deployment Connection")
         form = QFormLayout(connection_group)
         form.setContentsMargins(10, 8, 10, 8)
         form.setVerticalSpacing(7)
         form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        connection_hint = QLabel("Used when sending the current program to the selected robot over Wi-Fi.")
+        connection_hint.setWordWrap(True)
+        connection_hint.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
+        form.addRow(connection_hint)
 
         self.ssid_edit = QLineEdit()
         self.ssid_edit.setPlaceholderText("Wi-Fi network used by the robot")
@@ -175,32 +148,49 @@ class ResponsiveRobotTab(RobotTab):
 
         self.ota_password_edit = QLineEdit()
         self.ota_password_edit.setEchoMode(QLineEdit.Password)
-        self.ota_password_edit.setPlaceholderText("Required for OTA")
-        form.addRow("OTA Password:", self.ota_password_edit)
+        self.ota_password_edit.setPlaceholderText("Robot password")
+        form.addRow("Robot Password:", self.ota_password_edit)
         layout.addWidget(connection_group)
 
-        run_group = QGroupBox("3 · Run on Robot")
-        run_layout = QVBoxLayout(run_group)
-        run_layout.setContentsMargins(10, 8, 10, 8)
-        run_layout.setSpacing(6)
+        run_card = SummaryCard("Run Current Program")
+        readiness_row = QHBoxLayout()
+        self.program_badge = StatusBadge("No program", "neutral")
+        readiness_row.addWidget(self.program_badge)
+        readiness_row.addStretch(1)
+        run_card.layout.addLayout(readiness_row)
+
         self.deploy_button = QPushButton("▶  RUN ON ROBOT")
-        self.deploy_button.setMinimumHeight(44)
+        self.deploy_button.setMinimumHeight(46)
+        self.deploy_button.setStyleSheet(theme.primary_button_style())
         self.deploy_button.setToolTip("Compile and deploy the current program to the selected online robot.")
         self.deploy_button.setEnabled(False)
         self.deploy_button.clicked.connect(self.deploy)
-        run_layout.addWidget(self.deploy_button)
+        run_card.add_widget(self.deploy_button)
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         self.progress.setVisible(False)
         self.progress.setTextVisible(False)
         self.progress.setFixedHeight(5)
-        run_layout.addWidget(self.progress)
+        run_card.add_widget(self.progress)
 
-        self.result_label = QLabel("Ready — select an online robot and compile a program to enable Run.")
+        self.result_label = QLabel("Select an online robot and load a program to enable Run.")
         self.result_label.setWordWrap(True)
-        run_layout.addWidget(self.result_label)
-        layout.addWidget(run_group)
+        self.result_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; border: none;")
+        run_card.add_widget(self.result_label)
+        layout.addWidget(run_card)
+
+        setup_card = SummaryCard("New Robot")
+        setup_hint = QLabel("First time only: connect a new robot by USB and configure its network.")
+        setup_hint.setWordWrap(True)
+        setup_hint.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; border: none;")
+        setup_card.add_widget(setup_hint)
+        self.setup_robot_button = QPushButton("＋ Setup New Robot")
+        self.setup_robot_button.setStyleSheet(theme.secondary_button_style())
+        self.setup_robot_button.clicked.connect(self.first_flash_dialog.show_start)
+        setup_card.add_widget(self.setup_robot_button)
+        layout.addWidget(setup_card)
+
         layout.addStretch(1)
         return panel
 
@@ -208,33 +198,37 @@ class ResponsiveRobotTab(RobotTab):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(5, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(6)
 
-        diagnostics_splitter = QSplitter(Qt.Vertical)
-        diagnostics_splitter.setChildrenCollapsible(False)
-        diagnostics_splitter.setHandleWidth(6)
+        heading = QLabel("Diagnostics")
+        heading.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {theme.TEXT_PRIMARY};")
+        layout.addWidget(heading)
+        hint = QLabel("Open these tools only when you need direct serial output or deployment details.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
+        layout.addWidget(hint)
 
-        serial_group = QGroupBox("USB Serial Console")
-        serial_layout = QVBoxLayout(serial_group)
-        serial_layout.setContentsMargins(10, 8, 10, 8)
-        self.serial_console = ResponsiveSerialConsoleWidget(serial_group)
+        self.diagnostics_tabs = QTabWidget()
+        self.diagnostics_tabs.setDocumentMode(True)
+
+        serial_tab = QWidget()
+        serial_layout = QVBoxLayout(serial_tab)
+        serial_layout.setContentsMargins(8, 8, 8, 8)
+        self.serial_console = ResponsiveSerialConsoleWidget(serial_tab)
         serial_layout.addWidget(self.serial_console)
-        diagnostics_splitter.addWidget(serial_group)
+        self.diagnostics_tabs.addTab(serial_tab, "Serial Console")
 
-        log_group = QGroupBox("Deployment Logs")
-        log_layout = QVBoxLayout(log_group)
-        log_layout.setContentsMargins(10, 8, 10, 8)
+        log_tab = QWidget()
+        log_layout = QVBoxLayout(log_tab)
+        log_layout.setContentsMargins(8, 8, 8, 8)
         log_layout.setSpacing(6)
-
         log_header = QHBoxLayout()
         log_header.addWidget(QLabel("PlatformIO output"))
-        log_header.addStretch()
+        log_header.addStretch(1)
         self.clear_logs_button = QPushButton("Clear")
-        self.clear_logs_button.setToolTip("Clear the deployment log view.")
         self.clear_logs_button.clicked.connect(self.clear_logs)
         log_header.addWidget(self.clear_logs_button)
         self.copy_logs_button = QPushButton("Copy")
-        self.copy_logs_button.setToolTip("Copy the complete deployment log to the clipboard.")
         self.copy_logs_button.clicked.connect(self.copy_logs)
         log_header.addWidget(self.copy_logs_button)
         log_layout.addLayout(log_header)
@@ -244,13 +238,58 @@ class ResponsiveRobotTab(RobotTab):
         self.output_label.setPlaceholderText("Deployment and PlatformIO logs will appear here...")
         self.output_label.setLineWrapMode(QPlainTextEdit.NoWrap)
         self.output_label.setFont(self._console_font())
-        self.output_label.setMinimumHeight(110)
+        self.output_label.setMinimumHeight(140)
         self.output_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         log_layout.addWidget(self.output_label, 1)
-        diagnostics_splitter.addWidget(log_group)
+        self.diagnostics_tabs.addTab(log_tab, "Deployment Log")
 
-        diagnostics_splitter.setStretchFactor(0, 3)
-        diagnostics_splitter.setStretchFactor(1, 2)
-        diagnostics_splitter.setSizes([360, 240])
-        layout.addWidget(diagnostics_splitter, 1)
+        layout.addWidget(self.diagnostics_tabs, 1)
         return panel
+
+    def _start_first_flash(self) -> None:
+        """Prepare bootstrap config implicitly, then use the existing flash path."""
+        if not self._selected_usb_port():
+            self.bootstrap_status.setText("Select a USB/COM port before flashing the robot.")
+            self.bootstrap_status.setStyleSheet(f"font-weight: 600; color: {theme.WARNING};")
+            return
+        # Never reuse a stale config if the user changed or invalidated the
+        # network fields in the guided flow.
+        self._bootstrap_path = None
+        self.generate_bootstrap()
+        if self._bootstrap_path is None:
+            return
+        super().flash_bootstrap()
+
+    def _refresh_bootstrap_flash_enabled(self):
+        """Phase 2 enables Flash once a port exists; config is generated implicitly."""
+        running = bool(self._bootstrap_flash_worker and self._bootstrap_flash_worker.isRunning())
+        self.flash_bootstrap_button.setEnabled(bool(self._selected_usb_port()) and not running)
+
+    def _render_selected_details(self) -> None:
+        super()._render_selected_details()
+        if self._selected is None:
+            self.robot_badge.set_status("No robot selected", "neutral")
+            return
+        item = self._selected
+        robot = item.robot
+        if item.online and robot.ready:
+            self.robot_badge.set_status("● Online · Ready", "success")
+        elif item.online:
+            self.robot_badge.set_status("● Online · Needs attention", "warning")
+        else:
+            self.robot_badge.set_status("○ Offline", "neutral")
+
+    def _refresh_deploy_enabled(self):
+        super()._refresh_deploy_enabled()
+        if not hasattr(self, "program_badge"):
+            return
+        code_available = bool(self._code_provider().strip())
+        if code_available:
+            self.program_badge.set_status("✓ Program loaded", "success")
+        else:
+            self.program_badge.set_status("No program", "neutral")
+
+    def discover(self):
+        if hasattr(self, "robot_badge"):
+            self.robot_badge.set_status("Searching…", "warning")
+        super().discover()
