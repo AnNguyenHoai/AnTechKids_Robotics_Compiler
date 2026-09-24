@@ -1,6 +1,16 @@
 #include "RecoveryStrategy.h"
 #include <Arduino.h>
 
+namespace {
+constexpr uint32_t kSoftSearchMs = 300;
+constexpr uint32_t kDeepSearchMs = 1200;
+constexpr uint32_t kSweepPeriodMs = 700;
+constexpr int kSoftInnerSpeed = 35;
+constexpr int kSoftOuterSpeed = 65;
+constexpr int kDeepPivotSpeed = 45;
+constexpr int kSweepPivotSpeed = 55;
+}
+
 RecoveryStrategy::RecoveryStrategy()
     : _phase(SOFT_SEARCH), _phaseStart(0), _lastDirection(DIR_UNKNOWN) {}
 
@@ -16,66 +26,55 @@ void RecoveryStrategy::setLastDirection(Direction direction) {
 }
 
 void RecoveryStrategy::update(uint8_t mask, int &left, int &right) {
-    // If line is found, exit recovery immediately
+    // If line is found, exit recovery immediately.
     if (mask != 0) {
         reset();
         left = right = 0;
         return;
     }
 
-    uint32_t now = millis();
-    uint32_t elapsed = now - _phaseStart;
-    Direction direction = _lastDirection == DIR_UNKNOWN ? DIR_LEFT : _lastDirection;
+    const uint32_t now = millis();
+    const uint32_t elapsed = now - _phaseStart;
+    const Direction direction = _lastDirection == DIR_UNKNOWN ? DIR_LEFT : _lastDirection;
 
-    // H22: recovery commands stay in the normal command domain. Calibration is
-    // applied once later by RobotAPI. Avoid low commands that can hum/stall after
-    // motor scaling.
-    constexpr int RECOVERY_BASE_SPEED = 80;
-
-    if (elapsed < 1000) {
-        // Phase 1: Gentle search - turn slowly in the last known direction
+    if (elapsed < kSoftSearchMs) {
+        // First response to a confirmed loss is a forward arc, not a pivot.
+        // This keeps momentum while steering toward the last observed side.
         _phase = SOFT_SEARCH;
         if (direction == DIR_LEFT) {
-            left = -RECOVERY_BASE_SPEED;
-            right = RECOVERY_BASE_SPEED;
+            left = kSoftInnerSpeed;
+            right = kSoftOuterSpeed;
         } else {
-            left = RECOVERY_BASE_SPEED;
-            right = -RECOVERY_BASE_SPEED;
+            left = kSoftOuterSpeed;
+            right = kSoftInnerSpeed;
         }
         return;
     }
 
-    if (elapsed < 2500) {
-        // Phase 2: Aggressive search - faster rotation in last known direction
+    if (elapsed < kDeepSearchMs) {
+        // Only pivot after the soft arc failed to reacquire the line.
         _phase = DEEP_SEARCH;
         if (direction == DIR_LEFT) {
-            left = -RECOVERY_BASE_SPEED;
-            right = RECOVERY_BASE_SPEED;
+            left = -kDeepPivotSpeed;
+            right = kDeepPivotSpeed;
         } else {
-            left = RECOVERY_BASE_SPEED;
-            right = -RECOVERY_BASE_SPEED;
-        }
-        // Add a slight forward motion to help find the line if it's just ahead
-        // but still maintain rotation
-        if (direction == DIR_LEFT) {
-            left = -RECOVERY_BASE_SPEED;
-            right = RECOVERY_BASE_SPEED;
-        } else {
-            left = RECOVERY_BASE_SPEED;
-            right = -RECOVERY_BASE_SPEED;
+            left = kDeepPivotSpeed;
+            right = -kDeepPivotSpeed;
         }
         return;
     }
 
-    // Phase 3: Sweep - alternate directions to cover more area
+    // Long loss: sweep around the last known direction with a bounded pivot.
     _phase = SWEEP;
-    bool reverse = ((elapsed - 2500) / 800) % 2;
-    Direction sweepDir = reverse ? (direction == DIR_LEFT ? DIR_RIGHT : DIR_LEFT) : direction;
+    const bool reverse = ((elapsed - kDeepSearchMs) / kSweepPeriodMs) % 2;
+    const Direction sweepDir = reverse
+        ? (direction == DIR_LEFT ? DIR_RIGHT : DIR_LEFT)
+        : direction;
     if (sweepDir == DIR_LEFT) {
-        left = -RECOVERY_BASE_SPEED;
-        right = RECOVERY_BASE_SPEED;
+        left = -kSweepPivotSpeed;
+        right = kSweepPivotSpeed;
     } else {
-        left = RECOVERY_BASE_SPEED;
-        right = -RECOVERY_BASE_SPEED;
+        left = kSweepPivotSpeed;
+        right = -kSweepPivotSpeed;
     }
 }
