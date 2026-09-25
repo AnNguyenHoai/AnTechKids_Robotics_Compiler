@@ -11,7 +11,10 @@ uint32_t g_sliceOrdinal[kSliceBufferCapacity]{};
 uint16_t g_sliceWriteIndex = 0;
 uint16_t g_sliceBufferedCount = 0;
 
-void printJson(uint32_t sliceOrdinal, const VMRunSliceResult& r)
+void printJson(uint32_t sliceOrdinal,
+               const VMRunSliceResult& r,
+               uint32_t stopLatencyUs,
+               uint32_t maxStopLatencyUs)
 {
     Serial.printf(
         "{\"type\":\"vm_rt\",\"slice\":%lu,\"duration_us\":%lu,"
@@ -42,8 +45,8 @@ void printJson(uint32_t sliceOrdinal, const VMRunSliceResult& r)
         static_cast<unsigned long>(r.lineSnapshotConsumerCount),
         static_cast<unsigned long>(r.lineSnapshotInvalidCount),
         r.lineSnapshotValid ? 1u : 0u,
-        static_cast<unsigned long>(g_snapshot.lastStopLatencyUs),
-        static_cast<unsigned long>(g_snapshot.maxStopLatencyUs));
+        static_cast<unsigned long>(stopLatencyUs),
+        static_cast<unsigned long>(maxStopLatencyUs));
 }
 #endif
 }
@@ -101,7 +104,10 @@ const VMRuntimeTelemetrySnapshot& Current()
 void PrintLatestJson()
 {
 #if VM_RESPONSIVENESS_DIAGNOSTICS
-    printJson(g_snapshot.sliceCount, g_snapshot.lastSlice);
+    printJson(g_snapshot.sliceCount,
+              g_snapshot.lastSlice,
+              g_snapshot.lastStopLatencyUs,
+              g_snapshot.maxStopLatencyUs);
 #endif
 }
 
@@ -117,7 +123,16 @@ void PrintBufferedJson()
 
     for (uint16_t offset = 0; offset < g_sliceBufferedCount; ++offset) {
         const uint16_t index = static_cast<uint16_t>((oldest + offset) % kSliceBufferCapacity);
-        printJson(g_sliceOrdinal[index], g_sliceBuffer[index]);
+        const bool lastRecord = (offset + 1u) == g_sliceBufferedCount;
+
+        // A control-plane stop is observed after the last active VM slice. Do
+        // not stamp that one observation onto every buffered record or the
+        // qualification parser would multiply the stop sample count. Attach it
+        // once to the final emitted record; max remains campaign context.
+        printJson(g_sliceOrdinal[index],
+                  g_sliceBuffer[index],
+                  lastRecord ? g_snapshot.lastStopLatencyUs : 0u,
+                  g_snapshot.maxStopLatencyUs);
     }
 #endif
 }
