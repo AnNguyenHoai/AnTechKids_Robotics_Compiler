@@ -41,7 +41,8 @@ def max_metric(reports: list[dict], key: str) -> int | None:
     return max(values) if values else None
 
 
-def build_campaign(reports: list[dict]) -> dict:
+def build_campaign(reports: list[dict], external_evidence: dict | None = None) -> dict:
+    external_evidence = external_evidence or {}
     physical = [r for r in reports if r.get("physical_robot") is True and r.get("qualification_status") == "PHYSICAL_EVIDENCE_CAPTURED"]
     scenarios: dict[str, list[dict]] = {}
     for report in physical:
@@ -61,10 +62,12 @@ def build_campaign(reports: list[dict]) -> dict:
         reverse=True,
     )[:10]
 
+    external_reviewed = external_evidence.get("reviewed") is True
+    external_max = external_evidence.get("sensor_to_decision_to_motor_us_max") if external_reviewed else None
     proposal = {
         "slice_duration_us_max": max_metric(physical, "slice_duration_us"),
         "work_unit_duration_us_max": max_metric(physical, "work_unit_duration_us"),
-        "sensor_to_decision_to_motor_us_max": None,
+        "sensor_to_decision_to_motor_us_max": int(external_max) if external_max is not None else None,
         "stop_abort_latency_us_max": max_metric(stop_reports, "stop_latency_us"),
         "line_snapshot_age_us_max": max_metric(physical, "line_snapshot_age_us"),
     }
@@ -78,8 +81,8 @@ def build_campaign(reports: list[dict]) -> dict:
         blockers.append("campaign must use exactly one firmware commit")
     if len(slice_budgets) != 1:
         blockers.append("campaign must use exactly one slice budget")
-    if proposal["sensor_to_decision_to_motor_us_max"] is None:
-        blockers.append("external sensor-to-decision-to-motor evidence must be reviewed manually")
+    if not external_reviewed or proposal["sensor_to_decision_to_motor_us_max"] is None:
+        blockers.append("external sensor-to-decision-to-motor evidence must be reviewed and measured")
 
     return {
         "schema_version": 1,
@@ -90,6 +93,7 @@ def build_campaign(reports: list[dict]) -> dict:
         "firmware_commits": firmware_commits,
         "slice_budgets": slice_budgets,
         "stop_latency_observations": stop_observations,
+        "external_evidence": external_evidence,
         "slowest_work_units": slowest,
         "measured_threshold_proposal": proposal,
         "blockers": blockers,
@@ -101,10 +105,12 @@ def build_campaign(reports: list[dict]) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--reports-root", type=Path, required=True)
+    parser.add_argument("--external-evidence", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    campaign = build_campaign(load_reports(args.reports_root))
+    external = json.loads(args.external_evidence.read_text(encoding="utf-8")) if args.external_evidence else None
+    campaign = build_campaign(load_reports(args.reports_root), external)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(campaign, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"VM-RT physical campaign: {campaign['campaign_status']}")
