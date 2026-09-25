@@ -19,8 +19,23 @@ VMRunSliceResult makeResult(VMRunSliceStopReason reason,
 class LineSnapshotCycleGuard
 {
 public:
-    LineSnapshotCycleGuard() { LineSensorSnapshot::BeginCycle(); }
-    ~LineSnapshotCycleGuard() { LineSensorSnapshot::EndCycle(); }
+    LineSnapshotCycleGuard()
+        : mOwnsCycle(!LineSensorSnapshot::IsCycleActive())
+    {
+        if (mOwnsCycle) {
+            LineSensorSnapshot::BeginCycle();
+        }
+    }
+
+    ~LineSnapshotCycleGuard()
+    {
+        if (mOwnsCycle) {
+            LineSensorSnapshot::EndCycle();
+        }
+    }
+
+private:
+    bool mOwnsCycle;
 };
 }
 
@@ -86,8 +101,9 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
                                    mContext.mProgramCounter));
     }
 
-    // One RunSlice invocation is one VM/control-cycle snapshot scope. Sampling
-    // itself is lazy: if no line consumer executes, no line hardware is read.
+    // Production firmware can own a broader line-snapshot cycle spanning
+    // SensorManager -> VM -> Diagnostics. Standalone RunSlice callers still
+    // receive the historical one-slice snapshot lifecycle through this guard.
     LineSnapshotCycleGuard lineSnapshotCycle;
 
     while (workUnits < budget.maxWorkUnits) {
