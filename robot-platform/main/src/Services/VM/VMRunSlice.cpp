@@ -1,4 +1,5 @@
 #include "VM.h"
+#include "../../Sensor/LineSensorSnapshot.h"
 
 namespace {
 VMRunSliceResult makeResult(VMRunSliceStopReason reason,
@@ -13,6 +14,13 @@ VMRunSliceResult makeResult(VMRunSliceStopReason reason,
     result.endProgramCounter = endPc;
     return result;
 }
+
+class LineSnapshotCycleGuard
+{
+public:
+    LineSnapshotCycleGuard() { LineSensorSnapshot::BeginCycle(); }
+    ~LineSnapshotCycleGuard() { LineSensorSnapshot::EndCycle(); }
+};
 }
 
 VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
@@ -43,6 +51,10 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
                           startPc,
                           mContext.mProgramCounter);
     }
+
+    // One RunSlice invocation is one VM/control-cycle snapshot scope. Sampling
+    // itself is lazy: if no line consumer executes, no line hardware is read.
+    LineSnapshotCycleGuard lineSnapshotCycle;
 
     while (workUnits < budget.maxWorkUnits) {
         const uint16_t executedPc = mContext.mProgramCounter;
