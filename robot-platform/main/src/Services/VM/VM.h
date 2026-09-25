@@ -13,6 +13,33 @@
 #include "VMErrorContract.h"
 
 /******************************************************************************
+ * Cooperative slice execution
+ ******************************************************************************/
+
+enum class VMRunSliceStopReason : uint8_t
+{
+    BudgetExhausted = 0,
+    Yielded,
+    Waiting,
+    Halted,
+    Stopped,
+    Fault,
+};
+
+struct VMRunSliceBudget
+{
+    uint16_t maxWorkUnits;
+};
+
+struct VMRunSliceResult
+{
+    VMRunSliceStopReason reason;
+    uint16_t workUnits;
+    uint16_t startProgramCounter;
+    uint16_t endProgramCounter;
+};
+
+/******************************************************************************
  * Robot VM
  ******************************************************************************/
 
@@ -43,6 +70,20 @@ public:
      * network and control-plane work between ticks.
      */
     void Step();
+
+    /**
+     * Execute a deterministic, bounded amount of VM work.
+     *
+     * One work unit is at most one legacy Step() invocation. RunSlice never
+     * changes Step() semantics and stops early when the VM yields/waits,
+     * halts, is stopped, or faults.
+     *
+     * Important: this is a cooperative boundary, not preemption. A single
+     * synchronous RobotAPI call executed by Step() can still consume more
+     * wall-clock time than the slice target until later VM-RT work converts
+     * or bounds that operation.
+     */
+    VMRunSliceResult RunSlice(const VMRunSliceBudget& budget);
 
     /**
      * Check whether VM is still running.
