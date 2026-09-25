@@ -4,7 +4,7 @@
 This deterministic host gate freezes legacy Step()/dispatch semantics and checks
 that production firmware schedules bounded RunSlice work without starving the
 platform control plane. It intentionally does not claim ESP32 wall-clock timing;
-that evidence belongs to VM-RT H/J.
+physical evidence remains the qualification boundary.
 """
 from __future__ import annotations
 
@@ -15,7 +15,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tests" / "vm_responsiveness" / "fixtures" / "step_baseline.json"
 VM_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VM.cpp"
+VM_RUN_SLICE_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMRunSlice.cpp"
 VM_H = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VM.h"
+TELEMETRY_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMRuntimeTelemetry.cpp"
 CTX_H = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMContext.h"
 OPCODE_H = ROOT / "robot-platform" / "main" / "include" / "generated" / "opcode.h"
 FIRMWARE_MAIN = ROOT / "robot-platform" / "main" / "main.ino"
@@ -38,11 +40,7 @@ def opcode_map(text: str) -> dict[str, int]:
 
 
 def simulate_bounded_firmware_loop(total_work: int, budget: int, stop_at_cycle: int | None = None) -> tuple[int, int, int]:
-    """Tiny scheduler model for the VM-RT G integration invariants.
-
-    Platform service advances once before each bounded VM slice. A stop request
-    observed at the service point prevents any further VM work that cycle.
-    """
+    """Tiny scheduler model for the work-ceiling integration invariant."""
     remaining = total_work
     cycles = 0
     platform_service_ticks = 0
@@ -63,10 +61,26 @@ def simulate_bounded_firmware_loop(total_work: int, budget: int, stop_at_cycle: 
     return cycles, platform_service_ticks, vm_work
 
 
+def simulate_dual_budget(work_durations_us: list[int], max_work: int, max_us: int) -> int:
+    """Model the between-Step wall-clock guard used by RunSlice."""
+    elapsed = 0
+    consumed = 0
+    for duration in work_durations_us:
+        if consumed >= max_work:
+            break
+        elapsed += duration
+        consumed += 1
+        if max_us and elapsed >= max_us:
+            break
+    return consumed
+
+
 def main() -> int:
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     vm = VM_CPP.read_text(encoding="utf-8")
+    vm_slice = VM_RUN_SLICE_CPP.read_text(encoding="utf-8")
     vm_h = VM_H.read_text(encoding="utf-8")
+    telemetry = TELEMETRY_CPP.read_text(encoding="utf-8")
     ctx = CTX_H.read_text(encoding="utf-8")
     opcodes = opcode_map(OPCODE_H.read_text(encoding="utf-8"))
     firmware = FIRMWARE_MAIN.read_text(encoding="utf-8")
@@ -131,10 +145,19 @@ def main() -> int:
     check("normal program-end uses centralized pending cleanup", "CancelPendingOperation(true);" in step_body)
     check("fault cleanup uses centralized pending cleanup", "Stop on a real VM error" in step_body and step_body.count("CancelPendingOperation(true);") >= 2)
 
+    # Dual scheduling budget is an additive compatible extension: old one-field
+    # aggregate callers still disable the time ceiling, production opts into both.
+    check("RunSlice budget exposes optional wall-clock ceiling", "uint32_t maxDurationUs = 0;" in vm_h)
+    check("time-budget stop reason is appended", "TimeBudgetExhausted" in vm_h)
+    check("RunSlice enforces wall-clock ceiling between Step calls",
+          "budget.maxDurationUs != 0" in vm_slice and "VMRunSliceStopReason::TimeBudgetExhausted" in vm_slice)
+
     loop = firmware[firmware.index("void loop()") :]
     check("production loop uses bounded RunSlice", "vm.RunSlice(budget);" in loop)
     check("production loop no longer invokes VM Step directly", "vm.Step();" not in loop)
-    check("firmware defines conservative VM work-unit budget", "VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 4" in firmware)
+    check("firmware allows reactive burst beyond four opcodes", "VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 16" in firmware)
+    check("firmware enables short wall-clock slice ceiling", "VM_MAX_SLICE_DURATION_US = 2000" in firmware)
+    check("production budget passes both ceilings", "VM_MAX_SLICE_DURATION_US" in loop[loop.index("VMRunSliceBudget budget"):loop.index("vm.RunSlice(budget);")])
     check("serial service runs before VM slice", loop.index("SerialCommandHandler::handle();") < loop.index("vm.RunSlice(budget);"))
     check("network service runs before VM slice", loop.index("RobotNetworkService::update();") < loop.index("vm.RunSlice(budget);"))
     check("OTA gate runs before VM slice", loop.index("RobotNetworkService::isUpdateInProgress()") < loop.index("vm.RunSlice(budget);"))
@@ -142,15 +165,32 @@ def main() -> int:
     check("motion/output service runs before VM slice", loop.index("RobotAPI::updateMotion();") < loop.index("vm.RunSlice(budget);"))
     check("loop diagnostics records after VM scheduling", loop.rindex("DiagnosticsManager::instance().recordLoopTime(elapsed);") > loop.index("vm.RunSlice(budget);"))
     check("VM completion does not enter nested firmware halt loop", "while (1)" not in loop)
-    check("VM fault stops robot outputs", "RobotAPI::Stop();" in loop[loop.index("if (err != 0)") : loop.index("} else {", loop.index("if (err != 0)"))])
 
-    long_cycles, long_services, long_work = simulate_bounded_firmware_loop(100, 4)
-    check("long program yields across repeated firmware cycles", long_cycles == 25 and long_work == 100)
+    # Qualification telemetry must not transmit UART records from the hot path.
+    run_slice_block = loop[loop.index("if (runVmSlice)"):loop.index("if (vm.IsRunning())")]
+    check("hot VM path records telemetry in RAM", "VMRuntimeTelemetry::RecordSlice(sliceResult);" in run_slice_block)
+    check("hot VM path does not print telemetry", "PrintLatestJson" not in run_slice_block and "PrintBufferedJson" not in run_slice_block)
+    terminal_block = loop[loop.index("else if (!g_vmTerminalReported)"):]
+    check("terminal path stops actuator before telemetry dump",
+          terminal_block.index("RobotAPI::Stop();") < terminal_block.index("VMRuntimeTelemetry::PrintBufferedJson();"))
+    check("telemetry implementation uses RAM ring buffer", "g_sliceBuffer" in telemetry and "kSliceBufferCapacity" in telemetry)
+
+    # A representative SetMoveSpeed + GetTraceState + if + Stop chain can need
+    # about nine cheap VM operations on its first iteration. It should fit one
+    # production slice when execution is cheap, instead of being split at four.
+    reactive_work = [50] * 9
+    check("representative reactive chain fits one slice under dual budget",
+          simulate_dual_budget(reactive_work, 16, 2000) == 9)
+    check("time ceiling still bounds a slow burst",
+          simulate_dual_budget([500] * 16, 16, 2000) == 4)
+
+    long_cycles, long_services, long_work = simulate_bounded_firmware_loop(100, 16)
+    check("long program yields across repeated firmware cycles", long_cycles == 7 and long_work == 100)
     check("platform service progresses once per long-program cycle", long_services == long_cycles and long_services > 1)
 
-    stop_cycles, stop_services, stop_work = simulate_bounded_firmware_loop(100, 4, stop_at_cycle=3)
+    stop_cycles, stop_services, stop_work = simulate_bounded_firmware_loop(100, 16, stop_at_cycle=3)
     check("stop is observed at bounded pre-slice service point", stop_cycles == 3 and stop_services == 3)
-    check("stop prevents additional VM work in observed cycle", stop_work == 8)
+    check("stop prevents additional VM work in observed cycle", stop_work == 32)
 
     check("C2 contract records original blocking reference", "blocking" in c2.lower() and "LineMillisecond" in c2)
     check("runtime audit records cooperative current baseline", "LineMillisecond" in audit and "COOPERATIVE" in audit)
@@ -166,7 +206,7 @@ def main() -> int:
     )
     check("compatibility matrix requires H35 for opcode changes", "opcode number changes" in matrix)
 
-    print("VM responsiveness compatibility + firmware main-loop integration: PASS")
+    print("VM responsiveness compatibility + dual-budget firmware integration: PASS")
     return 0
 
 
