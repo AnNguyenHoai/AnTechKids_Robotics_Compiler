@@ -24,6 +24,7 @@ GATES = [
     ROOT / "tests" / "vm_responsiveness" / "run_compatibility_replay.py",
     ROOT / "tests" / "vm_responsiveness" / "run_physical_qualification_contract.py",
     ROOT / "tests" / "vm_responsiveness" / "run_physical_campaign_contract.py",
+    ROOT / "tests" / "vm_responsiveness" / "run_control_latency_corrective_contract.py",
     ROOT / "tests" / "vm_responsiveness" / "run_vm_rt_closure_contract.py",
 ]
 
