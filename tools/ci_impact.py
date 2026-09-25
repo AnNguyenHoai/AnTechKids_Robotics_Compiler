@@ -33,6 +33,10 @@ VM_FILES = {
     "docs/C2_VM_DISPATCH_CONTRACT.md",
     "docs/ROBOT_EXECUTION_MODEL.md",
     "robot-platform/main/include/generated/opcode.h",
+    # RobotAPI surfaces introduced specifically for cooperative VM operations.
+    # Keep this list explicit rather than classifying all RobotAPI changes as VM.
+    "robot-platform/main/src/Services/Robot/RobotAPI.h",
+    "robot-platform/main/src/Services/Robot/RobotAPICooperative.cpp",
 }
 
 LINE_PREFIXES = (
@@ -199,6 +203,16 @@ def self_test() -> None:
     assert vm["contracts"] is True
     assert vm["full"] is False
     assert vm["release"] is False
+
+    cooperative_robot_api = classify(
+        [
+            "robot-platform/main/src/Services/Robot/RobotAPI.h",
+            "robot-platform/main/src/Services/Robot/RobotAPICooperative.cpp",
+            "tests/vm_responsiveness/run_run_slice_core.py",
+        ]
+    )
+    assert cooperative_robot_api["vm"] is True
+    assert cooperative_robot_api["full"] is False
 
     docs = classify(["docs/README_ONLY.md"])
     assert docs["contracts"] is True
