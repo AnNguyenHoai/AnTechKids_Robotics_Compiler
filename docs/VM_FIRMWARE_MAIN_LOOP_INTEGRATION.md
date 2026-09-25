@@ -16,14 +16,15 @@ The normal `loop()` order is intentionally:
 1. service serial/control-plane input;
 2. service network/discovery/OTA;
 3. if OTA is active, stop motors and return without student-code execution;
-4. refresh platform sensor caches;
+4. begin one firmware-owned line-sensor snapshot cycle and refresh platform sensor caches;
 5. update IMU heading and motion/output service;
 6. update the development console;
-7. run behavior scheduler **or** one bounded VM slice;
-8. update diagnostics from cached sensor state without re-sampling line hardware;
-9. record firmware-loop diagnostics and return to Arduino runtime.
+7. run behavior scheduler **or** one bounded VM slice against that same line snapshot;
+8. update diagnostics from the same cached line state without re-sampling hardware;
+9. end the shared line-sensor snapshot cycle;
+10. record firmware-loop diagnostics and return to Arduino runtime.
 
-`RunSlice()` owns the line-sensor snapshot lifecycle introduced by #308. It begins one lazy snapshot cycle, reuses one coherent L/C/R sample set for all line consumers in that slice, and closes the snapshot on every return path through RAII.
+In production, the firmware loop owns the line-sensor snapshot lifecycle introduced by #308. The first line-sensor refresh samples one coherent L/C/R set, then VM getters, line-follow logic and diagnostics reuse that same set until the firmware cycle closes. `RunSlice()` has an ownership-aware fallback guard: when called standalone outside an active firmware snapshot cycle, it still begins and ends its own lazy snapshot scope for compatibility and tests. When an outer firmware cycle is active, it must never restart or resample that snapshot.
 
 ## Scheduler budget evolution
 
@@ -59,9 +60,21 @@ The qualification build previously called `Serial.printf()` with a large JSON re
 
 `RecordSlice()` now stores qualification records in a fixed RAM ring buffer. The hot VM path never prints JSON. After VM motion has stopped, `PrintBufferedJson()` emits the stored JSONL evidence. This preserves the existing evidence schema while preventing UART transmission from becoming part of the active control loop.
 
-## Line-sensor diagnostics ownership
+## Line-sensor sampling ownership
 
-`SensorManager`/the VM snapshot own physical sensor sampling. `DiagnosticsManager` now observes the latest cached TCRT5000 state and no longer calls `lineSensor->update()` itself. Diagnostics must not create a second physical sample at a different instant from the decision being diagnosed.
+Physical line sampling has one owner per production firmware cycle:
+
+```text
+BeginCycle
+  -> SensorManager first line update samples L/C/R once
+  -> VM / line follower reuse the same snapshot
+  -> Diagnostics reads cached state only
+EndCycle
+```
+
+`DiagnosticsManager` no longer calls `lineSensor->update()` itself. `RunSlice()` also does not begin a new cycle when the firmware already owns one. This removes the prior duplicate pattern where platform refresh sampled L/C/R and VM snapshot setup could sample a second L/C/R set before the same logical decision completed.
+
+Standalone `RunSlice()` callers retain a self-owned snapshot lifecycle, so this correction does not require callers outside the production firmware loop to create a snapshot explicitly.
 
 ## Stop, abort and OTA responsiveness
 
@@ -91,13 +104,15 @@ Unchanged:
 - legacy `Step()` semantics and public API;
 - compiler generation and firmware compatibility generation;
 - cooperative pending-operation semantics;
-- #308 line-snapshot ownership.
+- #308 same-cycle line-snapshot semantics.
 
 Compatible extensions/corrections:
 
 - `VMRunSliceBudget` gains optional `maxDurationUs` with zero meaning disabled;
 - `VMRunSliceStopReason::TimeBudgetExhausted` is appended after existing reason values;
 - production scheduler opts into dual work/time bounds;
+- production snapshot ownership expands from slice-local to firmware-cycle scope so platform refresh, VM and diagnostics share one physical sample;
+- standalone `RunSlice()` retains its own fallback snapshot scope;
 - qualification telemetry moves from hot-path UART streaming to post-run RAM-buffer dump;
 - line-follow loss confirmation is based on elapsed time rather than scheduler-dependent sample count, with responsive P-only steering retained to avoid derivative jitter.
 
@@ -107,9 +122,9 @@ Compatible extensions/corrections:
 - Reactive control chain: host regression models a representative nine-work-unit sensor/branch/stop chain and requires it to fit one production slice when work is cheap.
 - Platform responsibilities progress: serial/network/sensors/motion execute before VM scheduling every cycle.
 - Stop/abort bounded observation: control-plane service precedes each slice; physical stop distance remains a qualification measurement rather than a host-test claim.
-- Sensor lifecycle contract: one `RunSlice` remains one lazy line-snapshot cycle from #308; diagnostics no longer re-sample the line inputs.
+- Sensor lifecycle contract: one production firmware cycle has one shared L/C/R snapshot across platform refresh, VM/control consumers and diagnostics; standalone `RunSlice()` provides a compatible self-owned fallback scope.
 - Observer-safe instrumentation: hot VM path records RAM telemetry only; JSONL is emitted after motion has stopped.
-- Integration regression: source-order checks, dual-budget model, line temporal-response checks and ESP32 compilation remain required before physical retest.
+- Integration regression: source-order checks, dual-budget model, single-snapshot ownership, line temporal-response checks and ESP32 compilation remain required before physical retest.
 
 ## Physical qualification boundary
 
