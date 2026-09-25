@@ -2,8 +2,8 @@
 """Reusable source-contract guard for VM responsiveness CI.
 
 The guard is intentionally deterministic and host-only. It checks the scheduler,
-pending-operation, bounded indivisible work, line-snapshot and compatibility
-boundaries that must fail closed when a regression is introduced.
+pending-operation, bounded indivisible work, deadline ownership, line-snapshot
+and compatibility boundaries that must fail closed when a regression is introduced.
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class Sources:
     vm_h: str
     vm_cpp: str
+    vm_context_h: str
     run_slice_cpp: str
     snapshot_cpp: str
     canonical_isa: str
@@ -32,6 +33,7 @@ def load_sources(root: Path = ROOT) -> Sources:
     return Sources(
         vm_h=read("robot-platform/main/src/Services/VM/VM.h"),
         vm_cpp=read("robot-platform/main/src/Services/VM/VM.cpp"),
+        vm_context_h=read("robot-platform/main/src/Services/VM/VMContext.h"),
         run_slice_cpp=read("robot-platform/main/src/Services/VM/VMRunSlice.cpp"),
         snapshot_cpp=read("robot-platform/main/src/Sensor/LineSensorSnapshot.cpp"),
         canonical_isa=read("packages/robot-isa/canonical_isa.json"),
@@ -75,11 +77,45 @@ def validate(s: Sources) -> list[str]:
         if "VMPendingOperation::Wait" not in wait_body:
             errors.append("Wait no longer uses cooperative pending state")
         if wait_body.count("mContext.mProgramCounter++;") != 2:
-            # One increment is the non-positive fast path; one is completion.
             errors.append("Wait PC advance contract changed or double-advanced")
         completion = wait_body.find("mContext.ClearPendingOperation();")
         if completion < 0 or wait_body.find("mContext.mProgramCounter++;", completion) < 0:
             errors.append("Wait completion must clear pending state before PC advance")
+
+    deadline_start = s.vm_context_h.find("bool IsPendingDeadlineReached")
+    deadline_end = s.vm_context_h.find("public:", deadline_start)
+    if deadline_start < 0 or deadline_end < 0:
+        errors.append("pending deadline helper boundaries unavailable")
+    else:
+        deadline_body = s.vm_context_h[deadline_start:deadline_end]
+        if "mPendingOperation.IsPending()" not in deadline_body:
+            errors.append("deadline helper must require live pending state")
+        if "mPendingOperation.IsOwnedBy(mProgramCounter)" not in deadline_body:
+            errors.append("deadline helper must enforce current-PC ownership")
+        if "VMPendingOperation::Wait" not in deadline_body:
+            errors.append("deadline helper must support Wait")
+        if "VMPendingOperation::Mp3Play" not in deadline_body:
+            errors.append("deadline helper must support Mp3Play")
+        if "static_cast<int32_t>(nowMs - mPendingDeadlineMs) >= 0" not in deadline_body:
+            errors.append("deadline helper must keep wrap-safe signed subtraction")
+
+    mp3_start = s.vm_cpp.find("case Opcode::SetMp3Play:")
+    mp3_end = s.vm_cpp.find("case Opcode::GetTraceValue:", mp3_start)
+    if mp3_start < 0 or mp3_end < 0:
+        errors.append("SetMp3Play opcode boundaries unavailable")
+    else:
+        mp3_body = s.vm_cpp[mp3_start:mp3_end]
+        if "VMPendingOperation::Mp3Play" not in mp3_body:
+            errors.append("Mp3Play must use cooperative pending state")
+        if "mContext.IsPendingDeadlineReached(millis())" not in mp3_body:
+            errors.append("Mp3Play must complete through shared deadline helper")
+        if "RobotAPI::EndMp3PlayCooperative();" not in mp3_body:
+            errors.append("Mp3Play completion must finalize cooperative output")
+        completion = mp3_body.find("RobotAPI::EndMp3PlayCooperative();")
+        clear = mp3_body.find("mContext.ClearPendingOperation();", completion)
+        advance = mp3_body.find("mContext.mProgramCounter++;", clear)
+        if completion < 0 or clear < 0 or advance < 0:
+            errors.append("Mp3Play completion must finalize, clear pending, then advance PC")
 
     pow_start = s.vm_cpp.find("case Opcode::Pow:")
     pow_end = s.vm_cpp.find("case Opcode::Neg:", pow_start)
