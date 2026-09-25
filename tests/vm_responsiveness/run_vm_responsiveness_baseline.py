@@ -92,7 +92,6 @@ def main() -> int:
                 opcodes.get(insn["opcode"]) == insn["opcode_value"],
             )
 
-    # Direct Step regression boundary: one dispatch invocation per Step() call.
     check("VM exposes legacy Step", "void Step();" in vm_h)
     step_start = vm.index("void VM::Step()")
     step_end = vm.index("bool VM::ContinuePendingLineOperation()", step_start)
@@ -100,7 +99,6 @@ def main() -> int:
     check("Step dispatches current instruction exactly once", step_body.count("ExecuteInstruction(instruction);") == 1)
     check("Step itself has no unbounded instruction loop", "while (" not in step_body and "for (" not in step_body)
 
-    # Wait must retain INIT -> PENDING -> COMPLETE PC semantics.
     wait_start = vm.index("case Opcode::Wait:")
     wait_end = vm.index("case Opcode::CompareEQ:", wait_start)
     wait = vm[wait_start:wait_end]
@@ -108,7 +106,6 @@ def main() -> int:
     check("Wait does not use blocking delay", "delay(" not in wait)
     check("Wait advances PC on immediate/non-positive or completion paths", wait.count("mProgramCounter++") == 2)
 
-    # Cooperative C2 line operations must remain pending/resume dispatches.
     for opcode, starter in {
         "LineIntersectionStop": "StartIntersectionStop",
         "LineMillisecond": "StartMillisecond",
@@ -123,11 +120,17 @@ def main() -> int:
         check(f"{opcode} records Line pending state", "VMPendingOperation::Line" in block)
 
     check("VMContext has explicit pending operation state", "mPendingOperation" in ctx and "mPendingDeadlineMs" in ctx)
-    check("Reset cancels cooperative line state", "CooperativeLineOperation::Cancel(true);" in vm[vm.index("void VM::Reset()"):vm.index("bool VM::LoadProgram")])
-    check("fault cleanup cancels cooperative line state", "Stop on a real VM error" in step_body and "CooperativeLineOperation::Cancel(true);" in step_body)
+    cancel_start = vm.index("void VM::CancelPendingOperation")
+    cancel_end = vm.index("void VM::Reset()", cancel_start)
+    cancel_body = vm[cancel_start:cancel_end]
+    check("centralized cleanup cancels cooperative line state", "CooperativeLineOperation::Cancel(stopLineMotors);" in cancel_body)
+    check("centralized cleanup finalizes pending MP3", "RobotAPI::EndMp3PlayCooperative();" in cancel_body)
+    check("centralized cleanup clears pending ownership", "mContext.ClearPendingOperation();" in cancel_body)
+    reset_body = vm[vm.index("void VM::Reset()"):vm.index("bool VM::LoadProgram")]
+    check("Reset uses centralized pending cleanup", "CancelPendingOperation(true);" in reset_body)
+    check("normal program-end uses centralized pending cleanup", "CancelPendingOperation(true);" in step_body)
+    check("fault cleanup uses centralized pending cleanup", "Stop on a real VM error" in step_body and step_body.count("CancelPendingOperation(true);") >= 2)
 
-    # VM-RT G production integration: the firmware loop, not ad-hoc Step calls,
-    # is the scheduling owner around RunSlice.
     loop = firmware[firmware.index("void loop()") :]
     check("production loop uses bounded RunSlice", "vm.RunSlice(budget);" in loop)
     check("production loop no longer invokes VM Step directly", "vm.Step();" not in loop)
@@ -149,8 +152,6 @@ def main() -> int:
     check("stop is observed at bounded pre-slice service point", stop_cycles == 3 and stop_services == 3)
     check("stop prevents additional VM work in observed cycle", stop_work == 8)
 
-    # C2 traceability: its historical blocking semantics remain recorded, while
-    # the newer audit/matrix explicitly define the cooperative scheduling posture.
     check("C2 contract records original blocking reference", "blocking" in c2.lower() and "LineMillisecond" in c2)
     check("runtime audit records cooperative current baseline", "LineMillisecond" in audit and "COOPERATIVE" in audit)
     check("compatibility matrix protects Step semantics", "`Step()` semantics | unchanged" in matrix)
