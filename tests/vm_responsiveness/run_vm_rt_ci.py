@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dedicated host CI runner for the VM responsiveness initiative (#311/#312/#313/#325/#328/#329/#331)."""
+"""Dedicated host CI runner for the VM responsiveness initiative (#311/#312/#313/#325/#328/#329/#331/#338)."""
 from __future__ import annotations
 
 import os
@@ -17,6 +17,7 @@ GATES = [
     ROOT / "tests" / "vm_responsiveness" / "run_run_slice_core.py",
     ROOT / "tests" / "vm_responsiveness" / "vm_rt_contract_guard.py",
     ROOT / "tests" / "vm_responsiveness" / "run_vm_rt_negative.py",
+    ROOT / "tests" / "vm_responsiveness" / "run_blocking_api_boundary.py",
     ROOT / "tests" / "vm_responsiveness" / "run_pow_bounded_contract.py",
     ROOT / "tests" / "vm_responsiveness" / "run_pending_deadline_contract.py",
     ROOT / "tests" / "vm_responsiveness" / "run_qualification_profile_contract.py",
