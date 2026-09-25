@@ -30,8 +30,10 @@ VM_FILES = {
     "docs/VM_RESPONSIVENESS_COMPATIBILITY_MATRIX.md",
     "docs/VM_COOPERATIVE_EXECUTION_SPEC.md",
     "docs/VM_RUNTIME_BLOCKING_AUDIT.md",
+    "docs/VM_FIRMWARE_MAIN_LOOP_INTEGRATION.md",
     "docs/C2_VM_DISPATCH_CONTRACT.md",
     "docs/ROBOT_EXECUTION_MODEL.md",
+    "robot-platform/main/main.ino",
     "robot-platform/main/include/generated/opcode.h",
     "robot-platform/main/src/Services/Robot/RobotAPI.h",
     "robot-platform/main/src/Services/Robot/RobotAPICooperative.cpp",
@@ -201,6 +203,13 @@ def self_test() -> None:
     ])
     assert vm["vm"] is True and vm["contracts"] is True
     assert vm["full"] is False and vm["release"] is False
+
+    firmware_loop = classify([
+        "robot-platform/main/main.ino",
+        "docs/VM_FIRMWARE_MAIN_LOOP_INTEGRATION.md",
+    ])
+    assert firmware_loop["vm"] is True
+    assert firmware_loop["full"] is False
 
     cooperative_robot_api = classify([
         "robot-platform/main/src/Services/Robot/RobotAPI.h",
