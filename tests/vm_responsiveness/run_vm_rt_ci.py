@@ -9,15 +9,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
+# Cross-domain compatibility gates (compiler, line-follow and H35) remain
+# independent CI steps. This runner owns only the VM-responsiveness contract
+# family so it can also be used locally without duplicating the whole suite.
 GATES = [
     ROOT / "tests" / "vm_responsiveness" / "run_vm_responsiveness_baseline.py",
     ROOT / "tests" / "vm_responsiveness" / "run_run_slice_core.py",
     ROOT / "tests" / "vm_responsiveness" / "vm_rt_contract_guard.py",
     ROOT / "tests" / "vm_responsiveness" / "run_vm_rt_negative.py",
     ROOT / "tests" / "vm_responsiveness" / "run_compatibility_replay.py",
-    ROOT / "robot-compiler" / "tests" / "run_tests.py",
-    ROOT / "tests" / "line_follow_stability" / "run_line_follow_stability.py",
-    ROOT / "tests" / "h35_compatibility" / "run_h35_compatibility.py",
 ]
 
 
@@ -44,7 +44,7 @@ def main() -> int:
             return result.returncode or 1
         print(f"PASS: {rel}")
 
-    print("\nVM-RT HOST CI: ALL REQUIRED GATES PASSED")
+    print("\nVM-RT HOST CI: ALL RESPONSIVENESS GATES PASSED")
     return 0
 
 
