@@ -135,6 +135,12 @@ private:
      */
     bool ContinuePendingLineOperation();
 
+    /**
+     * Cancel active cooperative work without treating cancellation as logical
+     * instruction completion. Used by stop/reset/fault cleanup paths.
+     */
+    void CancelPendingOperation(bool stopLineMotors);
+
 private:
 
     /**

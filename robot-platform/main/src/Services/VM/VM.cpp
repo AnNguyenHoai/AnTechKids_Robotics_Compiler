@@ -11,17 +11,23 @@
 #define VM_TRACE_ENABLED 0
 #endif
 
-namespace {
-bool deadlineReached(uint32_t now, uint32_t deadline)
-{
-    return static_cast<int32_t>(now - deadline) >= 0;
-}
-}
-
 VM::VM() : mProgram(nullptr) {}
 
+void VM::CancelPendingOperation(bool stopLineMotors)
+{
+    // Preserve the existing fail-safe line cleanup even if the pending marker
+    // was already cleared by a malformed/legacy path.
+    CooperativeLineOperation::Cancel(stopLineMotors);
+
+    if (mContext.mPendingOperation == VMPendingOperation::Mp3Play) {
+        RobotAPI::EndMp3PlayCooperative();
+    }
+
+    mContext.ClearPendingOperation();
+}
+
 void VM::Reset() {
-    CooperativeLineOperation::Cancel(true);
+    CancelPendingOperation(true);
     mContext.Reset();
 }
 
@@ -62,15 +68,13 @@ const char* VM::GetErrorMessage() const
 // ---- DIAGNOSTIC: manual control ----
 void VM::SetRunning(bool running) {
     if (!running) {
-        CooperativeLineOperation::Cancel(true);
-        mContext.ClearPendingOperation();
+        CancelPendingOperation(true);
     }
     mContext.mRunning = running;
 }
 
 void VM::Start() {
-    CooperativeLineOperation::Cancel(true);
-    mContext.ClearPendingOperation();
+    CancelPendingOperation(true);
     mContext.mRunning = true;
     mContext.mProgramCounter = 0;
     mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
@@ -86,8 +90,7 @@ void VM::Step()
     // operation that might have been left active by a malformed program.
     if (mContext.mProgramCounter >= mProgram->mInstructionCount)
     {
-        CooperativeLineOperation::Cancel(true);
-        mContext.ClearPendingOperation();
+        CancelPendingOperation(true);
         mContext.mRunning = false;
         mContext.mErrorCode = ToErrorCode(VMErrorCode::None);
         return;
@@ -103,8 +106,7 @@ void VM::Step()
 
     // Stop on a real VM error and release any pending cooperative actuator.
     if (mContext.mErrorCode != ToErrorCode(VMErrorCode::None)) {
-        CooperativeLineOperation::Cancel(true);
-        mContext.ClearPendingOperation();
+        CancelPendingOperation(true);
         mContext.mRunning = false;
         Serial.printf("[VM] Error code: %d (%s)\n", mContext.mErrorCode, GetErrorId());
     }
@@ -173,7 +175,7 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             }
 
             if (mContext.mPendingOperation == VMPendingOperation::Wait &&
-                deadlineReached(millis(), mContext.mPendingDeadlineMs)) {
+                mContext.IsPendingDeadlineReached(millis())) {
                 mContext.ClearPendingOperation();
                 mContext.mProgramCounter++;
             }
@@ -448,9 +450,28 @@ void VM::ExecuteInstruction(const Instruction& instruction)
             break;
 
         case Opcode::SetMp3Play:
-            RobotAPI::SetMp3Play(mContext.mVariables[instruction.p1]);
-            mContext.mProgramCounter++;
+        {
+            if (mContext.mPendingOperation == VMPendingOperation::None) {
+                const uint32_t durationMs = RobotAPI::BeginMp3PlayCooperative(
+                    mContext.mVariables[instruction.p1]);
+                if (durationMs == 0) {
+                    mContext.mProgramCounter++;
+                    break;
+                }
+
+                mContext.mPendingOperation = VMPendingOperation::Mp3Play;
+                mContext.mPendingDeadlineMs = millis() + durationMs;
+                break;
+            }
+
+            if (mContext.mPendingOperation == VMPendingOperation::Mp3Play &&
+                mContext.IsPendingDeadlineReached(millis())) {
+                RobotAPI::EndMp3PlayCooperative();
+                mContext.ClearPendingOperation();
+                mContext.mProgramCounter++;
+            }
             break;
+        }
 
         case Opcode::GetTraceValue:
             mContext.mVariables[instruction.p3] = RobotAPI::GetTraceValue(

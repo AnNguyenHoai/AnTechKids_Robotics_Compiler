@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """VM responsiveness scheduler/pending-state contract gate.
 
-This is a deterministic host gate for VM-RT C/D. It verifies the C++ scheduler
-and generic cooperative-state implementation shape without pretending to
-measure ESP32 wall-clock latency. Physical timing belongs to VM-RT H/J.
+This deterministic host gate covers VM-RT C/D/E. It verifies the C++ scheduler,
+generic cooperative state, and time-spanning VM conversion shape without
+pretending to measure ESP32 wall-clock latency. Physical timing belongs to
+VM-RT H/J.
 """
 from __future__ import annotations
 
@@ -16,6 +17,9 @@ CTX_H = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMContex
 PENDING_H = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMPendingState.h"
 RUN_SLICE_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMRunSlice.cpp"
 VM_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VM.cpp"
+ROBOT_API_H = ROOT / "robot-platform" / "main" / "src" / "Services" / "Robot" / "RobotAPI.h"
+ROBOT_API_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "Robot" / "RobotAPI.cpp"
+ROBOT_COOP_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "Robot" / "RobotAPICooperative.cpp"
 SPEC = ROOT / "docs" / "VM_COOPERATIVE_EXECUTION_SPEC.md"
 
 
@@ -31,16 +35,13 @@ def main() -> int:
     pending = PENDING_H.read_text(encoding="utf-8")
     run_slice = RUN_SLICE_CPP.read_text(encoding="utf-8")
     legacy = VM_CPP.read_text(encoding="utf-8")
+    robot_h = ROBOT_API_H.read_text(encoding="utf-8")
+    robot_cpp = ROBOT_API_CPP.read_text(encoding="utf-8")
+    robot_coop = ROBOT_COOP_CPP.read_text(encoding="utf-8")
     spec = SPEC.read_text(encoding="utf-8")
 
-    # Public API/result reasons required by VM_COOPERATIVE_EXECUTION_SPEC.
     for reason in (
-        "BudgetExhausted",
-        "Yielded",
-        "Waiting",
-        "Halted",
-        "Stopped",
-        "Fault",
+        "BudgetExhausted", "Yielded", "Waiting", "Halted", "Stopped", "Fault"
     ):
         check(f"RunSlice exposes {reason} reason", reason in header)
 
@@ -51,8 +52,6 @@ def main() -> int:
     check("VM exposes additive RunSlice API", "VMRunSliceResult RunSlice(const VMRunSliceBudget& budget);" in header)
     check("legacy Step API remains directly exposed", "void Step();" in header)
 
-    # Preserve the frozen #304 Step implementation. RunSlice is deliberately in
-    # a separate translation unit so adding the scheduler cannot rewrite Step.
     step_start = legacy.index("void VM::Step()")
     step_end = legacy.index("bool VM::ContinuePendingLineOperation()", step_start)
     step_body = legacy[step_start:step_end]
@@ -60,8 +59,6 @@ def main() -> int:
     check("legacy Step still contains no scheduler loop", "while (" not in step_body and "for (" not in step_body)
     check("RunSlice does not call ExecuteInstruction directly", "ExecuteInstruction(" not in run_slice)
 
-    # Hard work-unit boundary: one Step at most per loop iteration and the loop
-    # itself is bounded only by maxWorkUnits.
     check("zero budget exits without Step", run_slice.index("budget.maxWorkUnits == 0") < run_slice.index("while (workUnits < budget.maxWorkUnits)"))
     loop = run_slice[run_slice.index("while (workUnits < budget.maxWorkUnits)"):]
     check("slice loop is work-unit bounded", loop.startswith("while (workUnits < budget.maxWorkUnits)"))
@@ -69,23 +66,20 @@ def main() -> int:
     check("each attempted Step consumes one work unit", "++workUnits;" in loop)
     check("slice does not contain nested unbounded while", loop.count("while (") == 1)
 
-    # Termination ordering and cooperative pending reasons.
     check("pre-existing VM fault returns Fault", run_slice.find("VMRunSliceStopReason::Fault") < run_slice.find("while (workUnits < budget.maxWorkUnits)"))
     check("post-Step VM fault returns Fault", loop.count("VMRunSliceStopReason::Fault") >= 1)
-    check("Wait pending returns Waiting", "mPendingOperation == VMPendingOperation::Wait" in loop and "VMRunSliceStopReason::Waiting" in loop)
+    check("Wait pending returns Waiting", "VMPendingOperation::Wait" in loop and "VMRunSliceStopReason::Waiting" in loop)
+    check("timed buzzer pending returns Waiting", "VMPendingOperation::Mp3Play" in loop and "VMRunSliceStopReason::Waiting" in loop)
     check("other pending operation returns Yielded", "mPendingOperation != VMPendingOperation::None" in loop and "VMRunSliceStopReason::Yielded" in loop)
     check("non-running state distinguishes Halted", "VMRunSliceStopReason::Halted" in run_slice)
     check("non-running state distinguishes Stopped", "VMRunSliceStopReason::Stopped" in run_slice)
     check("budget exhaustion is final fallthrough", re.search(r"return makeResult\(VMRunSliceStopReason::BudgetExhausted,[\s\S]*?\n\}\s*$", run_slice) is not None)
 
-    # Legacy Jump/JumpIf* completion stops with error=None without rewriting PC
-    # to instructionCount. RunSlice must still report that outcome as Halted.
     check("RunSlice captures executed PC before Step", "const uint16_t executedPc = mContext.mProgramCounter;" in loop)
     check("normal direct jump-to-end maps to Halted", "case Opcode::Jump:" in loop and "executed.p2 == programEnd" in loop)
     check("normal conditional jump-to-end maps to Halted", "case Opcode::JumpIfFalse:" in loop and "case Opcode::JumpIfTrue:" in loop)
     check("RunSlice preserves legacy jump PC rather than rewriting it", "mContext.mProgramCounter = programEnd" not in run_slice)
 
-    # VM-RT D: generic pending state, not opcode-specific ad-hoc state.
     check("generic pending state type exists", "class VMPendingState" in pending)
     check("pending lifecycle is explicit", "enum class VMPendingLifecycle" in pending and "Idle" in pending and "Pending" in pending)
     check("pending state records owner PC", "mOwnerProgramCounter" in pending and "OwnerProgramCounter()" in pending)
@@ -99,21 +93,44 @@ def main() -> int:
     check("hard reset starts a fresh pending epoch", "mPendingOperation.HardReset();" in context)
     check("deadline helper is wrap-safe", "static_cast<int32_t>(nowMs - mPendingDeadlineMs) >= 0" in context)
 
-    # Current Wait/Line dispatch keeps the compatibility behavior while the
-    # wrapper captures generic state metadata transparently.
-    check("Wait still uses cooperative pending operation", "mPendingOperation = VMPendingOperation::Wait;" in legacy)
-    check("Line operations still use shared Line pending kind", legacy.count("mPendingOperation = VMPendingOperation::Line;") >= 4)
-    check("pending completion still clears before PC advance", "mContext.ClearPendingOperation();\n        mContext.mProgramCounter++;" in legacy)
-    check("stop/reset/fault cleanup still clears pending state", step_body.count("mContext.ClearPendingOperation();") >= 2)
+    # VM-RT E: Wait uses the shared deadline primitive and remains pending until completion.
+    wait_case = legacy[legacy.index("case Opcode::Wait:"):legacy.index("case Opcode::CompareEQ:")]
+    check("Wait starts one pending generation", "mPendingOperation = VMPendingOperation::Wait;" in wait_case)
+    check("Wait stores monotonic deadline", "mPendingDeadlineMs = millis() +" in wait_case)
+    check("Wait uses shared wrap-safe deadline helper", "IsPendingDeadlineReached(millis())" in wait_case)
+    check("Wait does not call blocking RobotAPI Wait", "RobotAPI::Wait" not in wait_case and "delay(" not in wait_case)
+    check("Wait advances PC only after completion", wait_case.index("ClearPendingOperation();") < wait_case.rindex("mProgramCounter++;"))
 
-    # #305/#306 must not make a false wall-clock responsiveness claim while
-    # known synchronous RobotAPI calls still exist.
+    # VM-RT E: SetMp3Play keeps its logical 200 ms duration without blocking VM execution.
+    mp3_case = legacy[legacy.index("case Opcode::SetMp3Play:"):legacy.index("case Opcode::GetTraceValue:")]
+    check("Mp3Play has explicit pending kind", "Mp3Play" in pending)
+    check("Mp3Play starts nonblocking RobotAPI primitive", "BeginMp3PlayCooperative" in mp3_case)
+    check("Mp3Play stores returned duration as deadline", "mPendingDeadlineMs = millis() + durationMs;" in mp3_case)
+    check("Mp3Play resumes through shared deadline helper", "IsPendingDeadlineReached(millis())" in mp3_case)
+    check("Mp3Play finalizes once before PC advance", mp3_case.index("EndMp3PlayCooperative();") < mp3_case.index("ClearPendingOperation();") < mp3_case.rindex("mProgramCounter++;"))
+    check("VM no longer calls blocking SetMp3Play", "RobotAPI::SetMp3Play(" not in mp3_case)
+    check("cooperative buzzer primitive is declared", "BeginMp3PlayCooperative" in robot_h and "EndMp3PlayCooperative" in robot_h)
+    check("cooperative buzzer primitive contains no delay", "delay(" not in robot_coop)
+    check("cooperative buzzer keeps legacy logical duration", "kMp3PlayDurationMs = 200" in robot_coop and "delay(200);" in robot_cpp)
+
+    # Abort/reset/fault cleanup must finalize pending actuator without success PC advance.
+    check("VM has centralized pending cancellation", "void VM::CancelPendingOperation(bool stopLineMotors)" in legacy)
+    cancel_body = legacy[legacy.index("void VM::CancelPendingOperation"):legacy.index("void VM::Reset()")]
+    check("pending buzzer is forced off on cancellation", "EndMp3PlayCooperative();" in cancel_body)
+    check("cancellation clears pending ownership", "ClearPendingOperation();" in cancel_body)
+    check("manual stop uses centralized cleanup", "CancelPendingOperation(true);" in step_body)
+    check("fault cleanup uses centralized cleanup", step_body.count("CancelPendingOperation(true);") >= 2)
+    check("Reset and Start cancel pending work", "void VM::Reset() {\n    CancelPendingOperation(true);" in legacy and "void VM::Start() {\n    CancelPendingOperation(true);" in legacy)
+
+    check("Line operations still use shared Line pending kind", legacy.count("mPendingOperation = VMPendingOperation::Line;") >= 4)
+    check("line pending completion still clears before PC advance", "mContext.ClearPendingOperation();\n        mContext.mProgramCounter++;" in legacy)
+
     lower_header = header.lower()
     check("API documents cooperative non-preemptive boundary", "not preemption" in lower_header)
     check("API documents remaining synchronous RobotAPI risk", "synchronous robotapi call" in lower_header)
     check("spec keeps wall-clock secondary to deterministic budget", "Wall-clock time alone should not be the only semantic budget" in spec)
 
-    print("VM RunSlice + cooperative pending-state contract: PASS")
+    print("VM RunSlice + pending state + timed operation contract: PASS")
     return 0
 
 
