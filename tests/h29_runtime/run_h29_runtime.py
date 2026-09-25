@@ -27,8 +27,12 @@ def test_vm_wait_is_cooperative() -> None:
 
     require("VMPendingOperation::Wait" in source, "WAIT must use VM pending state")
     require("mPendingDeadlineMs" in source, "WAIT must retain a deadline across Step calls")
-    require("deadlineReached(millis(), mContext.mPendingDeadlineMs)" in source,
-            "WAIT completion must be polled without blocking")
+    require("mContext.IsPendingDeadlineReached(millis())" in source,
+            "WAIT completion must poll the VMContext deadline helper without blocking")
+    require("bool IsPendingDeadlineReached(uint32_t nowMs) const" in context,
+            "VMContext must expose the cooperative WAIT deadline helper")
+    require("static_cast<int32_t>(nowMs - mPendingDeadlineMs) >= 0" in context,
+            "WAIT deadline comparison must remain wrap-safe")
     require("RobotAPI::Wait(" not in source,
             "VM WAIT must never call the legacy blocking RobotAPI::Wait")
     require("VMPendingOperation" in context and "ClearPendingOperation" in context,
@@ -73,9 +77,13 @@ def test_long_running_line_opcodes_use_state_machine() -> None:
 def test_control_plane_keeps_scheduler_priority() -> None:
     main = MAIN_INO.read_text(encoding="utf-8")
     network_index = main.index("RobotNetworkService::update();")
-    vm_index = main.index("vm.Step();")
+    vm_index = main.index("vm.RunSlice(budget);")
     require(network_index < vm_index,
-            "network/control-plane update must run before each VM cooperative step")
+            "network/control-plane update must run before each bounded VM slice")
+    require("VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 4" in main,
+            "production VM scheduling must retain an explicit bounded work-unit budget")
+    require("vm.Step();" not in main,
+            "production firmware must not bypass RunSlice with direct Step scheduling")
 
     vm = VM_CPP.read_text(encoding="utf-8")
     require("#define VM_TRACE_ENABLED 0" in vm,

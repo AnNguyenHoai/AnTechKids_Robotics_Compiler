@@ -163,7 +163,7 @@ jobs:
         shell: pwsh
         run: python run_all_tests.py
 
-      - name: Run full Windows production ZIP build
+      - name: Run B2.7 full Windows production ZIP build
         if: ${{ steps.impact.outputs.release == 'true' }}
         shell: cmd
         run: BUILD_PRODUCTION_ZIP.cmd --clean
