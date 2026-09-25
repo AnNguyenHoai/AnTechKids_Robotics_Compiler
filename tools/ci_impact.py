@@ -33,10 +33,12 @@ VM_FILES = {
     "docs/C2_VM_DISPATCH_CONTRACT.md",
     "docs/ROBOT_EXECUTION_MODEL.md",
     "robot-platform/main/include/generated/opcode.h",
-    # RobotAPI surfaces introduced specifically for cooperative VM operations.
-    # Keep this list explicit rather than classifying all RobotAPI changes as VM.
     "robot-platform/main/src/Services/Robot/RobotAPI.h",
     "robot-platform/main/src/Services/Robot/RobotAPICooperative.cpp",
+    "robot-platform/main/src/Sensor/LineSensorSnapshot.h",
+    "robot-platform/main/src/Sensor/LineSensorSnapshot.cpp",
+    "robot-platform/main/src/Sensor/TCRT5000.h",
+    "robot-platform/main/src/Sensor/TCRT5000.cpp",
 }
 
 LINE_PREFIXES = (
@@ -44,6 +46,12 @@ LINE_PREFIXES = (
     "robot-platform/main/src/Services/Robot/Line",
     "robot-platform/main/src/Services/Robot/CooperativeLine",
 )
+LINE_FILES = {
+    "robot-platform/main/src/Sensor/LineSensorSnapshot.h",
+    "robot-platform/main/src/Sensor/LineSensorSnapshot.cpp",
+    "robot-platform/main/src/Sensor/TCRT5000.h",
+    "robot-platform/main/src/Sensor/TCRT5000.cpp",
+}
 
 CONTRACT_PREFIXES = (
     "tests/h32_platform_contract/",
@@ -137,7 +145,7 @@ def classify(paths: Iterable[str], scope: str = "auto") -> dict[str, bool | int]
             if path == "docs/VM_RESPONSIVENESS_COMPATIBILITY_MATRIX.md" or path == "robot-platform/main/include/generated/opcode.h":
                 result["contracts"] = True
 
-        if _matches(path, LINE_PREFIXES, set()):
+        if _matches(path, LINE_PREFIXES, LINE_FILES):
             result["line"] = True
             matched = True
 
@@ -153,8 +161,6 @@ def classify(paths: Iterable[str], scope: str = "auto") -> dict[str, bool | int]
             result["packaging"] = True
             matched = True
 
-        # Generic documentation is cheap to protect with H34/H35 rather than
-        # forcing the full repository suite.
         if path.startswith("docs/") and not matched:
             result["contracts"] = True
             matched = True
@@ -162,7 +168,6 @@ def classify(paths: Iterable[str], scope: str = "auto") -> dict[str, bool | int]
         if not matched:
             unknown.append(path)
 
-    # Unknown scope means we cannot prove a narrower safe test set.
     if unknown:
         result["full"] = True
 
@@ -183,40 +188,38 @@ def write_github_output(path: str, result: dict[str, bool | int]) -> None:
     output = Path(path)
     with output.open("a", encoding="utf-8") as stream:
         for key, value in result.items():
-            if isinstance(value, bool):
-                rendered = "true" if value else "false"
-            else:
-                rendered = str(value)
+            rendered = "true" if value is True else "false" if value is False else str(value)
             stream.write(f"{key}={rendered}\n")
 
 
 def self_test() -> None:
-    vm = classify(
-        [
-            "tests/vm_responsiveness/run_vm_responsiveness_baseline.py",
-            "docs/VM_RESPONSIVENESS_COMPATIBILITY_MATRIX.md",
-            "run_all_tests.py",
-            ".github/workflows/robotics-ci.yml",
-        ]
-    )
-    assert vm["vm"] is True
-    assert vm["contracts"] is True
-    assert vm["full"] is False
-    assert vm["release"] is False
+    vm = classify([
+        "tests/vm_responsiveness/run_vm_responsiveness_baseline.py",
+        "docs/VM_RESPONSIVENESS_COMPATIBILITY_MATRIX.md",
+        "run_all_tests.py",
+        ".github/workflows/robotics-ci.yml",
+    ])
+    assert vm["vm"] is True and vm["contracts"] is True
+    assert vm["full"] is False and vm["release"] is False
 
-    cooperative_robot_api = classify(
-        [
-            "robot-platform/main/src/Services/Robot/RobotAPI.h",
-            "robot-platform/main/src/Services/Robot/RobotAPICooperative.cpp",
-            "tests/vm_responsiveness/run_run_slice_core.py",
-        ]
-    )
+    cooperative_robot_api = classify([
+        "robot-platform/main/src/Services/Robot/RobotAPI.h",
+        "robot-platform/main/src/Services/Robot/RobotAPICooperative.cpp",
+        "tests/vm_responsiveness/run_run_slice_core.py",
+    ])
     assert cooperative_robot_api["vm"] is True
     assert cooperative_robot_api["full"] is False
 
+    line_snapshot = classify([
+        "robot-platform/main/src/Sensor/LineSensorSnapshot.cpp",
+        "robot-platform/main/src/Sensor/TCRT5000.cpp",
+    ])
+    assert line_snapshot["vm"] is True
+    assert line_snapshot["line"] is True
+    assert line_snapshot["full"] is False
+
     docs = classify(["docs/README_ONLY.md"])
-    assert docs["contracts"] is True
-    assert docs["full"] is False
+    assert docs["contracts"] is True and docs["full"] is False
 
     unknown = classify(["robot-compiler/compiler/frontend.py"])
     assert unknown["full"] is True
