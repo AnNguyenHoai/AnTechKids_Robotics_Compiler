@@ -48,8 +48,24 @@ def main() -> int:
     require("lastRecord ? g_snapshot.lastStopLatencyUs : 0u" in telemetry,
             "one stop observation must not be duplicated across buffered records")
 
+    # One physical line sample must be shared across platform refresh, VM/control
+    # work and diagnostics for the whole firmware cycle. RunSlice owns a cycle
+    # only when no outer firmware scope is active (standalone/test compatibility).
+    loop = main[main.index("void loop()") :]
+    begin = loop.index("LineSensorSnapshot::BeginCycle();")
+    sensor_refresh = loop.index("SensorManager::instance().updateAll();")
+    vm_slice_call = loop.index("vm.RunSlice(budget);")
+    diagnostics_update = loop.index("DiagnosticsManager::instance().updateSensors();")
+    end = loop.index("LineSensorSnapshot::EndCycle();")
+    require(begin < sensor_refresh < vm_slice_call < diagnostics_update < end,
+            "firmware cycle must own one line snapshot across sensor -> VM -> diagnostics")
+    require("mOwnsCycle(!LineSensorSnapshot::IsCycleActive())" in vm_slice,
+            "RunSlice must detect an outer snapshot owner")
+    require("if (mOwnsCycle)" in vm_slice,
+            "RunSlice must only begin/end a snapshot it owns")
     require("lineSensor->update();" not in diagnostics,
             "DiagnosticsManager must not own a second physical line read")
+
     require("kLostConfirmMs = 10" in state and "kLostConfirmSamples" not in state,
             "line-loss confirmation must remain time-based")
     require("_pid(1.2f, 0.0f, 0.0f, 0.02f)" in follower and "_scaleFactor(15.0f)" in follower,
