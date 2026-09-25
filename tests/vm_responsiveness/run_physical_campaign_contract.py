@@ -14,13 +14,24 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
-def report(scenario: str, *, stop_count: int = 0, stop_max: int = 0, commit: str = "abc123", budget: int = 4) -> dict:
+def report(
+    scenario: str,
+    *,
+    stop_count: int = 0,
+    stop_max: int = 0,
+    commit: str = "abc123",
+    budget: int = 16,
+    duration_us: int = 2000,
+) -> dict:
     return {
         "physical_robot": True,
         "qualification_status": "PHYSICAL_EVIDENCE_CAPTURED",
         "scenario": scenario,
         "firmware_commit": commit,
-        "slice_configuration": {"max_work_units": budget},
+        "slice_configuration": {
+            "max_work_units": budget,
+            "max_duration_us": duration_us,
+        },
         "slice_duration_us": {"count": 10, "max": 400},
         "work_unit_duration_us": {"count": 10, "max": 120},
         "line_snapshot_age_us": {"count": 10, "max": 150},
@@ -50,6 +61,9 @@ def main() -> int:
     ready = module.build_campaign(reports, external)
     assert ready["campaign_status"] == "READY_FOR_HUMAN_APPROVAL"
     assert ready["blockers"] == []
+    assert ready["slice_budgets"] == [16]
+    assert ready["slice_duration_budgets_us"] == [2000]
+    assert ready["slice_configurations"] == [{"max_work_units": 16, "max_duration_us": 2000}]
     assert ready["measured_threshold_proposal"]["slice_duration_us_max"] == 400
     assert ready["measured_threshold_proposal"]["work_unit_duration_us_max"] == 120
     assert ready["measured_threshold_proposal"]["stop_abort_latency_us_max"] == 220
@@ -57,11 +71,28 @@ def main() -> int:
     assert ready["measured_threshold_proposal"]["sensor_to_decision_to_motor_us_max"] == 900
     assert ready["approval"]["approved"] is False
 
-    drift = [dict(row) for row in reports]
-    drift[0] = dict(drift[0], firmware_commit="different")
-    drifted = module.build_campaign(drift, external)
+    commit_drift = [dict(row) for row in reports]
+    commit_drift[0] = dict(commit_drift[0], firmware_commit="different")
+    drifted = module.build_campaign(commit_drift, external)
     assert drifted["campaign_status"] == "INCOMPLETE_PHYSICAL_EVIDENCE"
     assert any("exactly one firmware commit" in item for item in drifted["blockers"])
+
+    duration_drift = [dict(row) for row in reports]
+    duration_drift[0] = dict(duration_drift[0])
+    duration_drift[0]["slice_configuration"] = {
+        "max_work_units": 16,
+        "max_duration_us": 3000,
+    }
+    drifted_duration = module.build_campaign(duration_drift, external)
+    assert drifted_duration["campaign_status"] == "INCOMPLETE_PHYSICAL_EVIDENCE"
+    assert any("exactly one dual slice configuration" in item for item in drifted_duration["blockers"])
+
+    missing_duration = [dict(row) for row in reports]
+    missing_duration[0] = dict(missing_duration[0])
+    missing_duration[0]["slice_configuration"] = {"max_work_units": 16}
+    missing = module.build_campaign(missing_duration, external)
+    assert missing["campaign_status"] == "INCOMPLETE_PHYSICAL_EVIDENCE"
+    assert any("max_work_units and max_duration_us" in item for item in missing["blockers"])
 
     print("VM-RT physical campaign contract: PASS")
     return 0
