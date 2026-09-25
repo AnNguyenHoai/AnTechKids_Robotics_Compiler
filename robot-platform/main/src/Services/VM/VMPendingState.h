@@ -42,17 +42,26 @@ public:
         mProgramCounter = programCounter;
     }
 
-    void Reset()
+    // Return to Idle after completion/cancel/fault while preserving generation
+    // so diagnostics can distinguish successive logical operations.
+    void Clear()
     {
         mOperation = VMPendingOperation::None;
         mLifecycle = VMPendingLifecycle::Idle;
         mOwnerProgramCounter = 0;
     }
 
+    // VM Reset establishes a fresh runtime epoch.
+    void HardReset()
+    {
+        Clear();
+        mGeneration = 0;
+    }
+
     bool Begin(VMPendingOperation operation, uint16_t ownerProgramCounter)
     {
         if (operation == VMPendingOperation::None) {
-            Reset();
+            Clear();
             return false;
         }
 
@@ -72,7 +81,7 @@ public:
     VMPendingState& operator=(VMPendingOperation operation)
     {
         if (operation == VMPendingOperation::None) {
-            Reset();
+            Clear();
         } else {
             const uint16_t owner = (mProgramCounter != nullptr)
                                        ? *mProgramCounter
