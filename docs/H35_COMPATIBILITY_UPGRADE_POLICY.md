@@ -152,3 +152,13 @@ H35 hoàn tất khi:
 - Machine-readable evidence được sinh ra.
 - Dedicated H35 CI gate chạy trước packaging.
 - H32/H33/H34 và full regression không bị phá.
+
+## 10. VM-RT closure review (#313)
+
+Final compatibility classification for the VM Real-Time Control Responsiveness initiative is **NO GENERATION CHANGE REQUIRED**.
+
+The cooperative scheduler, pending/resume state, shared line snapshot, timing telemetry and firmware-loop integration change runtime scheduling and boundedness, but do not change canonical opcode numbering, bytecode encoding, Robot Language API, platform contract schema, compiler generation, firmware generation or discovery protocol/schema. Legacy direct `Step()` semantics remain covered by regression gates and the current generation-1 compiler/firmware pair remains explicitly supported.
+
+Therefore the authoritative compatibility policy remains at generation 1. A generation bump must not be introduced solely because responsiveness scheduling changed internally.
+
+Physical timing qualification is tracked separately in #325. Timing thresholds and slice-budget tuning are operational qualification evidence; they are not, by themselves, a reason to change H35 compatibility generation unless the resulting implementation changes an externally observable contract covered by this policy.
