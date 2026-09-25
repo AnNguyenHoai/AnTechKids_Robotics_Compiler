@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Reusable source-contract guard for VM responsiveness CI.
+
+The guard is intentionally deterministic and host-only. It checks the scheduler,
+pending-operation, line-snapshot and compatibility boundaries that must fail
+closed when a regression is introduced.
+"""
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+@dataclass(frozen=True)
+class Sources:
+    vm_h: str
+    vm_cpp: str
+    run_slice_cpp: str
+    snapshot_cpp: str
+    canonical_isa: str
+    firmware_opcode_h: str
+
+
+def load_sources(root: Path = ROOT) -> Sources:
+    def read(path: str) -> str:
+        return (root / path).read_text(encoding="utf-8")
+
+    return Sources(
+        vm_h=read("robot-platform/main/src/Services/VM/VM.h"),
+        vm_cpp=read("robot-platform/main/src/Services/VM/VM.cpp"),
+        run_slice_cpp=read("robot-platform/main/src/Services/VM/VMRunSlice.cpp"),
+        snapshot_cpp=read("robot-platform/main/src/Sensor/LineSensorSnapshot.cpp"),
+        canonical_isa=read("packages/robot-isa/canonical_isa.json"),
+        firmware_opcode_h=read("robot-platform/main/include/generated/opcode.h"),
+    )
+
+
+def validate(s: Sources) -> list[str]:
+    errors: list[str] = []
+
+    loop_marker = "while (workUnits < budget.maxWorkUnits)"
+    if loop_marker not in s.run_slice_cpp:
+        errors.append("slice budget loop must use strict < maxWorkUnits")
+    if "while (workUnits <= budget.maxWorkUnits)" in s.run_slice_cpp:
+        errors.append("slice budget loop permits one extra work unit")
+
+    if s.run_slice_cpp.count("Step();") != 1:
+        errors.append("RunSlice must contain exactly one Step call site")
+    if "ExecuteInstruction(" in s.run_slice_cpp:
+        errors.append("RunSlice must not bypass legacy Step dispatch")
+
+    step_start = s.vm_cpp.find("void VM::Step()")
+    step_end = s.vm_cpp.find("bool VM::ContinuePendingLineOperation()", step_start)
+    if step_start < 0 or step_end < 0:
+        errors.append("legacy Step boundaries unavailable")
+    else:
+        step_body = s.vm_cpp[step_start:step_end]
+        if step_body.count("ExecuteInstruction(instruction);") != 1:
+            errors.append("legacy Step dispatch count changed")
+        if "while (" in step_body or "for (" in step_body:
+            errors.append("legacy Step became scheduler/unbounded loop")
+
+    wait_start = s.vm_cpp.find("case Opcode::Wait:")
+    wait_end = s.vm_cpp.find("case Opcode::CompareEQ:", wait_start)
+    if wait_start < 0 or wait_end < 0:
+        errors.append("Wait opcode boundaries unavailable")
+    else:
+        wait_body = s.vm_cpp[wait_start:wait_end]
+        if "RobotAPI::Wait" in wait_body or "delay(" in wait_body:
+            errors.append("Wait opcode regressed to blocking implementation")
+        if "VMPendingOperation::Wait" not in wait_body:
+            errors.append("Wait no longer uses cooperative pending state")
+        if wait_body.count("mContext.mProgramCounter++;") != 2:
+            # One increment is the non-positive fast path; one is completion.
+            errors.append("Wait PC advance contract changed or double-advanced")
+        completion = wait_body.find("mContext.ClearPendingOperation();")
+        if completion < 0 or wait_body.find("mContext.mProgramCounter++;", completion) < 0:
+            errors.append("Wait completion must clear pending state before PC advance")
+
+    if "if (g_sampledThisCycle)" not in s.snapshot_cpp:
+        errors.append("same-cycle line snapshot reuse guard removed")
+    if s.snapshot_cpp.count("SampleHardwareDirect();") != 3:
+        errors.append("line snapshot must perform exactly three physical channel reads")
+    if "physicalReadCount = 3" not in s.snapshot_cpp:
+        errors.append("line snapshot physical-read evidence drifted")
+
+    try:
+        isa = json.loads(s.canonical_isa)
+    except json.JSONDecodeError:
+        errors.append("canonical ISA is not valid JSON")
+        return errors
+
+    rows = isa.get("rows")
+    if not isinstance(rows, list) or not rows:
+        errors.append("canonical ISA rows missing")
+        return errors
+
+    seen_codes: set[int] = set()
+    for row in rows:
+        if not isinstance(row, list) or len(row) < 3:
+            errors.append("canonical ISA row shape changed")
+            continue
+        code = row[2]
+        if not isinstance(code, int):
+            errors.append("canonical ISA opcode must remain integer")
+            continue
+        if code in seen_codes:
+            errors.append(f"duplicate canonical opcode number: {code}")
+        seen_codes.add(code)
+        name = row[1]
+        pattern = rf"\b{re.escape(str(name))}\s*=\s*{code}\s*,"
+        if re.search(pattern, s.firmware_opcode_h) is None:
+            errors.append(f"firmware opcode drift: {name}={code}")
+
+    return errors
+
+
+def assert_valid(s: Sources | None = None) -> None:
+    errors = validate(s or load_sources())
+    if errors:
+        raise AssertionError("VM-RT contract violation(s):\n- " + "\n- ".join(errors))
+
+
+if __name__ == "__main__":
+    assert_valid()
+    print("VM-RT reusable contract guard: PASS")
