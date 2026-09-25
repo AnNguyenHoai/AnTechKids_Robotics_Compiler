@@ -113,18 +113,20 @@ subsequent slice
 
 A negative or otherwise invalid duration follows the existing opcode/API validation contract; this initiative does not invent new source-language semantics.
 
-## 7. Timed and potentially blocking RobotAPI operations
+## 7. Timed, blocking, and CPU-bound runtime operations
 
 Every operation used by the VM must be classified before implementation as one of:
 
 - `IMMEDIATE`: expected to complete within a small, bounded call;
-- `COOPERATIVE`: may span time and therefore requires resumable runtime state;
+- `COOPERATIVE`: may span time/work and therefore requires resumable runtime state;
 - `BOUNDED_IO`: performs physical I/O but has a measured upper bound;
 - `UNRESOLVED`: behavior/timing not yet safe to classify.
 
 An `UNRESOLVED` operation MUST NOT be treated as cooperative-safe by assumption.
 
 Long movement/line operations currently implemented as blocking loops are candidates for conversion to resumable cooperative state. Conversion must preserve externally visible command semantics and must be covered by compatibility tests.
+
+CPU-bound opcodes are subject to the same rule. A `RunSlice` work-unit count is not a real responsiveness bound if one opcode can perform unbounded data-dependent work inside a single `Step()`. Such opcodes must either have a deterministic indivisible upper bound or yield through explicit pending state. `Pow` is the reference implementation: legacy repeated-multiply ordering is preserved, but only a fixed number of multiplications are allowed per `Step()` and the PC remains owned by the pending instruction until completion.
 
 ## 8. Sensor execution model
 
@@ -190,7 +192,7 @@ The following are mandatory guards for this initiative:
 This execution-model initiative is complete only when:
 
 - cooperative `RunSlice` behavior is implemented and bounded;
-- blocking/time-spanning runtime work covered by the project has explicit yield policy;
+- blocking/time-spanning/runtime-data-dependent work covered by the project has explicit bounded/yield policy;
 - line sensor reads used in one control cycle are snapshot-consistent;
 - main-loop integration regularly returns control to firmware;
 - stop/abort behavior is deterministic;
