@@ -31,13 +31,13 @@ enum class VMRunSliceStopReason : uint8_t
 
 struct VMRunSliceBudget
 {
-    // Hard semantic work ceiling. Existing aggregate initializers such as
-    // VMRunSliceBudget{4} remain valid and leave maxDurationUs disabled.
-    uint16_t maxWorkUnits = 0;
+    // Hard semantic work ceiling. Keep the original declaration unchanged so
+    // existing source/contract checks remain valid.
+    uint16_t maxWorkUnits;
 
-    // Optional wall-clock ceiling for one cooperative slice. Zero preserves
-    // the legacy work-unit-only behavior. This is checked between Step() calls;
-    // one synchronous Step() can still overrun and must be fixed at its owner.
+    // Optional wall-clock ceiling for one cooperative slice. Existing aggregate
+    // initializers such as VMRunSliceBudget{4} zero-initialize this trailing
+    // field, preserving the legacy work-unit-only behavior.
     uint32_t maxDurationUs = 0;
 };
 
