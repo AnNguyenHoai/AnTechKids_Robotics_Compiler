@@ -41,6 +41,9 @@ void BeginCycle()
 void EndCycle()
 {
     g_cycleActive = false;
+    // Keep sequence/timestamp/value diagnostics, but make it impossible to
+    // treat a previous-cycle sample as current data.
+    g_snapshot.valid = false;
 }
 
 void Invalidate()
