@@ -35,10 +35,10 @@ struct VMRunSliceBudget
     // existing source/contract checks remain valid.
     uint16_t maxWorkUnits;
 
-    // Optional wall-clock ceiling for one cooperative slice. Existing aggregate
-    // initializers such as VMRunSliceBudget{4} zero-initialize this trailing
-    // field, preserving the legacy work-unit-only behavior.
-    uint32_t maxDurationUs = 0;
+    // Optional wall-clock ceiling for one cooperative slice. Keep this struct a
+    // plain C++11 aggregate: VMRunSliceBudget{4} zero-initializes this trailing
+    // field, while production can use VMRunSliceBudget{16, 2000}.
+    uint32_t maxDurationUs;
 };
 
 struct VMRunSliceResult
