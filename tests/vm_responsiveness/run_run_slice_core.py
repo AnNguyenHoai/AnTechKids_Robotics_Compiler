@@ -75,6 +75,13 @@ def main() -> int:
     check("non-running state distinguishes Stopped", "VMRunSliceStopReason::Stopped" in run_slice)
     check("budget exhaustion is final fallthrough", re.search(r"return makeResult\(VMRunSliceStopReason::BudgetExhausted,[\s\S]*?\n\}\s*$", run_slice) is not None)
 
+    # Legacy Jump/JumpIf* completion stops with error=None without rewriting PC
+    # to instructionCount. RunSlice must still report that outcome as Halted.
+    check("RunSlice captures executed PC before Step", "const uint16_t executedPc = mContext.mProgramCounter;" in loop)
+    check("normal direct jump-to-end maps to Halted", "case Opcode::Jump:" in loop and "executed.p2 == programEnd" in loop)
+    check("normal conditional jump-to-end maps to Halted", "case Opcode::JumpIfFalse:" in loop and "case Opcode::JumpIfTrue:" in loop)
+    check("RunSlice preserves legacy jump PC rather than rewriting it", "mContext.mProgramCounter = programEnd" not in run_slice)
+
     # #305 must not make a false wall-clock responsiveness claim while known
     # synchronous RobotAPI calls still exist.
     lower_header = header.lower()
