@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "synthetic_host_fixture",
+  "physical_robot": false,
+  "scenario": "long_running_loop",
+  "hardware": "host-fixture",
+  "profile": "esp32dev_vm_qualification",
+  "firmware_commit": "fixture-only",
+  "program_identity": "fixture-loop-v1",
+  "slice_configuration": {
+    "max_work_units": 4
+  },
+  "failures_or_outliers": [],
+  "thresholds": null
+}
