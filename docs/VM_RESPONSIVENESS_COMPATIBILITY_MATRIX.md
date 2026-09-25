@@ -14,7 +14,7 @@ Baseline frozen by VM-RT B (#304):
 - current H35 platform/compiler/firmware compatibility generation: generation 1;
 - existing opcode numbering and bytecode encoding remain authoritative;
 - existing `Step()` behavior remains the legacy execution contract;
-- current VM dispatch already implements cooperative pending/resume semantics for `Wait`, `LineMillisecond`, `LineIntersectionStop`, `LineTurnEncounterLine`, and `LineForBmp`;
+- current VM dispatch already implements cooperative pending/resume semantics for `Wait`, line operations and other converted time/work-spanning operations;
 - C2 remains the historical logical-semantics reference for line operations even where later runtime work changed firmware-thread scheduling from blocking to cooperative;
 - `tests/vm_responsiveness/fixtures/step_baseline.json` and `tests/vm_responsiveness/run_vm_responsiveness_baseline.py` are the pre-`RunSlice` regression baseline.
 
@@ -27,6 +27,7 @@ The following changes are considered candidates to remain within the current com
 | #305 add `RunSlice(...)` alongside existing `Step()` | Compatible extension | scheduling/API additive only | Step baseline + slice budget/yield tests |
 | VM-internal pending/resume state extensions | Internal implementation | VM private state | PC/state regression |
 | Cooperative conversion of remaining blocking VM-reachable work | Semantic-preserving runtime change | scheduling only, if logical completion is identical | INIT/PENDING/COMPLETE + stop/fault + timing tests |
+| #328 chunk `Pow` repeated multiplication across bounded Steps | Semantic-preserving runtime scheduling change | CPU scheduling only; opcode/result contract unchanged | legacy-result equivalence in safe arithmetic domain + PC/pending/budget regression |
 | #308 shared line-sensor snapshot per control cycle | Contract clarification | sampling coherence | getter consistency + line-follow regression; no threshold/polarity/channel change |
 | Main-loop bounded-slice integration | Runtime scheduling change | platform scheduling | full baseline + responsiveness + physical qualification |
 | Instrumentation counters/timestamps | Internal/diagnostic | diagnostics | no behavior drift |
@@ -62,7 +63,7 @@ Every implementation PR under this initiative must state whether it changes any 
 | compiler generation | unchanged |
 | firmware compatibility generation | unchanged unless H35 review says otherwise |
 | discovery protocol/schema | unchanged |
-| `Step()` semantics | unchanged |
+| `Step()` logical semantics | unchanged |
 | existing source program logical result | unchanged |
 
 If any answer is not `unchanged`, the PR must link the relevant contract/policy update.
@@ -79,24 +80,26 @@ The target is to improve the second without silently changing the first.
 For an operation using cooperative execution:
 
 - initialization side effects happen once;
-- pending time/condition is explicit;
+- pending time/work/condition is explicit;
 - PC does not advance while incomplete;
 - completion/finalization happens once;
 - stop/fault behavior is deterministic;
 - observable program result remains equivalent unless separately versioned.
+
+For CPU-bound operations such as `Pow`, changing an exponent-sized indivisible loop into bounded pending chunks is compatible only when the repeated operation order and final logical result remain equivalent and no ISA/compiler contract changes.
 
 ## 7. `Step()` vs `RunSlice()` matrix
 
 | Property | `Step()` | `RunSlice()` |
 |---|---|---|
 | Primary role | legacy compatibility | responsive scheduling |
-| Instruction count | existing single-step semantics | bounded multiple work units allowed |
+| Instruction count | existing single-step semantics; a logical opcode may now retain PC while pending | bounded multiple work units allowed |
 | Pending cooperative op | preserve current pending/resume contract | explicit yield/wait supported |
-| Returns platform control regularly | one current instruction/tick, subject to indivisible synchronous I/O | required by slice contract |
+| Returns platform control regularly | one current instruction/tick, with indivisible work bounded or explicitly tracked | required by slice contract |
 | Compiler changes required | no | no |
 | Bytecode changes required | no | no |
 
-Implementation must avoid making `RunSlice()` merely an unbounded loop around blocking `Step()`.
+Implementation must avoid making `RunSlice()` merely an unbounded loop around blocking `Step()` and must also prevent an individual opcode from hiding unbounded data-dependent work inside one Step.
 
 ## 8. Sensor compatibility
 
@@ -121,6 +124,7 @@ Requires explicit review:
 Before any responsiveness runtime PR is accepted:
 
 - `python tests/vm_responsiveness/run_vm_responsiveness_baseline.py` must pass;
+- `python tests/vm_responsiveness/run_vm_rt_ci.py` must pass;
 - relevant existing repository gates remain additive, including line-follow steering stability and H32/H33/H34/H35 where applicable;
 - fixture opcode numbers must continue to match the generated canonical opcode header;
 - changes to fixture expectations are semantic changes and require explicit review, not routine test maintenance.

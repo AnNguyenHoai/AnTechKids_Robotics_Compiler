@@ -9,6 +9,7 @@ enum class VMPendingOperation : uint8_t
     Wait,
     Line,
     Mp3Play,
+    Pow,
 };
 
 // Stored lifecycle is intentionally minimal: completion, reset, stop and fault

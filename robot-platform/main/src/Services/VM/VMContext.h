@@ -65,6 +65,9 @@ public:
         mErrorCode = 0;
         mPendingOperation.HardReset();
         mPendingDeadlineMs = 0;
+        mPendingPowBase = 0;
+        mPendingPowRemaining = 0;
+        mPendingPowResult = 1;
     }
 
     // Completion, stop and fault all clear the current logical operation and
@@ -73,6 +76,9 @@ public:
     {
         mPendingOperation.Clear();
         mPendingDeadlineMs = 0;
+        mPendingPowBase = 0;
+        mPendingPowRemaining = 0;
+        mPendingPowResult = 1;
     }
 
     bool BeginPendingOperation(VMPendingOperation operation)
@@ -122,6 +128,12 @@ public:
     // owner PC remains stable and the VM returns control after bounded work.
     VMPendingState mPendingOperation;
     uint32_t mPendingDeadlineMs;
+
+    // Cooperative Pow execution preserves the legacy repeated-multiply order
+    // while limiting the number of multiplications performed by one Step().
+    int16_t mPendingPowBase;
+    uint16_t mPendingPowRemaining;
+    int32_t mPendingPowResult;
 
     // Loop stack (for break/continue)
     LoopFrame mLoopStack[MAX_LOOP_DEPTH];

@@ -11,6 +11,10 @@
 #define VM_TRACE_ENABLED 0
 #endif
 
+namespace {
+constexpr uint16_t POW_MULTIPLIES_PER_STEP = 8;
+}
+
 VM::VM() : mProgram(nullptr) {}
 
 void VM::CancelPendingOperation(bool stopLineMotors)
@@ -329,14 +333,43 @@ void VM::ExecuteInstruction(const Instruction& instruction)
 
         case Opcode::Pow:
         {
-            int16_t base = mContext.mVariables[instruction.p1];
-            int16_t exp = mContext.mVariables[instruction.p2];
-            int32_t result = 1;
-            for (int16_t i = 0; i < exp; ++i) {
-                result *= base;
+            if (mContext.mPendingOperation == VMPendingOperation::None) {
+                const int16_t base = static_cast<int16_t>(mContext.mVariables[instruction.p1]);
+                const int16_t exp = static_cast<int16_t>(mContext.mVariables[instruction.p2]);
+
+                // Preserve legacy semantics: zero/negative exponents execute no
+                // multiplications and therefore produce 1 immediately.
+                if (exp <= 0) {
+                    mContext.mVariables[instruction.p3] = 1;
+                    mContext.mProgramCounter++;
+                    break;
+                }
+
+                mContext.mPendingPowBase = base;
+                mContext.mPendingPowRemaining = static_cast<uint16_t>(exp);
+                mContext.mPendingPowResult = 1;
+                mContext.mPendingOperation = VMPendingOperation::Pow;
             }
-            mContext.mVariables[instruction.p3] = (int16_t)result;
-            mContext.mProgramCounter++;
+
+            if (mContext.mPendingOperation == VMPendingOperation::Pow) {
+                uint16_t multiplies = 0;
+                while (mContext.mPendingPowRemaining > 0 &&
+                       multiplies < POW_MULTIPLIES_PER_STEP) {
+                    // Keep the exact legacy repeated-multiply ordering. This
+                    // changes scheduling only: long exponents yield across
+                    // bounded Step() calls instead of monopolizing one Step().
+                    mContext.mPendingPowResult *= mContext.mPendingPowBase;
+                    --mContext.mPendingPowRemaining;
+                    ++multiplies;
+                }
+
+                if (mContext.mPendingPowRemaining == 0) {
+                    const int16_t result = static_cast<int16_t>(mContext.mPendingPowResult);
+                    mContext.ClearPendingOperation();
+                    mContext.mVariables[instruction.p3] = result;
+                    mContext.mProgramCounter++;
+                }
+            }
             break;
         }
 

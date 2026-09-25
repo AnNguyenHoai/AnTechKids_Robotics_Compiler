@@ -2,8 +2,8 @@
 """Reusable source-contract guard for VM responsiveness CI.
 
 The guard is intentionally deterministic and host-only. It checks the scheduler,
-pending-operation, line-snapshot and compatibility boundaries that must fail
-closed when a regression is introduced.
+pending-operation, bounded indivisible work, line-snapshot and compatibility
+boundaries that must fail closed when a regression is introduced.
 """
 from __future__ import annotations
 
@@ -80,6 +80,28 @@ def validate(s: Sources) -> list[str]:
         completion = wait_body.find("mContext.ClearPendingOperation();")
         if completion < 0 or wait_body.find("mContext.mProgramCounter++;", completion) < 0:
             errors.append("Wait completion must clear pending state before PC advance")
+
+    pow_start = s.vm_cpp.find("case Opcode::Pow:")
+    pow_end = s.vm_cpp.find("case Opcode::Neg:", pow_start)
+    if pow_start < 0 or pow_end < 0:
+        errors.append("Pow opcode boundaries unavailable")
+    else:
+        pow_body = s.vm_cpp[pow_start:pow_end]
+        if "VMPendingOperation::Pow" not in pow_body:
+            errors.append("Pow must use cooperative pending state")
+        if "POW_MULTIPLIES_PER_STEP" not in s.vm_cpp:
+            errors.append("Pow must define a fixed per-Step multiplication budget")
+        if "multiplies < POW_MULTIPLIES_PER_STEP" not in pow_body:
+            errors.append("Pow work must be bounded by POW_MULTIPLIES_PER_STEP")
+        if "for (int16_t i = 0; i < exp; ++i)" in pow_body:
+            errors.append("Pow regressed to exponent-sized indivisible loop")
+        if "mPendingPowRemaining" not in pow_body or "mPendingPowResult" not in pow_body:
+            errors.append("Pow cooperative progress state is missing")
+        if pow_body.count("mContext.mProgramCounter++;") != 2:
+            errors.append("Pow PC advance contract changed or double-advanced")
+        completion = pow_body.find("mContext.ClearPendingOperation();")
+        if completion < 0 or pow_body.find("mContext.mProgramCounter++;", completion) < 0:
+            errors.append("Pow completion must clear pending state before PC advance")
 
     if "if (g_sampledThisCycle)" not in s.snapshot_cpp:
         errors.append("same-cycle line snapshot reuse guard removed")

@@ -154,7 +154,10 @@ def main() -> int:
 
     check("C2 contract records original blocking reference", "blocking" in c2.lower() and "LineMillisecond" in c2)
     check("runtime audit records cooperative current baseline", "LineMillisecond" in audit and "COOPERATIVE" in audit)
-    check("compatibility matrix protects Step semantics", "`Step()` semantics | unchanged" in matrix)
+    check(
+        "compatibility matrix protects Step semantics",
+        re.search(r"\|\s*`Step\(\)`(?:\s+logical)?\s+semantics\s*\|\s*unchanged\s*\|", matrix) is not None,
+    )
     check(
         "compatibility matrix classifies RunSlice as compatible extension",
         "`RunSlice(...)`" in matrix
