@@ -90,6 +90,16 @@ jobs:
         shell: pwsh
         run: python tests/line_follow_stability/run_line_follow_stability.py
 
+      - name: Install PlatformIO for impacted firmware compile
+        if: ${{ steps.impact.outputs.full != 'true' && steps.impact.outputs.vm == 'true' }}
+        shell: pwsh
+        run: python -m pip install "platformio>=6.1,<7"
+
+      - name: Compile impacted ESP32 firmware
+        if: ${{ steps.impact.outputs.full != 'true' && steps.impact.outputs.vm == 'true' }}
+        shell: pwsh
+        run: python -m platformio run -d robot-platform -e esp32dev
+
       - name: Run platform contract consolidation gate
         if: ${{ steps.impact.outputs.full != 'true' && steps.impact.outputs.contracts == 'true' }}
         shell: pwsh
