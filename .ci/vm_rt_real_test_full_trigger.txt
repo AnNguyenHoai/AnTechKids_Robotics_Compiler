@@ -1,0 +1,3 @@
+VM-RT #325 real-robot qualification preflight.
+Purpose: force conservative full regression through ci_impact unknown-path fallback before physical release testing.
+This file has no runtime or packaging behavior.
