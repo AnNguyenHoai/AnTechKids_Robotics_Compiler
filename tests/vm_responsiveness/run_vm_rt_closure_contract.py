@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / "packages" / "robot-isa" / "compatibility_policy.json"
 THRESHOLDS = ROOT / "docs" / "VM_RESPONSIVENESS_THRESHOLDS.json"
 AUDIT = ROOT / "docs" / "VM_RT_CLOSURE_AUDIT.md"
+FIRMWARE_MAIN = ROOT / "robot-platform" / "main" / "main.ino"
 
 
 def require(condition: bool, message: str) -> None:
@@ -16,10 +18,18 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def extract_int(source: str, name: str) -> int:
+    match = re.search(rf"{re.escape(name)}\s*=\s*(\d+)", source)
+    if not match:
+        raise AssertionError(f"missing firmware constant {name}")
+    return int(match.group(1))
+
+
 def main() -> int:
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
     thresholds = json.loads(THRESHOLDS.read_text(encoding="utf-8"))
     audit = AUDIT.read_text(encoding="utf-8")
+    firmware = FIRMWARE_MAIN.read_text(encoding="utf-8")
 
     current = policy["current"]
     require(current["platform_contract_generation"] == 1, "VM-RT must not silently bump platform generation")
@@ -39,8 +49,19 @@ def main() -> int:
         require(thresholds["status"] == "UNAPPROVED_PENDING_PHYSICAL_EVIDENCE", "unapproved thresholds must remain explicitly pending")
         require(all(v is None for v in values.values()), "unapproved physical qualification must not contain guessed thresholds")
         require(not evidence, "unapproved physical qualification must not claim evidence")
+        require(thresholds.get("runtime_config_status") == "PROVISIONAL_CORRECTIVE_PENDING_PHYSICAL_QUALIFICATION",
+                "corrective scheduler config must remain explicitly provisional until physical qualification")
 
-    require(thresholds["slice_budget_work_units"] == 4, "slice budget must not be tuned without approved physical evidence")
+    # Runtime configuration is allowed to change in response to an observed
+    # physical failure, but the manifest must always describe the firmware that
+    # will be qualified. This does not approve any production threshold.
+    firmware_work_budget = extract_int(firmware, "VM_WORK_UNITS_PER_FIRMWARE_CYCLE")
+    firmware_time_budget = extract_int(firmware, "VM_MAX_SLICE_DURATION_US")
+    require(thresholds["slice_budget_work_units"] == firmware_work_budget,
+            "threshold manifest work budget must match firmware under qualification")
+    require(thresholds["slice_budget_duration_us"] == firmware_time_budget,
+            "threshold manifest time budget must match firmware under qualification")
+
     require("NO GENERATION CHANGE REQUIRED" in audit, "closure audit must record H35 classification")
 
     # #330 reconciliation replaced the stale claim that #325 was the only
