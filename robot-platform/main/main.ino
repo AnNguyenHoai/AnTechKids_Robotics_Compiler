@@ -45,6 +45,11 @@ Program program;
 const int STABILITY_ITERATIONS = 1;
 int executionCounter = 0;
 
+// VM-RT G: keep VM work bounded so serial/network/OTA/sensors/motion and
+// diagnostics regain control every firmware cycle. This value is deliberately
+// conservative; runtime tuning belongs to the instrumentation work in #310.
+static constexpr uint16_t VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 4;
+
 BehaviorScheduler scheduler;
 bool useBehaviorEngine = false;
 
@@ -52,6 +57,7 @@ HeadingEstimator g_headingEstimator;
 bool g_robotReady = false;
 bool g_manualStartEnabled = false;
 bool g_vmStarted = true;
+bool g_vmTerminalReported = false;
 
 void setup() {
     Serial.begin(115200);
@@ -157,6 +163,8 @@ void setup() {
 void loop() {
     uint32_t start = micros();
 
+    // Firmware-cycle order is intentional: service the control plane first so
+    // stop/abort/OTA can be observed before any new student-code work begins.
     SerialCommandHandler::handle();
     RobotNetworkService::update();
 
@@ -170,6 +178,9 @@ void loop() {
         return;
     }
 
+    // Platform inputs and output-control state are refreshed before RunSlice.
+    // RunSlice then owns the lazy line-sensor snapshot for exactly that VM
+    // control slice, so repeated line consumers share one coherent L/C/R set.
     SensorManager::instance().updateAll();
     DiagnosticsManager::instance().updateSensors();
 
@@ -193,17 +204,24 @@ void loop() {
     if (useBehaviorEngine) {
         scheduler.update();
     } else {
+        bool runVmSlice = false;
 #ifdef DIAGNOSTIC_MANUAL_START
-        if (g_vmStarted && vm.IsRunning()) {
-            vm.Step();
-        }
+        runVmSlice = g_vmStarted && vm.IsRunning();
 #else
-        if (vm.IsRunning()) {
-            vm.Step();
-        }
+        runVmSlice = vm.IsRunning();
 #endif
 
-        if (!vm.IsRunning()) {
+        if (runVmSlice) {
+            const VMRunSliceBudget budget{VM_WORK_UNITS_PER_FIRMWARE_CYCLE};
+            const VMRunSliceResult sliceResult = vm.RunSlice(budget);
+            (void)sliceResult;  // #310 adds runtime slice timing/result telemetry.
+        }
+
+        if (vm.IsRunning()) {
+            // A restarted/manual-started VM begins a fresh terminal-report epoch.
+            g_vmTerminalReported = false;
+        } else if (!g_vmTerminalReported) {
+            g_vmTerminalReported = true;
 #ifdef DIAGNOSTIC_MANUAL_START
             if (g_vmStarted) {
 #else
@@ -211,27 +229,31 @@ void loop() {
 #endif
                 uint8_t err = vm.GetErrorCode();
                 if (err != 0) {
+                    // Faulted student code must not trap the firmware in a
+                    // private halt loop. Stop outputs, report once, and keep
+                    // platform services alive on subsequent firmware cycles.
+                    RobotAPI::Stop();
                     BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
-                    while (1) { }
-                }
-                executionCounter++;
-                BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
-
-                if (executionCounter < STABILITY_ITERATIONS) {
-                    BootLogger::log("STABILITY", "Restarting VM...");
-                    vm.Reset();
-                    vm.LoadProgram(&program);
-#ifdef DIAGNOSTIC_MANUAL_START
-                    vm.SetRunning(false);
-                    g_vmStarted = false;
-                    BootLogger::log("VM-DIAG", "Waiting for manual execution again");
-#endif
                 } else {
-                    BootLogger::log("STABILITY", "VM stability test completed.");
-                    while (1) {
-                        SerialCommandHandler::handle();
-                        RobotNetworkService::update();
-                        delay(30);
+                    executionCounter++;
+                    BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
+
+                    if (executionCounter < STABILITY_ITERATIONS) {
+                        BootLogger::log("STABILITY", "Restarting VM...");
+                        vm.Reset();
+                        vm.LoadProgram(&program);
+                        g_vmTerminalReported = false;
+#ifdef DIAGNOSTIC_MANUAL_START
+                        vm.SetRunning(false);
+                        g_vmStarted = false;
+                        BootLogger::log("VM-DIAG", "Waiting for manual execution again");
+#endif
+                    } else {
+                        // Remain in the normal firmware loop after VM
+                        // completion so serial/network/OTA/diagnostics remain
+                        // serviceable instead of entering a nested while(1).
+                        RobotAPI::Stop();
+                        BootLogger::log("STABILITY", "VM stability test completed.");
                     }
                 }
             }
