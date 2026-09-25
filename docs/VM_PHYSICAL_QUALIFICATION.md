@@ -23,6 +23,20 @@ The profile inherits the production `esp32dev` configuration and adds only:
 
 The normal production profile remains unchanged.
 
+### CI-verified evidence commit
+
+Physical evidence must be captured from a qualification firmware commit that passed the GitHub Actions step **Compile VM-RT qualification firmware** using the exact `esp32dev_vm_qualification` profile. The same compile is required for VM-impact CI, full regression, and release scope.
+
+Before a physical campaign:
+
+1. record the exact firmware commit SHA that will be qualified;
+2. verify that commit has a successful qualification-profile compile in CI;
+3. check out that exact commit when rebuilding/flashing locally;
+4. record the same SHA in every scenario metadata file as `firmware_commit`;
+5. do not substitute a later local edit or unverified build while keeping the old SHA in evidence metadata.
+
+A successful production `esp32dev` build does not substitute for the qualification-profile build because physical telemetry requires `VM_RESPONSIVENESS_DIAGNOSTICS=1`.
+
 ## Required metadata per run
 
 Create a JSON metadata file containing at least:
@@ -92,6 +106,7 @@ Only populate thresholds after the required physical scenarios have enough sampl
 
 ## Exit checklist for #312
 
+- [ ] Exact evidence firmware commit has a successful CI qualification-profile compile.
 - [ ] All required scenarios executed on physical robot.
 - [ ] Raw JSONL and metadata retained for each run.
 - [ ] Qualification report generated for each run.
