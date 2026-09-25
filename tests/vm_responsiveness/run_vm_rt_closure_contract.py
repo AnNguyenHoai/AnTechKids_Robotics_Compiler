@@ -42,8 +42,14 @@ def main() -> int:
 
     require(thresholds["slice_budget_work_units"] == 4, "slice budget must not be tuned without approved physical evidence")
     require("NO GENERATION CHANGE REQUIRED" in audit, "closure audit must record H35 classification")
-    require("#325" in audit, "closure audit must track the physical-evidence blocker")
-    require("must remain open until #325 is complete" in audit, "closure audit must prevent premature epic closure")
+
+    # #330 reconciliation replaced the stale claim that #325 was the only
+    # blocker with explicit owners for every remaining physical/compatibility
+    # risk. Keep the closure document synchronized with that ownership map.
+    for issue in ("#312", "#325", "#336", "#337", "#338", "#339", "#340", "#341", "#342", "#343", "#344"):
+        require(issue in audit, f"closure audit must track remaining blocker {issue}")
+    require("#325 is the only" not in audit, "closure audit must not claim #325 is the only blocker after #330")
+    require("Parent #302 must remain open until #313" in audit, "closure audit must prevent premature epic closure")
 
     print("VM-RT K closure contract: PASS")
     return 0
