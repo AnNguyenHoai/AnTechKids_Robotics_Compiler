@@ -155,6 +155,16 @@ void SetMotorStraightAngle(int leftPort, int rightPort, int speed, int angle);
 void LineIntersectionStop(int speed, int type);
 void SetMp3Play(int index);
 
+/**
+ * Start the fixed-duration buzzer pulse used by SetMp3Play without blocking.
+ *
+ * @return logical duration in milliseconds; 0 when buzzer capability is off.
+ */
+uint32_t BeginMp3PlayCooperative(int index);
+
+/** Stop a cooperative buzzer pulse immediately. */
+void EndMp3PlayCooperative();
+
 int16_t GetTraceValue(int port, int channel);
 bool GetTraceState(int port, int channel);
 int16_t GetTraceRaw(int port);
