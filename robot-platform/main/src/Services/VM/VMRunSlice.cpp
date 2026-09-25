@@ -160,6 +160,18 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
                                        startPc,
                                        mContext.mProgramCounter));
         }
+
+        // Wall-clock is a second, independent guard. Work-unit count remains a
+        // hard ceiling, while the time ceiling prevents a burst of individually
+        // cheap opcodes from monopolizing the firmware cycle. Check only between
+        // Step() calls so legacy Step() semantics stay untouched.
+        if (budget.maxDurationUs != 0 &&
+            static_cast<uint32_t>(micros() - sliceStartUs) >= budget.maxDurationUs) {
+            return finalize(makeResult(VMRunSliceStopReason::TimeBudgetExhausted,
+                                       workUnits,
+                                       startPc,
+                                       mContext.mProgramCounter));
+        }
     }
 
     return finalize(makeResult(VMRunSliceStopReason::BudgetExhausted,
