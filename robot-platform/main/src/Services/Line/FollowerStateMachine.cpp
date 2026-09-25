@@ -1,13 +1,18 @@
 #include "FollowerStateMachine.h"
 #include <Arduino.h>
 
+namespace {
+constexpr uint8_t kLostConfirmSamples = 3;
+}
+
 FollowerStateMachine::FollowerStateMachine()
     : _state(FollowerState::FOLLOWING),
       _turnRequested(false),
       _turnDirection(0),
       _stopRequested(false),
       _lostTimer(0),
-      _searchingDirection(0) {}
+      _searchingDirection(0),
+      _lostCandidateSamples(0) {}
 
 void FollowerStateMachine::update(uint8_t mask, bool intersectionDetected, bool turnRequested, bool stopRequested) {
     _turnRequested = turnRequested;
@@ -16,18 +21,31 @@ void FollowerStateMachine::update(uint8_t mask, bool intersectionDetected, bool 
     switch (_state) {
         case FollowerState::FOLLOWING:
             if (intersectionDetected && _stopRequested) {
+                _lostCandidateSamples = 0;
                 transitionTo(FollowerState::INTERSECTION);
             } else if (mask == 0) {
-                transitionTo(FollowerState::LOST);
-                _lostTimer = millis();
-            } else if (_turnRequested) {
-                transitionTo(FollowerState::TURNING);
-                // direction already stored via requestTurn()
+                // A single 000 sample is common while crossing the edge of a
+                // thin line. Confirm loss before handing control to recovery.
+                if (_lostCandidateSamples < kLostConfirmSamples) {
+                    _lostCandidateSamples++;
+                }
+                if (_lostCandidateSamples >= kLostConfirmSamples) {
+                    _lostCandidateSamples = 0;
+                    transitionTo(FollowerState::LOST);
+                    _lostTimer = millis();
+                }
+            } else {
+                _lostCandidateSamples = 0;
+                if (_turnRequested) {
+                    transitionTo(FollowerState::TURNING);
+                    // direction already stored via requestTurn()
+                }
             }
             break;
 
         case FollowerState::LOST:
             if (mask != 0) {
+                _lostCandidateSamples = 0;
                 transitionTo(FollowerState::FOLLOWING);
             } else if (millis() - _lostTimer > 500) {
                 transitionTo(FollowerState::SEARCHING);
@@ -37,6 +55,7 @@ void FollowerStateMachine::update(uint8_t mask, bool intersectionDetected, bool 
 
         case FollowerState::SEARCHING:
             if (mask != 0) {
+                _lostCandidateSamples = 0;
                 transitionTo(FollowerState::FOLLOWING);
             }
             break;
@@ -87,6 +106,7 @@ void FollowerStateMachine::reset() {
     _stopRequested = false;
     _lostTimer = 0;
     _searchingDirection = 0;
+    _lostCandidateSamples = 0;
 }
 
 void FollowerStateMachine::transitionTo(FollowerState newState) {

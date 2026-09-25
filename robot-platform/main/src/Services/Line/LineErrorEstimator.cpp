@@ -2,21 +2,22 @@
 
 float LineErrorEstimator::estimate(LineState state) {
     switch (state) {
-        // Left side: negative error (turn left)
+        // Negative error means the line is left of centre.
         case LineState::LEFT:
-        case LineState::LEFT_CENTER:
             return -1.0f;
+        case LineState::LEFT_CENTER:
+            return -0.5f;
 
-        // Center: zero error (straight)
         case LineState::CENTER:
             return 0.0f;
 
-        // Right side: positive error (turn right)
-        case LineState::RIGHT:
+        // Positive error means the line is right of centre.
         case LineState::CENTER_RIGHT:
+            return 0.5f;
+        case LineState::RIGHT:
             return 1.0f;
 
-        // Special states: fallback to straight (decision handled elsewhere)
+        // Special states are handled by the follower state machine.
         case LineState::LOST:
         case LineState::INTERSECTION:
         case LineState::UNKNOWN:

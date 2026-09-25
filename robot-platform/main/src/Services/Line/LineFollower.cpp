@@ -12,7 +12,7 @@ LineFollower& LineFollower::instance() {
 }
 
 LineFollower::LineFollower()
-    : _pid(1.2f, 0.02f, 0.5f, 0.02f),
+    : _pid(1.0f, 0.0f, 0.0f, 0.02f),
       _speed(50),
       _stopped(false),
       _turnRequested(false),
@@ -23,7 +23,7 @@ LineFollower::LineFollower()
       _lastLineDirection(RecoveryStrategy::DIR_UNKNOWN),
       _lastControlUpdate(0),
       _wasRecovering(false),
-      _scaleFactor(15.0f)  // default scale factor for MotorMixer
+      _scaleFactor(10.0f)
 {
     _pid.setLimits(-100, 100);
 }
@@ -98,9 +98,14 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
     FollowerState fs = _stateMachine.getState();
     bool recovering = (fs == FollowerState::LOST || fs == FollowerState::SEARCHING);
 
-    // Reacquiring a line exits recovery in the same control cycle. Reset the
-    // PID transient so the old search state cannot cause a derivative kick.
-    if (_wasRecovering && mask != 0) {
+    // Recovery owns steering only after loss is confirmed. Start every recovery
+    // episode from phase zero so behavior never depends on system uptime.
+    if (recovering && !_wasRecovering) {
+        _recovery.reset();
+        _pid.reset();
+    } else if (!recovering && _wasRecovering) {
+        // Reacquiring the line clears recovery state and PID history before the
+        // next FOLLOWING correction.
         _pid.reset();
         _recovery.reset();
     }
@@ -128,13 +133,9 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
             break;
 
         default: { // FOLLOWING
-            // ---- PID-based line following ----
             const int baseSpeed = constrain(speed, 0, 100);
-            // Get continuous error from LineState
-            float error = LineErrorEstimator::estimate(state);
-            // Update PID and get correction
-            float correction = _pid.update(error);
-            // Mix correction with base speed
+            const float error = LineErrorEstimator::estimate(state);
+            const float correction = _pid.update(error);
             MotorOutput out = MotorMixer::mix(baseSpeed, correction, _scaleFactor);
             leftMotor = out.left;
             rightMotor = out.right;

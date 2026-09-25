@@ -35,6 +35,7 @@ private:
     bool _stopRequested;
     uint32_t _lostTimer;
     bool _searchingDirection; // 0 left first, 1 right first
+    uint8_t _lostCandidateSamples;
 
     void transitionTo(FollowerState newState);
 };
