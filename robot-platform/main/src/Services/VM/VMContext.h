@@ -108,7 +108,17 @@ public:
 
     bool IsPendingDeadlineReached(uint32_t nowMs) const
     {
-        if (mPendingOperation != VMPendingOperation::Wait) {
+        // Deadline completion is valid only for a live pending operation owned
+        // by the instruction at the current PC. This prevents stale deadlines
+        // from completing another instruction after stop/reset/control flow.
+        if (!mPendingOperation.IsPending() ||
+            !mPendingOperation.IsOwnedBy(mProgramCounter)) {
+            return false;
+        }
+
+        const VMPendingOperation operation = mPendingOperation.Operation();
+        if (operation != VMPendingOperation::Wait &&
+            operation != VMPendingOperation::Mp3Play) {
             return false;
         }
 
