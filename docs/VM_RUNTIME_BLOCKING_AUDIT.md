@@ -1,98 +1,99 @@
 # VM Runtime Blocking-Point Audit
 
-Tracking: #303, parent #302
-Baseline: `main@71662c84d90c6dbbe682925d9c509309505588d7`
+Tracking: #303, reconciliation #330, parent #302  
+Original audit baseline: `main@71662c84d90c6dbbe682925d9c509309505588d7`  
+Reconciliation baseline: `main@6264c8f253f2f05b209c83e7916dfcdaa9215882`
 
 ## Purpose
 
-Inventory VM-reachable work before `RunSlice` implementation. This document records current scheduling behavior and is updated as follow-up responsiveness work resolves or reclassifies audit findings.
+Inventory VM-reachable work and keep every unresolved responsiveness risk attached to explicit evidence or an open owner. This document does not promote a timing classification from host assumptions: physical timing remains unresolved until measured on the target profile/hardware.
 
 Classification:
 
 - `IMMEDIATE`: synchronous work expected to complete in one short VM step with no intentional wait loop.
 - `COOPERATIVE`: logical operation spans multiple `Step()` calls and keeps PC on the current instruction until completion.
-- `BOUNDED_IO`: synchronous hardware I/O that may block, but has a known finite bound/timeout.
-- `UNRESOLVED`: duration is data-dependent/unbounded, contains an intentional delay that is not cooperative, or requires measurement/contract work before it can be treated as bounded.
+- `BOUNDED_IO`: synchronous hardware I/O with a finite code/configuration bound; final acceptability may still require physical evidence.
+- `UNRESOLVED`: duration or production acceptability still requires code-path, compatibility, or physical measurement evidence.
 
-## VM execution observations
+## Current VM execution observations
 
-- `VM::Step()` executes one current instruction/tick.
-- `Wait` stores `mPendingDeadlineMs`, returns without advancing PC, and advances PC only after the deadline.
-- Line operations `LineIntersectionStop`, `LineMillisecond`, `LineTurnEncounterLine`, and `LineForBmp` route through `CooperativeLineOperation` and use `VMPendingOperation::Line`.
-- `CooperativeLineOperation` runs a line-control tick no more often than every 20 ms and completion is observed on later `Step()` calls.
-- `Pow` is cooperative as of #328: repeated multiplication order is preserved, with at most 8 multiplications per `Step()` and pending progress held in `VMContext`.
-- `Reset`, `Start`, `SetRunning(false)`, VM error handling, and stop paths cancel generic pending state.
-- Direct blocking RobotAPI versions of wait/line operations still exist for non-VM compatibility and must not be reintroduced into VM dispatch.
+- `VM::Step()` remains the single-dispatch compatibility primitive.
+- Production scheduling uses bounded `RunSlice` work.
+- `Wait` is deadline/pending based and no longer duration-blocking on the VM path.
+- `SetMp3Play` deadline completion was fixed and protected by #331.
+- `Pow` is cooperative as of #328, preserving repeated-multiply order with at most 8 multiplications per `Step()`.
+- Line time-spanning operations route through `CooperativeLineOperation` rather than public blocking RobotAPI line helpers.
+- Line consumers use the shared snapshot contract introduced by #308.
+- The exact physical qualification profile is compiled by CI/release preflight as of #329.
+- Direct public blocking RobotAPI wait/line helpers remain available for non-VM compatibility; their VM-boundary hardening is tracked by #338.
 
 ## VM-reachable classification matrix
 
-| Opcode / group | Runtime path | Current class | PC / side effect behavior | Evidence / follow-up |
-|---|---|---|---|---|
-| `LoadConst`, comparisons, `Add/Sub/Mul/Div/Mod/Neg/Store`, jumps/call/return | VM local state | `IMMEDIATE` | PC advances/branches synchronously; arithmetic faults stop VM | Protected by host regression |
-| `Pow` | VM pending state → bounded repeated-multiply chunks | `COOPERATIVE` | PC held while exponent work remains; at most 8 multiplies per Step; PC++ once on completion | #328 + `run_pow_bounded_contract.py` |
-| `Forward`, `Backward`, `TurnLeft`, `TurnRight`, `Stop`, `SetMotorSpeed` | VM → RobotAPI → motor/heading path | `IMMEDIATE`* | Command applied then PC++ | `*` physical duration remains part of qualification evidence |
-| `Wait` | VM pending deadline | `COOPERATIVE` | PC held while pending; PC++ once deadline reached | VM-RT pending-state gates |
-| `ReadUltrasonic` | VM → RobotAPI → `Ultrasonic::update()` → `pulseIn(timeout)` | `BOUNDED_IO` | value stored then PC++ | Configured timeout remains a physical latency candidate |
-| `ReadTouch`, `ReadLight`, `ReadColor` | VM → RobotAPI/device read | `UNRESOLVED` | value stored then PC++ | Driver timing evidence owned by #330 / physical qualification |
-| `ReadLine`, `GetTraceValue`, `GetTraceState`, `GetTraceRaw` | VM → shared line snapshot | `COOPERATIVE/BOUNDED SNAPSHOT` | same-slice consumers reuse one L/C/R snapshot; PC++ per getter | #308 snapshot contract; timing evidence still reviewed by #330/#312 |
-| `LineBasis`, `LineFollow` | VM → RobotAPI line sensor/control/output tick | `UNRESOLVED` | one synchronous tick then PC++ | Worst-case physical duration owned by #330/#312 |
-| `LineMillisecond` | VM → `CooperativeLineOperation` → repeated `LineBasis` ticks | `COOPERATIVE` | PC held; completion stops follower/motors; PC++ once | Host + physical qualification |
-| `LineIntersectionStop` | VM → `CooperativeLineOperation` → repeated `LineBasis` ticks | `COOPERATIVE` | PC held until follower stopped; PC++ once | Host + physical qualification |
-| `LineTurnEncounterLine` | VM → `CooperativeLineOperation` → repeated `LineBasis` ticks | `COOPERATIVE` | PC held until turn request clears; PC++ once | Host + physical qualification |
-| `LineForBmp` | VM → `CooperativeLineOperation` → repeated `LineBasis` ticks | `COOPERATIVE` | PC held until BMP inactive; final stop then PC++ | Host + physical qualification |
-| `LineStop` | VM → cancel cooperative line → RobotAPI stop | `IMMEDIATE`* | cancels active line work, stops, PC++ | stop latency measured by #312/#325 |
-| `SetServo` | RobotAPI | `IMMEDIATE` currently | PC++ | Current implementation is feature-gated/dummy |
-| `Set3CLed` | RobotAPI → GPIO | `IMMEDIATE` | GPIO write + log then PC++ | synchronous logging may affect measured duration |
-| `SetLightSensorLed` | RobotAPI | `IMMEDIATE` currently | PC++ | Current implementation is dummy |
-| `SetMotorStraightAngle` | RobotAPI | `IMMEDIATE` currently | PC++ | Current implementation is dummy; future real implementation must be reclassified |
-| `SetMp3Play` | VM pending deadline → cooperative buzzer begin/end | `COOPERATIVE` with open liveness bug | PC should remain pending until deadline then finalize + PC++ | Deadline helper bug tracked by #331 |
+| Opcode / group | Runtime path | Current class | Evidence / remaining owner |
+|---|---|---|---|
+| `LoadConst`, comparisons, `Add/Sub/Mul/Div/Mod/Neg/Store`, jumps/call/return | VM local state | `IMMEDIATE` | Host regression |
+| `Pow` | VM pending state → bounded repeated-multiply chunks | `COOPERATIVE` | #328 completed; `run_pow_bounded_contract.py` |
+| `Wait` | VM pending deadline | `COOPERATIVE` | Pending-state/deadline gates |
+| `SetMp3Play` | VM pending deadline → cooperative buzzer begin/end | `COOPERATIVE` | #331 completed; deadline ownership/completion gates |
+| `Forward`, `Backward`, `TurnLeft`, `TurnRight`, `Stop`, `SetMotorSpeed` | VM → RobotAPI → output/control path | `IMMEDIATE`* | `*` final physical outlier review: #342 / #325 |
+| `ReadUltrasonic` | VM → RobotAPI → ultrasonic pulse acquisition | `BOUNDED_IO` | Finite timeout by code/config; physical timeout acceptability: #340 / #325 |
+| `ReadTouch`, `ReadLight`, `ReadColor` | VM → RobotAPI/device read | `UNRESOLVED` | Driver/target timing evidence: #336 |
+| `ReadLine`, `GetTraceValue`, `GetTraceState`, `GetTraceRaw` | VM → shared line snapshot | `SNAPSHOT-CONSISTENT; TIMING PENDING` | Snapshot ownership resolved by #308; residual call/sampling timing reconciliation: #339 / #337 |
+| `LineBasis`, `LineFollow` | VM → line snapshot/control/output tick | `UNRESOLVED` | Physical indivisible work-unit evidence: #337 / #325 |
+| `LineMillisecond`, `LineIntersectionStop`, `LineTurnEncounterLine`, `LineForBmp` | VM → cooperative line operation → repeated bounded scheduling points | `COOPERATIVE` | Host semantics protected; underlying LineBasis timing: #337 |
+| `LineStop` | cancel line operation → output stop | `IMMEDIATE`* | stop/abort physical latency: #312 / #325 |
+| `SetServo`, `SetLightSensorLed`, `SetMotorStraightAngle` | RobotAPI feature-gated/stub-dependent paths | `IMPLEMENTATION-SPECIFIC` | Prevent stub evidence being treated as real hardware timing: #344 |
+| `Set3CLed` and other synchronous output/log paths | RobotAPI/GPIO/diagnostics | `IMMEDIATE`* | diagnostics configuration/outlier review: #341 / #342 |
 
-## Blocking points outside the active VM path
+## Blocking public RobotAPI compatibility boundary
 
-The following RobotAPI functions are still blocking and must not be accidentally reintroduced into VM dispatch:
+The following public RobotAPI functions remain intentionally outside the cooperative VM scheduling contract and may remain for non-VM compatibility:
 
-- `RobotAPI::Wait(ms)` uses `delay(ms)`.
-- `RobotAPI::LineMillisecond` uses a duration loop plus `delay(20)`.
-- `RobotAPI::LineIntersectionStop` loops until follower stop plus `delay(20)`.
-- `RobotAPI::LineTurnEncounterLine` loops until line reacquisition plus `delay(20)`.
-- `RobotAPI::LineForBmp` loops while BMP is active plus `delay(20)`.
+- `RobotAPI::Wait(ms)`;
+- `RobotAPI::LineMillisecond`;
+- `RobotAPI::LineIntersectionStop`;
+- `RobotAPI::LineTurnEncounterLine`;
+- `RobotAPI::LineForBmp`.
 
-These APIs may still be reachable by non-VM callers. VM responsiveness work keeps the distinction between VM dispatch semantics and public RobotAPI compatibility explicit; #330 owns the final reachability/compatibility decision.
+Current VM dispatch uses pending/cooperative paths instead. #338 owns the explicit fail-closed source guard preventing future VM dispatch from directly reintroducing these public blocking helpers. Public API semantics must not be removed or changed as part of that guard without a separate compatibility review.
 
-## P0 / high-risk findings
+## Resolved audit findings
 
-1. **`Pow` exponent-sized indivisible work** — resolved by #328 using cooperative chunks with a fixed 8-multiply per-Step budget.
-2. **`SetMp3Play` deadline completion** — cooperative conversion exists, but current deadline helper excludes `Mp3Play`; tracked by #331.
-3. **Ultrasonic read can occupy one VM step up to its configured timeout**; this is finite but must remain in physical responsiveness evidence.
-4. **`LineBasis` is an indivisible control tick** for cooperative line operations. Its real worst-case duration must be measured before a hard slice-time claim is approved.
-5. **Touch/light/color read timing** still requires driver/physical evidence.
-6. **Synchronous diagnostics/logging** can affect timing and must be represented by the qualification profile used for thresholds.
+| Finding | Resolution |
+|---|---|
+| exponent-sized `Pow` work in one Step | #328: cooperative chunks, fixed 8-multiply Step budget |
+| `SetMp3Play` could remain pending forever | #331: shared deadline helper supports MP3 with live/current-PC ownership |
+| qualification firmware could escape CI compile | #329: `esp32dev_vm_qualification` is compiled for VM/full/release paths |
+| duplicate line reads / inconsistent same-cycle samples | #308: one shared line snapshot per VM control slice |
 
-## PC / cancellation baseline
+## Remaining evidence / compatibility owners
 
-- Immediate instructions: side effect/value computation then PC advances once.
-- `Wait`: INIT stores deadline without PC advance; pending calls leave PC unchanged; completion clears pending and advances once.
-- `Pow`: INIT captures base/exponent/result; each Step performs at most 8 legacy-order multiplications; PC remains unchanged while work remains; completion clears pending and advances once.
-- Cooperative line operations: start sets pending without PC advance; each update leaves PC unchanged while active; completion clears pending and advances once.
-- `Reset`, `Start`, `SetRunning(false)` and VM fault cleanup clear generic pending state; actuator-specific cleanup remains centralized.
+No remaining risk is intentionally ownerless.
 
-## Remaining `UNRESOLVED` items and owner
+| Item | Why still open | Owner |
+|---|---|---:|
+| touch/light/color read timing | target-driver bound not yet established | #336 |
+| `LineBasis`/`LineFollow` indivisible duration | requires real robot timing/outlier evidence | #337 |
+| public blocking RobotAPI wait/line reachability | needs explicit fail-closed VM boundary guard | #338 |
+| line getter/raw residual timing after shared snapshot | call topology/timing reconciliation | #339 |
+| ultrasonic finite timeout acceptability | finite does not imply acceptable responsiveness | #340 |
+| synchronous diagnostics/logging cost | production vs qualification configuration must be explicit | #341 |
+| motor/actuator/output work-unit outliers | must be reviewed in physical campaign | #342 |
+| combined physical-evidence mapping | avoid fragmented/duplicated real-robot evidence | #343 |
+| feature-gated/stub hardware paths | dummy implementation is not hardware timing evidence | #344 |
+| production thresholds and end-to-end physical response | six-scenario real-robot campaign | #312 / #325 |
 
-| Item | Why unresolved | Planned owner |
-|---|---|---|
-| touch/light/color reads | Driver timing not yet measured/bounded | #330 / #312 |
-| `LineBasis` worst-case duration | Needs physical instrumentation evidence | #330 / #312 / #325 |
-| `SetMp3Play` completion | Pending deadline helper currently accepts Wait only | #331 |
-| public blocking RobotAPI line/wait functions | Non-VM compatibility/reachability needs explicit final decision | #330 |
-| qualification firmware build verification | Real-test profile was not compiled by existing full host run | #329 |
+## Physical evidence rule
 
-## #303 Definition of Done assessment
+Host fixtures, source inspection, synthetic telemetry and CI duration cannot close rows that explicitly require physical timing. #325 remains the campaign authority. The exact qualification firmware SHA must have passed the `esp32dev_vm_qualification` CI compile and the same SHA must be recorded in evidence metadata.
 
-- [x] VM dispatch cases inventoried for the original baseline.
-- [x] VM → RobotAPI/service paths classified at audit level.
-- [x] Known delay/busy/duration/polling loops identified.
-- [x] Current PC and cooperative side-effect behavior recorded.
-- [x] Unresolved entries have explicit reason and follow-up issue.
-- [x] Original #303 changed no runtime behavior.
+## #330 reconciliation result
 
-Follow-up issues now own post-audit runtime corrections and physical evidence. #303 remains correctly closed; #302 remains open until those follow-ups are complete.
+- [x] Every stale `UNRESOLVED` item has been re-audited at ownership level.
+- [x] Resolved items reference code/test evidence (#308, #328, #329, #331).
+- [x] Hardware-dependent items have dedicated open owners (#336–#344).
+- [x] No physical threshold or timing result has been fabricated from host evidence.
+- [x] Public blocking RobotAPI compatibility is explicitly outside the cooperative VM path; hardening remains tracked by #338.
+- [x] Final closure remains blocked until the open evidence/guard owners are resolved or explicitly deferred by #313.
+
+#303 remains correctly closed. #330 may close after this reconciliation is merged and its regression/doc gates pass; closing #330 does **not** close the child evidence issues or parent #302.
