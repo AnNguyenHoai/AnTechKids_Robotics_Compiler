@@ -25,7 +25,7 @@ Classification:
 - Line time-spanning operations route through `CooperativeLineOperation` rather than public blocking RobotAPI line helpers.
 - Line consumers use the shared snapshot contract introduced by #308.
 - The exact physical qualification profile is compiled by CI/release preflight as of #329.
-- Direct public blocking RobotAPI wait/line helpers remain available for non-VM compatibility; their VM-boundary hardening is tracked by #338.
+- Public blocking RobotAPI wait/line helpers remain available for non-VM compatibility, while #338 adds a fail-closed source guard preventing direct VM dispatch use.
 
 ## VM-reachable classification matrix
 
@@ -55,7 +55,9 @@ The following public RobotAPI functions remain intentionally outside the coopera
 - `RobotAPI::LineTurnEncounterLine`;
 - `RobotAPI::LineForBmp`.
 
-Current VM dispatch uses pending/cooperative paths instead. #338 owns the explicit fail-closed source guard preventing future VM dispatch from directly reintroducing these public blocking helpers. Public API semantics must not be removed or changed as part of that guard without a separate compatibility review.
+VM dispatch uses pending/cooperative paths instead. #338 protects this boundary with `run_blocking_api_boundary.py`, which scans `VM.cpp` and fails if any of the five public blocking compatibility calls are reintroduced. The gate also mutation-tests each call independently so the protection remains fail-closed.
+
+This is a compatibility-boundary guard only: public RobotAPI semantics remain unchanged for non-VM callers. No opcode number, bytecode encoding, compiler/firmware generation, or Robot Language API contract changes, so the existing H35 generation-1 classification remains applicable.
 
 ## Resolved audit findings
 
@@ -65,6 +67,7 @@ Current VM dispatch uses pending/cooperative paths instead. #338 owns the explic
 | `SetMp3Play` could remain pending forever | #331: shared deadline helper supports MP3 with live/current-PC ownership |
 | qualification firmware could escape CI compile | #329: `esp32dev_vm_qualification` is compiled for VM/full/release paths |
 | duplicate line reads / inconsistent same-cycle samples | #308: one shared line snapshot per VM control slice |
+| blocking public RobotAPI compatibility calls could regress into VM dispatch | #338: fail-closed `run_blocking_api_boundary.py` source + mutation gate |
 
 ## Remaining evidence / compatibility owners
 
@@ -74,7 +77,6 @@ No remaining risk is intentionally ownerless.
 |---|---|---:|
 | touch/light/color read timing | target-driver bound not yet established | #336 |
 | `LineBasis`/`LineFollow` indivisible duration | requires real robot timing/outlier evidence | #337 |
-| public blocking RobotAPI wait/line reachability | needs explicit fail-closed VM boundary guard | #338 |
 | line getter/raw residual timing after shared snapshot | call topology/timing reconciliation | #339 |
 | ultrasonic finite timeout acceptability | finite does not imply acceptable responsiveness | #340 |
 | synchronous diagnostics/logging cost | production vs qualification configuration must be explicit | #341 |
@@ -90,10 +92,10 @@ Host fixtures, source inspection, synthetic telemetry and CI duration cannot clo
 ## #330 reconciliation result
 
 - [x] Every stale `UNRESOLVED` item has been re-audited at ownership level.
-- [x] Resolved items reference code/test evidence (#308, #328, #329, #331).
-- [x] Hardware-dependent items have dedicated open owners (#336–#344).
+- [x] Resolved items reference code/test evidence (#308, #328, #329, #331, #338).
+- [x] Hardware-dependent items have dedicated open owners (#336, #337, #339–#344).
 - [x] No physical threshold or timing result has been fabricated from host evidence.
-- [x] Public blocking RobotAPI compatibility is explicitly outside the cooperative VM path; hardening remains tracked by #338.
-- [x] Final closure remains blocked until the open evidence/guard owners are resolved or explicitly deferred by #313.
+- [x] Public blocking RobotAPI compatibility is explicitly outside the cooperative VM path and protected by a fail-closed source/mutation gate.
+- [x] Final closure remains blocked until the open physical-evidence owners are resolved or explicitly deferred by #313.
 
-#303 remains correctly closed. #330 may close after this reconciliation is merged and its regression/doc gates pass; closing #330 does **not** close the child evidence issues or parent #302.
+#303 and #330 remain correctly closed. #338 may close after its guard PR is merged and VM-RT CI passes; closing #338 does **not** close the physical evidence issues or parent #302.
