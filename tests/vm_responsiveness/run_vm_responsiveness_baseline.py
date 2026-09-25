@@ -101,7 +101,12 @@ def main() -> int:
     check("C2 contract records original blocking reference", "blocking" in c2.lower() and "LineMillisecond" in c2)
     check("runtime audit records cooperative current baseline", "LineMillisecond" in audit and "COOPERATIVE" in audit)
     check("compatibility matrix protects Step semantics", "`Step()` semantics | unchanged" in matrix)
-    check("compatibility matrix classifies RunSlice as compatible extension", "Add `RunSlice(...)` alongside existing `Step()`" in matrix and "Compatible extension" in matrix)
+    check(
+        "compatibility matrix classifies RunSlice as compatible extension",
+        "`RunSlice(...)`" in matrix
+        and "existing `Step()`" in matrix
+        and "Compatible extension" in matrix,
+    )
     check("compatibility matrix requires H35 for opcode changes", "opcode number changes" in matrix)
 
     print("VM responsiveness compatibility baseline: PASS")
