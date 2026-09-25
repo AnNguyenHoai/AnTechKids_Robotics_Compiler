@@ -37,6 +37,26 @@ struct VMRunSliceResult
     uint16_t workUnits;
     uint16_t startProgramCounter;
     uint16_t endProgramCounter;
+
+    // VM-RT H diagnostic evidence. These are observations only; they do not
+    // participate in VM scheduling or alter legacy Step() semantics.
+    uint32_t sliceDurationUs;
+    uint32_t maxWorkUnitDurationUs;
+    uint16_t maxWorkUnitProgramCounter;
+
+    uint8_t pendingOperation;
+    uint8_t pendingLifecycle;
+    uint16_t pendingOwnerProgramCounter;
+    uint32_t pendingGeneration;
+    uint8_t pendingOpcode;
+    bool pendingOpcodeValid;
+
+    uint32_t lineSnapshotSequence;
+    uint32_t lineSnapshotAgeUs;
+    uint32_t lineSnapshotPhysicalReadCount;
+    uint32_t lineSnapshotConsumerCount;
+    uint32_t lineSnapshotInvalidCount;
+    bool lineSnapshotValid;
 };
 
 /******************************************************************************

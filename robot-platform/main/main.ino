@@ -2,6 +2,7 @@
 
 #include "src/Services/VM/ProgramLoader.h"
 #include "src/Services/VM/VM.h"
+#include "src/Services/VM/VMRuntimeTelemetry.h"
 #include "src/Services/Robot/RobotAPI.h"
 #include "src/Logger/BootLogger.h"
 #include "src/Diagnostic/Diagnostic.h"
@@ -165,8 +166,15 @@ void loop() {
 
     // Firmware-cycle order is intentional: service the control plane first so
     // stop/abort/OTA can be observed before any new student-code work begins.
+    const bool vmRunningBeforeControl = vm.IsRunning();
+    const uint32_t controlServiceStartUs = micros();
     SerialCommandHandler::handle();
     RobotNetworkService::update();
+    if (vmRunningBeforeControl && !vm.IsRunning()) {
+        // Upper-bound request-to-observation window for stop/abort initiated by
+        // the control-plane service phase. Qualification can aggregate max/last.
+        VMRuntimeTelemetry::RecordStopLatency(micros() - controlServiceStartUs);
+    }
 
     // During OTA, do not execute student code or drive motors. The network
     // service owns the firmware update transaction and the robot reboots when
@@ -214,7 +222,8 @@ void loop() {
         if (runVmSlice) {
             const VMRunSliceBudget budget{VM_WORK_UNITS_PER_FIRMWARE_CYCLE};
             const VMRunSliceResult sliceResult = vm.RunSlice(budget);
-            (void)sliceResult;  // #310 adds runtime slice timing/result telemetry.
+            VMRuntimeTelemetry::RecordSlice(sliceResult);
+            VMRuntimeTelemetry::PrintLatestJson();
         }
 
         if (vm.IsRunning()) {

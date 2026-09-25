@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""VM responsiveness scheduler/pending-state/snapshot contract gate.
+"""VM responsiveness scheduler/pending-state/snapshot/instrumentation gate.
 
-This deterministic host gate covers VM-RT C/D/E/F. It verifies the C++
-scheduler, generic cooperative state, timed-operation conversion, and shared
-line-sensor snapshot implementation shape without pretending to measure ESP32
-wall-clock latency. Physical timing belongs to VM-RT H/J.
+This deterministic host gate covers VM-RT C/D/E/F/H. It verifies scheduler,
+pending-state, timed-operation, shared line-snapshot, and instrumentation source
+contracts without pretending host CI measures ESP32 wall-clock performance.
 """
 from __future__ import annotations
 
@@ -17,6 +16,9 @@ CTX_H = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMContex
 PENDING_H = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMPendingState.h"
 RUN_SLICE_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMRunSlice.cpp"
 VM_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VM.cpp"
+TELEMETRY_H = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMRuntimeTelemetry.h"
+TELEMETRY_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VMRuntimeTelemetry.cpp"
+FIRMWARE = ROOT / "robot-platform" / "main" / "main.ino"
 ROBOT_API_H = ROOT / "robot-platform" / "main" / "src" / "Services" / "Robot" / "RobotAPI.h"
 ROBOT_API_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "Robot" / "RobotAPI.cpp"
 ROBOT_COOP_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "Robot" / "RobotAPICooperative.cpp"
@@ -26,6 +28,7 @@ TCRT_H = ROOT / "robot-platform" / "main" / "src" / "Sensor" / "TCRT5000.h"
 TCRT_CPP = ROOT / "robot-platform" / "main" / "src" / "Sensor" / "TCRT5000.cpp"
 SPEC = ROOT / "docs" / "VM_COOPERATIVE_EXECUTION_SPEC.md"
 SNAPSHOT_SPEC = ROOT / "docs" / "LINE_SENSOR_SNAPSHOT_CONTRACT.md"
+INSTRUMENTATION_SPEC = ROOT / "docs" / "VM_RESPONSIVENESS_INSTRUMENTATION.md"
 
 
 def check(name: str, condition: bool) -> None:
@@ -40,6 +43,9 @@ def main() -> int:
     pending = PENDING_H.read_text(encoding="utf-8")
     run_slice = RUN_SLICE_CPP.read_text(encoding="utf-8")
     legacy = VM_CPP.read_text(encoding="utf-8")
+    telemetry_h = TELEMETRY_H.read_text(encoding="utf-8")
+    telemetry_cpp = TELEMETRY_CPP.read_text(encoding="utf-8")
+    firmware = FIRMWARE.read_text(encoding="utf-8")
     robot_h = ROBOT_API_H.read_text(encoding="utf-8")
     robot_cpp = ROBOT_API_CPP.read_text(encoding="utf-8")
     robot_coop = ROBOT_COOP_CPP.read_text(encoding="utf-8")
@@ -49,6 +55,7 @@ def main() -> int:
     tcrt_cpp = TCRT_CPP.read_text(encoding="utf-8")
     spec = SPEC.read_text(encoding="utf-8")
     snapshot_spec = SNAPSHOT_SPEC.read_text(encoding="utf-8")
+    instrumentation_spec = INSTRUMENTATION_SPEC.read_text(encoding="utf-8")
 
     for reason in (
         "BudgetExhausted", "Yielded", "Waiting", "Halted", "Stopped", "Fault"
@@ -83,7 +90,7 @@ def main() -> int:
     check("other pending operation returns Yielded", "mPendingOperation != VMPendingOperation::None" in loop and "VMRunSliceStopReason::Yielded" in loop)
     check("non-running state distinguishes Halted", "VMRunSliceStopReason::Halted" in run_slice)
     check("non-running state distinguishes Stopped", "VMRunSliceStopReason::Stopped" in run_slice)
-    check("budget exhaustion is final fallthrough", re.search(r"return makeResult\(VMRunSliceStopReason::BudgetExhausted,[\s\S]*?\n\}\s*$", run_slice) is not None)
+    check("budget exhaustion is final fallthrough", re.search(r"return finalize\(makeResult\(VMRunSliceStopReason::BudgetExhausted,[\s\S]*?\)\);\s*\n\}", run_slice) is not None)
 
     check("RunSlice captures executed PC before Step", "const uint16_t executedPc = mContext.mProgramCounter;" in loop)
     check("normal direct jump-to-end maps to Halted", "case Opcode::Jump:" in loop and "executed.p2 == programEnd" in loop)
@@ -147,12 +154,40 @@ def main() -> int:
     check("threshold semantics remain in TCRT driver", "_lastReading == _threshold" in tcrt_cpp and "setThreshold" in tcrt_h)
     check("snapshot contract forbids getter-owned refresh", "Individual VM getters do not own physical sampling" in snapshot_spec)
 
+    # VM-RT H: measurable responsiveness evidence without changing dispatch.
+    for field in (
+        "sliceDurationUs", "maxWorkUnitDurationUs", "maxWorkUnitProgramCounter",
+        "pendingOperation", "pendingLifecycle", "pendingOwnerProgramCounter",
+        "pendingGeneration", "pendingOpcode", "pendingOpcodeValid",
+        "lineSnapshotSequence", "lineSnapshotAgeUs", "lineSnapshotPhysicalReadCount",
+        "lineSnapshotConsumerCount", "lineSnapshotInvalidCount", "lineSnapshotValid",
+    ):
+        check(f"RunSlice result exposes {field}", field in header)
+
+    check("slice timing uses monotonic micros", "const uint32_t sliceStartUs = micros();" in run_slice and "result.sliceDurationUs = nowUs - sliceStartUs;" in run_slice)
+    check("work-unit timing surrounds legacy Step", "const uint32_t workStartUs = micros();" in loop and "const uint32_t workDurationUs = micros() - workStartUs;" in loop)
+    check("slowest work unit retains owning PC", "maxWorkUnitProgramCounter = executedPc;" in loop)
+    check("pending operation evidence uses generic state", "mPendingOperation.Operation()" in run_slice and "mPendingOperation.Lifecycle()" in run_slice)
+    check("pending opcode is resolved from owner PC", "mProgram->mInstructions[result.pendingOwnerProgramCounter].opcode" in run_slice)
+    check("snapshot age uses shared snapshot timestamp", "nowUs - snapshot.timestampUs" in run_slice)
+    check("instrumentation does not add Step calls", loop.count("Step();") == 1)
+
+    check("telemetry aggregate stores latest slice", "VMRunSliceResult lastSlice;" in telemetry_h and "g_snapshot.lastSlice = result;" in telemetry_cpp)
+    check("telemetry tracks max slice duration", "maxSliceDurationUs" in telemetry_h and "result.sliceDurationUs > g_snapshot.maxSliceDurationUs" in telemetry_cpp)
+    check("telemetry tracks slowest indivisible work unit", "maxWorkUnitDurationUs" in telemetry_h and "maxWorkUnitProgramCounter" in telemetry_h)
+    check("stop latency evidence has last and max", "lastStopLatencyUs" in telemetry_h and "maxStopLatencyUs" in telemetry_h and "RecordStopLatency" in telemetry_cpp)
+    check("firmware measures bounded control-plane stop window", "vmRunningBeforeControl" in firmware and "controlServiceStartUs" in firmware and "VMRuntimeTelemetry::RecordStopLatency" in firmware)
+    check("firmware records every executed VM slice", "VMRuntimeTelemetry::RecordSlice(sliceResult);" in firmware)
+    check("JSONL evidence is opt-in", "#define VM_RESPONSIVENESS_DIAGNOSTICS 0" in telemetry_h and "#if VM_RESPONSIVENESS_DIAGNOSTICS" in telemetry_cpp)
+    check("JSONL evidence has stable type marker", "\\\"type\\\":\\\"vm_rt\\\"" in telemetry_cpp)
+    check("instrumentation spec documents host/physical evidence", "JSONL" in instrumentation_spec and "physical qualification" in instrumentation_spec.lower())
+
     lower_header = header.lower()
     check("API documents cooperative non-preemptive boundary", "not preemption" in lower_header)
     check("API documents remaining synchronous RobotAPI risk", "synchronous robotapi call" in lower_header)
     check("spec keeps wall-clock secondary to deterministic budget", "Wall-clock time alone should not be the only semantic budget" in spec)
 
-    print("VM RunSlice + pending state + timed operation + line snapshot contract: PASS")
+    print("VM RunSlice + pending + snapshot + responsiveness instrumentation: PASS")
     return 0
 
 
