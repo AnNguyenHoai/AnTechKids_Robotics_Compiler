@@ -35,6 +35,11 @@ public:
     bool isLineDetected() const;
     int rawLevel() const;
 
+    // Shared-snapshot owner bypasses update() to perform exactly one physical
+    // read per channel for the current control cycle.
+    void SampleHardwareDirect();
+    void ApplySnapshotReading(int reading);
+
     // --- Calibration support ---
     void setThreshold(int threshold);
     int getThreshold() const;

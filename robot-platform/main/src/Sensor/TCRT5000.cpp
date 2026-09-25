@@ -1,4 +1,5 @@
 #include "TCRT5000.h"
+#include "LineSensorSnapshot.h"
 #include "../HAL/HAL.h"
 
 TCRT5000::TCRT5000(int pin, const char* sensorName, int threshold)
@@ -11,9 +12,22 @@ bool TCRT5000::initialize() {
     return true;
 }
 
-void TCRT5000::update() {
+void TCRT5000::SampleHardwareDirect() {
     auto state = HAL::getGPIO().digitalRead(_pin);
     _lastReading = (state == HAL::PinState::HIGH_STATE) ? 1 : 0;
+}
+
+void TCRT5000::ApplySnapshotReading(int reading) {
+    _lastReading = reading ? 1 : 0;
+}
+
+void TCRT5000::update() {
+    if (LineSensorSnapshot::IsCycleActive()) {
+        LineSensorSnapshot::EnsureSample();
+        LineSensorSnapshot::RecordConsumer();
+        return;
+    }
+    SampleHardwareDirect();
 }
 
 bool TCRT5000::healthy() const {

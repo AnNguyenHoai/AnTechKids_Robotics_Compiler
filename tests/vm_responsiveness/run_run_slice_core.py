@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""VM responsiveness scheduler/pending-state contract gate.
+"""VM responsiveness scheduler/pending-state/snapshot contract gate.
 
-This deterministic host gate covers VM-RT C/D/E. It verifies the C++ scheduler,
-generic cooperative state, and time-spanning VM conversion shape without
-pretending to measure ESP32 wall-clock latency. Physical timing belongs to
-VM-RT H/J.
+This deterministic host gate covers VM-RT C/D/E/F. It verifies the C++
+scheduler, generic cooperative state, timed-operation conversion, and shared
+line-sensor snapshot implementation shape without pretending to measure ESP32
+wall-clock latency. Physical timing belongs to VM-RT H/J.
 """
 from __future__ import annotations
 
@@ -20,7 +20,12 @@ VM_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "VM" / "VM.cpp"
 ROBOT_API_H = ROOT / "robot-platform" / "main" / "src" / "Services" / "Robot" / "RobotAPI.h"
 ROBOT_API_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "Robot" / "RobotAPI.cpp"
 ROBOT_COOP_CPP = ROOT / "robot-platform" / "main" / "src" / "Services" / "Robot" / "RobotAPICooperative.cpp"
+SNAPSHOT_H = ROOT / "robot-platform" / "main" / "src" / "Sensor" / "LineSensorSnapshot.h"
+SNAPSHOT_CPP = ROOT / "robot-platform" / "main" / "src" / "Sensor" / "LineSensorSnapshot.cpp"
+TCRT_H = ROOT / "robot-platform" / "main" / "src" / "Sensor" / "TCRT5000.h"
+TCRT_CPP = ROOT / "robot-platform" / "main" / "src" / "Sensor" / "TCRT5000.cpp"
 SPEC = ROOT / "docs" / "VM_COOPERATIVE_EXECUTION_SPEC.md"
+SNAPSHOT_SPEC = ROOT / "docs" / "LINE_SENSOR_SNAPSHOT_CONTRACT.md"
 
 
 def check(name: str, condition: bool) -> None:
@@ -38,7 +43,12 @@ def main() -> int:
     robot_h = ROBOT_API_H.read_text(encoding="utf-8")
     robot_cpp = ROBOT_API_CPP.read_text(encoding="utf-8")
     robot_coop = ROBOT_COOP_CPP.read_text(encoding="utf-8")
+    snapshot_h = SNAPSHOT_H.read_text(encoding="utf-8")
+    snapshot_cpp = SNAPSHOT_CPP.read_text(encoding="utf-8")
+    tcrt_h = TCRT_H.read_text(encoding="utf-8")
+    tcrt_cpp = TCRT_CPP.read_text(encoding="utf-8")
     spec = SPEC.read_text(encoding="utf-8")
+    snapshot_spec = SNAPSHOT_SPEC.read_text(encoding="utf-8")
 
     for reason in (
         "BudgetExhausted", "Yielded", "Waiting", "Halted", "Stopped", "Fault"
@@ -93,7 +103,6 @@ def main() -> int:
     check("hard reset starts a fresh pending epoch", "mPendingOperation.HardReset();" in context)
     check("deadline helper is wrap-safe", "static_cast<int32_t>(nowMs - mPendingDeadlineMs) >= 0" in context)
 
-    # VM-RT E: Wait uses the shared deadline primitive and remains pending until completion.
     wait_case = legacy[legacy.index("case Opcode::Wait:"):legacy.index("case Opcode::CompareEQ:")]
     check("Wait starts one pending generation", "mPendingOperation = VMPendingOperation::Wait;" in wait_case)
     check("Wait stores monotonic deadline", "mPendingDeadlineMs = millis() +" in wait_case)
@@ -101,7 +110,6 @@ def main() -> int:
     check("Wait does not call blocking RobotAPI Wait", "RobotAPI::Wait" not in wait_case and "delay(" not in wait_case)
     check("Wait advances PC only after completion", wait_case.index("ClearPendingOperation();") < wait_case.rindex("mProgramCounter++;"))
 
-    # VM-RT E: SetMp3Play keeps its logical 200 ms duration without blocking VM execution.
     mp3_case = legacy[legacy.index("case Opcode::SetMp3Play:"):legacy.index("case Opcode::GetTraceValue:")]
     check("Mp3Play has explicit pending kind", "Mp3Play" in pending)
     check("Mp3Play starts nonblocking RobotAPI primitive", "BeginMp3PlayCooperative" in mp3_case)
@@ -113,7 +121,6 @@ def main() -> int:
     check("cooperative buzzer primitive contains no delay", "delay(" not in robot_coop)
     check("cooperative buzzer keeps legacy logical duration", "kMp3PlayDurationMs = 200" in robot_coop and "delay(200);" in robot_cpp)
 
-    # Abort/reset/fault cleanup must finalize pending actuator without success PC advance.
     check("VM has centralized pending cancellation", "void VM::CancelPendingOperation(bool stopLineMotors)" in legacy)
     cancel_body = legacy[legacy.index("void VM::CancelPendingOperation"):legacy.index("void VM::Reset()")]
     check("pending buzzer is forced off on cancellation", "EndMp3PlayCooperative();" in cancel_body)
@@ -125,12 +132,27 @@ def main() -> int:
     check("Line operations still use shared Line pending kind", legacy.count("mPendingOperation = VMPendingOperation::Line;") >= 4)
     check("line pending completion still clears before PC advance", "mContext.ClearPendingOperation();\n        mContext.mProgramCounter++;" in legacy)
 
+    # VM-RT F / S1-S5: one shared physical sample set per RunSlice control cycle.
+    check("snapshot model exposes L/C/R values", all(token in snapshot_h for token in ("bool left;", "bool center;", "bool right;")))
+    check("snapshot exposes timestamp sequence and validity", all(token in snapshot_h for token in ("timestampUs", "sequence", "valid")))
+    check("snapshot exposes physical-read and consumer diagnostics", "physicalReadCount" in snapshot_h and "consumerCount" in snapshot_h and "invalidCount" in snapshot_h)
+    check("RunSlice owns one explicit snapshot cycle", "LineSnapshotCycleGuard lineSnapshotCycle;" in run_slice and "BeginCycle()" in run_slice and "EndCycle()" in run_slice)
+    check("snapshot sampling is lazy", "EnsureSample()" in snapshot_h and run_slice.index("LineSnapshotCycleGuard lineSnapshotCycle;") < run_slice.index("while (workUnits < budget.maxWorkUnits)"))
+    check("one sample reads all three physical channels", snapshot_cpp.count("SampleHardwareDirect();") == 3 and "physicalReadCount = 3" in snapshot_cpp)
+    check("same-cycle repeated consumers reuse sampled set", "if (g_sampledThisCycle)" in snapshot_cpp and "return g_snapshot.valid;" in snapshot_cpp)
+    check("next cycle can produce a new sequence", "++g_snapshot.sequence;" in snapshot_cpp and "g_sampledThisCycle = false;" in snapshot_cpp)
+    check("invalid snapshot is atomic", "applyInvalidFallback" in snapshot_cpp and "g_snapshot.mask = 0;" in snapshot_cpp and "g_snapshot.valid = false;" in snapshot_cpp)
+    check("existing TCRT update delegates to snapshot owner in cycle", "LineSensorSnapshot::EnsureSample();" in tcrt_cpp and "LineSensorSnapshot::RecordConsumer();" in tcrt_cpp)
+    check("outside snapshot cycle TCRT keeps direct-read compatibility", "SampleHardwareDirect();" in tcrt_cpp and "if (LineSensorSnapshot::IsCycleActive())" in tcrt_cpp)
+    check("threshold semantics remain in TCRT driver", "_lastReading == _threshold" in tcrt_cpp and "setThreshold" in tcrt_h)
+    check("snapshot contract forbids getter-owned refresh", "Individual VM getters do not own physical sampling" in snapshot_spec)
+
     lower_header = header.lower()
     check("API documents cooperative non-preemptive boundary", "not preemption" in lower_header)
     check("API documents remaining synchronous RobotAPI risk", "synchronous robotapi call" in lower_header)
     check("spec keeps wall-clock secondary to deterministic budget", "Wall-clock time alone should not be the only semantic budget" in spec)
 
-    print("VM RunSlice + pending state + timed operation contract: PASS")
+    print("VM RunSlice + pending state + timed operation + line snapshot contract: PASS")
     return 0
 
 
