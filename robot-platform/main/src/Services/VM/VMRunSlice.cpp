@@ -93,7 +93,8 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
                               mContext.mProgramCounter);
         }
 
-        if (mContext.mPendingOperation == VMPendingOperation::Wait) {
+        if (mContext.mPendingOperation == VMPendingOperation::Wait ||
+            mContext.mPendingOperation == VMPendingOperation::Mp3Play) {
             return makeResult(VMRunSliceStopReason::Waiting,
                               workUnits,
                               startPc,
