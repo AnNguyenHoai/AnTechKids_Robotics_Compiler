@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "issue": 312,
+  "status": "UNAPPROVED_PENDING_PHYSICAL_EVIDENCE",
+  "baseline_commit": "18875d500bb64f4ff4a495f8915795af4f8a02f8",
+  "slice_budget_work_units": 4,
+  "thresholds": {
+    "slice_duration_us_max": null,
+    "work_unit_duration_us_max": null,
+    "sensor_to_decision_to_motor_us_max": null,
+    "stop_abort_latency_us_max": null,
+    "line_snapshot_age_us_max": null
+  },
+  "approval": {
+    "approved": false,
+    "approved_by": null,
+    "approved_at": null,
+    "evidence": []
+  },
+  "guard": "Do not populate or tune production thresholds from host fixtures or estimates; use measured physical qualification evidence only."
+}
