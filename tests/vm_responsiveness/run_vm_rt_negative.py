@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Negative mutation tests for VM-RT host contracts.
 
-Each mutation models a regression called out by #311. The reusable guard must
-reject every mutation; otherwise CI is not proving the intended fail-closed
+Each mutation models a regression called out by #311/#328. The reusable guard
+must reject every mutation; otherwise CI is not proving the intended fail-closed
 behavior.
 """
 from __future__ import annotations
@@ -57,6 +57,19 @@ def main() -> int:
         "blocking Wait regression",
         replace(base, vm_cpp=blocking_wait),
         "blocking",
+    )
+
+    expect_rejected(
+        "unbounded Pow work regression",
+        replace(
+            base,
+            vm_cpp=base.vm_cpp.replace(
+                "mContext.mPendingPowRemaining > 0 &&\n                       multiplies < POW_MULTIPLIES_PER_STEP",
+                "mContext.mPendingPowRemaining > 0",
+                1,
+            ),
+        ),
+        "Pow work",
     )
 
     expect_rejected(
