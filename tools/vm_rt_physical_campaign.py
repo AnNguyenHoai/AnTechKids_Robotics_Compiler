@@ -52,7 +52,32 @@ def build_campaign(reports: list[dict], external_evidence: dict | None = None) -
     missing = [name for name, count in coverage.items() if count == 0]
 
     firmware_commits = sorted({str(r.get("firmware_commit")) for r in physical if r.get("firmware_commit")})
-    slice_budgets = sorted({int(r.get("slice_configuration", {}).get("max_work_units")) for r in physical if r.get("slice_configuration", {}).get("max_work_units") is not None})
+
+    slice_budgets = sorted({
+        int(r.get("slice_configuration", {}).get("max_work_units"))
+        for r in physical
+        if r.get("slice_configuration", {}).get("max_work_units") is not None
+    })
+    slice_duration_budgets = sorted({
+        int(r.get("slice_configuration", {}).get("max_duration_us"))
+        for r in physical
+        if r.get("slice_configuration", {}).get("max_duration_us") is not None
+    })
+    slice_configurations = sorted({
+        (
+            int(r.get("slice_configuration", {}).get("max_work_units")),
+            int(r.get("slice_configuration", {}).get("max_duration_us")),
+        )
+        for r in physical
+        if r.get("slice_configuration", {}).get("max_work_units") is not None
+        and r.get("slice_configuration", {}).get("max_duration_us") is not None
+    })
+    missing_dual_config = [
+        r.get("_source", "<unknown>")
+        for r in physical
+        if r.get("slice_configuration", {}).get("max_work_units") is None
+        or r.get("slice_configuration", {}).get("max_duration_us") is None
+    ]
 
     stop_reports = scenarios.get("stop_abort_pending", [])
     stop_observations = sum(int(r.get("stop_latency_us", {}).get("count", 0)) for r in stop_reports)
@@ -79,8 +104,10 @@ def build_campaign(reports: list[dict], external_evidence: dict | None = None) -
         blockers.append("stop_abort_pending has no positive stop latency observation")
     if len(firmware_commits) != 1:
         blockers.append("campaign must use exactly one firmware commit")
-    if len(slice_budgets) != 1:
-        blockers.append("campaign must use exactly one slice budget")
+    if missing_dual_config:
+        blockers.append("every physical report must record max_work_units and max_duration_us")
+    if len(slice_configurations) != 1:
+        blockers.append("campaign must use exactly one dual slice configuration")
     if not external_reviewed or proposal["sensor_to_decision_to_motor_us_max"] is None:
         blockers.append("external sensor-to-decision-to-motor evidence must be reviewed and measured")
 
@@ -91,7 +118,13 @@ def build_campaign(reports: list[dict], external_evidence: dict | None = None) -
         "physical_reports": len(physical),
         "scenario_coverage": coverage,
         "firmware_commits": firmware_commits,
+        # Legacy field retained for readers that only display the work budget.
         "slice_budgets": slice_budgets,
+        "slice_duration_budgets_us": slice_duration_budgets,
+        "slice_configurations": [
+            {"max_work_units": work, "max_duration_us": duration}
+            for work, duration in slice_configurations
+        ],
         "stop_latency_observations": stop_observations,
         "external_evidence": external_evidence,
         "slowest_work_units": slowest,
