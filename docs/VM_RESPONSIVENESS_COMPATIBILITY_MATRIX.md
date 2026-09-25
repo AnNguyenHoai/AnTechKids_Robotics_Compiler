@@ -8,26 +8,28 @@ It is intentionally fail-closed: absence from the allowed matrix is not evidence
 
 ## 2. Current baseline
 
-Baseline for this initiative:
+Baseline frozen by VM-RT B (#304):
 
-- repository base commit: `5fd5b18b422f8b6e36eb741d7472e04633d8d522`;
+- repository base commit: `0b2d5c6cfdf7c807b374e2bc745405eb5119e8da` (post-#303 merge);
 - current H35 platform/compiler/firmware compatibility generation: generation 1;
 - existing opcode numbering and bytecode encoding remain authoritative;
 - existing `Step()` behavior remains the legacy execution contract;
-- existing C2 dispatch semantics, including documented blocking operations, remain the compatibility reference until their cooperative conversion is explicitly implemented and tested.
+- current VM dispatch already implements cooperative pending/resume semantics for `Wait`, `LineMillisecond`, `LineIntersectionStop`, `LineTurnEncounterLine`, and `LineForBmp`;
+- C2 remains the historical logical-semantics reference for line operations even where later runtime work changed firmware-thread scheduling from blocking to cooperative;
+- `tests/vm_responsiveness/fixtures/step_baseline.json` and `tests/vm_responsiveness/run_vm_responsiveness_baseline.py` are the pre-`RunSlice` regression baseline.
 
 ## 3. Allowed changes within current generation
 
 The following changes are considered candidates to remain within the current compatibility generation **provided regression evidence proves externally equivalent program semantics**:
 
-| Change | Default classification | Required evidence |
-|---|---|---|
-| Add `RunSlice(...)` alongside existing `Step()` | Compatible extension | Step regression + slice tests |
-| Add VM-internal pending/resume state | Internal implementation | PC/state regression |
-| Convert wait from firmware-thread blocking to cooperative pending state while preserving elapsed-time semantics | Semantic-preserving runtime change | timing + PC + stop tests |
-| Add instrumentation counters/timestamps | Internal/diagnostic | no behavior drift |
-| Share one line-sensor snapshot per control cycle | Contract clarification | sensor consistency + line-follow regression |
-| Integrate bounded VM slices in firmware main loop | Runtime scheduling change | full regression + physical qualification |
+| Planned work | Default classification | Compatibility axis | Required evidence |
+|---|---|---|---|
+| #305 add `RunSlice(...)` alongside existing `Step()` | Compatible extension | scheduling/API additive only | Step baseline + slice budget/yield tests |
+| VM-internal pending/resume state extensions | Internal implementation | VM private state | PC/state regression |
+| Cooperative conversion of remaining blocking VM-reachable work | Semantic-preserving runtime change | scheduling only, if logical completion is identical | INIT/PENDING/COMPLETE + stop/fault + timing tests |
+| #308 shared line-sensor snapshot per control cycle | Contract clarification | sampling coherence | getter consistency + line-follow regression; no threshold/polarity/channel change |
+| Main-loop bounded-slice integration | Runtime scheduling change | platform scheduling | full baseline + responsiveness + physical qualification |
+| Instrumentation counters/timestamps | Internal/diagnostic | diagnostics | no behavior drift |
 
 These rows do not automatically approve a change. They define the expected compatibility posture for review.
 
@@ -67,14 +69,14 @@ If any answer is not `unchanged`, the PR must link the relevant contract/policy 
 
 ## 6. Legacy blocking behavior and cooperative path
 
-Some current operations are documented as blocking. Cooperative conversion must distinguish two concepts:
+C2 documented the original blocking implementation style for line operations. The current post-#303 baseline must distinguish two concepts:
 
 1. **Logical instruction semantics** — what the program means and when an instruction is complete.
 2. **Firmware scheduling behavior** — whether the firmware thread remains blocked while that logical operation is pending.
 
 The target is to improve the second without silently changing the first.
 
-For an operation converted to cooperative execution:
+For an operation using cooperative execution:
 
 - initialization side effects happen once;
 - pending time/condition is explicit;
@@ -89,8 +91,8 @@ For an operation converted to cooperative execution:
 |---|---|---|
 | Primary role | legacy compatibility | responsive scheduling |
 | Instruction count | existing single-step semantics | bounded multiple work units allowed |
-| Pending cooperative op | implementation must preserve Step contract | explicit yield/wait supported |
-| Returns platform control regularly | not guaranteed by legacy blocking op | required |
+| Pending cooperative op | preserve current pending/resume contract | explicit yield/wait supported |
+| Returns platform control regularly | one current instruction/tick, subject to indivisible synchronous I/O | required by slice contract |
 | Compiler changes required | no | no |
 | Bytecode changes required | no | no |
 
@@ -116,9 +118,14 @@ Requires explicit review:
 
 ## 9. Regression gate
 
-No responsiveness implementation is complete unless all relevant existing gates pass, including the existing line-follow steering stability gate and H32/H33/H34/H35 compatibility chain where applicable.
+Before any responsiveness runtime PR is accepted:
 
-New responsiveness tests are additive; they never replace existing regression coverage.
+- `python tests/vm_responsiveness/run_vm_responsiveness_baseline.py` must pass;
+- relevant existing repository gates remain additive, including line-follow steering stability and H32/H33/H34/H35 where applicable;
+- fixture opcode numbers must continue to match the generated canonical opcode header;
+- changes to fixture expectations are semantic changes and require explicit review, not routine test maintenance.
+
+New responsiveness tests never replace existing regression coverage.
 
 ## 10. Review checklist
 
@@ -130,7 +137,7 @@ Every PR under this initiative must answer:
 - Does this alter logical instruction completion semantics?
 - Does this alter sensor values visible to programs?
 - Does this alter stop/fault semantics?
-- Is `Step()` still compatible?
+- Is `Step()` still compatible with the frozen fixture baseline?
 - Is H35 generation review required?
 - Which regression and physical tests prove the answer?
 

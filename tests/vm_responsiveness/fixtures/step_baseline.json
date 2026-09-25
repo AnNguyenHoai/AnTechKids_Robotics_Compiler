@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "0b2d5c6cfdf7c807b374e2bc745405eb5119e8da",
+  "compatibility_generation": 1,
+  "guard": {
+    "opcode_numbering": "unchanged",
+    "bytecode_encoding": "unchanged",
+    "compiler_generation": "unchanged",
+    "step_semantics": "unchanged"
+  },
+  "fixtures": [
+    {
+      "id": "immediate_load_const",
+      "program": [{"opcode": "LoadConst", "opcode_value": 1, "p1": 0, "p2": 7, "p3": 0, "p4": 0}],
+      "step_contract": "one Step applies value and advances PC exactly once"
+    },
+    {
+      "id": "wait_pending_resume",
+      "program": [
+        {"opcode": "LoadConst", "opcode_value": 1, "p1": 0, "p2": 100, "p3": 0, "p4": 0},
+        {"opcode": "Wait", "opcode_value": 7, "p1": 0, "p2": 0, "p3": 0, "p4": 0}
+      ],
+      "step_contract": "Wait initialization does not advance PC; pending Step calls keep PC; completion clears pending and advances PC once"
+    },
+    {
+      "id": "line_millisecond_pending_resume",
+      "program": [
+        {"opcode": "LoadConst", "opcode_value": 1, "p1": 0, "p2": 50, "p3": 0, "p4": 0},
+        {"opcode": "LoadConst", "opcode_value": 1, "p1": 1, "p2": 200, "p3": 0, "p4": 0},
+        {"opcode": "LineMillisecond", "opcode_value": 59, "p1": 0, "p2": 1, "p3": 0, "p4": 0}
+      ],
+      "step_contract": "cooperative line operation holds PC while active and advances exactly once on completion"
+    },
+    {
+      "id": "line_intersection_pending_resume",
+      "program": [{"opcode": "LineIntersectionStop", "opcode_value": 40, "p1": 0, "p2": 1, "p3": 0, "p4": 0}],
+      "step_contract": "cooperative line operation holds PC until follower completion"
+    },
+    {
+      "id": "line_turn_pending_resume",
+      "program": [{"opcode": "LineTurnEncounterLine", "opcode_value": 50, "p1": 0, "p2": 1, "p3": 2, "p4": 0}],
+      "step_contract": "cooperative line operation holds PC until turn request clears"
+    },
+    {
+      "id": "line_bmp_pending_resume",
+      "program": [{"opcode": "LineForBmp", "opcode_value": 51, "p1": 0, "p2": 1, "p3": 0, "p4": 0}],
+      "step_contract": "cooperative line operation holds PC until BMP operation completes"
+    },
+    {
+      "id": "jump_to_program_end",
+      "program": [{"opcode": "Jump", "opcode_value": 14, "p1": 0, "p2": 1, "p3": 0, "p4": 0}],
+      "step_contract": "jump target equal to instruction count stops normally with no VM error"
+    },
+    {
+      "id": "division_by_zero",
+      "program": [{"opcode": "Div", "opcode_value": 23, "p1": 0, "p2": 1, "p3": 2, "p4": 0}],
+      "step_contract": "division by zero stores zero in destination, sets DivisionByZero, and stops VM"
+    }
+  ]
+}
