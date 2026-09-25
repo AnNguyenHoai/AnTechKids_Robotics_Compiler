@@ -63,12 +63,15 @@ public:
         mFramePointer = 0;
         mReturnAddress = 0;
         mErrorCode = 0;
-        ClearPendingOperation();
+        mPendingOperation.HardReset();
+        mPendingDeadlineMs = 0;
     }
 
+    // Completion, stop and fault all clear the current logical operation and
+    // preserve its generation counter. A full VM Reset starts a fresh epoch.
     void ClearPendingOperation()
     {
-        mPendingOperation.Reset();
+        mPendingOperation.Clear();
         mPendingDeadlineMs = 0;
     }
 
