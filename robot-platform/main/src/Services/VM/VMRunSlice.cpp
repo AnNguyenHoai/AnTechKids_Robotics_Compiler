@@ -45,6 +45,7 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
     }
 
     while (workUnits < budget.maxWorkUnits) {
+        const uint16_t executedPc = mContext.mProgramCounter;
         Step();
         ++workUnits;
 
@@ -56,8 +57,35 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
         }
 
         if (!IsRunning()) {
-            const bool halted = (mProgram != nullptr) &&
-                                (mContext.mProgramCounter >= mProgram->mInstructionCount);
+            bool halted = (mProgram != nullptr) &&
+                          (mContext.mProgramCounter >= mProgram->mInstructionCount);
+
+            // Legacy Step() treats a branch whose target is exactly the
+            // instruction count as normal program completion, but it does not
+            // rewrite the PC to that end value. Classify that legacy outcome as
+            // Halted without changing Step() or its PC semantics.
+            if (!halted && mProgram != nullptr &&
+                executedPc < mProgram->mInstructionCount) {
+                const Instruction& executed = mProgram->mInstructions[executedPc];
+                const uint16_t programEnd = mProgram->mInstructionCount;
+
+                switch (executed.opcode) {
+                    case Opcode::Jump:
+                        halted = executed.p2 == programEnd;
+                        break;
+                    case Opcode::JumpIfFalse:
+                        halted = (mContext.mVariables[executed.p1] == 0) &&
+                                 (executed.p2 == programEnd);
+                        break;
+                    case Opcode::JumpIfTrue:
+                        halted = (mContext.mVariables[executed.p1] != 0) &&
+                                 (executed.p2 == programEnd);
+                        break;
+                    default:
+                        break;
+                }
+            }
+
             return makeResult(halted ? VMRunSliceStopReason::Halted
                                      : VMRunSliceStopReason::Stopped,
                               workUnits,
