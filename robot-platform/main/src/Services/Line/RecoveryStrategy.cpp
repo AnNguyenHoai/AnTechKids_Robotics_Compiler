@@ -2,7 +2,9 @@
 #include <Arduino.h>
 
 namespace {
-constexpr uint32_t kSoftSearchMs = 300;
+// Keep a short forward arc to avoid the old immediate +/-80 snap, but do not
+// spend 300 ms driving away from the last observed line before pivot recovery.
+constexpr uint32_t kSoftSearchMs = 120;
 constexpr uint32_t kDeepSearchMs = 1200;
 constexpr uint32_t kSweepPeriodMs = 700;
 constexpr int kSoftInnerSpeed = 35;
@@ -52,7 +54,7 @@ void RecoveryStrategy::update(uint8_t mask, int &left, int &right) {
     }
 
     if (elapsed < kDeepSearchMs) {
-        // Only pivot after the soft arc failed to reacquire the line.
+        // Pivot promptly once the short soft arc failed to reacquire the line.
         _phase = DEEP_SEARCH;
         if (direction == DIR_LEFT) {
             left = -kDeepPivotSpeed;
