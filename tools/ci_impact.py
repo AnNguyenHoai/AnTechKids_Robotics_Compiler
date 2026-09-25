@@ -25,6 +25,7 @@ CI_META_FILES = {
 VM_PREFIXES = (
     "tests/vm_responsiveness/",
     "robot-platform/main/src/Services/VM/",
+    "tools/vm_rt_",
 )
 VM_FILES = {
     "docs/VM_RESPONSIVENESS_COMPATIBILITY_MATRIX.md",
@@ -45,6 +46,7 @@ VM_FILES = {
 
 LINE_PREFIXES = (
     "tests/line_follow_stability/",
+    "robot-platform/main/src/Services/Line/",
     "robot-platform/main/src/Services/Robot/Line",
     "robot-platform/main/src/Services/Robot/CooperativeLine",
 )
@@ -53,6 +55,7 @@ LINE_FILES = {
     "robot-platform/main/src/Sensor/LineSensorSnapshot.cpp",
     "robot-platform/main/src/Sensor/TCRT5000.h",
     "robot-platform/main/src/Sensor/TCRT5000.cpp",
+    "robot-platform/main/src/Diagnostics/DiagnosticsManager.cpp",
 }
 
 CONTRACT_PREFIXES = (
@@ -226,6 +229,21 @@ def self_test() -> None:
     assert line_snapshot["vm"] is True
     assert line_snapshot["line"] is True
     assert line_snapshot["full"] is False
+
+    latency_corrective = classify([
+        "robot-platform/main/src/Services/VM/VMRunSlice.cpp",
+        "robot-platform/main/src/Services/Line/LineFollower.cpp",
+        "robot-platform/main/src/Diagnostics/DiagnosticsManager.cpp",
+        "tools/vm_rt_qualification.py",
+        "tools/vm_rt_physical_campaign.py",
+        "tests/vm_responsiveness/run_control_latency_corrective_contract.py",
+        "tests/line_follow_stability/run_line_follow_stability.py",
+        "docs/VM_CONTROL_LATENCY_CORRECTIVE_AUDIT.md",
+    ])
+    assert latency_corrective["vm"] is True
+    assert latency_corrective["line"] is True
+    assert latency_corrective["contracts"] is True
+    assert latency_corrective["full"] is False
 
     docs = classify(["docs/README_ONLY.md"])
     assert docs["contracts"] is True and docs["full"] is False
