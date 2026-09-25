@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Negative mutation tests for VM-RT host contracts.
 
-Each mutation models a regression called out by #311/#328. The reusable guard
-must reject every mutation; otherwise CI is not proving the intended fail-closed
-behavior.
+Each mutation models a regression called out by #311/#328/#331. The reusable
+guard must reject every mutation; otherwise CI is not proving the intended
+fail-closed behavior.
 """
 from __future__ import annotations
 
@@ -57,6 +57,32 @@ def main() -> int:
         "blocking Wait regression",
         replace(base, vm_cpp=blocking_wait),
         "blocking",
+    )
+
+    expect_rejected(
+        "MP3 excluded from deadline helper regression",
+        replace(
+            base,
+            vm_context_h=base.vm_context_h.replace(
+                "operation != VMPendingOperation::Wait &&\n            operation != VMPendingOperation::Mp3Play",
+                "operation != VMPendingOperation::Wait",
+                1,
+            ),
+        ),
+        "Mp3Play",
+    )
+
+    expect_rejected(
+        "deadline ownership guard removed",
+        replace(
+            base,
+            vm_context_h=base.vm_context_h.replace(
+                "!mPendingOperation.IsOwnedBy(mProgramCounter)",
+                "false",
+                1,
+            ),
+        ),
+        "current-PC ownership",
     )
 
     expect_rejected(
