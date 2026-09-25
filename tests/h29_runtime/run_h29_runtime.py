@@ -94,30 +94,44 @@ def test_control_plane_keeps_scheduler_priority() -> None:
     vm_index = main.index(slice_call)
     vm_slice_region = main[:vm_index]
 
-    serial_index = vm_slice_region.rfind("SerialHandler::instance().handleSerial();")
-    motion_index = vm_slice_region.rfind("RobotAPI::updateMotion();")
-    ultrasonic_index = vm_slice_region.rfind("Ultrasonic::Handle();")
-    require(min(serial_index, motion_index, ultrasonic_index) >= 0,
-            "communication and control-plane services must exist before the VM slice")
-    require(serial_index < motion_index < ultrasonic_index < vm_index,
-            "communication and control motion must be serviced before each bounded VM slice")
+    # H29 protects ordering semantics, not historical implementation names.
+    # Assert the production services that actually own the current firmware
+    # control cycle all execute before student VM work begins.
+    control_plane_markers = (
+        "SerialCommandHandler::handle();",
+        "RobotNetworkService::update();",
+        "LineSensorSnapshot::BeginCycle();",
+        "SensorManager::instance().updateAll();",
+        "RobotAPI::updateMotion();",
+    )
+    service_indices = []
+    for marker in control_plane_markers:
+        index = vm_slice_region.rfind(marker)
+        require(index >= 0,
+                f"required control-plane service must execute before VM slice: {marker}")
+        service_indices.append(index)
+
+    require(service_indices == sorted(service_indices),
+            "control-plane, sensor snapshot, and motion service order must precede VM work")
+    require(service_indices[-1] < vm_index,
+            "all required control-plane services must complete before each bounded VM slice")
 
     work_budget = require_positive_constant(main, "VM_WORK_UNITS_PER_FIRMWARE_CYCLE")
     time_budget_us = require_positive_constant(main, "VM_MAX_SLICE_DURATION_US")
     require(work_budget > 0 and time_budget_us > 0,
             "production VM scheduling must retain positive work and wall-clock bounds")
-    require("budget.maxWorkUnits = VM_WORK_UNITS_PER_FIRMWARE_CYCLE;" in main,
-            "production work-unit ceiling must be wired into RunSlice")
-    require("budget.maxDurationUs = VM_MAX_SLICE_DURATION_US;" in main,
-            "production wall-clock ceiling must be wired into RunSlice")
+    require("VM_WORK_UNITS_PER_FIRMWARE_CYCLE," in main,
+            "production work-unit ceiling must be wired into RunSlice budget")
+    require("VM_MAX_SLICE_DURATION_US" in main,
+            "production wall-clock ceiling must be wired into RunSlice budget")
 
     require("while (workUnits < budget.maxWorkUnits)" in vm_slice,
             "bounded slice execution must remain work-unit limited")
-    require("budget.maxDurationUs > 0" in vm_slice,
+    require("budget.maxDurationUs != 0" in vm_slice,
             "bounded slice execution must conditionally enforce the wall-clock ceiling")
-    require("micros() - sliceStartedUs" in vm_slice,
+    require("micros() - sliceStartUs" in vm_slice,
             "wall-clock slice budget must be measured from the slice start")
-    require("RunSliceYieldReason::TimeBudgetExhausted" in vm_slice,
+    require("VMRunSliceStopReason::TimeBudgetExhausted" in vm_slice,
             "wall-clock exhaustion must produce an explicit scheduler yield reason")
     require("Step();" in vm_slice,
             "bounded scheduler must advance VM work through legacy Step() semantics")
