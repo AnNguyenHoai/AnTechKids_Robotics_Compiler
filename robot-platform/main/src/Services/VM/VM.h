@@ -31,14 +31,19 @@ enum class VMRunSliceStopReason : uint8_t
 
 struct VMRunSliceBudget
 {
+    // C++11-compatible constructor preserves the existing brace-call surface:
+    // VMRunSliceBudget{4} means work-only scheduling and deterministically
+    // leaves maxDurationUs disabled; production can pass {16, 2000}.
+    constexpr VMRunSliceBudget(uint16_t workUnits = 0, uint32_t durationUs = 0)
+        : maxWorkUnits(workUnits), maxDurationUs(durationUs) {}
+
     // Hard semantic work ceiling. Keep the original declaration unchanged so
     // existing source/contract checks remain valid.
     uint16_t maxWorkUnits;
 
-    // Optional wall-clock ceiling for one cooperative slice. Keep this struct a
-    // plain C++11 aggregate: VMRunSliceBudget{4} zero-initializes this trailing
-    // field, while production can use VMRunSliceBudget{16, 2000}.
-    uint32_t maxDurationUs;
+    // Optional wall-clock ceiling for one cooperative slice. Zero preserves
+    // legacy work-unit-only behavior.
+    uint32_t maxDurationUs = 0;
 };
 
 struct VMRunSliceResult
