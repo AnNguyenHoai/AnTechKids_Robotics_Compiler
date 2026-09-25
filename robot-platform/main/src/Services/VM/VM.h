@@ -24,11 +24,21 @@ enum class VMRunSliceStopReason : uint8_t
     Halted,
     Stopped,
     Fault,
+    // Appended to preserve the numeric values of the existing diagnostic
+    // reasons. This is a scheduler-only result, not a bytecode/opcode change.
+    TimeBudgetExhausted,
 };
 
 struct VMRunSliceBudget
 {
-    uint16_t maxWorkUnits;
+    // Hard semantic work ceiling. Existing aggregate initializers such as
+    // VMRunSliceBudget{4} remain valid and leave maxDurationUs disabled.
+    uint16_t maxWorkUnits = 0;
+
+    // Optional wall-clock ceiling for one cooperative slice. Zero preserves
+    // the legacy work-unit-only behavior. This is checked between Step() calls;
+    // one synchronous Step() can still overrun and must be fixed at its owner.
+    uint32_t maxDurationUs = 0;
 };
 
 struct VMRunSliceResult
@@ -96,12 +106,12 @@ public:
      *
      * One work unit is at most one legacy Step() invocation. RunSlice never
      * changes Step() semantics and stops early when the VM yields/waits,
-     * halts, is stopped, or faults.
+     * halts, is stopped, faults, or reaches an enabled wall-clock ceiling.
      *
      * Important: this is a cooperative boundary, not preemption. A single
      * synchronous RobotAPI call executed by Step() can still consume more
-     * wall-clock time than the slice target until later VM-RT work converts
-     * or bounds that operation.
+     * wall-clock time than the slice target and must be converted/bounded at
+     * that operation's owner.
      */
     VMRunSliceResult RunSlice(const VMRunSliceBudget& budget);
 
