@@ -12,7 +12,7 @@ LineFollower& LineFollower::instance() {
 }
 
 LineFollower::LineFollower()
-    : _pid(1.0f, 0.0f, 0.0f, 0.02f),
+    : _pid(1.2f, 0.0f, 0.0f, 0.02f),
       _speed(50),
       _stopped(false),
       _turnRequested(false),
@@ -23,7 +23,7 @@ LineFollower::LineFollower()
       _lastLineDirection(RecoveryStrategy::DIR_UNKNOWN),
       _lastControlUpdate(0),
       _wasRecovering(false),
-      _scaleFactor(10.0f)
+      _scaleFactor(15.0f)
 {
     _pid.setLimits(-100, 100);
 }
