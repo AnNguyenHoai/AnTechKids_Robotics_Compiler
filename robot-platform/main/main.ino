@@ -23,9 +23,10 @@
 #include "src/Behavior/LightTriggerBehavior.h"
 #include "src/Behavior/ColorDetectBehavior.h"
 
-// === Diagnostics ===
+// === Diagnostics / Sensors ===
 #include "src/Diagnostics/DiagnosticsManager.h"
 #include "src/Sensor/SensorManager.h"
+#include "src/Sensor/LineSensorSnapshot.h"
 #include "src/Diagnostics/Console/DevelopmentConsole.h"
 
 // === IMU & Heading ===
@@ -192,8 +193,11 @@ void loop() {
         return;
     }
 
-    // Refresh platform inputs before student code. RunSlice still owns one lazy
-    // coherent L/C/R snapshot for VM line consumers inside the slice.
+    // One firmware cycle owns one coherent line-sensor snapshot. The first line
+    // sensor refresh below samples L/C/R atomically; VM getters, line follower
+    // logic and diagnostics reuse that same sample until EndCycle(). RunSlice
+    // detects this active outer scope and therefore does not open/resample one.
+    LineSensorSnapshot::BeginCycle();
     SensorManager::instance().updateAll();
 
     if (g_robotReady) {
@@ -279,9 +283,10 @@ void loop() {
         }
     }
 
-    // Diagnostics observe the latest cached sensor state; they must not trigger
-    // another physical line-sensor sample in the same firmware cycle.
+    // Diagnostics observe the same cached L/C/R values that were sampled at
+    // the start of this firmware cycle; they must never trigger another read.
     DiagnosticsManager::instance().updateSensors();
+    LineSensorSnapshot::EndCycle();
 
     uint32_t elapsed = micros() - start;
     DiagnosticsManager::instance().recordLoopTime(elapsed);
