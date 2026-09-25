@@ -32,7 +32,10 @@ void RecordStopLatency(uint32_t latencyUs);
 const VMRuntimeTelemetrySnapshot& Current();
 
 // Stable JSONL evidence format for serial capture during physical qualification.
-// Output is compiled as a no-op unless VM_RESPONSIVENESS_DIAGNOSTICS=1.
+// These functions are compiled as no-ops unless VM_RESPONSIVENESS_DIAGNOSTICS=1.
+// RecordSlice() never prints: qualification samples are buffered in RAM so UART
+// transmission cannot perturb the control loop being measured.
 void PrintLatestJson();
+void PrintBufferedJson();
 
 } // namespace VMRuntimeTelemetry
