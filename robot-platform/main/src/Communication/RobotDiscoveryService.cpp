@@ -68,27 +68,32 @@ void update(bool robotReady, bool networkReady, bool otaReady) {
         return;
     }
 
-    int packetSize = g_udp.parsePacket();
-    while (packetSize > 0) {
-        if (packetSize >= static_cast<int>(kMaxRequestSize)) {
-            while (g_udp.available()) {
-                g_udp.read();
-            }
-            packetSize = g_udp.parsePacket();
-            continue;
-        }
+    // Process at most one datagram per firmware cycle. Draining an arbitrary
+    // UDP queue in a while-loop made discovery traffic an unbounded source of
+    // line-sensor sample jitter.
+    const int packetSize = g_udp.parsePacket();
+    if (packetSize <= 0) {
+        return;
+    }
 
-        char request[kMaxRequestSize] = {0};
-        const int bytesRead = g_udp.read(request, sizeof(request) - 1);
-        if (bytesRead > 0) {
-            request[bytesRead] = '\0';
-            String normalized = String(request);
-            normalized.trim();
-            if (normalized == kDiscoveryRequest) {
-                sendResponse(g_udp.remoteIP(), g_udp.remotePort(), robotReady, networkReady, otaReady);
-            }
+    if (packetSize >= static_cast<int>(kMaxRequestSize)) {
+        while (g_udp.available()) {
+            g_udp.read();
         }
-        packetSize = g_udp.parsePacket();
+        return;
+    }
+
+    char request[kMaxRequestSize] = {0};
+    const int bytesRead = g_udp.read(request, sizeof(request) - 1);
+    if (bytesRead <= 0) {
+        return;
+    }
+
+    request[bytesRead] = '\0';
+    String normalized = String(request);
+    normalized.trim();
+    if (normalized == kDiscoveryRequest) {
+        sendResponse(g_udp.remoteIP(), g_udp.remotePort(), robotReady, networkReady, otaReady);
     }
 }
 
