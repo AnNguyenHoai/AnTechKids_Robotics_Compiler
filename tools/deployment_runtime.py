@@ -21,7 +21,11 @@ from typing import Callable, Mapping, Sequence
 from tools import build_isolation, dependency_closure, runtime_paths
 from tools.runtime_paths import platformio_command as resolve_platformio_command
 
-DEFAULT_PROCESS_TIMEOUT_SECONDS = 300.0
+# Classroom laptops can be substantially slower than development/CI machines,
+# especially on the first PlatformIO build. Keep the deadline finite so a hung
+# toolchain is still recoverable, but allow a full 15 minutes for compile/upload.
+CLASSROOM_BUILD_TIMEOUT_SECONDS = 900.0
+DEFAULT_PROCESS_TIMEOUT_SECONDS = CLASSROOM_BUILD_TIMEOUT_SECONDS
 PLATFORMIO_CORE_DIR_ENV = "PLATFORMIO_CORE_DIR"
 PLATFORMIO_PLATFORMS_DIR_ENV = "PLATFORMIO_PLATFORMS_DIR"
 PLATFORMIO_PACKAGES_DIR_ENV = "PLATFORMIO_PACKAGES_DIR"
@@ -42,6 +46,21 @@ ESP32_USB_TOOL_PACKAGES = (
     "tool-mkfatfs",
     "tool-scons",
 )
+
+
+def windows_hidden_process_creation_flags() -> int:
+    """Return Windows child-process flags for hidden, terminable GUI launches.
+
+    ``CREATE_NEW_PROCESS_GROUP`` preserves the existing timeout/process-tree
+    semantics. ``CREATE_NO_WINDOW`` prevents console Python/PlatformIO/esptool
+    children from flashing a terminal window when launched by RoboStudio.
+    """
+    if os.name != "nt":
+        return 0
+    return (
+        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    )
 
 
 class DeploymentRuntimeError(RuntimeError):
@@ -168,7 +187,7 @@ def _windows_dependency_alias_base(environment: Mapping[str, str]) -> Path:
     public = str(environment.get("PUBLIC", "")).strip()
     if public:
         candidates.append(Path(public) / "RSP")
-    drive = str(environment.get("SystemDrive", "C:")).strip() or "C:"
+    drive = str(environment.get("SystemDrive", "C:\\")).strip() or "C:\\"
     candidates.append(Path(drive + "\\") / "Users" / "Public" / "RSP")
 
     failures: list[str] = []
@@ -508,7 +527,7 @@ def run_process(
         "bufsize": 1,
     }
     if os.name == "nt":
-        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        popen_kwargs["creationflags"] = windows_hidden_process_creation_flags()
     else:
         popen_kwargs["start_new_session"] = True
 
