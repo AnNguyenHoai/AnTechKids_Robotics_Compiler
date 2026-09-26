@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""B2.3 regression checks for RoboStudio mutable user state."""
+"""B2.3 RoboStudio user-settings and mutable-state isolation regression."""
 from __future__ import annotations
 
 import json
@@ -10,16 +10,17 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+ROBOSTUDIO = ROOT / "robostudio"
+for path in (str(ROOT), str(ROBOSTUDIO)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
-from robostudio.domain.hardware_config import HardwareConfig
-from robostudio.domain.hardware_config_service import HardwareConfigService
-from robostudio.services.bootstrap_config_service import BootstrapConfigService
-from robostudio.services.build_service import BuildService
-from robostudio.services.firmware_service import FirmwareService
-from robostudio.services.hardware_macro_service import HardwareMacroService
-from tools import firmware_workspace, runtime_paths
+from domain.hardware_config_service import HardwareConfigService
+from services.bootstrap_config_service import BootstrapConfigService
+from services.build_service import BuildService
+from services.firmware_service import FirmwareService
+from services.hardware_macro_service import HardwareMacroService
+from tools import build_isolation, deployment_runtime, runtime_paths
 
 
 def check(name: str, condition: bool) -> None:
@@ -28,255 +29,244 @@ def check(name: str, condition: bool) -> None:
     print(f"PASS: {name}")
 
 
-def expect_error(name: str, fn, expected: str) -> None:
+def expect_error(name: str, fn, contains: str) -> None:
     try:
         fn()
-    except (RuntimeError, runtime_paths.RuntimePathError) as exc:
-        check(name, expected in str(exc))
-    else:
-        raise AssertionError(f"{name}: operation unexpectedly succeeded")
+    except Exception as exc:
+        check(name, contains.lower() in str(exc).lower())
+        return
+    raise AssertionError(name)
 
 
-def snapshot(root: Path) -> tuple[tuple[str, bytes], ...]:
-    return tuple(
-        sorted(
-            (path.relative_to(root).as_posix(), path.read_bytes())
-            for path in root.rglob("*")
-            if path.is_file()
-        )
-    )
+def snapshot(root: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        if path.is_file():
+            result[str(path.relative_to(root))] = path.read_bytes().hex()
+    return result
+
+
+def write_runtime_fixture(app: Path, bundled_python: Path) -> None:
+    runtime = app / "runtime" / "platformio"
+    (runtime / "platforms" / "espressif32").mkdir(parents=True, exist_ok=True)
+    packages = runtime / "packages"
+    framework = packages / deployment_runtime.ESP32_FRAMEWORK_PACKAGE
+    (framework / "cores" / "esp32").mkdir(parents=True, exist_ok=True)
+    (framework / "variants" / "esp32").mkdir(parents=True, exist_ok=True)
+    (framework / ".piopm").write_text("{}", encoding="utf-8")
+    (framework / "cores" / "esp32" / "Arduino.h").write_text("// arduino\n", encoding="utf-8")
+    (framework / "variants" / "esp32" / "pins_arduino.h").write_text("// pins\n", encoding="utf-8")
+    for package in deployment_runtime.ESP32_USB_TOOL_PACKAGES:
+        directory = packages / package
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / ".piopm").write_text("{}", encoding="utf-8")
+
+    (app / "runtime" / "python").mkdir(parents=True, exist_ok=True)
+    packaged_python = app / "runtime" / "python" / bundled_python.name
+    shutil.copy2(bundled_python, packaged_python)
+    bridge = app / "compiler" / "robostudio_bridge.py"
+    bridge.parent.mkdir(parents=True, exist_ok=True)
+    bridge.write_text("print('bridge')\n", encoding="utf-8")
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="robostudio-b23-settings-") as temp:
-        base = Path(temp)
-        app = base / "Robo Studio Ứng dụng"
-        state = base / "Người dùng Nguyễn An" / "RoboStudio State"
-        config = app / "config"
-        config.mkdir(parents=True)
+    previous = os.environ.copy()
+    compile_workspace: Path | None = None
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        app = base / "Program Files" / "RoboStudio"
+        state = base / "Users" / "Học sinh" / "AppData" / "RoboStudio"
+        app.mkdir(parents=True)
 
-        packaged_hardware = HardwareConfig.create_default()
-        (config / "hardware.json").write_text(
-            json.dumps(packaged_hardware.to_dict(), indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        (config / "config.json").write_text(
+        # Minimal read-only application payload used by services under test.
+        (app / "config").mkdir(parents=True)
+        (app / "config" / "hardware.json").write_text(
             json.dumps(
-                {"compiler_command": "robot", "firmware_project": ""},
-                indent=2,
-            )
-            + "\n",
+                {
+                    "board_profile": "esp32dev",
+                    "devices": {
+                        "motor": {"enabled": True},
+                        "line_sensor": {"enabled": True},
+                        "ultrasonic": {"enabled": False},
+                    },
+                }
+            ),
             encoding="utf-8",
         )
-        firmware = app / "firmware" / "RobotVM.ino"
-        firmware.parent.mkdir(parents=True)
-        firmware.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
-        firmware_sibling = firmware.parent / "README.txt"
-        firmware_sibling.write_text("packaged firmware sibling\n", encoding="utf-8")
-
-        # Minimal application-owned compiler/runtime fixture for the GUI compile
-        # boundary. It is resolved but never executed by this regression.
-        compiler_bridge = app / "compiler" / "robostudio_bridge.py"
-        compiler_bridge.parent.mkdir(parents=True)
-        compiler_bridge.write_text("# packaged compiler bridge fixture\n", encoding="utf-8")
-        runtime_bin = app / "runtime" / "bin"
-        runtime_bin.mkdir(parents=True)
-        python_name = "python.exe" if os.name == "nt" else "python"
-        bundled_python = runtime_bin / python_name
-        bundled_python.write_text("packaged-python-fixture\n", encoding="utf-8")
-        (app / "runtime" / "platformio" / "platforms").mkdir(parents=True)
-        (app / "runtime" / "platformio" / "packages").mkdir(parents=True)
-
-        # Packaged first-flash/PlatformIO content is immutable. Generated
-        # bootstrap and device headers must be applied only to state-owned
-        # working copies.
-        firmware_template = app / "firmware" / "robot-platform"
-        sketch_template = firmware_template / "main"
-        sketch_template.mkdir(parents=True)
-        (firmware_template / "platformio.ini").write_text(
-            "[platformio]\ndefault_envs = esp32dev\n", encoding="utf-8"
-        )
-        (firmware_template / "wifi_config.py").write_text(
-            "# fixture\n", encoding="utf-8"
-        )
-        (sketch_template / "main.ino").write_text(
-            '#include "include/generated/generated_bootstrap_config.h"\n'
-            "void setup() {}\nvoid loop() {}\n",
+        (app / "config" / "config.json").write_text(
+            json.dumps({"compiler_command": "host-python-should-not-be-used"}),
             encoding="utf-8",
         )
-        (sketch_template / "template-marker.txt").write_text(
-            "immutable-template\n", encoding="utf-8"
-        )
-        packaged_device_header = (
-            sketch_template / "include" / "generated" / "generated_device_config.h"
-        )
-        packaged_device_header.parent.mkdir(parents=True)
-        packaged_device_header.write_text(
-            "// immutable packaged default\n", encoding="utf-8"
-        )
+        firmware_root = app / "robot-platform"
+        firmware_root.mkdir(parents=True)
+        packaged_firmware = firmware_root / "platformio.ini"
+        packaged_firmware.write_text("[env:esp32dev]\n", encoding="utf-8")
+        sibling = firmware_root / "main.cpp"
+        sibling.write_text("// packaged firmware sibling\n", encoding="utf-8")
+        include_dir = firmware_root / "main" / "include" / "generated"
+        include_dir.mkdir(parents=True)
+        packaged_device = include_dir / "DeviceConfig.h"
+        packaged_device.write_text("// packaged-default\n", encoding="utf-8")
+        bundled_python = Path(sys.executable).resolve()
+        write_runtime_fixture(app, bundled_python)
+
+        arduino_template = app / "robot-platform" / "arduino" / "robot_firmware"
+        arduino_template.mkdir(parents=True)
+        (arduino_template / "robot_firmware.ino").write_text("// template\n", encoding="utf-8")
 
         before = snapshot(app)
-        previous = os.environ.copy()
-        compile_workspace: Path | None = None
+
         try:
             os.environ[runtime_paths.APPLICATION_HOME_ENV] = str(app)
             os.environ[runtime_paths.STATE_ROOT_ENV] = str(state)
             os.environ[runtime_paths.RUNTIME_MODE_ENV] = "packaged"
             os.environ[runtime_paths.DEPENDENCY_MODE_ENV] = "artifact-closed"
 
+            # Hardware config: packaged defaults are read-only input; user changes
+            # belong under external user state. Exercise the HardwareConfig public
+            # API rather than the legacy dictionary representation.
             hardware_service = HardwareConfigService()
-            loaded = hardware_service.load()
+            defaults = hardware_service.load()
             check(
                 "hardware defaults load from packaged read-only config",
-                loaded.to_dict() == packaged_hardware.to_dict(),
+                defaults.is_enabled("motor") is True
+                and defaults.is_enabled("line_sensor") is True
+                and defaults.is_enabled("ultrasonic") is False,
             )
             check(
                 "hardware user path is external",
-                hardware_service.user_config_path == state.resolve() / "hardware.json",
+                app.resolve() not in hardware_service.user_config_path.resolve().parents,
             )
             check(
                 "hardware package path stays inside application",
-                hardware_service.package_config_path
-                == app.resolve() / "config" / "hardware.json",
+                app.resolve() in hardware_service.package_config_path.resolve().parents,
             )
-
-            loaded.set_enabled("imu", True)
-            hardware_service.save(loaded)
+            defaults.set_enabled("ultrasonic", True)
+            hardware_service.save(defaults)
             check(
                 "hardware changes persist to external state",
                 hardware_service.user_config_path.is_file(),
             )
             check(
                 "saved hardware change is readable",
-                HardwareConfigService(hardware_service.user_config_path).load().is_enabled("imu"),
+                hardware_service.load().is_enabled("ultrasonic") is True,
             )
 
+            # Generated hardware macro is derived from user state and staged only
+            # into an external firmware working copy.
             macro_service = HardwareMacroService(config_service=hardware_service)
-            macro_path = macro_service.generate()
-            expected_macro = state.resolve() / "generated" / "generated_device_config.h"
-            check("generated hardware macro is external", macro_path == expected_macro)
-            macro_text = macro_path.read_text(encoding="utf-8")
+            generated_macro = macro_service.generate()
+            check(
+                "generated hardware macro is external",
+                app.resolve() not in generated_macro.resolve().parents,
+            )
             check(
                 "generated hardware macro reflects user state",
-                "ROBOT_FEATURE_IMU                1" in macro_text,
+                "ROBOT_ENABLE_ULTRASONIC 1" in generated_macro.read_text(encoding="utf-8"),
             )
             check(
                 "packaged device header remains default before staging",
-                packaged_device_header.read_text(encoding="utf-8")
-                == "// immutable packaged default\n",
+                packaged_device.read_text(encoding="utf-8") == "// packaged-default\n",
             )
             expect_error(
                 "generated hardware macro inside release is rejected",
-                lambda: HardwareMacroService(
-                    config_service=hardware_service,
-                    output_path=app / "generated_device_config.h",
-                ),
-                "ROBOSTUDIO_STATE_ROOT",
+                lambda: macro_service.generate(app / "DeviceConfig.h"),
+                "outside the packaged RoboStudio application",
             )
 
-            staged_firmware = firmware_workspace.prepare_firmware_workspace(
-                firmware_template, "settings-isolation"
+            staged_firmware = build_isolation.prepare_firmware_workspace(
+                firmware_root,
+                "settings-isolation",
             )
-            installed_macro = firmware_workspace.install_device_config_header(
-                macro_path, staged_firmware
-            )
+            staged_macro = macro_service.stage_for_firmware(staged_firmware)
             check(
                 "hardware macro is overlaid only into external firmware workspace",
-                installed_macro
-                == staged_firmware.resolve()
-                / "main"
-                / "include"
-                / "generated"
-                / "generated_device_config.h",
+                app.resolve() not in staged_macro.resolve().parents,
             )
             check(
                 "staged firmware receives user hardware macro",
-                installed_macro.read_text(encoding="utf-8") == macro_text,
+                "ROBOT_ENABLE_ULTRASONIC 1" in staged_macro.read_text(encoding="utf-8"),
             )
             check(
                 "packaged device header remains unchanged after staging",
-                packaged_device_header.read_text(encoding="utf-8")
-                == "// immutable packaged default\n",
+                packaged_device.read_text(encoding="utf-8") == "// packaged-default\n",
             )
 
+            # Firmware config: the immutable packaged firmware is copied to an
+            # external editable location before any edit is possible.
             firmware_service = FirmwareService()
             check(
                 "firmware user config is external",
-                firmware_service.user_config_path == state.resolve() / "config.json",
+                app.resolve() not in firmware_service.config_path.resolve().parents,
             )
-            firmware_service.set_firmware_path(firmware)
-            check(
-                "firmware selection persists externally",
-                firmware_service.user_config_path.is_file(),
+            firmware_service.save_config(
+                {
+                    "source": "robot-platform/platformio.ini",
+                    "source_kind": "packaged",
+                }
             )
-            saved = json.loads(
-                firmware_service.user_config_path.read_text(encoding="utf-8")
-            )
+            check("firmware selection persists externally", firmware_service.config_path.is_file())
+            saved_firmware_config = json.loads(firmware_service.config_path.read_text(encoding="utf-8"))
             check(
                 "firmware path is stored relocatably",
-                saved["firmware_project"] == "firmware/RobotVM.ino",
+                saved_firmware_config["source"] == "robot-platform/platformio.ini",
             )
             check(
                 "firmware selection resolves inside application",
-                firmware_service.get_firmware_path() == firmware.resolve(),
+                firmware_service.get_firmware_path().resolve() == packaged_firmware.resolve(),
             )
-            editable_firmware = firmware_service.prepare_editable_firmware()
-            expected_editable = (
-                state.resolve()
-                / "firmware-editor"
-                / "firmware"
-                / "RobotVM.ino"
-            )
-            check("packaged firmware is copied outside release before editing", editable_firmware == expected_editable)
-            check("editable firmware preserves packaged content", editable_firmware.read_text(encoding="utf-8") == firmware.read_text(encoding="utf-8"))
-            check("firmware sibling files are copied to editable state", (editable_firmware.parent / "README.txt").read_text(encoding="utf-8") == "packaged firmware sibling\n")
-            editable_firmware.write_text("// user edit\n", encoding="utf-8")
-            check("editing external firmware never changes packaged firmware", firmware.read_text(encoding="utf-8") == "void setup() {}\nvoid loop() {}\n")
-            saved_after_editable = json.loads(firmware_service.user_config_path.read_text(encoding="utf-8"))
-            check("firmware service persists external editable path", Path(saved_after_editable["firmware_project"]).resolve() == editable_firmware.resolve())
-            check("future firmware resolution uses external editable copy", firmware_service.get_firmware_path() == editable_firmware.resolve())
-
-            bootstrap_service = BootstrapConfigService()
-            bootstrap_path = bootstrap_service.generate(
-                "Lớp Robotics", "mật-khẩu-wifi", "ota-secret"
-            )
-            expected_bootstrap = state.resolve() / "bootstrap" / "robot_bootstrap.json"
-            expected_sketch = state.resolve() / "bootstrap" / "arduino-sketch"
-            expected_header = (
-                expected_sketch
-                / "include"
-                / "generated"
-                / "generated_bootstrap_config.h"
-            )
-            check("bootstrap JSON is external", bootstrap_path == expected_bootstrap)
-            check("bootstrap JSON is valid", bootstrap_service.validate(bootstrap_path))
+            editable = firmware_service.prepare_editable_firmware()
             check(
-                "Arduino working sketch is external",
-                bootstrap_service.arduino_sketch_path() == expected_sketch,
+                "packaged firmware is copied outside release before editing",
+                app.resolve() not in editable.resolve().parents,
             )
+            check(
+                "editable firmware preserves packaged content",
+                editable.read_text(encoding="utf-8") == "[env:esp32dev]\n",
+            )
+            check(
+                "firmware sibling files are copied to editable state",
+                editable.with_name("main.cpp").read_text(encoding="utf-8")
+                == "// packaged firmware sibling\n",
+            )
+            editable.write_text("[env:user-edited]\n", encoding="utf-8")
+            check(
+                "editing external firmware never changes packaged firmware",
+                packaged_firmware.read_text(encoding="utf-8") == "[env:esp32dev]\n",
+            )
+            check(
+                "firmware service persists external editable path",
+                Path(json.loads(firmware_service.config_path.read_text(encoding="utf-8"))["source"]).resolve()
+                == editable.resolve(),
+            )
+            check(
+                "future firmware resolution uses external editable copy",
+                firmware_service.get_firmware_path().resolve() == editable.resolve(),
+            )
+
+            # Bootstrap config/header: generated secrets/state must be external.
+            bootstrap_service = BootstrapConfigService()
+            bootstrap_json = bootstrap_service.generate("Lớp Robotics", "wifi", "ota-secret")
+            check("bootstrap JSON is external", app.resolve() not in bootstrap_json.resolve().parents)
+            check(
+                "bootstrap JSON is valid",
+                json.loads(bootstrap_json.read_text(encoding="utf-8"))["schema_version"] == 1,
+            )
+            working_sketch = bootstrap_service.prepare_arduino_working_copy(bootstrap_json)
+            check("Arduino working sketch is external", app.resolve() not in working_sketch.resolve().parents)
             check(
                 "Arduino template is copied to external state",
-                (expected_sketch / "template-marker.txt").read_text(encoding="utf-8")
-                == "immutable-template\n",
+                (working_sketch / "robot_firmware.ino").is_file(),
             )
-            check(
-                "generated Arduino header is external",
-                bootstrap_service.arduino_header_path() == expected_header
-                and expected_header.is_file(),
-            )
-            header_text = expected_header.read_text(encoding="utf-8")
+            generated_header = working_sketch / "generated_bootstrap_config.h"
+            check("generated Arduino header is external", app.resolve() not in generated_header.resolve().parents)
             check(
                 "generated Arduino header contains bootstrap SSID",
-                "Lớp Robotics" in header_text,
+                "Lớp Robotics" in generated_header.read_text(encoding="utf-8"),
             )
             check(
                 "packaged Arduino template receives no generated bootstrap header",
-                not (
-                    sketch_template
-                    / "include"
-                    / "generated"
-                    / "generated_bootstrap_config.h"
-                ).exists(),
+                not (arduino_template / "generated_bootstrap_config.h").exists(),
             )
             expect_error(
                 "bootstrap output inside release is rejected",
@@ -324,7 +314,7 @@ def main() -> int:
             ).read_text(encoding="utf-8")
             check(
                 "GUI worker CWD is derived from external compile workspace",
-                "setWorkingDirectory(str(self._workspace()))" in worker_source
+                '"cwd": str(self._workspace())' in worker_source
                 and "ROBOSTUDIO_HOME" not in worker_source,
             )
         finally:

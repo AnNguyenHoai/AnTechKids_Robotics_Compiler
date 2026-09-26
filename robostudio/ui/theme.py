@@ -39,7 +39,7 @@ def badge_style(tone: str) -> str:
 def primary_button_style() -> str:
     return (
         f"QPushButton {{ background: {PRIMARY}; color: white; border: none; border-radius: 6px; "
-        "padding: 8px 14px; font-weight: 700; }} "
+        "padding: 8px 14px; font-weight: 700; } "
         f"QPushButton:hover {{ background: {PRIMARY_HOVER}; }} "
         "QPushButton:disabled { background: #cbd5e1; color: #64748b; }"
     )
@@ -48,7 +48,7 @@ def primary_button_style() -> str:
 def secondary_button_style() -> str:
     return (
         f"QPushButton {{ background: {SURFACE}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER}; "
-        "border-radius: 6px; padding: 7px 12px; }}"
+        "border-radius: 6px; padding: 7px 12px; }"
     )
 
 

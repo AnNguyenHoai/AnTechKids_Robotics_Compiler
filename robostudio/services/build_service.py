@@ -18,6 +18,10 @@ except ImportError:  # desktop entry point exposes robostudio/ as import root
     from domain.hardware_requirement_validator import HardwareRequirementValidator
 
 from tools import deployment_runtime, runtime_paths
+from tools.deployment_runtime import (
+    CLASSROOM_BUILD_TIMEOUT_SECONDS,
+    windows_hidden_process_creation_flags,
+)
 from tools.runtime_paths import application_root, is_frozen, python_command
 
 
@@ -176,14 +180,20 @@ class BuildService:
                 cmd_parts, env_override = self._get_command_with_env()
                 env = self._compiler_environment()
                 env.update(env_override)
+                process_kwargs: dict[str, object] = {
+                    "capture_output": True,
+                    "text": True,
+                    "encoding": "utf-8",
+                    "errors": "replace",
+                    "env": env,
+                    "cwd": str(workspace),
+                    "timeout": CLASSROOM_BUILD_TIMEOUT_SECONDS,
+                }
+                if os.name == "nt":
+                    process_kwargs["creationflags"] = windows_hidden_process_creation_flags()
                 proc = subprocess.run(
                     cmd_parts + ["--request", str(request)],
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    env=env,
-                    cwd=str(workspace),
+                    **process_kwargs,
                 )
                 output_text = proc.stdout
                 if proc.stderr:
@@ -195,6 +205,13 @@ class BuildService:
                     output_text,
                     proc.stderr if proc.returncode != 0 else None,
                 )
+            except subprocess.TimeoutExpired:
+                message = (
+                    "Compiler timed out after "
+                    f"{int(CLASSROOM_BUILD_TIMEOUT_SECONDS)} seconds. "
+                    "Close heavy applications and retry."
+                )
+                return BuildResult(False, message, message)
             except (FileNotFoundError, OSError) as exc:
                 return BuildResult(False, f"Compiler runtime error: {exc}", str(exc))
             except Exception as exc:
