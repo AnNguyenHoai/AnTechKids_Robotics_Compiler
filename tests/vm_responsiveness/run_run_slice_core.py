@@ -76,14 +76,16 @@ def main() -> int:
     check("legacy Step still contains no scheduler loop", "while (" not in step_body and "for (" not in step_body)
     check("RunSlice does not call ExecuteInstruction directly", "ExecuteInstruction(" not in run_slice)
 
-    check("zero budget exits without Step", run_slice.index("budget.maxWorkUnits == 0") < run_slice.index("while (workUnits < budget.maxWorkUnits)"))
-    loop = run_slice[run_slice.index("while (workUnits < budget.maxWorkUnits)"):]
-    check("slice loop is work-unit bounded", loop.startswith("while (workUnits < budget.maxWorkUnits)"))
+    loop_marker = "while (workUnits < hardWorkLimit)"
+    check("zero budget exits without Step", run_slice.index("budget.maxWorkUnits == 0") < run_slice.index(loop_marker))
+    check("transaction extension is finite", "VM_REACTIVE_TRANSACTION_EXTENSION_WORK_UNITS = 8" in run_slice and "hardWorkLimit" in run_slice)
+    loop = run_slice[run_slice.index(loop_marker):]
+    check("slice loop is bounded by hard work limit", loop.startswith(loop_marker))
     check("slice loop invokes legacy Step once", loop.count("Step();") == 1)
     check("each attempted Step consumes one work unit", "++workUnits;" in loop)
     check("slice does not contain nested unbounded while", loop.count("while (") == 1)
 
-    check("pre-existing VM fault returns Fault", run_slice.find("VMRunSliceStopReason::Fault") < run_slice.find("while (workUnits < budget.maxWorkUnits)"))
+    check("pre-existing VM fault returns Fault", run_slice.find("VMRunSliceStopReason::Fault") < run_slice.find(loop_marker))
     check("post-Step VM fault returns Fault", loop.count("VMRunSliceStopReason::Fault") >= 1)
     check("Wait pending returns Waiting", "VMPendingOperation::Wait" in loop and "VMRunSliceStopReason::Waiting" in loop)
     check("timed buzzer pending returns Waiting", "VMPendingOperation::Mp3Play" in loop and "VMRunSliceStopReason::Waiting" in loop)
@@ -144,7 +146,7 @@ def main() -> int:
     check("snapshot exposes timestamp sequence and validity", all(token in snapshot_h for token in ("timestampUs", "sequence", "valid")))
     check("snapshot exposes physical-read and consumer diagnostics", "physicalReadCount" in snapshot_h and "consumerCount" in snapshot_h and "invalidCount" in snapshot_h)
     check("RunSlice owns one explicit snapshot cycle", "LineSnapshotCycleGuard lineSnapshotCycle;" in run_slice and "BeginCycle()" in run_slice and "EndCycle()" in run_slice)
-    check("snapshot sampling is lazy", "EnsureSample()" in snapshot_h and run_slice.index("LineSnapshotCycleGuard lineSnapshotCycle;") < run_slice.index("while (workUnits < budget.maxWorkUnits)"))
+    check("snapshot sampling is lazy", "EnsureSample()" in snapshot_h and run_slice.index("LineSnapshotCycleGuard lineSnapshotCycle;") < run_slice.index(loop_marker))
     check("one sample reads all three physical channels", snapshot_cpp.count("SampleHardwareDirect();") == 3 and "physicalReadCount = 3" in snapshot_cpp)
     check("same-cycle repeated consumers reuse sampled set", "if (g_sampledThisCycle)" in snapshot_cpp and "return g_snapshot.valid;" in snapshot_cpp)
     check("next cycle can produce a new sequence", "++g_snapshot.sequence;" in snapshot_cpp and "g_sampledThisCycle = false;" in snapshot_cpp)
