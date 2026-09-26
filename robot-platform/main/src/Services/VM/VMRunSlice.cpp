@@ -3,6 +3,10 @@
 #include "../../Sensor/LineSensorSnapshot.h"
 #include <Arduino.h>
 
+#ifndef VM_RESPONSIVENESS_DIAGNOSTICS
+#define VM_RESPONSIVENESS_DIAGNOSTICS 0
+#endif
+
 namespace {
 VMRunSliceResult makeResult(VMRunSliceStopReason reason,
                             uint16_t workUnits,
@@ -109,25 +113,30 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
 
     while (workUnits < budget.maxWorkUnits) {
         const uint16_t executedPc = mContext.mProgramCounter;
+#if VM_RESPONSIVENESS_DIAGNOSTICS
         const Instruction* executedInstruction =
             (mProgram != nullptr && executedPc < mProgram->mInstructionCount)
                 ? &mProgram->mInstructions[executedPc]
                 : nullptr;
         const uint32_t workStartUs = micros();
+#endif
+
         Step();
-        const uint32_t workEndUs = micros();
-        const uint32_t workDurationUs = workEndUs - workStartUs;
         ++workUnits;
 
+#if VM_RESPONSIVENESS_DIAGNOSTICS
+        // Detailed per-opcode timing is qualification/debug evidence only.
+        // Production still enforces the independent slice wall-clock ceiling,
+        // but avoids paying an extra timestamp before every legacy Step().
+        const uint32_t workEndUs = micros();
+        const uint32_t workDurationUs = workEndUs - workStartUs;
         if (workDurationUs > maxWorkUnitDurationUs) {
             maxWorkUnitDurationUs = workDurationUs;
             maxWorkUnitProgramCounter = executedPc;
         }
 
-        // Capture the real reactive chain without UART observer effect. The
-        // line sample timestamp comes from the exact shared snapshot consumed
-        // by GetTraceState; Stop is stamped only after its Step() returned, so
-        // the value includes RobotAPI::Stop() and PWM submission time.
+        // Capture the real reactive chain without UART observer effect. These
+        // opcode-level markers are diagnostic evidence, not scheduler semantics.
         if (executedInstruction != nullptr) {
             if (executedInstruction->opcode == Opcode::GetTraceState) {
                 const auto& snapshot = LineSensorSnapshot::Current();
@@ -142,6 +151,7 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
                 VMRuntimeTelemetry::RecordReactiveStop(workEndUs);
             }
         }
+#endif
 
         if (mContext.mErrorCode != ToErrorCode(VMErrorCode::None)) {
             return finalize(makeResult(VMRunSliceStopReason::Fault,
@@ -202,10 +212,9 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
                                        mContext.mProgramCounter));
         }
 
-        // Wall-clock is a second, independent guard. Work-unit count remains a
-        // hard ceiling, while the time ceiling prevents a burst of individually
-        // cheap opcodes from monopolizing the firmware cycle. Check only between
-        // Step() calls so legacy Step() semantics stay untouched.
+        // Wall-clock is an independent hard scheduling guard. Production pays
+        // one monotonic timestamp per completed Step() for this safety boundary;
+        // qualification adds a pre-Step timestamp only for detailed evidence.
         if (budget.maxDurationUs != 0 &&
             static_cast<uint32_t>(micros() - sliceStartUs) >= budget.maxDurationUs) {
             return finalize(makeResult(VMRunSliceStopReason::TimeBudgetExhausted,

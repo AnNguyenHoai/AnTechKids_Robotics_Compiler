@@ -33,7 +33,7 @@ struct VMRunSliceBudget
 {
     // C++11-compatible constructor preserves the existing brace-call surface:
     // VMRunSliceBudget{4} means work-only scheduling and deterministically
-    // leaves maxDurationUs disabled; production can pass {16, 2000}.
+    // leaves maxDurationUs disabled; production currently passes {24, 2000}.
     constexpr VMRunSliceBudget(uint16_t workUnits = 0, uint32_t durationUs = 0)
         : maxWorkUnits(workUnits), maxDurationUs(durationUs) {}
 

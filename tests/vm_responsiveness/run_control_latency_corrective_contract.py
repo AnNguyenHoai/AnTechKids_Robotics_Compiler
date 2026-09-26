@@ -33,7 +33,7 @@ def main() -> int:
     recovery = RECOVERY.read_text(encoding="utf-8")
     thresholds = json.loads(THRESHOLDS.read_text(encoding="utf-8"))
 
-    require("VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 16" in main, "corrective work ceiling drifted")
+    require("VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 24" in main, "reactive work ceiling drifted")
     require("VM_MAX_SLICE_DURATION_US = 2000" in main, "corrective time ceiling drifted")
     require("uint32_t maxDurationUs = 0;" in vm_h, "optional wall-clock budget missing")
     require("TimeBudgetExhausted" in vm_h and "budget.maxDurationUs != 0" in vm_slice,
@@ -79,8 +79,8 @@ def main() -> int:
             "corrective change must keep approval false")
     require(all(value is None for value in thresholds["thresholds"].values()),
             "corrective change must not invent physical thresholds")
-    require(thresholds["slice_budget_work_units"] == 16 and thresholds["slice_budget_duration_us"] == 2000,
-            "manifest must identify exact corrective scheduler config")
+    require(thresholds["slice_budget_work_units"] == 24 and thresholds["slice_budget_duration_us"] == 2000,
+            "manifest must identify exact scheduler config under qualification")
 
     print("VM control-latency corrective contract: PASS")
     return 0
