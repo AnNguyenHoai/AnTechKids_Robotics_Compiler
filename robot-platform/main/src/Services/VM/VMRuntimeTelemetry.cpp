@@ -11,6 +11,31 @@ uint32_t g_sliceOrdinal[kSliceBufferCapacity]{};
 uint16_t g_sliceWriteIndex = 0;
 uint16_t g_sliceBufferedCount = 0;
 
+struct ReactiveTimingRecord
+{
+    uint32_t lineSequence;
+    uint32_t sampleTimestampUs;
+    uint32_t observationUs;
+    uint32_t stopSubmittedUs;
+    uint32_t sampleToStopUs;
+    uint32_t observationToStopUs;
+};
+
+constexpr uint16_t kReactiveBufferCapacity = 64;
+ReactiveTimingRecord g_reactiveBuffer[kReactiveBufferCapacity]{};
+uint16_t g_reactiveWriteIndex = 0;
+uint16_t g_reactiveBufferedCount = 0;
+
+struct PendingReactiveObservation
+{
+    bool armed;
+    uint32_t lineSequence;
+    uint32_t sampleTimestampUs;
+    uint32_t observationUs;
+};
+
+PendingReactiveObservation g_pendingReactive{};
+
 void printJson(uint32_t sliceOrdinal,
                const VMRunSliceResult& r,
                uint32_t stopLatencyUs,
@@ -48,6 +73,20 @@ void printJson(uint32_t sliceOrdinal,
         static_cast<unsigned long>(stopLatencyUs),
         static_cast<unsigned long>(maxStopLatencyUs));
 }
+
+void printReactiveJson(const ReactiveTimingRecord& r)
+{
+    Serial.printf(
+        "{\"type\":\"vm_rt_reactive\",\"line_seq\":%lu,"
+        "\"sample_us\":%lu,\"observation_us\":%lu,\"stop_us\":%lu,"
+        "\"sample_to_stop_us\":%lu,\"observation_to_stop_us\":%lu}\n",
+        static_cast<unsigned long>(r.lineSequence),
+        static_cast<unsigned long>(r.sampleTimestampUs),
+        static_cast<unsigned long>(r.observationUs),
+        static_cast<unsigned long>(r.stopSubmittedUs),
+        static_cast<unsigned long>(r.sampleToStopUs),
+        static_cast<unsigned long>(r.observationToStopUs));
+}
 #endif
 }
 
@@ -59,6 +98,9 @@ void Reset()
 #if VM_RESPONSIVENESS_DIAGNOSTICS
     g_sliceWriteIndex = 0;
     g_sliceBufferedCount = 0;
+    g_reactiveWriteIndex = 0;
+    g_reactiveBufferedCount = 0;
+    g_pendingReactive = PendingReactiveObservation{};
 #endif
 }
 
@@ -96,6 +138,94 @@ void RecordStopLatency(uint32_t latencyUs)
     }
 }
 
+void RecordFirmwareCycle(uint32_t cycleStartUs,
+                         uint32_t lineSampleTimestampUs,
+                         uint32_t cycleEndUs)
+{
+#if VM_RESPONSIVENESS_DIAGNOSTICS
+    const uint32_t cycleUs = cycleEndUs - cycleStartUs;
+    g_snapshot.lastFirmwareCycleUs = cycleUs;
+    if (cycleUs > g_snapshot.maxFirmwareCycleUs) {
+        g_snapshot.maxFirmwareCycleUs = cycleUs;
+    }
+
+    if (lineSampleTimestampUs != 0) {
+        if (g_snapshot.lastLineSampleTimestampUs != 0) {
+            const uint32_t periodUs = lineSampleTimestampUs - g_snapshot.lastLineSampleTimestampUs;
+            g_snapshot.lastLineSamplePeriodUs = periodUs;
+            if (periodUs > g_snapshot.maxLineSamplePeriodUs) {
+                g_snapshot.maxLineSamplePeriodUs = periodUs;
+            }
+        }
+        g_snapshot.lastLineSampleTimestampUs = lineSampleTimestampUs;
+    }
+#else
+    (void)cycleStartUs;
+    (void)lineSampleTimestampUs;
+    (void)cycleEndUs;
+#endif
+}
+
+void RecordReactiveLineObservation(uint32_t lineSampleTimestampUs,
+                                   uint32_t observationUs,
+                                   uint32_t lineSequence,
+                                   bool detected)
+{
+#if VM_RESPONSIVENESS_DIAGNOSTICS
+    if (!detected || lineSampleTimestampUs == 0) {
+        g_pendingReactive = PendingReactiveObservation{};
+        return;
+    }
+
+    g_pendingReactive.armed = true;
+    g_pendingReactive.lineSequence = lineSequence;
+    g_pendingReactive.sampleTimestampUs = lineSampleTimestampUs;
+    g_pendingReactive.observationUs = observationUs;
+#else
+    (void)lineSampleTimestampUs;
+    (void)observationUs;
+    (void)lineSequence;
+    (void)detected;
+#endif
+}
+
+void RecordReactiveStop(uint32_t stopSubmittedUs)
+{
+#if VM_RESPONSIVENESS_DIAGNOSTICS
+    if (!g_pendingReactive.armed) {
+        return;
+    }
+
+    ReactiveTimingRecord record{};
+    record.lineSequence = g_pendingReactive.lineSequence;
+    record.sampleTimestampUs = g_pendingReactive.sampleTimestampUs;
+    record.observationUs = g_pendingReactive.observationUs;
+    record.stopSubmittedUs = stopSubmittedUs;
+    record.sampleToStopUs = stopSubmittedUs - record.sampleTimestampUs;
+    record.observationToStopUs = stopSubmittedUs - record.observationUs;
+
+    g_reactiveBuffer[g_reactiveWriteIndex] = record;
+    g_reactiveWriteIndex = static_cast<uint16_t>((g_reactiveWriteIndex + 1) % kReactiveBufferCapacity);
+    if (g_reactiveBufferedCount < kReactiveBufferCapacity) {
+        ++g_reactiveBufferedCount;
+    }
+
+    ++g_snapshot.reactiveStopCount;
+    g_snapshot.lastReactiveSampleToStopUs = record.sampleToStopUs;
+    g_snapshot.lastReactiveObservationToStopUs = record.observationToStopUs;
+    if (record.sampleToStopUs > g_snapshot.maxReactiveSampleToStopUs) {
+        g_snapshot.maxReactiveSampleToStopUs = record.sampleToStopUs;
+    }
+    if (record.observationToStopUs > g_snapshot.maxReactiveObservationToStopUs) {
+        g_snapshot.maxReactiveObservationToStopUs = record.observationToStopUs;
+    }
+
+    g_pendingReactive = PendingReactiveObservation{};
+#else
+    (void)stopSubmittedUs;
+#endif
+}
+
 const VMRuntimeTelemetrySnapshot& Current()
 {
     return g_snapshot;
@@ -114,26 +244,47 @@ void PrintLatestJson()
 void PrintBufferedJson()
 {
 #if VM_RESPONSIVENESS_DIAGNOSTICS
-    if (g_sliceBufferedCount == 0) {
-        return;
+    if (g_sliceBufferedCount != 0) {
+        const uint16_t oldest = static_cast<uint16_t>(
+            (g_sliceWriteIndex + kSliceBufferCapacity - g_sliceBufferedCount) % kSliceBufferCapacity);
+
+        for (uint16_t offset = 0; offset < g_sliceBufferedCount; ++offset) {
+            const uint16_t index = static_cast<uint16_t>((oldest + offset) % kSliceBufferCapacity);
+            const bool lastRecord = (offset + 1u) == g_sliceBufferedCount;
+
+            // A control-plane stop is observed after the last active VM slice.
+            // Do not stamp that one observation onto every buffered record.
+            printJson(g_sliceOrdinal[index],
+                      g_sliceBuffer[index],
+                      lastRecord ? g_snapshot.lastStopLatencyUs : 0u,
+                      g_snapshot.maxStopLatencyUs);
+        }
     }
 
-    const uint16_t oldest = static_cast<uint16_t>(
-        (g_sliceWriteIndex + kSliceBufferCapacity - g_sliceBufferedCount) % kSliceBufferCapacity);
-
-    for (uint16_t offset = 0; offset < g_sliceBufferedCount; ++offset) {
-        const uint16_t index = static_cast<uint16_t>((oldest + offset) % kSliceBufferCapacity);
-        const bool lastRecord = (offset + 1u) == g_sliceBufferedCount;
-
-        // A control-plane stop is observed after the last active VM slice. Do
-        // not stamp that one observation onto every buffered record or the
-        // qualification parser would multiply the stop sample count. Attach it
-        // once to the final emitted record; max remains campaign context.
-        printJson(g_sliceOrdinal[index],
-                  g_sliceBuffer[index],
-                  lastRecord ? g_snapshot.lastStopLatencyUs : 0u,
-                  g_snapshot.maxStopLatencyUs);
+    if (g_reactiveBufferedCount != 0) {
+        const uint16_t oldest = static_cast<uint16_t>(
+            (g_reactiveWriteIndex + kReactiveBufferCapacity - g_reactiveBufferedCount) % kReactiveBufferCapacity);
+        for (uint16_t offset = 0; offset < g_reactiveBufferedCount; ++offset) {
+            const uint16_t index = static_cast<uint16_t>((oldest + offset) % kReactiveBufferCapacity);
+            printReactiveJson(g_reactiveBuffer[index]);
+        }
     }
+
+    Serial.printf(
+        "{\"type\":\"vm_rt_cycle_summary\",\"last_cycle_us\":%lu,"
+        "\"max_cycle_us\":%lu,\"last_line_sample_period_us\":%lu,"
+        "\"max_line_sample_period_us\":%lu,\"reactive_stop_count\":%lu,"
+        "\"last_sample_to_stop_us\":%lu,\"max_sample_to_stop_us\":%lu,"
+        "\"last_observation_to_stop_us\":%lu,\"max_observation_to_stop_us\":%lu}\n",
+        static_cast<unsigned long>(g_snapshot.lastFirmwareCycleUs),
+        static_cast<unsigned long>(g_snapshot.maxFirmwareCycleUs),
+        static_cast<unsigned long>(g_snapshot.lastLineSamplePeriodUs),
+        static_cast<unsigned long>(g_snapshot.maxLineSamplePeriodUs),
+        static_cast<unsigned long>(g_snapshot.reactiveStopCount),
+        static_cast<unsigned long>(g_snapshot.lastReactiveSampleToStopUs),
+        static_cast<unsigned long>(g_snapshot.maxReactiveSampleToStopUs),
+        static_cast<unsigned long>(g_snapshot.lastReactiveObservationToStopUs),
+        static_cast<unsigned long>(g_snapshot.maxReactiveObservationToStopUs));
 #endif
 }
 
