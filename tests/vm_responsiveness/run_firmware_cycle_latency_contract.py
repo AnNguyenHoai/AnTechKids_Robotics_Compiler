@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Whole-firmware-cycle latency contract for VM-RT X (#380)."""
+"""Whole-firmware-cycle latency contract for VM-RT X (#380/#392)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -54,13 +54,36 @@ def main() -> int:
     require("RobotNetworkService::update(0);" in loop[:begin],
             "active OTA must retain an unrestricted service path only after actuator stop")
 
-    # Network scheduling is bounded between indivisible framework calls.
+    # Network scheduling is bounded between indivisible framework calls and is
+    # fair across cycles. A fixed OTA -> HTTP -> discovery order can starve
+    # health/discovery forever whenever an earlier call consumes the budget.
     require("serviceBudgetExpired" in network,
             "network service must enforce a cooperative inter-call budget")
-    require("ArduinoOTA.handle();" in network and "g_server.handleClient();" in network,
-            "network service contract must cover OTA and HTTP calls")
-    require(network.count("serviceBudgetExpired(startedUs, budgetUs)") >= 3,
-            "network budget must be checked between major background calls")
+    require("BackgroundServiceSlot" in network and "kBackgroundServiceSlotCount = 3" in network,
+            "network service must declare explicit OTA/HTTP/discovery scheduling slots")
+    require("g_nextBackgroundServiceSlot" in network,
+            "network service must preserve the next background-service owner across cycles")
+    require("serviceBackgroundRoundRobin" in network,
+            "normal network servicing must use bounded round-robin scheduling")
+    require("BackgroundServiceSlot::ArduinoOta" in network
+            and "BackgroundServiceSlot::Http" in network
+            and "BackgroundServiceSlot::Discovery" in network,
+            "round-robin scheduler must cover ArduinoOTA, HTTP and discovery")
+    require("ArduinoOTA.handle();" in network and "g_server.handleClient();" in network
+            and "RobotDiscoveryService::update(g_robotReady, g_networkReady, g_otaReady);" in network,
+            "network fairness contract must cover OTA, HTTP and discovery calls")
+    require("g_nextBackgroundServiceSlot = static_cast<uint8_t>((slot + 1U) % kBackgroundServiceSlotCount);" in network,
+            "network service must advance ownership immediately after each indivisible call")
+
+    update_start = network.index("void update(uint32_t budgetUs)")
+    update_end = network.index("bool isReady()", update_start)
+    update_body = network[update_start:update_end]
+    require("serviceBackgroundRoundRobin(startedUs, budgetUs);" in update_body,
+            "normal network update must delegate to the fair round-robin scheduler")
+    require(update_body.index("if (g_updateInProgress)") < update_body.index("serviceBackgroundRoundRobin(startedUs, budgetUs);"),
+            "active OTA ownership must remain ahead of normal fair scheduling")
+    require("ArduinoOTA.handle();\n        g_server.handleClient();\n        return;" in update_body,
+            "active OTA must retain unrestricted OTA+HTTP pumping after actuator stop")
     require("RobotAPI::Stop();" in network[network.index("void onOtaStart()"):network.index("void onOtaEnd()")],
             "Arduino OTA start must stop actuators before flash/network ownership")
 
@@ -90,7 +113,7 @@ def main() -> int:
     require("vm_rt_cycle_summary" in telemetry and "max_line_sample_period_us" in telemetry,
             "qualification output must expose whole-cycle/sample-cadence evidence")
 
-    print("VM-RT firmware-cycle latency contract: PASS")
+    print("VM-RT firmware-cycle latency/fairness contract: PASS")
     return 0
 
 

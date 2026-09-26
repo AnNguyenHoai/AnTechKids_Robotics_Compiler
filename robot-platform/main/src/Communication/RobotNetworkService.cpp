@@ -18,6 +18,7 @@ constexpr uint32_t kWifiRetryIntervalMs = 5000UL;
 constexpr uint32_t kWifiConnectTimeoutMs = 10000UL;
 constexpr char kHttpOtaUser[] = "robot";
 constexpr char kHttpOtaPath[] = "/api/v1/ota";
+constexpr uint8_t kBackgroundServiceSlotCount = 3;
 
 #ifndef ROBOT_OTA_PASSWORD
 #define ROBOT_OTA_PASSWORD ""
@@ -28,6 +29,12 @@ enum class WifiState {
     Connecting,
     Connected,
     RetryWait,
+};
+
+enum class BackgroundServiceSlot : uint8_t {
+    ArduinoOta = 0,
+    Http = 1,
+    Discovery = 2,
 };
 
 WebServer g_server(80);
@@ -42,6 +49,7 @@ bool g_handlersRegistered = false;
 WifiState g_wifiState = WifiState::Idle;
 uint32_t g_wifiStateSinceMs = 0;
 uint32_t g_lastWifiAttemptMs = 0;
+uint8_t g_nextBackgroundServiceSlot = 0;
 
 bool serviceBudgetExpired(uint32_t startedUs, uint32_t budgetUs) {
     return budgetUs != 0 && static_cast<uint32_t>(micros() - startedUs) >= budgetUs;
@@ -277,6 +285,44 @@ void handleWifiState() {
     }
 }
 
+bool serviceBackgroundSlot(uint8_t slot) {
+    switch (static_cast<BackgroundServiceSlot>(slot)) {
+        case BackgroundServiceSlot::ArduinoOta:
+            if (!g_otaReady) {
+                return false;
+            }
+            ArduinoOTA.handle();
+            return true;
+        case BackgroundServiceSlot::Http:
+            g_server.handleClient();
+            return true;
+        case BackgroundServiceSlot::Discovery:
+            RobotDiscoveryService::update(g_robotReady, g_networkReady, g_otaReady);
+            return true;
+    }
+    return false;
+}
+
+void serviceBackgroundRoundRobin(uint32_t startedUs, uint32_t budgetUs) {
+    const uint8_t startSlot = g_nextBackgroundServiceSlot;
+
+    for (uint8_t offset = 0; offset < kBackgroundServiceSlotCount; ++offset) {
+        const uint8_t slot = static_cast<uint8_t>((startSlot + offset) % kBackgroundServiceSlotCount);
+        if (!serviceBackgroundSlot(slot)) {
+            continue;
+        }
+
+        // Advance ownership immediately after the indivisible call. If this
+        // call consumes the remaining budget, the next firmware cycle starts
+        // with the next eligible service instead of restarting from OTA.
+        g_nextBackgroundServiceSlot = static_cast<uint8_t>((slot + 1U) % kBackgroundServiceSlotCount);
+
+        if (g_updateInProgress || serviceBudgetExpired(startedUs, budgetUs)) {
+            return;
+        }
+    }
+}
+
 }
 
 namespace RobotNetworkService {
@@ -292,6 +338,7 @@ void begin(bool robotReady) {
     g_wifiState = WifiState::Idle;
     g_wifiStateSinceMs = millis();
     g_lastWifiAttemptMs = 0;
+    g_nextBackgroundServiceSlot = 0;
 
     if (!RobotWiFiConfig::begin()) {
         BootLogger::log("NET", "No Wi-Fi configuration available");
@@ -319,19 +366,10 @@ void update(uint32_t budgetUs) {
         return;
     }
 
-    if (g_otaReady) {
-        ArduinoOTA.handle();
-        if (serviceBudgetExpired(startedUs, budgetUs)) {
-            return;
-        }
-    }
-
-    g_server.handleClient();
-    if (serviceBudgetExpired(startedUs, budgetUs)) {
-        return;
-    }
-
-    RobotDiscoveryService::update(g_robotReady, g_networkReady, g_otaReady);
+    // Normal operation is cooperatively bounded but must also be fair. A
+    // fixed OTA -> HTTP -> discovery order allowed an over-budget early call
+    // to starve later services forever during sustained VM execution.
+    serviceBackgroundRoundRobin(startedUs, budgetUs);
 }
 
 bool isReady() { return g_networkReady; }
