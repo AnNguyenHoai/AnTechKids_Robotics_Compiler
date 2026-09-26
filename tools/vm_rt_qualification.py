@@ -56,7 +56,25 @@ def stats(values: list[int]) -> dict[str, int]:
     }
 
 
+def validate_metadata(metadata: dict) -> None:
+    """Physical evidence must identify the exact scheduler being qualified."""
+    if not bool(metadata.get("physical_robot", False)):
+        return
+    config = metadata.get("slice_configuration") or {}
+    missing = [name for name in ("max_work_units", "max_duration_us") if config.get(name) is None]
+    if missing:
+        raise ValueError(
+            "physical qualification metadata must record dual slice configuration fields: "
+            + ", ".join(missing)
+        )
+    if int(config["max_work_units"]) <= 0:
+        raise ValueError("slice_configuration.max_work_units must be positive")
+    if int(config["max_duration_us"]) <= 0:
+        raise ValueError("slice_configuration.max_duration_us must be positive for the production qualification profile")
+
+
 def build_report(records: list[dict[str, int | str]], metadata: dict) -> dict:
+    validate_metadata(metadata)
     durations = [int(row["duration_us"]) for row in records]
     max_work = [int(row["max_work_us"]) for row in records]
     line_age = [int(row["line_age_us"]) for row in records if int(row["line_valid"]) == 1]

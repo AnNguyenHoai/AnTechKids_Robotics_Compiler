@@ -3,7 +3,10 @@
   "issue": 312,
   "status": "UNAPPROVED_PENDING_PHYSICAL_EVIDENCE",
   "baseline_commit": "18875d500bb64f4ff4a495f8915795af4f8a02f8",
-  "slice_budget_work_units": 4,
+  "slice_budget_work_units": 16,
+  "slice_budget_duration_us": 2000,
+  "runtime_config_status": "PROVISIONAL_CORRECTIVE_PENDING_PHYSICAL_QUALIFICATION",
+  "runtime_config_basis": "Corrective runtime configuration after observed real-robot control-latency failure on 2026-09-25. This records the firmware configuration under test and is not threshold approval.",
   "thresholds": {
     "slice_duration_us_max": null,
     "work_unit_duration_us_max": null,
@@ -17,5 +20,5 @@
     "approved_at": null,
     "evidence": []
   },
-  "guard": "Do not populate or tune production thresholds from host fixtures or estimates; use measured physical qualification evidence only."
+  "guard": "Do not populate or approve production thresholds from host fixtures or estimates. Corrective runtime configuration may change after an observed physical failure, but final tuning and threshold approval require measured physical qualification evidence."
 }

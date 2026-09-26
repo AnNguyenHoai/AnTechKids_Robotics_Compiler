@@ -19,8 +19,23 @@ VMRunSliceResult makeResult(VMRunSliceStopReason reason,
 class LineSnapshotCycleGuard
 {
 public:
-    LineSnapshotCycleGuard() { LineSensorSnapshot::BeginCycle(); }
-    ~LineSnapshotCycleGuard() { LineSensorSnapshot::EndCycle(); }
+    LineSnapshotCycleGuard()
+        : mOwnsCycle(!LineSensorSnapshot::IsCycleActive())
+    {
+        if (mOwnsCycle) {
+            LineSensorSnapshot::BeginCycle();
+        }
+    }
+
+    ~LineSnapshotCycleGuard()
+    {
+        if (mOwnsCycle) {
+            LineSensorSnapshot::EndCycle();
+        }
+    }
+
+private:
+    bool mOwnsCycle;
 };
 }
 
@@ -86,8 +101,9 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
                                    mContext.mProgramCounter));
     }
 
-    // One RunSlice invocation is one VM/control-cycle snapshot scope. Sampling
-    // itself is lazy: if no line consumer executes, no line hardware is read.
+    // Production firmware can own a broader line-snapshot cycle spanning
+    // SensorManager -> VM -> Diagnostics. Standalone RunSlice callers still
+    // receive the historical one-slice snapshot lifecycle through this guard.
     LineSnapshotCycleGuard lineSnapshotCycle;
 
     while (workUnits < budget.maxWorkUnits) {
@@ -156,6 +172,18 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
 
         if (mContext.mPendingOperation != VMPendingOperation::None) {
             return finalize(makeResult(VMRunSliceStopReason::Yielded,
+                                       workUnits,
+                                       startPc,
+                                       mContext.mProgramCounter));
+        }
+
+        // Wall-clock is a second, independent guard. Work-unit count remains a
+        // hard ceiling, while the time ceiling prevents a burst of individually
+        // cheap opcodes from monopolizing the firmware cycle. Check only between
+        // Step() calls so legacy Step() semantics stay untouched.
+        if (budget.maxDurationUs != 0 &&
+            static_cast<uint32_t>(micros() - sliceStartUs) >= budget.maxDurationUs) {
+            return finalize(makeResult(VMRunSliceStopReason::TimeBudgetExhausted,
                                        workUnits,
                                        startPc,
                                        mContext.mProgramCounter));

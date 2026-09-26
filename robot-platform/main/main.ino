@@ -23,9 +23,10 @@
 #include "src/Behavior/LightTriggerBehavior.h"
 #include "src/Behavior/ColorDetectBehavior.h"
 
-// === Diagnostics ===
+// === Diagnostics / Sensors ===
 #include "src/Diagnostics/DiagnosticsManager.h"
 #include "src/Sensor/SensorManager.h"
+#include "src/Sensor/LineSensorSnapshot.h"
 #include "src/Diagnostics/Console/DevelopmentConsole.h"
 
 // === IMU & Heading ===
@@ -46,10 +47,15 @@ Program program;
 const int STABILITY_ITERATIONS = 1;
 int executionCounter = 0;
 
-// VM-RT G: keep VM work bounded so serial/network/OTA/sensors/motion and
-// diagnostics regain control every firmware cycle. This value is deliberately
-// conservative; runtime tuning belongs to the instrumentation work in #310.
-static constexpr uint16_t VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 4;
+// A reactive student-code chain often needs more than four bytecode operations
+// (load arguments -> read sensor -> branch -> actuator). Keep a generous work
+// ceiling so such a chain can complete in one slice, but pair it with a short
+// wall-clock ceiling so cheap opcodes cannot starve platform services.
+//
+// VM_MAX_SLICE_DURATION_US is an engineering scheduling ceiling, NOT an
+// approved physical-qualification threshold. #325 remains the evidence owner.
+static constexpr uint16_t VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 16;
+static constexpr uint32_t VM_MAX_SLICE_DURATION_US = 2000;
 
 BehaviorScheduler scheduler;
 bool useBehaviorEngine = false;
@@ -79,6 +85,7 @@ void setup() {
     BootLogger::log("BOOT", "Binary Loaded");
 
     vm.LoadProgram(&program);
+    VMRuntimeTelemetry::Reset();
 
 #ifdef DIAGNOSTIC_MANUAL_START
     g_manualStartEnabled = true;
@@ -186,11 +193,12 @@ void loop() {
         return;
     }
 
-    // Platform inputs and output-control state are refreshed before RunSlice.
-    // RunSlice then owns the lazy line-sensor snapshot for exactly that VM
-    // control slice, so repeated line consumers share one coherent L/C/R set.
+    // One firmware cycle owns one coherent line-sensor snapshot. The first line
+    // sensor refresh below samples L/C/R atomically; VM getters, line follower
+    // logic and diagnostics reuse that same sample until EndCycle(). RunSlice
+    // detects this active outer scope and therefore does not open/resample one.
+    LineSensorSnapshot::BeginCycle();
     SensorManager::instance().updateAll();
-    DiagnosticsManager::instance().updateSensors();
 
     if (g_robotReady) {
 #if ROBOT_FEATURE_IMU
@@ -220,10 +228,15 @@ void loop() {
 #endif
 
         if (runVmSlice) {
-            const VMRunSliceBudget budget{VM_WORK_UNITS_PER_FIRMWARE_CYCLE};
+            const VMRunSliceBudget budget{
+                VM_WORK_UNITS_PER_FIRMWARE_CYCLE,
+                VM_MAX_SLICE_DURATION_US
+            };
             const VMRunSliceResult sliceResult = vm.RunSlice(budget);
             VMRuntimeTelemetry::RecordSlice(sliceResult);
-            VMRuntimeTelemetry::PrintLatestJson();
+            // Never print per-slice JSON here. Qualification telemetry is RAM
+            // buffered and dumped only after VM motion has stopped, otherwise
+            // 115200-baud UART transmission becomes part of control latency.
         }
 
         if (vm.IsRunning()) {
@@ -236,12 +249,13 @@ void loop() {
 #else
             if (true) {
 #endif
+                // Actuator safety precedes any potentially slow reporting. This
+                // also makes post-run qualification telemetry observer-safe.
+                RobotAPI::Stop();
+                VMRuntimeTelemetry::PrintBufferedJson();
+
                 uint8_t err = vm.GetErrorCode();
                 if (err != 0) {
-                    // Faulted student code must not trap the firmware in a
-                    // private halt loop. Stop outputs, report once, and keep
-                    // platform services alive on subsequent firmware cycles.
-                    RobotAPI::Stop();
                     BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
                 } else {
                     executionCounter++;
@@ -251,6 +265,7 @@ void loop() {
                         BootLogger::log("STABILITY", "Restarting VM...");
                         vm.Reset();
                         vm.LoadProgram(&program);
+                        VMRuntimeTelemetry::Reset();
                         g_vmTerminalReported = false;
 #ifdef DIAGNOSTIC_MANUAL_START
                         vm.SetRunning(false);
@@ -261,13 +276,17 @@ void loop() {
                         // Remain in the normal firmware loop after VM
                         // completion so serial/network/OTA/diagnostics remain
                         // serviceable instead of entering a nested while(1).
-                        RobotAPI::Stop();
                         BootLogger::log("STABILITY", "VM stability test completed.");
                     }
                 }
             }
         }
     }
+
+    // Diagnostics observe the same cached L/C/R values that were sampled at
+    // the start of this firmware cycle; they must never trigger another read.
+    DiagnosticsManager::instance().updateSensors();
+    LineSensorSnapshot::EndCycle();
 
     uint32_t elapsed = micros() - start;
     DiagnosticsManager::instance().recordLoopTime(elapsed);

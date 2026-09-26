@@ -2,7 +2,10 @@
 #include <Arduino.h>
 
 namespace {
-constexpr uint8_t kLostConfirmSamples = 3;
+// Confirm a real line loss by elapsed time instead of by scheduler-dependent
+// sample count. With a 20 ms user wait this confirms on the second lost sample;
+// with a faster loop it still rejects sub-10 ms transients.
+constexpr uint32_t kLostConfirmMs = 10;
 }
 
 FollowerStateMachine::FollowerStateMachine()
@@ -12,7 +15,13 @@ FollowerStateMachine::FollowerStateMachine()
       _stopRequested(false),
       _lostTimer(0),
       _searchingDirection(0),
-      _lostCandidateSamples(0) {}
+      _lostCandidateActive(false),
+      _lostCandidateSinceMs(0) {}
+
+void FollowerStateMachine::clearLostCandidate() {
+    _lostCandidateActive = false;
+    _lostCandidateSinceMs = 0;
+}
 
 void FollowerStateMachine::update(uint8_t mask, bool intersectionDetected, bool turnRequested, bool stopRequested) {
     _turnRequested = turnRequested;
@@ -21,21 +30,20 @@ void FollowerStateMachine::update(uint8_t mask, bool intersectionDetected, bool 
     switch (_state) {
         case FollowerState::FOLLOWING:
             if (intersectionDetected && _stopRequested) {
-                _lostCandidateSamples = 0;
+                clearLostCandidate();
                 transitionTo(FollowerState::INTERSECTION);
             } else if (mask == 0) {
-                // A single 000 sample is common while crossing the edge of a
-                // thin line. Confirm loss before handing control to recovery.
-                if (_lostCandidateSamples < kLostConfirmSamples) {
-                    _lostCandidateSamples++;
-                }
-                if (_lostCandidateSamples >= kLostConfirmSamples) {
-                    _lostCandidateSamples = 0;
+                const uint32_t now = millis();
+                if (!_lostCandidateActive) {
+                    _lostCandidateActive = true;
+                    _lostCandidateSinceMs = now;
+                } else if ((uint32_t)(now - _lostCandidateSinceMs) >= kLostConfirmMs) {
+                    clearLostCandidate();
                     transitionTo(FollowerState::LOST);
-                    _lostTimer = millis();
+                    _lostTimer = now;
                 }
             } else {
-                _lostCandidateSamples = 0;
+                clearLostCandidate();
                 if (_turnRequested) {
                     transitionTo(FollowerState::TURNING);
                     // direction already stored via requestTurn()
@@ -45,7 +53,7 @@ void FollowerStateMachine::update(uint8_t mask, bool intersectionDetected, bool 
 
         case FollowerState::LOST:
             if (mask != 0) {
-                _lostCandidateSamples = 0;
+                clearLostCandidate();
                 transitionTo(FollowerState::FOLLOWING);
             } else if (millis() - _lostTimer > 500) {
                 transitionTo(FollowerState::SEARCHING);
@@ -55,7 +63,7 @@ void FollowerStateMachine::update(uint8_t mask, bool intersectionDetected, bool 
 
         case FollowerState::SEARCHING:
             if (mask != 0) {
-                _lostCandidateSamples = 0;
+                clearLostCandidate();
                 transitionTo(FollowerState::FOLLOWING);
             }
             break;
@@ -106,7 +114,7 @@ void FollowerStateMachine::reset() {
     _stopRequested = false;
     _lostTimer = 0;
     _searchingDirection = 0;
-    _lostCandidateSamples = 0;
+    clearLostCandidate();
 }
 
 void FollowerStateMachine::transitionTo(FollowerState newState) {

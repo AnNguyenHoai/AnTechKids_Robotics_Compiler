@@ -23,7 +23,17 @@ def check(name: str, condition: bool) -> None:
 
 
 def _stage_portable_python(runtime_root: Path) -> None:
-    """Stage the runnable Python shape required by a clean Windows machine."""
+    """Stage the runnable Python shape required by a clean Windows machine.
+
+    This is a minimal RoboStudio+Compiler E2E fixture, not the production
+    distribution builder. Copy the interpreter and standard library only; host
+    ``site-packages`` must never leak into the artifact. Otherwise earlier CI
+    dependency installation (for example PlatformIO) changes the fixture based
+    on test order and makes this contract nondeterministic.
+
+    The real production artifact contract that requires bundled PlatformIO is
+    covered independently by RSD-21.3/RSD-21.4.
+    """
     runtime_bin = runtime_root / "bin"
     runtime_bin.mkdir(parents=True, exist_ok=True)
     python_name = "python.exe" if os.name == "nt" else "python"
@@ -44,7 +54,12 @@ def _stage_portable_python(runtime_root: Path) -> None:
 
     source_lib = source_root / "Lib"
     if source_lib.is_dir():
-        shutil.copytree(source_lib, runtime_root / "Lib", dirs_exist_ok=True)
+        shutil.copytree(
+            source_lib,
+            runtime_root / "Lib",
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("site-packages"),
+        )
     source_dlls = source_root / "DLLs"
     if source_dlls.is_dir():
         shutil.copytree(source_dlls, runtime_root / "DLLs", dirs_exist_ok=True)
@@ -112,7 +127,8 @@ def main() -> int:
             check("artifact contains Python runtime DLL", any(name.startswith("runtime/bin/python") and name.endswith(".dll") for name in names))
             check("artifact contains Python standard library", any(name.startswith("runtime/Lib/encodings/") for name in names))
         check("artifact contains runtime resources", "runtime/resources/target_profiles.json" in names)
-        check("artifact does not bundle PlatformIO", not any("platformio" in name.lower() for name in names))
+        check("minimal E2E fixture excludes host site-packages", not any("site-packages/" in name.lower() for name in names))
+        check("minimal E2E fixture does not inherit host PlatformIO", not any("platformio" in name.lower() for name in names))
     print("RSD-21.5 RoboStudio + Compiler E2E checks: PASS")
     return 0
 

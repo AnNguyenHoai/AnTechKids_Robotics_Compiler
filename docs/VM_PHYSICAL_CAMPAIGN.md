@@ -41,7 +41,18 @@ The #330 audit assigned previously ownerless timing/compatibility risks to expli
 
 All physical reports used for one approval campaign must identify the exact hardware/profile and firmware used. The qualification firmware commit must be a SHA for which CI successfully compiled `esp32dev_vm_qualification`; record that same SHA in run metadata.
 
-The evidence set must also state the diagnostics configuration. Timing collected with `VM_RESPONSIVENESS_DIAGNOSTICS=1` is qualification timing; production threshold review must explicitly account for whether the shipped production configuration has less, equal, or different synchronous logging overhead.
+The scheduler configuration is part of the evidence identity. Every run must record both values:
+
+```json
+"slice_configuration": {
+  "max_work_units": 16,
+  "max_duration_us": 2000
+}
+```
+
+The values above are the current **provisional corrective configuration** after the September 25 physical lag report. They are not approved thresholds. If either value changes during investigation, start a distinct evidence set for the new configuration; do not merge it into the old campaign.
+
+The evidence set must also state the diagnostics configuration. Timing collected with `VM_RESPONSIVENESS_DIAGNOSTICS=1` is qualification timing. In the corrective build, diagnostics are captured into RAM during active motion and JSONL is emitted after VM stop so UART streaming does not dominate the control loop.
 
 ## Evidence layout
 
@@ -58,7 +69,7 @@ artifacts/vm-rt/physical-campaign/
   external-evidence.json
 ```
 
-All six reports must be real physical evidence and should use one exact firmware commit and one slice budget.
+All six reports must be real physical evidence and must use one exact firmware commit and one exact dual slice configuration `(max_work_units, max_duration_us)`.
 
 ## External sensor-to-decision-to-motor evidence
 
@@ -75,6 +86,8 @@ Scheduler telemetry alone is not end-to-end actuator latency. Record the externa
 
 `reviewed=true` means a human has checked that the source is genuine physical observation. Do not use host timing or estimates.
 
+For stop testing, keep software stop latency and physical stopping distance as separate observations. The latter also includes motor-driver braking/coast behavior and robot inertia.
+
 ## Aggregate the campaign
 
 ```text
@@ -86,7 +99,7 @@ python tools/vm_rt_physical_campaign.py \
 
 The campaign reports one of two states:
 
-- `INCOMPLETE_PHYSICAL_EVIDENCE`: missing scenario, inconsistent firmware/slice budget, no stop latency observation, or missing external latency review.
+- `INCOMPLETE_PHYSICAL_EVIDENCE`: missing scenario, inconsistent firmware/dual slice configuration, missing scheduler metadata, no stop latency observation, or missing external latency review.
 - `READY_FOR_HUMAN_APPROVAL`: automated evidence checks are complete. This still does not approve production thresholds.
 
 ## Threshold proposal
@@ -104,14 +117,15 @@ These are measured maxima, not automatically chosen safety limits. A human revie
 ## Closure sequence
 
 1. Verify the exact qualification firmware SHA passed the `esp32dev_vm_qualification` CI compile.
-2. Run all six scenarios on the target robot.
-3. Generate six qualification reports.
-4. Review #336/#337/#339/#340/#341/#342/#344 evidence coverage and record evidence paths in those issues.
-5. Review external end-to-end latency evidence.
-6. Generate `campaign-report.json`.
-7. Resolve every blocker until status is `READY_FOR_HUMAN_APPROVAL`.
-8. Review outliers and threshold margins.
-9. Update and approve `VM_RESPONSIVENESS_THRESHOLDS.json` with evidence references.
-10. Run `python tests/vm_responsiveness/run_vm_rt_ci.py`.
-11. Run H35, full regression, qualification compile, production packaging and first-flash gates.
-12. Only then close the physical child issues, #325, #312, #313 and parent #302 when their remaining DoD items are satisfied.
+2. Verify every run metadata file records the same `max_work_units` and `max_duration_us`.
+3. Run all six scenarios on the target robot and keep serial capture active through VM stop so buffered JSONL is emitted.
+4. Generate six qualification reports.
+5. Review #336/#337/#339/#340/#341/#342/#344 evidence coverage and record evidence paths in those issues.
+6. Review external end-to-end latency evidence and physical stopping-distance observations.
+7. Generate `campaign-report.json`.
+8. Resolve every blocker until status is `READY_FOR_HUMAN_APPROVAL`.
+9. Review outliers and threshold margins.
+10. Update and approve `VM_RESPONSIVENESS_THRESHOLDS.json` with evidence references.
+11. Run `python tests/vm_responsiveness/run_vm_rt_ci.py`.
+12. Run H35, full regression, qualification compile, production packaging and first-flash gates.
+13. Only then close the physical child issues, #325, #312, #313 and parent #302 when their remaining DoD items are satisfied.

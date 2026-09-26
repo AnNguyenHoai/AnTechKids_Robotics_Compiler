@@ -1,6 +1,6 @@
 #include "DiagnosticsManager.h"
-#include "../Sensor/SensorManager.h"     // sửa đường dẫn
-#include "../Sensor/TCRT5000.h"          // sửa đường dẫn
+#include "../Sensor/SensorManager.h"
+#include "../Sensor/TCRT5000.h"
 #include "DiagnosticLogger.h"
 #include <Arduino.h>
 
@@ -19,8 +19,12 @@ void DiagnosticsManager::updateSensor(SensorID id) {
     auto sensor = SensorManager::instance().getSensor(id);
     if (!sensor) return;
 
+    // Diagnostics are observers, not sensor-sampling owners. SensorManager or
+    // the VM line snapshot has already refreshed the TCRT5000 cache for this
+    // firmware cycle. Calling update() here used to cause a second physical
+    // line read and made diagnostic state come from a different instant than
+    // the control decision.
     auto lineSensor = static_cast<TCRT5000*>(sensor);
-    lineSensor->update();          // đọc giá trị mới
     bool value = lineSensor->isLineDetected();
 
     size_t idx = static_cast<size_t>(id);

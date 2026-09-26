@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 VM_CPP = ROOT / "robot-platform/main/src/Services/VM/VM.cpp"
 VM_H = ROOT / "robot-platform/main/src/Services/VM/VM.h"
 VM_CONTEXT = ROOT / "robot-platform/main/src/Services/VM/VMContext.h"
+VM_SLICE_CPP = ROOT / "robot-platform/main/src/Services/VM/VMRunSlice.cpp"
 COOP_H = ROOT / "robot-platform/main/src/Services/VM/CooperativeLineOperation.h"
 COOP_CPP = ROOT / "robot-platform/main/src/Services/VM/CooperativeLineOperation.cpp"
 MAIN_INO = ROOT / "robot-platform/main/main.ino"
@@ -19,6 +21,14 @@ DOC = ROOT / "docs/H29_RUNTIME_COOPERATIVE_EXECUTION.md"
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def require_positive_constant(source: str, name: str) -> int:
+    match = re.search(rf"\b{name}\s*=\s*(\d+)\s*;", source)
+    require(match is not None, f"{name} must be explicitly configured")
+    value = int(match.group(1))
+    require(value > 0, f"{name} must be positive")
+    return value
 
 
 def test_vm_wait_is_cooperative() -> None:
@@ -76,12 +86,56 @@ def test_long_running_line_opcodes_use_state_machine() -> None:
 
 def test_control_plane_keeps_scheduler_priority() -> None:
     main = MAIN_INO.read_text(encoding="utf-8")
-    network_index = main.index("RobotNetworkService::update();")
-    vm_index = main.index("vm.RunSlice(budget);")
-    require(network_index < vm_index,
-            "network/control-plane update must run before each bounded VM slice")
-    require("VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 4" in main,
-            "production VM scheduling must retain an explicit bounded work-unit budget")
+    vm_slice = VM_SLICE_CPP.read_text(encoding="utf-8")
+
+    slice_call = "vm.RunSlice(budget)"
+    require(slice_call in main,
+            "production firmware loop must invoke the bounded RunSlice scheduler")
+    vm_index = main.index(slice_call)
+    vm_slice_region = main[:vm_index]
+
+    # H29 protects ordering semantics, not historical implementation names.
+    # Assert the production services that actually own the current firmware
+    # control cycle all execute before student VM work begins.
+    control_plane_markers = (
+        "SerialCommandHandler::handle();",
+        "RobotNetworkService::update();",
+        "LineSensorSnapshot::BeginCycle();",
+        "SensorManager::instance().updateAll();",
+        "RobotAPI::updateMotion();",
+    )
+    service_indices = []
+    for marker in control_plane_markers:
+        index = vm_slice_region.rfind(marker)
+        require(index >= 0,
+                f"required control-plane service must execute before VM slice: {marker}")
+        service_indices.append(index)
+
+    require(service_indices == sorted(service_indices),
+            "control-plane, sensor snapshot, and motion service order must precede VM work")
+    require(service_indices[-1] < vm_index,
+            "all required control-plane services must complete before each bounded VM slice")
+
+    work_budget = require_positive_constant(main, "VM_WORK_UNITS_PER_FIRMWARE_CYCLE")
+    time_budget_us = require_positive_constant(main, "VM_MAX_SLICE_DURATION_US")
+    require(work_budget > 0 and time_budget_us > 0,
+            "production VM scheduling must retain positive work and wall-clock bounds")
+    require("VM_WORK_UNITS_PER_FIRMWARE_CYCLE," in main,
+            "production work-unit ceiling must be wired into RunSlice budget")
+    require("VM_MAX_SLICE_DURATION_US" in main,
+            "production wall-clock ceiling must be wired into RunSlice budget")
+
+    require("while (workUnits < budget.maxWorkUnits)" in vm_slice,
+            "bounded slice execution must remain work-unit limited")
+    require("budget.maxDurationUs != 0" in vm_slice,
+            "bounded slice execution must conditionally enforce the wall-clock ceiling")
+    require("micros() - sliceStartUs" in vm_slice,
+            "wall-clock slice budget must be measured from the slice start")
+    require("VMRunSliceStopReason::TimeBudgetExhausted" in vm_slice,
+            "wall-clock exhaustion must produce an explicit scheduler yield reason")
+    require("Step();" in vm_slice,
+            "bounded scheduler must advance VM work through legacy Step() semantics")
+
     require("vm.Step();" not in main,
             "production firmware must not bypass RunSlice with direct Step scheduling")
 
