@@ -2,11 +2,11 @@
   "schema_version": 1,
   "issue": 312,
   "status": "UNAPPROVED_PENDING_PHYSICAL_EVIDENCE",
-  "baseline_commit": "18875d500bb64f4ff4a495f8915795af4f8a02f8",
-  "slice_budget_work_units": 16,
+  "baseline_commit": "1215ca39557b1eaecd92245dccaf8d4b0bbdf70d",
+  "slice_budget_work_units": 24,
   "slice_budget_duration_us": 2000,
-  "runtime_config_status": "PROVISIONAL_CORRECTIVE_PENDING_PHYSICAL_QUALIFICATION",
-  "runtime_config_basis": "Corrective runtime configuration after observed real-robot control-latency failure on 2026-09-25. This records the firmware configuration under test and is not threshold approval.",
+  "runtime_config_status": "PROVISIONAL_REACTIVE_HEADROOM_PENDING_PHYSICAL_QUALIFICATION",
+  "runtime_config_basis": "Issue #382 increases generic VM work-unit headroom from 16 to 24 so representative short sensor/decision/actuator chains are not split solely by the historical work ceiling. The independent 2000 us wall-clock ceiling remains unchanged. This records the firmware configuration under test and is not threshold approval.",
   "thresholds": {
     "slice_duration_us_max": null,
     "work_unit_duration_us_max": null,
@@ -20,5 +20,5 @@
     "approved_at": null,
     "evidence": []
   },
-  "guard": "Do not populate or approve production thresholds from host fixtures or estimates. Corrective runtime configuration may change after an observed physical failure, but final tuning and threshold approval require measured physical qualification evidence."
+  "guard": "Do not populate or approve production thresholds from host fixtures or estimates. Scheduler headroom may change through deterministic regression evidence, but final tuning and threshold approval require measured physical qualification evidence."
 }
