@@ -70,8 +70,25 @@ def main() -> int:
     check("LineBasis submits exactly one motor command", line_basis.count("setMotorsDirect(") == 1)
 
     check("existing GetTraceRaw opcode number remains 44", "GetTraceRaw = 44" in opcode_h)
-    check("VM GetTraceRaw still delegates to RobotAPI", "RobotAPI::GetTraceRaw(instruction.p1)" in vm_cpp)
-    check("legacy GetTraceState VM path remains available", "RobotAPI::GetTraceState(instruction.p1, instruction.p2)" in vm_cpp)
+
+    raw_vm = between(vm_cpp, "case Opcode::GetTraceRaw:", "case Opcode::LineBasis:")
+    check(
+        "VM GetTraceRaw still delegates one resolved port to RobotAPI",
+        "RobotAPI::GetTraceRaw(" in raw_vm
+        and "mContext.mVariables[instruction.p1]" in raw_vm
+        and "mContext.mVariables[instruction.p3]" in raw_vm
+        and raw_vm.count("RobotAPI::GetTraceRaw(") == 1,
+    )
+
+    state_vm = between(vm_cpp, "case Opcode::GetTraceState:", "case Opcode::GetTraceRaw:")
+    check(
+        "legacy GetTraceState VM path remains available",
+        "RobotAPI::GetTraceState(" in state_vm
+        and "mContext.mVariables[instruction.p1]" in state_vm
+        and "mContext.mVariables[instruction.p2]" in state_vm
+        and "mContext.mVariables[instruction.p3]" in state_vm
+        and state_vm.count("RobotAPI::GetTraceState(") == 1,
+    )
 
     check("RoboSim raw API maps explicitly to canonical raw call", '"GetTraceV2I2CData": "get_trace_raw"' in transformer)
     check("legacy RoboSim state API remains unchanged", '"GetTraceV2I2CState": "get_trace_state"' in transformer)
