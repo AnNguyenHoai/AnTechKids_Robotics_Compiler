@@ -123,28 +123,33 @@ def main() -> int:
             os.environ[runtime_paths.DEPENDENCY_MODE_ENV] = "artifact-closed"
 
             # Hardware config: packaged defaults are read-only input; user changes
-            # belong under external user state.
+            # belong under external user state. Exercise the HardwareConfig public
+            # API rather than the legacy dictionary representation.
             hardware_service = HardwareConfigService()
             defaults = hardware_service.load()
             check(
                 "hardware defaults load from packaged read-only config",
-                defaults["board_profile"] == "esp32dev"
-                and defaults["devices"]["motor"]["enabled"] is True,
+                defaults.is_enabled("motor") is True
+                and defaults.is_enabled("line_sensor") is True
+                and defaults.is_enabled("ultrasonic") is False,
             )
             check(
                 "hardware user path is external",
-                app.resolve() not in hardware_service.path.resolve().parents,
+                app.resolve() not in hardware_service.user_config_path.resolve().parents,
             )
             check(
                 "hardware package path stays inside application",
-                app.resolve() in hardware_service.package_default_path.resolve().parents,
+                app.resolve() in hardware_service.package_config_path.resolve().parents,
             )
-            defaults["devices"]["ultrasonic"]["enabled"] = True
+            defaults.set_enabled("ultrasonic", True)
             hardware_service.save(defaults)
-            check("hardware changes persist to external state", hardware_service.path.is_file())
+            check(
+                "hardware changes persist to external state",
+                hardware_service.user_config_path.is_file(),
+            )
             check(
                 "saved hardware change is readable",
-                hardware_service.load()["devices"]["ultrasonic"]["enabled"] is True,
+                hardware_service.load().is_enabled("ultrasonic") is True,
             )
 
             # Generated hardware macro is derived from user state and staged only
