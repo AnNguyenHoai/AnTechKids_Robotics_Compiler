@@ -76,11 +76,17 @@ def main() -> int:
     check("legacy Step still contains no scheduler loop", "while (" not in step_body and "for (" not in step_body)
     check("RunSlice does not call ExecuteInstruction directly", "ExecuteInstruction(" not in run_slice)
 
-    loop_marker = "while (workUnits < hardWorkLimit)"
+    loop_marker = "while (static_cast<uint32_t>(workUnits) < extendedWorkLimit)"
     check("zero budget exits without Step", run_slice.index("budget.maxWorkUnits == 0") < run_slice.index(loop_marker))
-    check("transaction extension is finite", "VM_REACTIVE_TRANSACTION_EXTENSION_WORK_UNITS = 8" in run_slice and "hardWorkLimit" in run_slice)
+    check(
+        "transaction extension is finite",
+        "VM_REACTIVE_TRANSACTION_MAX_EXTRA_WORK_UNITS = 8" in run_slice
+        and "const uint32_t extendedWorkLimit" in run_slice
+        and "static_cast<uint32_t>(budget.maxWorkUnits)" in run_slice
+        and "VM_REACTIVE_TRANSACTION_MAX_EXTRA_WORK_UNITS" in run_slice,
+    )
     loop = run_slice[run_slice.index(loop_marker):]
-    check("slice loop is bounded by hard work limit", loop.startswith(loop_marker))
+    check("slice loop is bounded by extended work limit", loop.startswith(loop_marker))
     check("slice loop invokes legacy Step once", loop.count("Step();") == 1)
     check("each attempted Step consumes one work unit", "++workUnits;" in loop)
     check("slice does not contain nested unbounded while", loop.count("while (") == 1)
