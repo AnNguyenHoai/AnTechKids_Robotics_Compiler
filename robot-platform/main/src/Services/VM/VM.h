@@ -24,15 +24,25 @@ enum class VMRunSliceStopReason : uint8_t
     Halted,
     Stopped,
     Fault,
+    // Appended to preserve the numeric values of the existing diagnostic
+    // reasons. This is a scheduler-only result, not a bytecode/opcode change.
     TimeBudgetExhausted,
 };
 
 struct VMRunSliceBudget
 {
+    // C++11-compatible constructor preserves the existing brace-call surface:
+    // VMRunSliceBudget{4} means work-only scheduling and deterministically
+    // leaves maxDurationUs disabled; production currently passes {24, 2000}.
     constexpr VMRunSliceBudget(uint16_t workUnits = 0, uint32_t durationUs = 0)
         : maxWorkUnits(workUnits), maxDurationUs(durationUs) {}
 
+    // Hard semantic work ceiling. Keep the original declaration unchanged so
+    // existing source/contract checks remain valid.
     uint16_t maxWorkUnits;
+
+    // Optional wall-clock ceiling for one cooperative slice. Zero preserves
+    // legacy work-unit-only behavior.
     uint32_t maxDurationUs = 0;
 };
 
@@ -43,6 +53,8 @@ struct VMRunSliceResult
     uint16_t startProgramCounter;
     uint16_t endProgramCounter;
 
+    // VM-RT H diagnostic evidence. These are observations only; they do not
+    // participate in VM scheduling or alter legacy Step() semantics.
     uint32_t sliceDurationUs;
     uint32_t maxWorkUnitDurationUs;
     uint16_t maxWorkUnitProgramCounter;
@@ -61,7 +73,7 @@ struct VMRunSliceResult
     uint32_t lineSnapshotInvalidCount;
     bool lineSnapshotValid;
 
-    // #385 qualification observations for the independent line producer.
+    // VM-RT AB qualification evidence for the optional fixed-rate producer.
     uint32_t lineSnapshotIntervalUs;
     uint32_t lineSnapshotMaxJitterUs;
     uint32_t lineSnapshotStaleCount;
@@ -75,25 +87,110 @@ struct VMRunSliceResult
 class VM
 {
 public:
+
+    /**
+     * Constructor.
+     */
     VM();
+
+    /**
+     * Reset VM runtime context.
+     */
     void Reset();
+
+    /**
+     * Load program.
+     */
     bool LoadProgram(const Program* program);
+
+    /**
+     * Execute one bounded instruction/tick.
+     *
+     * Long-running instructions keep the program counter on the current
+     * instruction and return immediately so the platform loop can service
+     * network and control-plane work between ticks.
+     */
     void Step();
+
+    /**
+     * Execute a deterministic, bounded amount of VM work.
+     *
+     * One work unit is at most one legacy Step() invocation. RunSlice never
+     * changes Step() semantics and stops early when the VM yields/waits,
+     * halts, is stopped, faults, or reaches an enabled wall-clock ceiling.
+     *
+     * Important: this is a cooperative boundary, not preemption. A single
+     * synchronous RobotAPI call executed by Step() can still consume more
+     * wall-clock time than the slice target and must be converted/bounded at
+     * that operation's owner.
+     */
     VMRunSliceResult RunSlice(const VMRunSliceBudget& budget);
+
+    /**
+     * Check whether VM is still running.
+     */
     bool IsRunning() const;
+
+    /**
+     * Get current program counter.
+     */
     uint16_t GetProgramCounter() const;
+
+    /**
+     * Get canonical error code (0 = no error).
+     */
     uint8_t GetErrorCode() const;
+
+    /**
+     * Get canonical error identifier for diagnostics.
+     */
     const char* GetErrorId() const;
+
+    /**
+     * Get canonical error message for diagnostics.
+     */
     const char* GetErrorMessage() const;
+
+    // ---- DIAGNOSTIC: manual control ----
+    /**
+     * Set running state (diagnostic use only).
+     */
     void SetRunning(bool running);
+
+    /**
+     * Start execution from PC=0 (diagnostic use only).
+     */
     void Start();
 
 private:
+
+    /**
+     * Execute current instruction.
+     */
     void ExecuteInstruction(const Instruction& instruction);
+
+    /**
+     * Advance one pending cooperative line tick.
+     * Returns true when the current instruction was already pending and was
+     * therefore handled by this call.
+     */
     bool ContinuePendingLineOperation();
+
+    /**
+     * Cancel active cooperative work without treating cancellation as logical
+     * instruction completion. Used by stop/reset/fault cleanup paths.
+     */
     void CancelPendingOperation(bool stopLineMotors);
 
 private:
+
+    /**
+     * Loaded Program.
+     */
     const Program* mProgram;
+
+    /**
+     * Runtime Context.
+     */
     VMContext mContext;
 };
