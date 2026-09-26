@@ -153,7 +153,23 @@ def main() -> int:
     check("snapshot exposes physical-read and consumer diagnostics", "physicalReadCount" in snapshot_h and "consumerCount" in snapshot_h and "invalidCount" in snapshot_h)
     check("RunSlice owns one explicit snapshot cycle", "LineSnapshotCycleGuard lineSnapshotCycle;" in run_slice and "BeginCycle()" in run_slice and "EndCycle()" in run_slice)
     check("snapshot sampling is lazy", "EnsureSample()" in snapshot_h and run_slice.index("LineSnapshotCycleGuard lineSnapshotCycle;") < run_slice.index(loop_marker))
-    check("one sample reads all three physical channels", snapshot_cpp.count("SampleHardwareDirect();") == 3 and "physicalReadCount = 3" in snapshot_cpp)
+
+    fixed_sample_start = snapshot_cpp.index("void sampleFixedRateOnce()")
+    fixed_sample_end = snapshot_cpp.index("void fixedRateTask", fixed_sample_start)
+    fixed_sample_body = snapshot_cpp[fixed_sample_start:fixed_sample_end]
+    ensure_sample_start = snapshot_cpp.index("bool EnsureSample()")
+    ensure_sample_end = snapshot_cpp.index("void RecordConsumer()", ensure_sample_start)
+    ensure_sample_body = snapshot_cpp[ensure_sample_start:ensure_sample_end]
+    check(
+        "firmware-owned sample reads all three physical channels",
+        all(f"{name}->SampleHardwareDirect();" in ensure_sample_body for name in ("left", "center", "right"))
+        and "g_snapshot.physicalReadCount = 3;" in ensure_sample_body,
+    )
+    check(
+        "fixed-rate producer reads all three physical channels without claiming cycle-owned reads",
+        all(f"g_fixed{name}->SampleHardwareDirect();" in fixed_sample_body for name in ("Left", "Center", "Right"))
+        and "g_snapshot.physicalReadCount = 0;" in ensure_sample_body,
+    )
     check("same-cycle repeated consumers reuse sampled set", "if (g_sampledThisCycle)" in snapshot_cpp and "return g_snapshot.valid;" in snapshot_cpp)
     check("next cycle can produce a new sequence", "++g_snapshot.sequence;" in snapshot_cpp and "g_sampledThisCycle = false;" in snapshot_cpp)
     check("invalid snapshot is atomic", "applyInvalidFallback" in snapshot_cpp and "g_snapshot.mask = 0;" in snapshot_cpp and "g_snapshot.valid = false;" in snapshot_cpp)
