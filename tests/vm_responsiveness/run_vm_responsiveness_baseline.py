@@ -39,6 +39,13 @@ def opcode_map(text: str) -> dict[str, int]:
     }
 
 
+def extract_constant(source: str, name: str) -> int:
+    match = re.search(rf"{re.escape(name)}\s*=\s*(\d+)", source)
+    if not match:
+        raise AssertionError(f"missing firmware constant {name}")
+    return int(match.group(1))
+
+
 def simulate_bounded_firmware_loop(total_work: int, budget: int, stop_at_cycle: int | None = None) -> tuple[int, int, int]:
     """Tiny scheduler model for the work-ceiling integration invariant."""
     remaining = total_work
@@ -87,6 +94,8 @@ def main() -> int:
     matrix = MATRIX.read_text(encoding="utf-8")
     c2 = C2.read_text(encoding="utf-8")
     audit = AUDIT.read_text(encoding="utf-8")
+    work_budget = extract_constant(firmware, "VM_WORK_UNITS_PER_FIRMWARE_CYCLE")
+    time_budget_us = extract_constant(firmware, "VM_MAX_SLICE_DURATION_US")
 
     check("fixture schema is version 1", fixture.get("schema_version") == 1)
     check("baseline is pinned to post-#303 main", fixture.get("baseline_commit") == "0b2d5c6cfdf7c807b374e2bc745405eb5119e8da")
@@ -153,8 +162,8 @@ def main() -> int:
     loop = firmware[firmware.index("void loop()") :]
     check("production loop uses bounded RunSlice", "vm.RunSlice(budget);" in loop)
     check("production loop no longer invokes VM Step directly", "vm.Step();" not in loop)
-    check("firmware allows reactive burst beyond four opcodes", "VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 16" in firmware)
-    check("firmware enables short wall-clock slice ceiling", "VM_MAX_SLICE_DURATION_US = 2000" in firmware)
+    check("firmware reactive work ceiling covers representative 22-unit loop", work_budget >= 22)
+    check("firmware keeps a finite wall-clock slice ceiling", 0 < time_budget_us <= 2000)
     check("production budget passes both ceilings", "VM_MAX_SLICE_DURATION_US" in loop[loop.index("VMRunSliceBudget budget"):loop.index("vm.RunSlice(budget);")])
 
     begin = loop.index("LineSensorSnapshot::BeginCycle();")
@@ -182,19 +191,20 @@ def main() -> int:
           terminal_block.index("RobotAPI::Stop();") < terminal_block.index("VMRuntimeTelemetry::PrintBufferedJson();"))
     check("telemetry implementation uses RAM ring buffer", "g_sliceBuffer" in telemetry and "kSliceBufferCapacity" in telemetry)
 
-    reactive_work = [50] * 9
-    check("representative reactive chain fits one slice under dual budget",
-          simulate_dual_budget(reactive_work, 16, 2000) == 9)
+    reactive_work = [50] * 22
+    check("representative reactive chain fits one slice under work ceiling",
+          simulate_dual_budget(reactive_work, work_budget, time_budget_us) == 22)
     check("time ceiling still bounds a slow burst",
-          simulate_dual_budget([500] * 16, 16, 2000) == 4)
+          simulate_dual_budget([500] * work_budget, work_budget, time_budget_us) == 4)
 
-    long_cycles, long_services, long_work = simulate_bounded_firmware_loop(100, 16)
-    check("long program yields across repeated firmware cycles", long_cycles == 7 and long_work == 100)
+    long_cycles, long_services, long_work = simulate_bounded_firmware_loop(100, work_budget)
+    expected_cycles = (100 + work_budget - 1) // work_budget
+    check("long program yields across repeated firmware cycles", long_cycles == expected_cycles and long_work == 100)
     check("platform service progresses once per long-program cycle", long_services == long_cycles and long_services > 1)
 
-    stop_cycles, stop_services, stop_work = simulate_bounded_firmware_loop(100, 16, stop_at_cycle=3)
+    stop_cycles, stop_services, stop_work = simulate_bounded_firmware_loop(100, work_budget, stop_at_cycle=3)
     check("stop is observed at bounded service point", stop_cycles == 3 and stop_services == 3)
-    check("stop prevents additional VM work in observed cycle", stop_work == 32)
+    check("stop prevents additional VM work in observed cycle", stop_work == min(100, work_budget * 2))
 
     check("C2 contract records original blocking reference", "blocking" in c2.lower() and "LineMillisecond" in c2)
     check("runtime audit records cooperative current baseline", "LineMillisecond" in audit and "COOPERATIVE" in audit)
