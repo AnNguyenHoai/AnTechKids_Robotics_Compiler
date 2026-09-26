@@ -40,7 +40,7 @@
 // ============================================================
 // DIAGNOSTIC: Uncomment the line below to enable manual-start mode
 // ============================================================
-//#define DIAGNOSTIC_MANUAL_START   // <--- BẬT MACRO
+//#define DIAGNOSTIC_MANUAL_START
 
 VM vm;
 Program program;
@@ -56,6 +56,10 @@ int executionCounter = 0;
 // approved physical-qualification threshold. #325 remains the evidence owner.
 static constexpr uint16_t VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 16;
 static constexpr uint32_t VM_MAX_SLICE_DURATION_US = 2000;
+
+// Background network work is cooperatively budgeted between indivisible
+// Arduino/WiFi calls. Whole-cycle telemetry records any single-call outlier.
+static constexpr uint32_t ROBOT_NETWORK_SERVICE_BUDGET_US = 500;
 
 BehaviorScheduler scheduler;
 bool useBehaviorEngine = false;
@@ -169,36 +173,29 @@ void setup() {
 }
 
 void loop() {
-    uint32_t start = micros();
+    const uint32_t start = micros();
 
-    // Firmware-cycle order is intentional: service the control plane first so
-    // stop/abort/OTA can be observed before any new student-code work begins.
-    const bool vmRunningBeforeControl = vm.IsRunning();
-    const uint32_t controlServiceStartUs = micros();
-    SerialCommandHandler::handle();
-    RobotNetworkService::update();
-    if (vmRunningBeforeControl && !vm.IsRunning()) {
-        // Upper-bound request-to-observation window for stop/abort initiated by
-        // the control-plane service phase. Qualification can aggregate max/last.
-        VMRuntimeTelemetry::RecordStopLatency(micros() - controlServiceStartUs);
-    }
-
-    // During OTA, do not execute student code or drive motors. The network
-    // service owns the firmware update transaction and the robot reboots when
-    // the new image has been committed successfully.
+    // Once OTA owns the robot, actuator safety takes priority and the network
+    // transaction may run without the normal background budget until reboot.
     if (RobotNetworkService::isUpdateInProgress()) {
         RobotAPI::Stop();
-        DiagnosticsManager::instance().recordLoopTime(micros() - start);
+        RobotNetworkService::update(0);
+        const uint32_t end = micros();
+        VMRuntimeTelemetry::RecordFirmwareCycle(start, 0, end);
+        DiagnosticsManager::instance().recordLoopTime(end - start);
         delay(1);
         return;
     }
 
-    // One firmware cycle owns one coherent line-sensor snapshot. The first line
-    // sensor refresh below samples L/C/R atomically; VM getters, line follower
-    // logic and diagnostics reuse that same sample until EndCycle(). RunSlice
-    // detects this active outer scope and therefore does not open/resample one.
+    // CONTROL-CRITICAL PHASE
+    // One firmware cycle owns one coherent line-sensor snapshot. Sampling is
+    // deliberately ahead of serial/network background work so a fresh line
+    // observation can reach the VM and actuator with minimum software delay.
     LineSensorSnapshot::BeginCycle();
     SensorManager::instance().updateAll();
+    const auto& cycleLineSnapshot = LineSensorSnapshot::Current();
+    const uint32_t lineSampleTimestampUs =
+        cycleLineSnapshot.valid ? cycleLineSnapshot.timestampUs : 0u;
 
     if (g_robotReady) {
 #if ROBOT_FEATURE_IMU
@@ -214,8 +211,6 @@ void loop() {
     } else {
         RobotAPI::Stop();
     }
-
-    DevelopmentConsole::instance().update();
 
     if (useBehaviorEngine) {
         scheduler.update();
@@ -235,12 +230,10 @@ void loop() {
             const VMRunSliceResult sliceResult = vm.RunSlice(budget);
             VMRuntimeTelemetry::RecordSlice(sliceResult);
             // Never print per-slice JSON here. Qualification telemetry is RAM
-            // buffered and dumped only after VM motion has stopped, otherwise
-            // 115200-baud UART transmission becomes part of control latency.
+            // buffered and dumped only after VM motion has stopped.
         }
 
         if (vm.IsRunning()) {
-            // A restarted/manual-started VM begins a fresh terminal-report epoch.
             g_vmTerminalReported = false;
         } else if (!g_vmTerminalReported) {
             g_vmTerminalReported = true;
@@ -249,8 +242,6 @@ void loop() {
 #else
             if (true) {
 #endif
-                // Actuator safety precedes any potentially slow reporting. This
-                // also makes post-run qualification telemetry observer-safe.
                 RobotAPI::Stop();
                 VMRuntimeTelemetry::PrintBufferedJson();
 
@@ -273,9 +264,6 @@ void loop() {
                         BootLogger::log("VM-DIAG", "Waiting for manual execution again");
 #endif
                     } else {
-                        // Remain in the normal firmware loop after VM
-                        // completion so serial/network/OTA/diagnostics remain
-                        // serviceable instead of entering a nested while(1).
                         BootLogger::log("STABILITY", "VM stability test completed.");
                     }
                 }
@@ -283,11 +271,25 @@ void loop() {
         }
     }
 
-    // Diagnostics observe the same cached L/C/R values that were sampled at
-    // the start of this firmware cycle; they must never trigger another read.
+    // Diagnostics observe the same cached L/C/R values sampled at cycle start.
     DiagnosticsManager::instance().updateSensors();
     LineSensorSnapshot::EndCycle();
 
-    uint32_t elapsed = micros() - start;
-    DiagnosticsManager::instance().recordLoopTime(elapsed);
+    // BACKGROUND PHASE
+    // Serial input is byte-budgeted/non-blocking and network work is
+    // cooperatively budgeted between indivisible library calls. These services
+    // therefore cannot sit between a fresh line sample and this cycle's VM
+    // decision/actuator command.
+    const bool vmRunningBeforeBackground = vm.IsRunning();
+    const uint32_t backgroundStartUs = micros();
+    SerialCommandHandler::handle();
+    RobotNetworkService::update(ROBOT_NETWORK_SERVICE_BUDGET_US);
+    if (vmRunningBeforeBackground && !vm.IsRunning()) {
+        VMRuntimeTelemetry::RecordStopLatency(micros() - backgroundStartUs);
+    }
+    DevelopmentConsole::instance().update();
+
+    const uint32_t end = micros();
+    VMRuntimeTelemetry::RecordFirmwareCycle(start, lineSampleTimestampUs, end);
+    DiagnosticsManager::instance().recordLoopTime(end - start);
 }
