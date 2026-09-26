@@ -70,11 +70,50 @@ def main() -> int:
     check("LineBasis submits exactly one motor command", line_basis.count("setMotorsDirect(") == 1)
 
     check("existing GetTraceRaw opcode number remains 44", "GetTraceRaw = 44" in opcode_h)
-    check("VM GetTraceRaw still delegates to RobotAPI", "RobotAPI::GetTraceRaw(instruction.p1)" in vm_cpp)
-    check("legacy GetTraceState VM path remains available", "RobotAPI::GetTraceState(instruction.p1, instruction.p2)" in vm_cpp)
 
-    check("RoboSim raw API maps explicitly to canonical raw call", '"GetTraceV2I2CData": "get_trace_raw"' in transformer)
-    check("legacy RoboSim state API remains unchanged", '"GetTraceV2I2CState": "get_trace_state"' in transformer)
+    raw_vm = between(vm_cpp, "case Opcode::GetTraceRaw:", "case Opcode::LineBasis:")
+    check(
+        "VM GetTraceRaw still delegates one resolved port to RobotAPI",
+        "RobotAPI::GetTraceRaw(" in raw_vm
+        and "mContext.mVariables[instruction.p1]" in raw_vm
+        and "mContext.mVariables[instruction.p3]" in raw_vm
+        and raw_vm.count("RobotAPI::GetTraceRaw(") == 1,
+    )
+
+    state_vm = between(vm_cpp, "case Opcode::GetTraceState:", "case Opcode::GetTraceRaw:")
+    check(
+        "legacy GetTraceState VM path remains available",
+        "RobotAPI::GetTraceState(" in state_vm
+        and "mContext.mVariables[instruction.p1]" in state_vm
+        and "mContext.mVariables[instruction.p2]" in state_vm
+        and "mContext.mVariables[instruction.p3]" in state_vm
+        and state_vm.count("RobotAPI::GetTraceState(") == 1,
+    )
+
+    state_frontend = between(
+        transformer,
+        'elif attr == "GetTraceV2I2CState":',
+        'elif attr == "GetTraceV2I2CData":',
+    )
+    check(
+        "legacy RoboSim state API remains unchanged",
+        'len(node.args) != 2' in state_frontend
+        and 'ast.Name(id="get_trace_state"' in state_frontend
+        and "args=node.args" in state_frontend,
+    )
+
+    raw_frontend = between(
+        transformer,
+        'elif attr == "GetTraceV2I2CData":',
+        'elif attr == "GetLightSensorData":',
+    )
+    check(
+        "RoboSim raw API maps explicitly to canonical raw call",
+        'len(node.args) != 1' in raw_frontend
+        and 'ast.Name(id="get_trace_raw"' in raw_frontend
+        and "args=node.args" in raw_frontend,
+    )
+
     check("compiler raw getter emits GetTraceRaw", "Opcode.GetTraceRaw.value" in sensor_handler)
     check("compiler state getter still emits GetTraceState", "Opcode.GetTraceState.value" in sensor_handler)
     line_basis_handler = between(line_handler, "def line_basis", "def line_follow")
