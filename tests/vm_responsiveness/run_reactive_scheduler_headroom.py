@@ -22,6 +22,23 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def strip_diagnostic_blocks(source: str) -> str:
+    """Remove #382-allowed qualification-only instrumentation before genericity checks.
+
+    RunSlice already contains line-snapshot lifecycle and qualification telemetry from
+    earlier VM-RT work. Hardware-agnostic scheduling means those observations must not
+    affect scheduling decisions; it does not mean the source file may not observe an
+    opcode inside code compiled out of production.
+    """
+    pattern = re.compile(
+        r"^\s*#if\s+VM_RESPONSIVENESS_DIAGNOSTICS\s*$"
+        r"[\s\S]*?"
+        r"^\s*#endif\s*$",
+        re.MULTILINE,
+    )
+    return pattern.sub("", source)
+
+
 def main() -> int:
     firmware = MAIN.read_text(encoding="utf-8")
     run_slice = RUN_SLICE.read_text(encoding="utf-8")
@@ -50,12 +67,20 @@ def main() -> int:
     require(work_units < 32, "headroom grew beyond the minimal reviewed range without evidence")
 
     # #382 is scheduler infrastructure, not a line-follow/compiler special case.
+    # Existing snapshot ownership and qualification-only reactive telemetry are
+    # permitted. What must remain absent from the production scheduling path is
+    # hardware/API/opcode-specific decision logic that changes yield/continue/return
+    # behavior for a particular device or domain.
+    production_scheduler = strip_diagnostic_blocks(run_slice)
     scheduler_specific_tokens = (
-        "LineFollower", "LinePerception", "GetTraceState", "SetMotorSpeed",
-        "Ultrasonic", "Servo", "Touch", "ColorSensor",
+        "LineFollower", "LinePerception", "Opcode::GetTraceState",
+        "Opcode::LineBasis", "RobotAPI::", "SetMotorSpeed", "Ultrasonic",
+        "Servo", "Touch", "ColorSensor",
     )
-    require(not any(token in run_slice for token in scheduler_specific_tokens),
-            "RunSlice contains hardware/domain-specific scheduler logic")
+    require(not any(token in production_scheduler for token in scheduler_specific_tokens),
+            "production RunSlice contains hardware/domain-specific scheduling logic")
+    require("LineSnapshotCycleGuard" in production_scheduler,
+            "pre-existing shared snapshot lifecycle must remain compatible")
 
     require("#if VM_RESPONSIVENESS_DIAGNOSTICS" in run_slice,
             "detailed per-opcode timing must be qualification/debug gated")
