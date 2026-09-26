@@ -6,6 +6,10 @@
 #include "SensorManager.h"
 #include "TCRT5000.h"
 
+#ifndef VM_RT_FIXED_RATE_LINE_SAMPLING
+#define VM_RT_FIXED_RATE_LINE_SAMPLING 0
+#endif
+
 #if defined(ARDUINO_ARCH_ESP32)
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -23,6 +27,7 @@ volatile bool g_fixedRateActive = false;
 uint32_t g_fixedRatePeriodUs = 0;
 uint32_t g_staleAfterUs = 0;
 uint32_t g_staleCount = 0;
+bool g_fixedRateStartAttempted = false;
 
 struct FixedRateSample {
     bool left;
@@ -113,6 +118,15 @@ namespace LineSensorSnapshot {
 
 void BeginCycle()
 {
+#if VM_RT_FIXED_RATE_LINE_SAMPLING
+    if (!g_fixedRateActive && !g_fixedRateStartAttempted) {
+        g_fixedRateStartAttempted = true;
+        // Qualification study point: 1 kHz producer with a 3-period stale
+        // threshold. Production does not define the enabling build flag.
+        StartFixedRateSampling(1000u, 3000u);
+    }
+#endif
+
     g_cycleActive = true;
     g_sampledThisCycle = false;
     g_snapshot.valid = false;
