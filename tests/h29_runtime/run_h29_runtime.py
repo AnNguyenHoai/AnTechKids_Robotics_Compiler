@@ -92,34 +92,32 @@ def test_control_plane_keeps_scheduler_priority() -> None:
     require(slice_call in main,
             "production firmware loop must invoke the bounded RunSlice scheduler")
     vm_index = main.index(slice_call)
-    vm_slice_region = main[:vm_index]
 
-    # H29 protects ordering semantics, not historical implementation names.
-    # Assert the production services that actually own the current firmware
-    # control cycle all execute before student VM work begins.
-    control_plane_markers = (
-        "SerialCommandHandler::handle();",
-        "RobotNetworkService::update();",
-        "LineSensorSnapshot::BeginCycle();",
-        "SensorManager::instance().updateAll();",
-        "RobotAPI::updateMotion();",
-    )
-    service_indices = []
-    for marker in control_plane_markers:
-        index = vm_slice_region.rfind(marker)
-        require(index >= 0,
-                f"required control-plane service must execute before VM slice: {marker}")
-        service_indices.append(index)
+    # VM-RT X: the control-critical path is fresh sensor -> motion service -> VM.
+    # Serial/network remain serviceable, but execute afterward as bounded
+    # background work so they cannot sit between a fresh line sample and the
+    # student-code actuator decision.
+    begin_index = main.index("LineSensorSnapshot::BeginCycle();")
+    sensor_index = main.index("SensorManager::instance().updateAll();")
+    motion_index = main.index("RobotAPI::updateMotion();")
+    end_index = main.index("LineSensorSnapshot::EndCycle();")
+    serial_index = main.index("SerialCommandHandler::handle();")
+    network_index = main.index("RobotNetworkService::update(ROBOT_NETWORK_SERVICE_BUDGET_US);")
 
-    require(service_indices == sorted(service_indices),
-            "control-plane, sensor snapshot, and motion service order must precede VM work")
-    require(service_indices[-1] < vm_index,
-            "all required control-plane services must complete before each bounded VM slice")
+    require(begin_index < sensor_index < motion_index < vm_index,
+            "fresh sensor and motion service must precede bounded VM work")
+    require(vm_index < end_index < serial_index < network_index,
+            "serial/network background work must follow the control-critical VM phase")
+    require(main.index("RobotNetworkService::isUpdateInProgress()") < begin_index,
+            "active OTA ownership must be checked before control-critical work")
+    require("RobotNetworkService::update(0);" in main[:begin_index],
+            "active OTA must retain an unrestricted service path after motors are stopped")
 
     work_budget = require_positive_constant(main, "VM_WORK_UNITS_PER_FIRMWARE_CYCLE")
     time_budget_us = require_positive_constant(main, "VM_MAX_SLICE_DURATION_US")
-    require(work_budget > 0 and time_budget_us > 0,
-            "production VM scheduling must retain positive work and wall-clock bounds")
+    network_budget_us = require_positive_constant(main, "ROBOT_NETWORK_SERVICE_BUDGET_US")
+    require(work_budget > 0 and time_budget_us > 0 and network_budget_us > 0,
+            "production VM/network scheduling must retain positive bounds")
     require("VM_WORK_UNITS_PER_FIRMWARE_CYCLE," in main,
             "production work-unit ceiling must be wired into RunSlice budget")
     require("VM_MAX_SLICE_DURATION_US" in main,
@@ -147,7 +145,6 @@ def test_control_plane_keeps_scheduler_priority() -> None:
 
 
 def test_legacy_blockers_are_isolated_from_vm_path() -> None:
-    """Document the migration boundary until legacy wrappers are removed."""
     robot_api = ROBOT_API_CPP.read_text(encoding="utf-8")
     vm = VM_CPP.read_text(encoding="utf-8")
 

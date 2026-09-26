@@ -99,7 +99,7 @@ jobs:
         run: python -m pip install "platformio>=6.1,<7"
 
       - name: Compile impacted ESP32 production firmware
-        if: ${{ steps.impact.outputs.full != 'true' && steps.impact.outputs.vm == 'true' }}
+        if: ${{ steps.impact.outputs.vm == 'true' || steps.impact.outputs.full == 'true' || steps.impact.outputs.release == 'true' }}
         shell: pwsh
         run: python -m platformio run -d robot-platform -e esp32dev
 

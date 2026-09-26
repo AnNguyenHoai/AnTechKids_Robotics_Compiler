@@ -18,7 +18,7 @@
 #include "../Services/Motion/HeadingController.h"
 #include "../Sensor/Ultrasonic.h"
 #include "../Services/VM/VM.h"
-#include "../Services/Line/LineFollower.h"   // <--- THÊM DÒNG NÀY
+#include "../Services/Line/LineFollower.h"
 
 #include <string.h>
 
@@ -28,16 +28,60 @@ extern HeadingEstimator g_headingEstimator;
 extern VM vm;
 extern bool g_vmStarted;
 
+namespace {
+constexpr size_t kSerialCommandMaxLength = 192;
+constexpr uint8_t kSerialBytesPerCycle = 32;
+char g_serialCommandBuffer[kSerialCommandMaxLength + 1] = {0};
+size_t g_serialCommandLength = 0;
+bool g_discardUntilNewline = false;
+
+bool tryReadCommand(String& input) {
+    uint8_t consumed = 0;
+    while (consumed < kSerialBytesPerCycle && Serial.available() > 0) {
+        const int value = Serial.read();
+        if (value < 0) break;
+        ++consumed;
+
+        const char ch = static_cast<char>(value);
+        if (ch == '\r') continue;
+
+        if (ch == '\n') {
+            if (g_discardUntilNewline) {
+                g_discardUntilNewline = false;
+                g_serialCommandLength = 0;
+                return false;
+            }
+
+            g_serialCommandBuffer[g_serialCommandLength] = '\0';
+            input = String(g_serialCommandBuffer);
+            g_serialCommandLength = 0;
+            input.trim();
+            return input.length() > 0;
+        }
+
+        if (g_discardUntilNewline) continue;
+
+        if (g_serialCommandLength < kSerialCommandMaxLength) {
+            g_serialCommandBuffer[g_serialCommandLength++] = ch;
+        } else {
+            // Oversize input is discarded incrementally until newline. Never
+            // block the control loop waiting for the rest of a malformed line.
+            g_serialCommandLength = 0;
+            g_discardUntilNewline = true;
+        }
+    }
+    return false;
+}
+}
+
 void SerialCommandHandler::setup() {
     Serial.println("SerialCommandHandler ready. Type 'help' for commands.");
 }
 
 void SerialCommandHandler::handle() {
     RobotAPI::UpdateEncoders();
-    if (!Serial.available()) return;
-    String input = Serial.readStringUntil('\n');
-    input.trim();
-    if (input.length() == 0) return;
+    String input;
+    if (!tryReadCommand(input)) return;
 
     if (input.startsWith("help")) {
         Serial.println("Commands:");
@@ -83,7 +127,6 @@ void SerialCommandHandler::handle() {
         Serial.println("  robot status        - show robot ready state and IMU status");
         Serial.println("  hardware status     - show runtime hardware capability contract");
         Serial.println("  ultra diag          - show ultrasonic diagnostic statistics");
-        // ---- Diagnostic commands ----
         Serial.println("  heading on/off      - enable/disable heading control (diagnostic)");
         Serial.println("  heading startup on/off - enable/disable heading startup initialization (diagnostic)");
         Serial.println("  motion output on/off   - enable/disable motion-output processing (diagnostic)");
@@ -91,7 +134,7 @@ void SerialCommandHandler::handle() {
         Serial.println("  imu sensor on/off      - enable/disable IMUSensor runtime update (diagnostic)");
         Serial.println("  imu sensor status      - show IMUSensor runtime diagnostic state");
         Serial.println("  imu i2c on/off         - enable/disable MPU6050 I2C reads (diagnostic)");
-        Serial.println("  imu i2c status         - show I2C read diagnostic state");
+        Serial.println("  imu i2c status      - show I2C read diagnostic state");
         Serial.println("  imu accel on/off/status   - enable/disable Accel I2C read (diagnostic)");
         Serial.println("  imu gyro on/off/status    - enable/disable Gyro I2C read (diagnostic)");
         Serial.println("  imu temp on/off/status    - enable/disable Temperature I2C read (diagnostic)");
@@ -102,12 +145,10 @@ void SerialCommandHandler::handle() {
         return;
     }
 
-    // ---------- Hardware Capability Contract (H25-I) ----------
     else if (input.startsWith("hardware status")) {
         HardwareCapability::printStatus();
     }
 
-    // ---------- Motion Config ----------
     else if (input.startsWith("config show")) {
         auto& cfg = RobotAPI::g_motionConfig;
         Serial.printf("wheelDiameter_mm: %.2f\n", cfg.wheelDiameter_mm);
@@ -176,7 +217,6 @@ void SerialCommandHandler::handle() {
         RobotAPI::setMotorsDirect(left, right);
     }
 
-    // ---------- Sensor Config ----------
     else if (input.startsWith("sensor show")) {
         auto& cfg = g_sensorConfig;
         Serial.printf("ultrasonicTimeoutMs: %d\n", cfg.ultrasonicTimeoutMs);
@@ -210,7 +250,6 @@ void SerialCommandHandler::handle() {
         Serial.printf("Set %s to %.3f\n", key.c_str(), value);
     }
 
-    // ---------- Behavior ----------
     else if (input.startsWith("behavior list")) {
         auto& behaviors = scheduler.getBehaviors();
         Serial.printf("Total behaviors: %d\n", behaviors.size());
@@ -238,7 +277,6 @@ void SerialCommandHandler::handle() {
         scheduler.runSingle(idx);
     }
 
-    // ---------- Mode Switching ----------
     else if (input.startsWith("mode vm")) {
         useBehaviorEngine = false;
         Serial.println("Switched to VM mode.");
@@ -248,7 +286,6 @@ void SerialCommandHandler::handle() {
         Serial.println("Switched to Behavior Engine mode.");
     }
 
-    // ---------- Diagnostics ----------
     else if (input.startsWith("diagnostics") || input.startsWith("diag")) {
         if (input.startsWith("diag raw")) {
             auto& mgr = SensorManager::instance();
@@ -309,7 +346,6 @@ void SerialCommandHandler::handle() {
         }
     }
 
-    // ---------- Motor Calibration ----------
     else if (input.startsWith("motor calib show")) {
         auto& cfg = RobotAPI::g_motionConfig;
         Serial.println("--- Motor Calibration ---");
@@ -361,7 +397,6 @@ void SerialCommandHandler::handle() {
         }
     }
 
-    // ---------- Motor Mapping Diagnostic (H23-C) ----------
     else if (input == "motor diag on") {
         RobotAPI::setMotorMappingDiagnosticEnabled(true);
     }
@@ -372,7 +407,6 @@ void SerialCommandHandler::handle() {
         Serial.printf("[MOTOR-DIAG] Mapping diagnostic: %s\n",
                       RobotAPI::isMotorMappingDiagnosticEnabled() ? "ON" : "OFF");
     }
-    // ---------- Line Response Latency Diagnostic (H23-D) ----------
     else if (input == "line diag on") {
         RobotAPI::setLineResponseDiagnosticEnabled(true);
     }
@@ -384,7 +418,6 @@ void SerialCommandHandler::handle() {
                       RobotAPI::isLineResponseDiagnosticEnabled() ? "ON" : "OFF");
     }
 
-    // ===== Line PID Tuning =====
     else if (input.startsWith("line pid ")) {
         String rest = input.substring(8);
         int space1 = rest.indexOf(' ');
@@ -409,7 +442,6 @@ void SerialCommandHandler::handle() {
         }
     }
 
-    // ---------- IMU ----------
     else if (input.startsWith("imu status")) {
         if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
             Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
@@ -476,7 +508,6 @@ void SerialCommandHandler::handle() {
         }
     }
 
-    // ---------- Heading ----------
     else if (input.startsWith("heading status")) {
         Serial.println("--- Heading Status ---");
         Serial.printf("Initialized : %s\n", g_headingEstimator.isInitialized() ? "YES" : "NO");
@@ -512,7 +543,6 @@ void SerialCommandHandler::handle() {
         Serial.println("-----------------------");
     }
 
-    // ---------- Heading diagnostic ON/OFF ----------
     else if (input.startsWith("heading on")) {
         RobotAPI::setHeadingDiagnosticEnabled(true);
     }
@@ -520,7 +550,6 @@ void SerialCommandHandler::handle() {
         RobotAPI::setHeadingDiagnosticEnabled(false);
     }
 
-    // ---------- Heading Startup Diagnostic (DEBUG-H1-001) ----------
     else if (input.startsWith("heading startup on")) {
         RobotAPI::setHeadingStartupDiagnosticEnabled(true);
     }
@@ -532,7 +561,6 @@ void SerialCommandHandler::handle() {
                       RobotAPI::isHeadingStartupDiagnosticEnabled() ? "ON" : "OFF");
     }
 
-    // ---------- Motion Output Diagnostic (DEBUG-H2-001) ----------
     else if (input.startsWith("motion output on")) {
         RobotAPI::setMotionOutputDiagnosticEnabled(true);
     }
@@ -544,7 +572,6 @@ void SerialCommandHandler::handle() {
                       RobotAPI::isMotionOutputDiagnosticEnabled() ? "ON" : "OFF");
     }
 
-    // ---------- Motor PWM Diagnostic (DEBUG-H4-001) ----------
     else if (input.startsWith("motor pwm on")) {
         RobotAPI::setMotorPwmDiagnosticEnabled(true);
     }
@@ -556,7 +583,6 @@ void SerialCommandHandler::handle() {
                       RobotAPI::isMotorPwmDiagnosticEnabled() ? "ON" : "OFF");
     }
 
-    // ---------- IMU Timing Statistics ----------
     else if (input.startsWith("imu timing")) {
         if (!HardwareCapability::isEnabled(HardwareCapability::Device::IMU)) {
             Serial.println("[Hardware] IMU is DISABLED by hardware configuration.");
@@ -570,7 +596,6 @@ void SerialCommandHandler::handle() {
         }
     }
 
-    // ---------- Manual start (diagnostic) ----------
 #ifdef DIAGNOSTIC_MANUAL_START
     else if (input.startsWith("run")) {
         if (!vm.IsRunning() && !g_vmStarted) {
@@ -585,7 +610,6 @@ void SerialCommandHandler::handle() {
     }
 #endif
 
-    // ---------- Robot Status ----------
     else if (input.startsWith("robot status")) {
         auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
         Serial.println("--- Robot Status ---");
@@ -603,7 +627,6 @@ void SerialCommandHandler::handle() {
         Serial.println("-------------------");
     }
 
-    // ---------- Ultrasonic Diagnostics ----------
     else if (input.startsWith("ultra diag")) {
 #if !ROBOT_FEATURE_ULTRASONIC
         Serial.println("Ultrasonic feature disabled by hardware configuration.");
@@ -629,7 +652,6 @@ void SerialCommandHandler::handle() {
         Serial.println("-----------------------------");
 #endif
     }
-    // ---------- Encoder H24-D ----------
     else if (input == "encoder show") {
         RobotAPI::UpdateEncoders();
         for (int side = 0; side < 2; ++side) {

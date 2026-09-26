@@ -43,6 +43,10 @@ WifiState g_wifiState = WifiState::Idle;
 uint32_t g_wifiStateSinceMs = 0;
 uint32_t g_lastWifiAttemptMs = 0;
 
+bool serviceBudgetExpired(uint32_t startedUs, uint32_t budgetUs) {
+    return budgetUs != 0 && static_cast<uint32_t>(micros() - startedUs) >= budgetUs;
+}
+
 void sendHealth() {
     const bool aggregateReady = g_robotReady && g_networkReady;
     String body = "{\"status\":\"ok\",\"ready\":" + String(aggregateReady ? "true" : "false") +
@@ -60,6 +64,7 @@ void sendInfo() {
 }
 
 void onOtaStart() {
+    RobotAPI::Stop();
     RobotNetworkService::setUpdateInProgress(true);
     g_otaReady = false;
     BootLogger::log("OTA", "ArduinoOTA firmware update started");
@@ -67,6 +72,7 @@ void onOtaStart() {
 
 void onOtaEnd() {
     RobotNetworkService::setUpdateInProgress(false);
+    g_otaReady = strlen(RobotWiFiConfig::otaPassword()) != 0;
     BootLogger::log("OTA", "ArduinoOTA firmware update complete; rebooting");
 }
 
@@ -82,7 +88,7 @@ void onOtaProgress(unsigned int progress, unsigned int total) {
 void onOtaError(ota_error_t error) {
     RobotNetworkService::setUpdateInProgress(false);
     g_otaReady = strlen(RobotWiFiConfig::otaPassword()) != 0;
-    BootLogger::logFormat("OTA", "ArduinoOTA error %u", static_cast<unsigned int>(error));
+    BootLogger::logFormat("OTA", "ArduinoOTA error %u", static_cast<unsigned>(error));
 }
 
 void handleHttpOtaUpload() {
@@ -184,9 +190,6 @@ bool startWifiConnection() {
         return false;
     }
 
-    // Always terminate the previous STA attempt before starting another one.
-    // This prevents ESP32 from receiving a new config while STA is still
-    // connecting ("sta is connecting, cannot set config").
     WiFi.disconnect(false, false);
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(RobotIdentity::hostname());
@@ -213,6 +216,10 @@ void onWifiConnected() {
     if (strlen(RobotWiFiConfig::otaPassword()) != 0) {
         ArduinoOTA.setPassword(RobotWiFiConfig::otaPassword());
         g_otaReady = true;
+        ArduinoOTA.onStart(onOtaStart);
+        ArduinoOTA.onEnd(onOtaEnd);
+        ArduinoOTA.onProgress(onOtaProgress);
+        ArduinoOTA.onError(onOtaError);
         ArduinoOTA.begin();
         BootLogger::logFormat("NET", "OTA ready at %s.local", RobotIdentity::hostname());
     } else {
@@ -238,7 +245,6 @@ void handleWifiState() {
             onWifiConnected();
             return;
         }
-
         if (millis() - g_wifiStateSinceMs >= kWifiConnectTimeoutMs) {
             WiFi.disconnect(false, false);
             g_networkReady = false;
@@ -255,22 +261,19 @@ void handleWifiState() {
             onWifiConnected();
             return;
         }
-
         if (millis() - g_wifiStateSinceMs >= kWifiRetryIntervalMs) {
             startWifiConnection();
         }
         return;
     }
 
-    if (g_wifiState == WifiState::Connected) {
-        if (status != WL_CONNECTED) {
-            g_networkReady = false;
-            g_otaReady = false;
-            RobotDiscoveryService::begin();
-            g_wifiState = WifiState::RetryWait;
-            g_wifiStateSinceMs = millis();
-            BootLogger::log("NET", "Wi-Fi disconnected; network services unavailable");
-        }
+    if (g_wifiState == WifiState::Connected && status != WL_CONNECTED) {
+        g_networkReady = false;
+        g_otaReady = false;
+        RobotDiscoveryService::begin();
+        g_wifiState = WifiState::RetryWait;
+        g_wifiStateSinceMs = millis();
+        BootLogger::log("NET", "Wi-Fi disconnected; network services unavailable");
     }
 }
 
@@ -296,16 +299,38 @@ void begin(bool robotReady) {
     startWifiConnection();
 }
 
-void update() {
+void update(uint32_t budgetUs) {
+    const uint32_t startedUs = micros();
     handleWifiState();
     if (!g_networkReady) {
         return;
     }
 
-    if (g_otaReady && !g_updateInProgress) {
+    // Once an OTA transaction has started, main() has already stopped motors
+    // and suspended VM work. Keep pumping both OTA transports until completion;
+    // budgetUs is intentionally passed as zero from that OTA-owned path.
+    if (g_updateInProgress) {
         ArduinoOTA.handle();
+        g_server.handleClient();
+        return;
     }
+
+    if (serviceBudgetExpired(startedUs, budgetUs)) {
+        return;
+    }
+
+    if (g_otaReady) {
+        ArduinoOTA.handle();
+        if (serviceBudgetExpired(startedUs, budgetUs)) {
+            return;
+        }
+    }
+
     g_server.handleClient();
+    if (serviceBudgetExpired(startedUs, budgetUs)) {
+        return;
+    }
+
     RobotDiscoveryService::update(g_robotReady, g_networkReady, g_otaReady);
 }
 

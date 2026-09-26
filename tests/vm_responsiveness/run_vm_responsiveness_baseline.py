@@ -145,8 +145,6 @@ def main() -> int:
     check("normal program-end uses centralized pending cleanup", "CancelPendingOperation(true);" in step_body)
     check("fault cleanup uses centralized pending cleanup", "Stop on a real VM error" in step_body and step_body.count("CancelPendingOperation(true);") >= 2)
 
-    # Dual scheduling budget is an additive compatible extension: old one-field
-    # aggregate callers still disable the time ceiling, production opts into both.
     check("RunSlice budget exposes optional wall-clock ceiling", "uint32_t maxDurationUs = 0;" in vm_h)
     check("time-budget stop reason is appended", "TimeBudgetExhausted" in vm_h)
     check("RunSlice enforces wall-clock ceiling between Step calls",
@@ -158,15 +156,24 @@ def main() -> int:
     check("firmware allows reactive burst beyond four opcodes", "VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 16" in firmware)
     check("firmware enables short wall-clock slice ceiling", "VM_MAX_SLICE_DURATION_US = 2000" in firmware)
     check("production budget passes both ceilings", "VM_MAX_SLICE_DURATION_US" in loop[loop.index("VMRunSliceBudget budget"):loop.index("vm.RunSlice(budget);")])
-    check("serial service runs before VM slice", loop.index("SerialCommandHandler::handle();") < loop.index("vm.RunSlice(budget);"))
-    check("network service runs before VM slice", loop.index("RobotNetworkService::update();") < loop.index("vm.RunSlice(budget);"))
-    check("OTA gate runs before VM slice", loop.index("RobotNetworkService::isUpdateInProgress()") < loop.index("vm.RunSlice(budget);"))
-    check("platform sensors refresh before VM slice", loop.index("SensorManager::instance().updateAll();") < loop.index("vm.RunSlice(budget);"))
-    check("motion/output service runs before VM slice", loop.index("RobotAPI::updateMotion();") < loop.index("vm.RunSlice(budget);"))
-    check("loop diagnostics records after VM scheduling", loop.rindex("DiagnosticsManager::instance().recordLoopTime(elapsed);") > loop.index("vm.RunSlice(budget);"))
+
+    begin = loop.index("LineSensorSnapshot::BeginCycle();")
+    sensor = loop.index("SensorManager::instance().updateAll();")
+    motion = loop.index("RobotAPI::updateMotion();")
+    vm_call = loop.index("vm.RunSlice(budget);")
+    end_snapshot = loop.index("LineSensorSnapshot::EndCycle();")
+    serial = loop.index("SerialCommandHandler::handle();")
+    network = loop.index("RobotNetworkService::update(ROBOT_NETWORK_SERVICE_BUDGET_US);")
+    check("fresh line sample precedes VM decision", begin < sensor < motion < vm_call)
+    check("serial background service follows VM control phase", vm_call < end_snapshot < serial)
+    check("network background service follows serial background phase", serial < network)
+    check("active OTA gate runs before line sampling", loop.index("RobotNetworkService::isUpdateInProgress()") < begin)
+    check("active OTA retains service path after actuator stop",
+          loop.index("RobotAPI::Stop();") < loop.index("RobotNetworkService::update(0);") < begin)
+    check("loop diagnostics records after background service",
+          loop.rindex("DiagnosticsManager::instance().recordLoopTime(end - start);") > network)
     check("VM completion does not enter nested firmware halt loop", "while (1)" not in loop)
 
-    # Qualification telemetry must not transmit UART records from the hot path.
     run_slice_block = loop[loop.index("if (runVmSlice)"):loop.index("if (vm.IsRunning())")]
     check("hot VM path records telemetry in RAM", "VMRuntimeTelemetry::RecordSlice(sliceResult);" in run_slice_block)
     check("hot VM path does not print telemetry", "PrintLatestJson" not in run_slice_block and "PrintBufferedJson" not in run_slice_block)
@@ -175,9 +182,6 @@ def main() -> int:
           terminal_block.index("RobotAPI::Stop();") < terminal_block.index("VMRuntimeTelemetry::PrintBufferedJson();"))
     check("telemetry implementation uses RAM ring buffer", "g_sliceBuffer" in telemetry and "kSliceBufferCapacity" in telemetry)
 
-    # A representative SetMoveSpeed + GetTraceState + if + Stop chain can need
-    # about nine cheap VM operations on its first iteration. It should fit one
-    # production slice when execution is cheap, instead of being split at four.
     reactive_work = [50] * 9
     check("representative reactive chain fits one slice under dual budget",
           simulate_dual_budget(reactive_work, 16, 2000) == 9)
@@ -189,7 +193,7 @@ def main() -> int:
     check("platform service progresses once per long-program cycle", long_services == long_cycles and long_services > 1)
 
     stop_cycles, stop_services, stop_work = simulate_bounded_firmware_loop(100, 16, stop_at_cycle=3)
-    check("stop is observed at bounded pre-slice service point", stop_cycles == 3 and stop_services == 3)
+    check("stop is observed at bounded service point", stop_cycles == 3 and stop_services == 3)
     check("stop prevents additional VM work in observed cycle", stop_work == 32)
 
     check("C2 contract records original blocking reference", "blocking" in c2.lower() and "LineMillisecond" in c2)

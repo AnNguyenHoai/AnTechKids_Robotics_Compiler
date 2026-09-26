@@ -1,4 +1,5 @@
 #include "VM.h"
+#include "VMRuntimeTelemetry.h"
 #include "../../Sensor/LineSensorSnapshot.h"
 #include <Arduino.h>
 
@@ -108,14 +109,38 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
 
     while (workUnits < budget.maxWorkUnits) {
         const uint16_t executedPc = mContext.mProgramCounter;
+        const Instruction* executedInstruction =
+            (mProgram != nullptr && executedPc < mProgram->mInstructionCount)
+                ? &mProgram->mInstructions[executedPc]
+                : nullptr;
         const uint32_t workStartUs = micros();
         Step();
-        const uint32_t workDurationUs = micros() - workStartUs;
+        const uint32_t workEndUs = micros();
+        const uint32_t workDurationUs = workEndUs - workStartUs;
         ++workUnits;
 
         if (workDurationUs > maxWorkUnitDurationUs) {
             maxWorkUnitDurationUs = workDurationUs;
             maxWorkUnitProgramCounter = executedPc;
+        }
+
+        // Capture the real reactive chain without UART observer effect. The
+        // line sample timestamp comes from the exact shared snapshot consumed
+        // by GetTraceState; Stop is stamped only after its Step() returned, so
+        // the value includes RobotAPI::Stop() and PWM submission time.
+        if (executedInstruction != nullptr) {
+            if (executedInstruction->opcode == Opcode::GetTraceState) {
+                const auto& snapshot = LineSensorSnapshot::Current();
+                const bool detected =
+                    mContext.mVariables[executedInstruction->p3] != 0;
+                VMRuntimeTelemetry::RecordReactiveLineObservation(
+                    snapshot.valid ? snapshot.timestampUs : 0u,
+                    workEndUs,
+                    snapshot.sequence,
+                    detected);
+            } else if (executedInstruction->opcode == Opcode::Stop) {
+                VMRuntimeTelemetry::RecordReactiveStop(workEndUs);
+            }
         }
 
         if (mContext.mErrorCode != ToErrorCode(VMErrorCode::None)) {
