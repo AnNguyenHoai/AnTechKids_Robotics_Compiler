@@ -27,16 +27,16 @@ def main() -> int:
         raise AssertionError(f"baseline must pass before mutation tests: {validate(base)}")
 
     expect_rejected(
-        "budget off-by-one regression",
+        "extended budget off-by-one regression",
         replace(
             base,
             run_slice_cpp=base.run_slice_cpp.replace(
-                "while (workUnits < budget.maxWorkUnits)",
-                "while (workUnits <= budget.maxWorkUnits)",
+                "while (static_cast<uint32_t>(workUnits) < extendedWorkLimit)",
+                "while (static_cast<uint32_t>(workUnits) <= extendedWorkLimit)",
                 1,
             ),
         ),
-        "budget",
+        "extra work unit",
     )
 
     wait_end = base.vm_cpp.index("case Opcode::CompareEQ:", base.vm_cpp.index("case Opcode::Wait:"))

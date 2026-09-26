@@ -44,11 +44,24 @@ def load_sources(root: Path = ROOT) -> Sources:
 def validate(s: Sources) -> list[str]:
     errors: list[str] = []
 
-    loop_marker = "while (workUnits < budget.maxWorkUnits)"
+    # #383 keeps maxWorkUnits as the soft scheduling boundary, then permits a
+    # small fixed amount of generic control-flow headroom. The extension itself
+    # must remain strictly bounded; wall-clock/pending/fault/stop boundaries are
+    # validated separately by the VM-RT source gates.
+    loop_marker = "while (static_cast<uint32_t>(workUnits) < extendedWorkLimit)"
     if loop_marker not in s.run_slice_cpp:
-        errors.append("slice budget loop must use strict < maxWorkUnits")
-    if "while (workUnits <= budget.maxWorkUnits)" in s.run_slice_cpp:
-        errors.append("slice budget loop permits one extra work unit")
+        errors.append("slice scheduler must use bounded extendedWorkLimit loop")
+    if "VM_REACTIVE_TRANSACTION_MAX_EXTRA_WORK_UNITS = 8" not in s.run_slice_cpp:
+        errors.append("reactive transaction extension must remain fixed at 8 work units")
+    if "static_cast<uint32_t>(budget.maxWorkUnits) +" not in s.run_slice_cpp or \
+       "static_cast<uint32_t>(VM_REACTIVE_TRANSACTION_MAX_EXTRA_WORK_UNITS)" not in s.run_slice_cpp:
+        errors.append("extended work limit must equal soft budget plus fixed transaction headroom")
+    if "while (static_cast<uint32_t>(workUnits) <= extendedWorkLimit)" in s.run_slice_cpp:
+        errors.append("slice scheduler permits one extra work unit beyond extended limit")
+    if "if (workUnits >= budget.maxWorkUnits)" not in s.run_slice_cpp:
+        errors.append("soft maxWorkUnits boundary must remain explicit")
+    if "isTakenBackEdge(mProgram, mContext, executedPc)" not in s.run_slice_cpp:
+        errors.append("soft-budget continuation must terminate at generic taken back-edge when available")
 
     if s.run_slice_cpp.count("Step();") != 1:
         errors.append("RunSlice must contain exactly one Step call site")

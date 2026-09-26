@@ -8,6 +8,8 @@
 #endif
 
 namespace {
+static constexpr uint16_t VM_REACTIVE_TRANSACTION_MAX_EXTRA_WORK_UNITS = 8;
+
 VMRunSliceResult makeResult(VMRunSliceStopReason reason,
                             uint16_t workUnits,
                             uint16_t startPc,
@@ -19,6 +21,29 @@ VMRunSliceResult makeResult(VMRunSliceStopReason reason,
     result.startProgramCounter = startPc;
     result.endProgramCounter = endPc;
     return result;
+}
+
+bool isTakenBackEdge(const Program* program,
+                     const VMContext& context,
+                     uint16_t executedPc)
+{
+    if (program == nullptr || executedPc >= program->mInstructionCount) {
+        return false;
+    }
+
+    const Instruction& executed = program->mInstructions[executedPc];
+    switch (executed.opcode) {
+        case Opcode::Jump:
+            return executed.p2 <= executedPc;
+        case Opcode::JumpIfFalse:
+            return (context.mVariables[executed.p1] == 0) &&
+                   (executed.p2 <= executedPc);
+        case Opcode::JumpIfTrue:
+            return (context.mVariables[executed.p1] != 0) &&
+                   (executed.p2 <= executedPc);
+        default:
+            return false;
+    }
 }
 
 class LineSnapshotCycleGuard
@@ -111,7 +136,11 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
     // receive the historical one-slice snapshot lifecycle through this guard.
     LineSnapshotCycleGuard lineSnapshotCycle;
 
-    while (workUnits < budget.maxWorkUnits) {
+    const uint32_t extendedWorkLimit =
+        static_cast<uint32_t>(budget.maxWorkUnits) +
+        static_cast<uint32_t>(VM_REACTIVE_TRANSACTION_MAX_EXTRA_WORK_UNITS);
+
+    while (static_cast<uint32_t>(workUnits) < extendedWorkLimit) {
         const uint16_t executedPc = mContext.mProgramCounter;
 #if VM_RESPONSIVENESS_DIAGNOSTICS
         const Instruction* executedInstruction =
@@ -164,10 +193,6 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
             bool halted = (mProgram != nullptr) &&
                           (mContext.mProgramCounter >= mProgram->mInstructionCount);
 
-            // Legacy Step() treats a branch whose target is exactly the
-            // instruction count as normal program completion, but it does not
-            // rewrite the PC to that end value. Classify that legacy outcome as
-            // Halted without changing Step() or its PC semantics.
             if (!halted && mProgram != nullptr &&
                 executedPc < mProgram->mInstructionCount) {
                 const Instruction& executed = mProgram->mInstructions[executedPc];
@@ -212,15 +237,30 @@ VMRunSliceResult VM::RunSlice(const VMRunSliceBudget& budget)
                                        mContext.mProgramCounter));
         }
 
-        // Wall-clock is an independent hard scheduling guard. Production pays
-        // one monotonic timestamp per completed Step() for this safety boundary;
-        // qualification adds a pre-Step timestamp only for detailed evidence.
+        // The wall-clock ceiling is always a hard return boundary, including
+        // while the scheduler is consuming bounded transaction headroom.
         if (budget.maxDurationUs != 0 &&
             static_cast<uint32_t>(micros() - sliceStartUs) >= budget.maxDurationUs) {
             return finalize(makeResult(VMRunSliceStopReason::TimeBudgetExhausted,
                                        workUnits,
                                        startPc,
                                        mContext.mProgramCounter));
+        }
+
+        if (workUnits >= budget.maxWorkUnits) {
+            // #383: the work-unit ceiling is a soft boundary only for a short,
+            // bounded control-flow transaction. Once the soft budget is reached,
+            // prefer returning immediately after a taken loop back-edge so one
+            // source-level iteration is not split solely by work count. This is
+            // generic control-flow logic: it does not inspect sensor or actuator
+            // opcodes. The extra work remains strictly bounded by the constant
+            // above, and pending/stop/fault/time boundaries still win first.
+            if (isTakenBackEdge(mProgram, mContext, executedPc)) {
+                return finalize(makeResult(VMRunSliceStopReason::BudgetExhausted,
+                                           workUnits,
+                                           startPc,
+                                           mContext.mProgramCounter));
+            }
         }
     }
 
