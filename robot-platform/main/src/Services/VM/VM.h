@@ -72,6 +72,12 @@ struct VMRunSliceResult
     uint32_t lineSnapshotConsumerCount;
     uint32_t lineSnapshotInvalidCount;
     bool lineSnapshotValid;
+
+    // VM-RT AB qualification evidence for the optional fixed-rate producer.
+    uint32_t lineSnapshotIntervalUs;
+    uint32_t lineSnapshotMaxJitterUs;
+    uint32_t lineSnapshotStaleCount;
+    bool lineSnapshotFixedRateActive;
 };
 
 /******************************************************************************

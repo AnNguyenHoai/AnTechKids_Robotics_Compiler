@@ -123,8 +123,23 @@ def test_control_plane_keeps_scheduler_priority() -> None:
     require("VM_MAX_SLICE_DURATION_US" in main,
             "production wall-clock ceiling must be wired into RunSlice budget")
 
-    require("while (workUnits < budget.maxWorkUnits)" in vm_slice,
-            "bounded slice execution must remain work-unit limited")
+    # Since #383 the configured work budget is a soft boundary: RunSlice may
+    # consume a small, fixed amount of transaction headroom to reach a safe
+    # taken back-edge. The scheduler must still have a deterministic absolute
+    # work limit, while pending/stop/fault and the wall-clock limit remain hard
+    # return boundaries.
+    require("VM_REACTIVE_TRANSACTION_MAX_EXTRA_WORK_UNITS" in vm_slice,
+            "bounded slice execution must keep fixed transaction headroom")
+    require("extendedWorkLimit" in vm_slice
+            and "budget.maxWorkUnits" in vm_slice
+            and "VM_REACTIVE_TRANSACTION_MAX_EXTRA_WORK_UNITS" in vm_slice,
+            "absolute work limit must be derived from soft budget plus fixed headroom")
+    require("while (static_cast<uint32_t>(workUnits) < extendedWorkLimit)" in vm_slice,
+            "bounded slice execution must remain limited by the absolute extended work bound")
+    require("workUnits >= budget.maxWorkUnits" in vm_slice,
+            "configured work budget must remain the scheduler soft boundary")
+    require("isTakenBackEdge(mProgram, mContext, executedPc)" in vm_slice,
+            "transaction headroom must terminate at a generic safe control-flow boundary")
     require("budget.maxDurationUs != 0" in vm_slice,
             "bounded slice execution must conditionally enforce the wall-clock ceiling")
     require("micros() - sliceStartUs" in vm_slice,

@@ -22,6 +22,8 @@ class Sources:
     vm_context_h: str
     run_slice_cpp: str
     snapshot_cpp: str
+    tcrt_h: str
+    tcrt_cpp: str
     canonical_isa: str
     firmware_opcode_h: str
 
@@ -36,6 +38,8 @@ def load_sources(root: Path = ROOT) -> Sources:
         vm_context_h=read("robot-platform/main/src/Services/VM/VMContext.h"),
         run_slice_cpp=read("robot-platform/main/src/Services/VM/VMRunSlice.cpp"),
         snapshot_cpp=read("robot-platform/main/src/Sensor/LineSensorSnapshot.cpp"),
+        tcrt_h=read("robot-platform/main/src/Sensor/TCRT5000.h"),
+        tcrt_cpp=read("robot-platform/main/src/Sensor/TCRT5000.cpp"),
         canonical_isa=read("packages/robot-isa/canonical_isa.json"),
         firmware_opcode_h=read("robot-platform/main/include/generated/opcode.h"),
     )
@@ -154,10 +158,37 @@ def validate(s: Sources) -> list[str]:
 
     if "if (g_sampledThisCycle)" not in s.snapshot_cpp:
         errors.append("same-cycle line snapshot reuse guard removed")
-    if s.snapshot_cpp.count("SampleHardwareDirect();") != 3:
-        errors.append("line snapshot must perform exactly three physical channel reads")
-    if "physicalReadCount = 3" not in s.snapshot_cpp:
-        errors.append("line snapshot physical-read evidence drifted")
+
+    fixed_start = s.snapshot_cpp.find("void sampleFixedRateOnce()")
+    fixed_end = s.snapshot_cpp.find("void fixedRateTask", fixed_start)
+    ensure_start = s.snapshot_cpp.find("bool EnsureSample()")
+    ensure_end = s.snapshot_cpp.find("void RecordConsumer()", ensure_start)
+    if min(fixed_start, fixed_end, ensure_start, ensure_end) < 0:
+        errors.append("line snapshot producer/consumer boundaries unavailable")
+    else:
+        fixed_body = s.snapshot_cpp[fixed_start:fixed_end]
+        ensure_body = s.snapshot_cpp[ensure_start:ensure_end]
+        if fixed_body.count("ReadHardwareDetectedDirect()") != 3:
+            errors.append("fixed-rate producer must perform exactly three read-only physical channel reads")
+        if "SampleHardwareDirect();" in fixed_body or "ApplySnapshotReading(" in fixed_body:
+            errors.append("fixed-rate producer must not mutate legacy TCRT cached readings")
+        if ensure_body.count("SampleHardwareDirect();") != 3:
+            errors.append("firmware-owned snapshot must perform exactly three physical channel reads")
+        if "g_snapshot.physicalReadCount = 3;" not in ensure_body:
+            errors.append("firmware-owned snapshot physical-read evidence drifted")
+        if "g_snapshot.physicalReadCount = 0;" not in ensure_body:
+            errors.append("fixed-rate consumer must not claim firmware-cycle-owned physical reads")
+        for token in (
+            "left->ApplySnapshotReading(latest.left ? 1 : 0)",
+            "center->ApplySnapshotReading(latest.center ? 1 : 0)",
+            "right->ApplySnapshotReading(latest.right ? 1 : 0)",
+        ):
+            if token not in ensure_body:
+                errors.append("fixed-rate consumer must apply one coherent published L/C/R set at legacy boundary")
+                break
+
+    if "ReadHardwareDetectedDirect() const" not in s.tcrt_h or "TCRT5000::ReadHardwareDetectedDirect() const" not in s.tcrt_cpp:
+        errors.append("TCRT read-only fixed-rate acquisition primitive missing")
 
     try:
         isa = json.loads(s.canonical_isa)
