@@ -165,7 +165,14 @@ def main() -> int:
         check(f"RunSlice result exposes {field}", field in header)
 
     check("slice timing uses monotonic micros", "const uint32_t sliceStartUs = micros();" in run_slice and "result.sliceDurationUs = nowUs - sliceStartUs;" in run_slice)
-    check("work-unit timing surrounds legacy Step", "const uint32_t workStartUs = micros();" in loop and "const uint32_t workDurationUs = micros() - workStartUs;" in loop)
+    work_start_pos = loop.index("const uint32_t workStartUs = micros();")
+    step_pos = loop.index("Step();", work_start_pos)
+    work_end_pos = loop.index("const uint32_t workEndUs = micros();", step_pos)
+    work_duration_pos = loop.index("const uint32_t workDurationUs = workEndUs - workStartUs;", work_end_pos)
+    check(
+        "work-unit timing surrounds legacy Step",
+        work_start_pos < step_pos < work_end_pos < work_duration_pos,
+    )
     check("slowest work unit retains owning PC", "maxWorkUnitProgramCounter = executedPc;" in loop)
     check("pending operation evidence uses generic state", "mPendingOperation.Operation()" in run_slice and "mPendingOperation.Lifecycle()" in run_slice)
     check("pending opcode is resolved from owner PC", "mProgram->mInstructions[result.pendingOwnerProgramCounter].opcode" in run_slice)
@@ -176,7 +183,12 @@ def main() -> int:
     check("telemetry tracks max slice duration", "maxSliceDurationUs" in telemetry_h and "result.sliceDurationUs > g_snapshot.maxSliceDurationUs" in telemetry_cpp)
     check("telemetry tracks slowest indivisible work unit", "maxWorkUnitDurationUs" in telemetry_h and "maxWorkUnitProgramCounter" in telemetry_h)
     check("stop latency evidence has last and max", "lastStopLatencyUs" in telemetry_h and "maxStopLatencyUs" in telemetry_h and "RecordStopLatency" in telemetry_cpp)
-    check("firmware measures bounded control-plane stop window", "vmRunningBeforeControl" in firmware and "controlServiceStartUs" in firmware and "VMRuntimeTelemetry::RecordStopLatency" in firmware)
+    check(
+        "firmware measures bounded background stop window",
+        "vmRunningBeforeBackground" in firmware
+        and "backgroundStartUs" in firmware
+        and "VMRuntimeTelemetry::RecordStopLatency(micros() - backgroundStartUs);" in firmware,
+    )
     check("firmware records every executed VM slice", "VMRuntimeTelemetry::RecordSlice(sliceResult);" in firmware)
     check("JSONL evidence is opt-in", "#define VM_RESPONSIVENESS_DIAGNOSTICS 0" in telemetry_h and "#if VM_RESPONSIVENESS_DIAGNOSTICS" in telemetry_cpp)
     check("JSONL evidence has stable type marker", "\\\"type\\\":\\\"vm_rt\\\"" in telemetry_cpp)
