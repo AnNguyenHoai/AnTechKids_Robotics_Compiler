@@ -64,8 +64,6 @@ void sendInfo() {
 }
 
 void onOtaStart() {
-    // OTA owns the platform from this callback onward. Stop actuators before
-    // any flash/network work can monopolize the cooperative firmware loop.
     RobotAPI::Stop();
     RobotNetworkService::setUpdateInProgress(true);
     g_otaReady = false;
@@ -192,9 +190,6 @@ bool startWifiConnection() {
         return false;
     }
 
-    // Always terminate the previous STA attempt before starting another one.
-    // This prevents ESP32 from receiving a new config while STA is still
-    // connecting ("sta is connecting, cannot set config").
     WiFi.disconnect(false, false);
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(RobotIdentity::hostname());
@@ -250,7 +245,6 @@ void handleWifiState() {
             onWifiConnected();
             return;
         }
-
         if (millis() - g_wifiStateSinceMs >= kWifiConnectTimeoutMs) {
             WiFi.disconnect(false, false);
             g_networkReady = false;
@@ -267,22 +261,19 @@ void handleWifiState() {
             onWifiConnected();
             return;
         }
-
         if (millis() - g_wifiStateSinceMs >= kWifiRetryIntervalMs) {
             startWifiConnection();
         }
         return;
     }
 
-    if (g_wifiState == WifiState::Connected) {
-        if (status != WL_CONNECTED) {
-            g_networkReady = false;
-            g_otaReady = false;
-            RobotDiscoveryService::begin();
-            g_wifiState = WifiState::RetryWait;
-            g_wifiStateSinceMs = millis();
-            BootLogger::log("NET", "Wi-Fi disconnected; network services unavailable");
-        }
+    if (g_wifiState == WifiState::Connected && status != WL_CONNECTED) {
+        g_networkReady = false;
+        g_otaReady = false;
+        RobotDiscoveryService::begin();
+        g_wifiState = WifiState::RetryWait;
+        g_wifiStateSinceMs = millis();
+        BootLogger::log("NET", "Wi-Fi disconnected; network services unavailable");
     }
 }
 
@@ -311,15 +302,24 @@ void begin(bool robotReady) {
 void update(uint32_t budgetUs) {
     const uint32_t startedUs = micros();
     handleWifiState();
-    if (!g_networkReady || serviceBudgetExpired(startedUs, budgetUs)) {
+    if (!g_networkReady) {
         return;
     }
 
-    // These Arduino/WiFi calls are indivisible from this layer. The budget is
-    // therefore enforced between calls so one normal firmware cycle cannot
-    // chain OTA + HTTP + discovery work after its background allowance is used.
-    // Whole-cycle telemetry captures any single-call outlier for qualification.
-    if (g_otaReady && !g_updateInProgress) {
+    // Once an OTA transaction has started, main() has already stopped motors
+    // and suspended VM work. Keep pumping both OTA transports until completion;
+    // budgetUs is intentionally passed as zero from that OTA-owned path.
+    if (g_updateInProgress) {
+        ArduinoOTA.handle();
+        g_server.handleClient();
+        return;
+    }
+
+    if (serviceBudgetExpired(startedUs, budgetUs)) {
+        return;
+    }
+
+    if (g_otaReady) {
         ArduinoOTA.handle();
         if (serviceBudgetExpired(startedUs, budgetUs)) {
             return;
