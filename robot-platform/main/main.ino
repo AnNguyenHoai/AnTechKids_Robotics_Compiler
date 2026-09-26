@@ -47,14 +47,14 @@ Program program;
 const int STABILITY_ITERATIONS = 1;
 int executionCounter = 0;
 
-// A reactive student-code chain often needs more than four bytecode operations
-// (load arguments -> read sensor -> branch -> actuator). Keep a generous work
-// ceiling so such a chain can complete in one slice, but pair it with a short
-// wall-clock ceiling so cheap opcodes cannot starve platform services.
+// Common reactive programs can expand to roughly 19-22 cheap bytecode work
+// units when multiple branches fire. Use the smallest headroom that keeps those
+// generic sensor/decision/actuator chains in one slice, while retaining the
+// independent short wall-clock ceiling as the hard anti-starvation guard.
 //
 // VM_MAX_SLICE_DURATION_US is an engineering scheduling ceiling, NOT an
 // approved physical-qualification threshold. #325 remains the evidence owner.
-static constexpr uint16_t VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 16;
+static constexpr uint16_t VM_WORK_UNITS_PER_FIRMWARE_CYCLE = 24;
 static constexpr uint32_t VM_MAX_SLICE_DURATION_US = 2000;
 
 // Background network work is cooperatively budgeted between indivisible
