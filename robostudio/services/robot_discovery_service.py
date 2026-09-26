@@ -6,10 +6,13 @@ usable from tests and future non-GUI clients.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
+import select
 import socket
+import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable
 
 from domain.compatibility import (
     LEGACY_UNVERSIONED_FIRMWARE_GENERATION,
@@ -134,6 +137,66 @@ def validate_robot_info(data: Any, source_ip: str | None = None) -> RobotInfo:
     )
 
 
+def _is_usable_local_ipv4(value: str) -> bool:
+    """Return whether ``value`` can be used as a LAN discovery source address."""
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return (
+        address.version == 4
+        and not address.is_loopback
+        and not address.is_unspecified
+        and not address.is_multicast
+    )
+
+
+def local_ipv4_addresses() -> tuple[str, ...]:
+    """Best-effort IPv4 interface discovery without platform-specific packages.
+
+    Windows can have Wi-Fi, Ethernet, VPN and Hyper-V adapters simultaneously.
+    A single unbound limited broadcast is allowed to leave through only one
+    route, so RoboStudio explicitly opens a discovery socket for every usable
+    source address it can identify. The route-probe socket does not transmit
+    application data; UDP connect only asks the OS which source address it
+    would use.
+    """
+    addresses: set[str] = set()
+    for host in (socket.gethostname(), socket.getfqdn()):
+        try:
+            records = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_DGRAM)
+        except OSError:
+            continue
+        for record in records:
+            value = record[4][0]
+            if _is_usable_local_ipv4(value):
+                addresses.add(value)
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))
+        value = probe.getsockname()[0]
+        if _is_usable_local_ipv4(value):
+            addresses.add(value)
+    except OSError:
+        pass
+    finally:
+        probe.close()
+
+    return tuple(sorted(addresses))
+
+
+def _decode_discovery_packet(packet: bytes, source_ip: str) -> RobotInfo | None:
+    try:
+        text = packet.decode("utf-8").strip()
+        prefix, payload = text.split("\n", 1)
+        if prefix != DISCOVERY_RESPONSE_PREFIX:
+            return None
+        return validate_robot_info(json.loads(payload), source_ip)
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        return None
+
+
 class RobotDiscoveryClient:
     """Discover robots on the local LAN using the H27-A UDP protocol."""
 
@@ -141,32 +204,78 @@ class RobotDiscoveryClient:
         self.port = port
         self.timeout = timeout
 
-    def discover(self) -> list[RobotInfo]:
-        """Broadcast a discovery request and collect unique valid robots."""
-        robots: dict[str, RobotInfo] = {}
+    def _open_probe_socket(self, local_ip: str | None) -> socket.socket:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            sock.settimeout(self.timeout)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if local_ip:
+                sock.bind((local_ip, 0))
+            else:
+                sock.bind(("", 0))
+            sock.setblocking(False)
             sock.sendto(DISCOVERY_REQUEST, ("255.255.255.255", self.port))
-            while True:
+            return sock
+        except Exception:
+            sock.close()
+            raise
+
+    def discover(self, local_addresses: Iterable[str] | None = None) -> list[RobotInfo]:
+        """Broadcast on every usable IPv4 source and collect unique valid robots.
+
+        ``local_addresses`` is primarily a deterministic test seam. Normal
+        callers leave it unset so addresses are discovered from the host. An
+        additional unbound socket remains as a compatibility fallback for
+        hosts where interface enumeration is incomplete.
+        """
+        robots: dict[str, RobotInfo] = {}
+        addresses = tuple(local_addresses) if local_addresses is not None else local_ipv4_addresses()
+        bind_addresses: list[str | None] = []
+        for value in addresses:
+            if _is_usable_local_ipv4(value) and value not in bind_addresses:
+                bind_addresses.append(value)
+        bind_addresses.append(None)
+
+        sockets: list[socket.socket] = []
+        errors: list[str] = []
+        try:
+            for local_ip in bind_addresses:
                 try:
-                    packet, address = sock.recvfrom(4096)
-                except socket.timeout:
+                    sockets.append(self._open_probe_socket(local_ip))
+                except OSError as exc:
+                    label = local_ip or "default route"
+                    errors.append(f"{label}: {exc}")
+
+            if not sockets:
+                detail = "; ".join(errors) or "no usable IPv4 socket"
+                raise RobotDiscoveryError(f"Robot discovery could not open a UDP probe: {detail}")
+
+            deadline = time.monotonic() + self.timeout
+            while sockets:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
                     break
                 try:
-                    text = packet.decode("utf-8").strip()
-                    prefix, payload = text.split("\n", 1)
-                    if prefix != DISCOVERY_RESPONSE_PREFIX:
-                        continue
-                    info = validate_robot_info(json.loads(payload), address[0])
-                except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
-                    continue
-                robots[info.device_id] = info
-        except OSError as exc:
-            raise RobotDiscoveryError(f"Robot discovery failed: {exc}") from exc
+                    readable, _, _ = select.select(sockets, [], [], remaining)
+                except (OSError, ValueError) as exc:
+                    raise RobotDiscoveryError(f"Robot discovery receive failed: {exc}") from exc
+                if not readable:
+                    break
+                for sock in readable:
+                    while True:
+                        try:
+                            packet, address = sock.recvfrom(4096)
+                        except BlockingIOError:
+                            break
+                        except OSError:
+                            break
+                        info = _decode_discovery_packet(packet, address[0])
+                        if info is not None:
+                            robots[info.device_id] = info
         finally:
-            sock.close()
+            for sock in sockets:
+                sock.close()
+
         return sorted(robots.values(), key=lambda robot: robot.display_label.lower())
 
     def get_info(self, host: str, timeout: float = 2.0) -> RobotInfo:
