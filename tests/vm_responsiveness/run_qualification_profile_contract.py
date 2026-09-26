@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract gate for the VM-RT physical qualification PlatformIO profile (#329)."""
+"""Contract gate for the VM-RT physical qualification PlatformIO profile (#329/#380)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -59,6 +59,25 @@ def main() -> int:
             )),
         )
 
+    production_match = re.search(
+        r"- name: Compile impacted ESP32 production firmware\n(?P<body>.*?)(?=\n\s*- name:)",
+        workflow,
+        re.DOTALL,
+    )
+    check("production compile step remains separate", production_match is not None)
+    if production_match:
+        body = production_match.group("body")
+        check("production compile still targets esp32dev", "-e esp32dev" in body)
+        check("production compile does not use qualification profile", "esp32dev_vm_qualification" not in body)
+        check(
+            "production compile covers VM/full/release scopes",
+            all(token in body for token in (
+                "steps.impact.outputs.vm == 'true'",
+                "steps.impact.outputs.full == 'true'",
+                "steps.impact.outputs.release == 'true'",
+            )),
+        )
+
     compile_match = re.search(
         r"- name: Compile VM-RT qualification firmware\n(?P<body>.*?)(?=\n\s*- name:)",
         workflow,
@@ -76,16 +95,6 @@ def main() -> int:
                 "steps.impact.outputs.release == 'true'",
             )),
         )
-
-    production_match = re.search(
-        r"- name: Compile impacted ESP32 production firmware\n(?P<body>.*?)(?=\n\s*- name:)",
-        workflow,
-        re.DOTALL,
-    )
-    check("production compile step remains separate", production_match is not None)
-    if production_match:
-        check("production compile still targets esp32dev", "-e esp32dev" in production_match.group("body"))
-        check("production compile does not use qualification profile", "esp32dev_vm_qualification" not in production_match.group("body"))
 
     check("runbook names qualification profile", "esp32dev_vm_qualification" in runbook)
     check("runbook requires exact evidence commit", "exact git sha" in runbook.lower() or "exact firmware commit" in runbook.lower())
