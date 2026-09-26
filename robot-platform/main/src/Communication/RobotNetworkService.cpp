@@ -43,6 +43,10 @@ WifiState g_wifiState = WifiState::Idle;
 uint32_t g_wifiStateSinceMs = 0;
 uint32_t g_lastWifiAttemptMs = 0;
 
+bool serviceBudgetExpired(uint32_t startedUs, uint32_t budgetUs) {
+    return budgetUs != 0 && static_cast<uint32_t>(micros() - startedUs) >= budgetUs;
+}
+
 void sendHealth() {
     const bool aggregateReady = g_robotReady && g_networkReady;
     String body = "{\"status\":\"ok\",\"ready\":" + String(aggregateReady ? "true" : "false") +
@@ -60,6 +64,9 @@ void sendInfo() {
 }
 
 void onOtaStart() {
+    // OTA owns the platform from this callback onward. Stop actuators before
+    // any flash/network work can monopolize the cooperative firmware loop.
+    RobotAPI::Stop();
     RobotNetworkService::setUpdateInProgress(true);
     g_otaReady = false;
     BootLogger::log("OTA", "ArduinoOTA firmware update started");
@@ -67,6 +74,7 @@ void onOtaStart() {
 
 void onOtaEnd() {
     RobotNetworkService::setUpdateInProgress(false);
+    g_otaReady = strlen(RobotWiFiConfig::otaPassword()) != 0;
     BootLogger::log("OTA", "ArduinoOTA firmware update complete; rebooting");
 }
 
@@ -82,7 +90,7 @@ void onOtaProgress(unsigned int progress, unsigned int total) {
 void onOtaError(ota_error_t error) {
     RobotNetworkService::setUpdateInProgress(false);
     g_otaReady = strlen(RobotWiFiConfig::otaPassword()) != 0;
-    BootLogger::logFormat("OTA", "ArduinoOTA error %u", static_cast<unsigned int>(error));
+    BootLogger::logFormat("OTA", "ArduinoOTA error %u", static_cast<unsigned>(error));
 }
 
 void handleHttpOtaUpload() {
@@ -213,6 +221,10 @@ void onWifiConnected() {
     if (strlen(RobotWiFiConfig::otaPassword()) != 0) {
         ArduinoOTA.setPassword(RobotWiFiConfig::otaPassword());
         g_otaReady = true;
+        ArduinoOTA.onStart(onOtaStart);
+        ArduinoOTA.onEnd(onOtaEnd);
+        ArduinoOTA.onProgress(onOtaProgress);
+        ArduinoOTA.onError(onOtaError);
         ArduinoOTA.begin();
         BootLogger::logFormat("NET", "OTA ready at %s.local", RobotIdentity::hostname());
     } else {
@@ -296,16 +308,29 @@ void begin(bool robotReady) {
     startWifiConnection();
 }
 
-void update() {
+void update(uint32_t budgetUs) {
+    const uint32_t startedUs = micros();
     handleWifiState();
-    if (!g_networkReady) {
+    if (!g_networkReady || serviceBudgetExpired(startedUs, budgetUs)) {
         return;
     }
 
+    // These Arduino/WiFi calls are indivisible from this layer. The budget is
+    // therefore enforced between calls so one normal firmware cycle cannot
+    // chain OTA + HTTP + discovery work after its background allowance is used.
+    // Whole-cycle telemetry captures any single-call outlier for qualification.
     if (g_otaReady && !g_updateInProgress) {
         ArduinoOTA.handle();
+        if (serviceBudgetExpired(startedUs, budgetUs)) {
+            return;
+        }
     }
+
     g_server.handleClient();
+    if (serviceBudgetExpired(startedUs, budgetUs)) {
+        return;
+    }
+
     RobotDiscoveryService::update(g_robotReady, g_networkReady, g_otaReady);
 }
 
