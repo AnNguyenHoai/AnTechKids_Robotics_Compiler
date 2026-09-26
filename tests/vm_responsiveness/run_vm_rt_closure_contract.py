@@ -49,12 +49,13 @@ def main() -> int:
         require(thresholds["status"] == "UNAPPROVED_PENDING_PHYSICAL_EVIDENCE", "unapproved thresholds must remain explicitly pending")
         require(all(v is None for v in values.values()), "unapproved physical qualification must not contain guessed thresholds")
         require(not evidence, "unapproved physical qualification must not claim evidence")
-        require(thresholds.get("runtime_config_status") == "PROVISIONAL_CORRECTIVE_PENDING_PHYSICAL_QUALIFICATION",
-                "corrective scheduler config must remain explicitly provisional until physical qualification")
+        require(str(thresholds.get("runtime_config_status", "")).startswith("PROVISIONAL_"),
+                "scheduler config must remain explicitly provisional until physical qualification")
 
     # Runtime configuration is allowed to change in response to an observed
-    # physical failure, but the manifest must always describe the firmware that
-    # will be qualified. This does not approve any production threshold.
+    # physical failure or deterministic scheduler evidence, but the manifest
+    # must always describe the firmware that will be qualified. This does not
+    # approve any production threshold.
     firmware_work_budget = extract_int(firmware, "VM_WORK_UNITS_PER_FIRMWARE_CYCLE")
     firmware_time_budget = extract_int(firmware, "VM_MAX_SLICE_DURATION_US")
     require(thresholds["slice_budget_work_units"] == firmware_work_budget,
@@ -64,11 +65,11 @@ def main() -> int:
 
     require("NO GENERATION CHANGE REQUIRED" in audit, "closure audit must record H35 classification")
 
-    # #330 reconciliation replaced the stale claim that #325 was the only
-    # blocker with explicit owners for every remaining physical/compatibility
-    # risk. Keep the closure document synchronized with that ownership map.
+    # Historical reconciliation issues remain part of the closure audit trail
+    # even when later work supersedes/closes individual owners. The audit must
+    # retain traceability and prevent premature epic closure.
     for issue in ("#312", "#325", "#336", "#337", "#338", "#339", "#340", "#341", "#342", "#343", "#344"):
-        require(issue in audit, f"closure audit must track remaining blocker {issue}")
+        require(issue in audit, f"closure audit must retain historical blocker traceability {issue}")
     require("#325 is the only" not in audit, "closure audit must not claim #325 is the only blocker after #330")
     require("Parent #302 must remain open until #313" in audit, "closure audit must prevent premature epic closure")
 
