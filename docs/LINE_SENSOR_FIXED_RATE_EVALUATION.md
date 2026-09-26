@@ -11,11 +11,14 @@ Qualification profile:
 - producer cadence: 1 kHz (`1000 us` target period)
 - stale threshold: `3000 us` (3 target periods)
 - implementation: bounded FreeRTOS task
-- producer work: read left/center/right digital line inputs, form canonical `L=0b100 / C=0b010 / R=0b001` mask, timestamp, publish one coherent record
+- producer work: read left/center/right digital line inputs through a read-only hardware path, form canonical `L=0b100 / C=0b010 / R=0b001` mask, timestamp, publish one coherent record
+- producer does **not** mutate the legacy `TCRT5000::_lastReading` cache; only the firmware consumer applies a published coherent L/C/R set to that cache
 - consumer work: copy the latest coherent record at `LineSensorSnapshot::EnsureSample()`
 - no controller, PWM, Serial logging, network work, allocation, or blocking I/O in the sampling task
 
 The VM and RobotAPI continue consuming the existing `LineSensorSnapshot` boundary. No opcode, bytecode, compiler, or scheduler specialization is introduced.
+
+The read-only producer boundary is required for concurrency correctness. If the background task were to call the legacy cache-mutating `SampleHardwareDirect()`, it could overwrite one channel while the firmware task was consuming another channel and expose a mixed sample. The qualification producer therefore reads GPIO state without changing the legacy cache, atomically publishes one record, and the firmware task alone projects that record into the existing sensor API.
 
 ## Stale policy
 
@@ -38,6 +41,8 @@ One coherent L/C/R physical sample is lazily owned by each firmware control cycl
 A periodic task produces the sample independently of normal firmware-loop cadence. Advantages: sampling can preempt ordinary loop jitter and exposes producer interval/jitter/staleness. Costs: one periodic RTOS task, synchronized publication, and additional CPU scheduling load.
 
 The task does **not** solve an interrupt-disabled region or a higher-priority CPU stall. Physical measurements are therefore required before claiming a deterministic 1 kHz hardware cadence.
+
+A stop request is asynchronous. A new fixed-rate producer is rejected until the previous task handle has cleared, preventing overlapping producers during stop/restart transitions.
 
 ## Evidence
 

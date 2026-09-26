@@ -57,9 +57,7 @@ def main() -> int:
     snapshot_spec = SNAPSHOT_SPEC.read_text(encoding="utf-8")
     instrumentation_spec = INSTRUMENTATION_SPEC.read_text(encoding="utf-8")
 
-    for reason in (
-        "BudgetExhausted", "Yielded", "Waiting", "Halted", "Stopped", "Fault"
-    ):
+    for reason in ("BudgetExhausted", "Yielded", "Waiting", "Halted", "Stopped", "Fault"):
         check(f"RunSlice exposes {reason} reason", reason in header)
 
     check("RunSlice budget has deterministic work-unit bound", "uint16_t maxWorkUnits;" in header)
@@ -90,7 +88,6 @@ def main() -> int:
     check("slice loop invokes legacy Step once", loop.count("Step();") == 1)
     check("each attempted Step consumes one work unit", "++workUnits;" in loop)
     check("slice does not contain nested unbounded while", loop.count("while (") == 1)
-
     check("pre-existing VM fault returns Fault", run_slice.find("VMRunSliceStopReason::Fault") < run_slice.find(loop_marker))
     check("post-Step VM fault returns Fault", loop.count("VMRunSliceStopReason::Fault") >= 1)
     check("Wait pending returns Waiting", "VMPendingOperation::Wait" in loop and "VMRunSliceStopReason::Waiting" in loop)
@@ -99,7 +96,6 @@ def main() -> int:
     check("non-running state distinguishes Halted", "VMRunSliceStopReason::Halted" in run_slice)
     check("non-running state distinguishes Stopped", "VMRunSliceStopReason::Stopped" in run_slice)
     check("budget exhaustion is final fallthrough", re.search(r"return finalize\(makeResult\(VMRunSliceStopReason::BudgetExhausted,[\s\S]*?\)\);\s*\n\}", run_slice) is not None)
-
     check("RunSlice captures executed PC before Step", "const uint16_t executedPc = mContext.mProgramCounter;" in loop)
     check("normal direct jump-to-end maps to Halted", "case Opcode::Jump:" in loop and "executed.p2 == programEnd" in loop)
     check("normal conditional jump-to-end maps to Halted", "case Opcode::JumpIfFalse:" in loop and "case Opcode::JumpIfTrue:" in loop)
@@ -143,7 +139,6 @@ def main() -> int:
     check("manual stop uses centralized cleanup", "CancelPendingOperation(true);" in step_body)
     check("fault cleanup uses centralized cleanup", step_body.count("CancelPendingOperation(true);") >= 2)
     check("Reset and Start cancel pending work", "void VM::Reset() {\n    CancelPendingOperation(true);" in legacy and "void VM::Start() {\n    CancelPendingOperation(true);" in legacy)
-
     check("Line operations still use shared Line pending kind", legacy.count("mPendingOperation = VMPendingOperation::Line;") >= 4)
     check("line pending completion still clears before PC advance", "mContext.ClearPendingOperation();\n        mContext.mProgramCounter++;" in legacy)
 
@@ -166,10 +161,13 @@ def main() -> int:
         and "g_snapshot.physicalReadCount = 3;" in ensure_sample_body,
     )
     check(
-        "fixed-rate producer reads all three physical channels without claiming cycle-owned reads",
-        all(f"g_fixed{name}->SampleHardwareDirect();" in fixed_sample_body for name in ("Left", "Center", "Right"))
+        "fixed-rate producer uses three read-only hardware reads",
+        all(f"next.{field} = g_fixed{name}->ReadHardwareDetectedDirect();" in fixed_sample_body for field, name in (("left", "Left"), ("center", "Center"), ("right", "Right")))
+        and "SampleHardwareDirect();" not in fixed_sample_body
+        and "ApplySnapshotReading(" not in fixed_sample_body
         and "g_snapshot.physicalReadCount = 0;" in ensure_sample_body,
     )
+    check("TCRT exposes read-only producer primitive", "ReadHardwareDetectedDirect() const" in tcrt_h and "TCRT5000::ReadHardwareDetectedDirect() const" in tcrt_cpp)
     check("same-cycle repeated consumers reuse sampled set", "if (g_sampledThisCycle)" in snapshot_cpp and "return g_snapshot.valid;" in snapshot_cpp)
     check("next cycle can produce a new sequence", "++g_snapshot.sequence;" in snapshot_cpp and "g_sampledThisCycle = false;" in snapshot_cpp)
     check("invalid snapshot is atomic", "applyInvalidFallback" in snapshot_cpp and "g_snapshot.mask = 0;" in snapshot_cpp and "g_snapshot.valid = false;" in snapshot_cpp)
@@ -193,16 +191,12 @@ def main() -> int:
     step_pos = loop.index("Step();", work_start_pos)
     work_end_pos = loop.index("const uint32_t workEndUs = micros();", step_pos)
     work_duration_pos = loop.index("const uint32_t workDurationUs = workEndUs - workStartUs;", work_end_pos)
-    check(
-        "work-unit timing surrounds legacy Step",
-        work_start_pos < step_pos < work_end_pos < work_duration_pos,
-    )
+    check("work-unit timing surrounds legacy Step", work_start_pos < step_pos < work_end_pos < work_duration_pos)
     check("slowest work unit retains owning PC", "maxWorkUnitProgramCounter = executedPc;" in loop)
     check("pending operation evidence uses generic state", "mPendingOperation.Operation()" in run_slice and "mPendingOperation.Lifecycle()" in run_slice)
     check("pending opcode is resolved from owner PC", "mProgram->mInstructions[result.pendingOwnerProgramCounter].opcode" in run_slice)
     check("snapshot age uses shared snapshot timestamp", "nowUs - snapshot.timestampUs" in run_slice)
     check("instrumentation does not add Step calls", loop.count("Step();") == 1)
-
     check("telemetry aggregate stores latest slice", "VMRunSliceResult lastSlice;" in telemetry_h and "g_snapshot.lastSlice = result;" in telemetry_cpp)
     check("telemetry tracks max slice duration", "maxSliceDurationUs" in telemetry_h and "result.sliceDurationUs > g_snapshot.maxSliceDurationUs" in telemetry_cpp)
     check("telemetry tracks slowest indivisible work unit", "maxWorkUnitDurationUs" in telemetry_h and "maxWorkUnitProgramCounter" in telemetry_h)

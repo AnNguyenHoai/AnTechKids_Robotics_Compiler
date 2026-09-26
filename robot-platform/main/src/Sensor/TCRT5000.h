@@ -40,6 +40,11 @@ public:
     void SampleHardwareDirect();
     void ApplySnapshotReading(int reading);
 
+    // Qualification fixed-rate producer must not mutate the legacy cached
+    // reading from another task. This performs one GPIO read and evaluates the
+    // configured threshold without changing _lastReading.
+    bool ReadHardwareDetectedDirect() const;
+
     // --- Calibration support ---
     void setThreshold(int threshold);
     int getThreshold() const;

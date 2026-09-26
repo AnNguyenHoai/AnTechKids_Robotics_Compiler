@@ -67,14 +67,15 @@ void sampleFixedRateOnce()
         return;
     }
 
-    g_fixedLeft->SampleHardwareDirect();
-    g_fixedCenter->SampleHardwareDirect();
-    g_fixedRight->SampleHardwareDirect();
-
+    // The qualification producer owns only hardware acquisition + publication.
+    // It must not mutate TCRT5000::_lastReading because legacy consumers read
+    // that cache on the firmware task after EnsureSample() applies one coherent
+    // published snapshot. Mutating it here would create a cross-task race and
+    // could expose a mixed L/C/R set to the VM.
     FixedRateSample next{};
-    next.left = g_fixedLeft->isLineDetected();
-    next.center = g_fixedCenter->isLineDetected();
-    next.right = g_fixedRight->isLineDetected();
+    next.left = g_fixedLeft->ReadHardwareDetectedDirect();
+    next.center = g_fixedCenter->ReadHardwareDetectedDirect();
+    next.right = g_fixedRight->ReadHardwareDetectedDirect();
     next.mask = static_cast<uint8_t>((next.left ? 4 : 0) |
                                      (next.center ? 2 : 0) |
                                      (next.right ? 1 : 0));
@@ -254,7 +255,10 @@ void RecordConsumer()
 bool StartFixedRateSampling(uint32_t periodUs, uint32_t staleAfterUs)
 {
 #if defined(ARDUINO_ARCH_ESP32)
-    if (g_fixedRateActive || periodUs < 1000u) {
+    // A stop request is asynchronous: the old task may still be unwinding its
+    // final iteration. Reject a restart until its handle is cleared so two
+    // producers can never publish concurrently.
+    if (g_fixedRateActive || g_fixedRateTask != nullptr || periodUs < 1000u) {
         return false;
     }
 

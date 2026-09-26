@@ -21,6 +21,12 @@ void TCRT5000::ApplySnapshotReading(int reading) {
     _lastReading = reading ? 1 : 0;
 }
 
+bool TCRT5000::ReadHardwareDetectedDirect() const {
+    auto state = HAL::getGPIO().digitalRead(_pin);
+    const int reading = (state == HAL::PinState::HIGH_STATE) ? 1 : 0;
+    return reading == _threshold;
+}
+
 void TCRT5000::update() {
     if (LineSensorSnapshot::IsCycleActive()) {
         LineSensorSnapshot::EnsureSample();

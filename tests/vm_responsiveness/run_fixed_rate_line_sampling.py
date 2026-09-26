@@ -26,6 +26,8 @@ def between(text: str, start: str, end: str) -> str:
 def main() -> int:
     snapshot_h = read("robot-platform/main/src/Sensor/LineSensorSnapshot.h")
     snapshot_cpp = read("robot-platform/main/src/Sensor/LineSensorSnapshot.cpp")
+    tcrt_h = read("robot-platform/main/src/Sensor/TCRT5000.h")
+    tcrt_cpp = read("robot-platform/main/src/Sensor/TCRT5000.cpp")
     pio = read("robot-platform/platformio.ini")
     telemetry_cpp = read("robot-platform/main/src/Services/VM/VMRuntimeTelemetry.cpp")
 
@@ -45,7 +47,9 @@ def main() -> int:
     check("fixed-rate bootstrap is build-flag gated", "#if VM_RT_FIXED_RATE_LINE_SAMPLING" in begin)
 
     producer = between(snapshot_cpp, "void sampleFixedRateOnce()", "#if defined(ARDUINO_ARCH_ESP32)\nvoid fixedRateTask")
-    check("producer performs exactly three direct sensor reads", producer.count("SampleHardwareDirect()") == 3)
+    check("read-only direct sensor API exists", "ReadHardwareDetectedDirect() const" in tcrt_h and "TCRT5000::ReadHardwareDetectedDirect() const" in tcrt_cpp)
+    check("producer performs exactly three read-only sensor reads", producer.count("ReadHardwareDetectedDirect()") == 3)
+    check("producer never mutates legacy TCRT cache", "SampleHardwareDirect()" not in producer and "ApplySnapshotReading(" not in producer)
     check("producer publishes canonical coherent mask", "next.left ? 4 : 0" in producer and "next.center ? 2 : 0" in producer and "next.right ? 1 : 0" in producer)
     check("producer timestamps each sample", "next.timestampUs = micros()" in producer)
     check("producer publication is protected", "portENTER_CRITICAL" in producer and "g_fixedLatest = next" in producer and "portEXIT_CRITICAL" in producer)
@@ -63,6 +67,14 @@ def main() -> int:
     check("stale sample becomes invalid", "g_snapshot.valid = fresh" in ensure)
     check("stale observations are counted", "++g_staleCount" in ensure)
     check("consumer does not perform physical reads in fixed-rate mode", "g_snapshot.physicalReadCount = 0" in ensure)
+    check("consumer applies coherent published values at legacy boundary", all(token in ensure for token in (
+        "left->ApplySnapshotReading(latest.left ? 1 : 0)",
+        "center->ApplySnapshotReading(latest.center ? 1 : 0)",
+        "right->ApplySnapshotReading(latest.right ? 1 : 0)",
+    )))
+
+    start = between(snapshot_cpp, "bool StartFixedRateSampling", "void StopFixedRateSampling")
+    check("restart cannot overlap a stopping producer", "g_fixedRateTask != nullptr" in start)
 
     check("existing qualification telemetry records sample period", "last_line_sample_period_us" in telemetry_cpp)
     check("existing qualification telemetry records max sample period", "max_line_sample_period_us" in telemetry_cpp)
