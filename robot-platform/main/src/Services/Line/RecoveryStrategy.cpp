@@ -2,9 +2,11 @@
 #include <Arduino.h>
 
 namespace {
-// Keep a short forward arc to avoid the old immediate +/-80 snap, but do not
-// spend 300 ms driving away from the last observed line before pivot recovery.
-constexpr uint32_t kSoftSearchMs = 120;
+// Physical A/B qualification showed frequent short 000 gaps in both snapshot
+// and legacy acquisition modes. Keep the robot on a bounded forward arc longer
+// before escalating to an in-place pivot so transient line loss does not cause
+// repeated snap turns.
+constexpr uint32_t kSoftSearchMs = 300;
 constexpr uint32_t kDeepSearchMs = 1200;
 constexpr uint32_t kSweepPeriodMs = 700;
 constexpr int kSoftInnerSpeed = 35;
@@ -54,7 +56,8 @@ void RecoveryStrategy::update(uint8_t mask, int &left, int &right) {
     }
 
     if (elapsed < kDeepSearchMs) {
-        // Pivot promptly once the short soft arc failed to reacquire the line.
+        // Escalate to a bounded pivot only after the longer soft arc has failed
+        // to reacquire the line.
         _phase = DEEP_SEARCH;
         if (direction == DIR_LEFT) {
             left = -kDeepPivotSpeed;
