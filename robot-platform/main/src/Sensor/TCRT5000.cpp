@@ -1,6 +1,7 @@
 #include "TCRT5000.h"
 #include "LineSensorSnapshot.h"
 #include "../HAL/HAL.h"
+#include "../Diagnostic/LineRegressionTelemetry.h"
 #include <Arduino.h>
 
 #ifndef LINE_REGRESSION_DIAGNOSTICS
@@ -29,10 +30,11 @@ int TCRT5000::ReadHardwareLevelDirect() const {
 void TCRT5000::SampleHardwareDirect() {
     _lastReading = ReadHardwareLevelDirect();
 #if LINE_REGRESSION_DIAGNOSTICS
-    // State-change logging avoids turning Serial into the timing bottleneck.
+    // State-change logging avoids turning diagnostic transport into a control
+    // timing bottleneck. The telemetry layer defers any UDP I/O to background.
     if (_lastReading != _lastDiagnosticReading) {
-        Serial.printf(
-            "[LINE-REG][SENSOR] mode=%s name=%s raw=%d cache=%d detected=%d threshold=%d\n",
+        LineRegressionTelemetry::Emit(
+            "[LINE-REG][SENSOR] mode=%s name=%s raw=%d cache=%d detected=%d threshold=%d",
             LINE_REGRESSION_LEGACY_ACQUISITION ? "legacy" : "snapshot",
             _name,
             _lastReading,

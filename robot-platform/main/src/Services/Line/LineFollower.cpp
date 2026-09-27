@@ -3,6 +3,7 @@
 #include "LineErrorEstimator.h"
 #include "MotorMixer.h"
 #include "../../Sensor/LineSensorSnapshot.h"
+#include "../../Diagnostic/LineRegressionTelemetry.h"
 #include <Arduino.h>
 #include "../Robot/MotionConfig.h"
 #include <math.h>
@@ -25,9 +26,9 @@ void emitLineRegressionDecision(
     int leftMotor,
     int rightMotor)
 {
-    // Keep qualification telemetry sparse enough that Serial itself does not
-    // become the line-follow timing bottleneck. Emit every state transition and
-    // a low-rate heartbeat while a state remains unchanged.
+    // Keep qualification telemetry sparse enough that the diagnostic path does
+    // not become the line-follow timing bottleneck. Wi-Fi transport is deferred
+    // by LineRegressionTelemetry to the firmware background phase.
     static uint8_t lastMask = 0xFF;
     static int lastFollowerState = -1;
     static uint32_t lastEmitMs = 0;
@@ -39,9 +40,9 @@ void emitLineRegressionDecision(
     }
 
     const auto& snapshot = LineSensorSnapshot::Current();
-    Serial.printf(
+    LineRegressionTelemetry::Emit(
         "[LINE-REG][FOLLOW] mode=%s mask=%u%u%u snapshot={valid:%d,mask:%u%u%u,seq:%lu} "
-        "lineState=%d followerState=%d error=%.2f cmd={L:%d,R:%d}\n",
+        "lineState=%d followerState=%d error=%.2f cmd={L:%d,R:%d}",
         LINE_REGRESSION_LEGACY_ACQUISITION ? "legacy" : "snapshot",
         (mask >> 2) & 1u, (mask >> 1) & 1u, mask & 1u,
         snapshot.valid ? 1 : 0,
