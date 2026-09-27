@@ -25,10 +25,15 @@ def test_production_firmware_source_filter_excludes_legacy():
     platformio = ROOT / "robot-platform" / "platformio.ini"
     text = platformio.read_text(encoding="utf-8")
     lines = text.splitlines()
-    # H26-O follows the canonical PlatformIO layout: the production
-    # firmware source root is main/ and the source filter includes only
-    # that canonical tree. Do not resurrect the retired src_filter syntax.
+    # H26-O owns the production source boundary, not the names of isolated
+    # qualification profiles. The production firmware root remains main/ and
+    # includes only that canonical tree; diagnostic A/B profiles may explicitly
+    # carry a "legacy" label without resurrecting retired production sources.
     assert "src_dir = main" in text
     assert "build_src_filter = +<*>" in text
     assert not any(line.strip().startswith("src_filter =") for line in lines)
-    assert "legacy" not in text
+
+    production_start = text.index("[env:esp32dev]")
+    production_end = text.index("[env:esp32dev_ota]", production_start)
+    production = text[production_start:production_end]
+    assert "legacy" not in production.lower()

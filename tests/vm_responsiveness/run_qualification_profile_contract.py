@@ -26,6 +26,15 @@ def section(text: str, header: str) -> str:
     return text[start: next_header if next_header >= 0 else len(text)]
 
 
+def workflow_step(text: str, name_pattern: str) -> str:
+    match = re.search(
+        rf"- name: {name_pattern}\n(?P<body>.*?)(?=\n\s*- name:)",
+        text,
+        re.DOTALL,
+    )
+    return match.group("body") if match else ""
+
+
 def main() -> int:
     pio = PIO.read_text(encoding="utf-8")
     workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -43,53 +52,46 @@ def main() -> int:
         bool(section(pio, "env:esp32dev")),
     )
 
-    install_match = re.search(
-        r"- name: Install PlatformIO for VM/release firmware validation\n(?P<body>.*?)(?=\n\s*- name:)",
+    # The install step may grow to cover other firmware qualification profiles
+    # (for example line-regression A/B).  VM-RT owns the required scopes and
+    # PlatformIO command, not the exact human-readable step title.
+    install_body = workflow_step(
         workflow,
-        re.DOTALL,
+        r"Install PlatformIO for .*firmware validation",
     )
-    check("workflow has qualification PlatformIO install step", install_match is not None)
-    if install_match:
+    check("workflow has qualification PlatformIO install step", bool(install_body))
+    if install_body:
+        check("qualification install uses PlatformIO", "platformio" in install_body.lower())
         check(
             "PlatformIO install covers VM/full/release scopes",
-            all(token in install_match.group("body") for token in (
+            all(token in install_body for token in (
                 "steps.impact.outputs.vm == 'true'",
                 "steps.impact.outputs.full == 'true'",
                 "steps.impact.outputs.release == 'true'",
             )),
         )
 
-    production_match = re.search(
-        r"- name: Compile impacted ESP32 production firmware\n(?P<body>.*?)(?=\n\s*- name:)",
-        workflow,
-        re.DOTALL,
-    )
-    check("production compile step remains separate", production_match is not None)
-    if production_match:
-        body = production_match.group("body")
-        check("production compile still targets esp32dev", "-e esp32dev" in body)
-        check("production compile does not use qualification profile", "esp32dev_vm_qualification" not in body)
+    production_body = workflow_step(workflow, r"Compile impacted ESP32 production firmware")
+    check("production compile step remains separate", bool(production_body))
+    if production_body:
+        check("production compile still targets esp32dev", "-e esp32dev" in production_body)
+        check("production compile does not use qualification profile", "esp32dev_vm_qualification" not in production_body)
         check(
             "production compile covers VM/full/release scopes",
-            all(token in body for token in (
+            all(token in production_body for token in (
                 "steps.impact.outputs.vm == 'true'",
                 "steps.impact.outputs.full == 'true'",
                 "steps.impact.outputs.release == 'true'",
             )),
         )
 
-    compile_match = re.search(
-        r"- name: Compile VM-RT qualification firmware\n(?P<body>.*?)(?=\n\s*- name:)",
-        workflow,
-        re.DOTALL,
-    )
-    check("workflow compiles VM-RT qualification firmware", compile_match is not None)
-    if compile_match:
-        body = compile_match.group("body")
-        check("qualification compile uses exact profile", "-e esp32dev_vm_qualification" in body)
+    compile_body = workflow_step(workflow, r"Compile VM-RT qualification firmware")
+    check("workflow compiles VM-RT qualification firmware", bool(compile_body))
+    if compile_body:
+        check("qualification compile uses exact profile", "-e esp32dev_vm_qualification" in compile_body)
         check(
             "qualification compile covers VM/full/release scopes",
-            all(token in body for token in (
+            all(token in compile_body for token in (
                 "steps.impact.outputs.vm == 'true'",
                 "steps.impact.outputs.full == 'true'",
                 "steps.impact.outputs.release == 'true'",

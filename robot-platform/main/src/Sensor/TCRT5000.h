@@ -40,6 +40,10 @@ public:
     void SampleHardwareDirect();
     void ApplySnapshotReading(int reading);
 
+    // Qualification probes need a read-only raw GPIO observation which must not
+    // mutate the legacy cache or snapshot state.
+    int ReadHardwareLevelDirect() const;
+
     // Qualification fixed-rate producer must not mutate the legacy cached
     // reading from another task. This performs one GPIO read and evaluates the
     // configured threshold without changing _lastReading.
@@ -54,6 +58,7 @@ private:
     const char* _name;
     int _threshold;
     int _lastReading;
+    int _lastDiagnosticReading;
     bool _healthy;
 };
 

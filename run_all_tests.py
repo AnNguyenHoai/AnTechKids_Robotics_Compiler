@@ -93,6 +93,7 @@ def main() -> int:
     tests.append(ROOT / "tests" / "ui_responsive" / "run_ui_responsive.py")
     tests.append(ROOT / "tests" / "ui_production" / "run_ui_production.py")
     tests.append(ROOT / "tests" / "line_follow_stability" / "run_line_follow_stability.py")
+    tests.append(ROOT / "tests" / "line_regression" / "run_line_regression_ab.py")
     tests.append(ROOT / "tests" / "vm_responsiveness" / "run_vm_rt_ci.py")
 
     for name in [

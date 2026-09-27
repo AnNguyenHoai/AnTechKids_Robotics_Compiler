@@ -2,9 +2,63 @@
 #include "LinePerception.h"
 #include "LineErrorEstimator.h"
 #include "MotorMixer.h"
+#include "../../Sensor/LineSensorSnapshot.h"
 #include <Arduino.h>
 #include "../Robot/MotionConfig.h"
 #include <math.h>
+
+#ifndef LINE_REGRESSION_DIAGNOSTICS
+#define LINE_REGRESSION_DIAGNOSTICS 0
+#endif
+
+#ifndef LINE_REGRESSION_LEGACY_ACQUISITION
+#define LINE_REGRESSION_LEGACY_ACQUISITION 0
+#endif
+
+namespace {
+#if LINE_REGRESSION_DIAGNOSTICS
+void emitLineRegressionDecision(
+    uint8_t mask,
+    LineState lineState,
+    FollowerState followerState,
+    float semanticError,
+    int leftMotor,
+    int rightMotor)
+{
+    // Keep qualification telemetry sparse enough that Serial itself does not
+    // become the line-follow timing bottleneck. Emit every state transition and
+    // a low-rate heartbeat while a state remains unchanged.
+    static uint8_t lastMask = 0xFF;
+    static int lastFollowerState = -1;
+    static uint32_t lastEmitMs = 0;
+    const uint32_t now = millis();
+    const int followerStateValue = static_cast<int>(followerState);
+    if (mask == lastMask && followerStateValue == lastFollowerState &&
+        static_cast<uint32_t>(now - lastEmitMs) < 100u) {
+        return;
+    }
+
+    const auto& snapshot = LineSensorSnapshot::Current();
+    Serial.printf(
+        "[LINE-REG][FOLLOW] mode=%s mask=%u%u%u snapshot={valid:%d,mask:%u%u%u,seq:%lu} "
+        "lineState=%d followerState=%d error=%.2f cmd={L:%d,R:%d}\n",
+        LINE_REGRESSION_LEGACY_ACQUISITION ? "legacy" : "snapshot",
+        (mask >> 2) & 1u, (mask >> 1) & 1u, mask & 1u,
+        snapshot.valid ? 1 : 0,
+        (snapshot.mask >> 2) & 1u, (snapshot.mask >> 1) & 1u, snapshot.mask & 1u,
+        static_cast<unsigned long>(snapshot.sequence),
+        static_cast<int>(lineState),
+        followerStateValue,
+        static_cast<double>(semanticError),
+        leftMotor,
+        rightMotor
+    );
+    lastMask = mask;
+    lastFollowerState = followerStateValue;
+    lastEmitMs = now;
+}
+#endif
+}
 
 LineFollower& LineFollower::instance() {
     static LineFollower follower;
@@ -76,13 +130,26 @@ void LineFollower::stop() {
 }
 
 bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMotor) {
-    if (_stopped) { leftMotor = rightMotor = 0; return false; }
+    const LineState state = LinePerception::interpret(mask);
+    const float semanticError = LineErrorEstimator::estimate(state);
 
-    if (_bmpActive && millis() - _bmpStart >= _bmpDuration) {
-        _bmpActive = false; _stopped = true; leftMotor = rightMotor = 0; return false;
+    if (_stopped) {
+        leftMotor = rightMotor = 0;
+#if LINE_REGRESSION_DIAGNOSTICS
+        emitLineRegressionDecision(mask, state, _stateMachine.getState(), semanticError, leftMotor, rightMotor);
+#endif
+        return false;
     }
 
-    LineState state = LinePerception::interpret(mask);
+    if (_bmpActive && millis() - _bmpStart >= _bmpDuration) {
+        _bmpActive = false;
+        _stopped = true;
+        leftMotor = rightMotor = 0;
+#if LINE_REGRESSION_DIAGNOSTICS
+        emitLineRegressionDecision(mask, state, _stateMachine.getState(), semanticError, leftMotor, rightMotor);
+#endif
+        return false;
+    }
 
     // Remember the last side that actually saw the line.
     if (state == LineState::LEFT || state == LineState::LEFT_CENTER) {
@@ -115,6 +182,9 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
         case FollowerState::LOST:
         case FollowerState::SEARCHING:
             _recovery.update(mask, leftMotor, rightMotor);
+#if LINE_REGRESSION_DIAGNOSTICS
+            emitLineRegressionDecision(mask, state, fs, semanticError, leftMotor, rightMotor);
+#endif
             return true;
 
         case FollowerState::INTERSECTION:
@@ -134,8 +204,7 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
 
         default: { // FOLLOWING
             const int baseSpeed = constrain(speed, 0, 100);
-            const float error = LineErrorEstimator::estimate(state);
-            const float correction = _pid.update(error);
+            const float correction = _pid.update(semanticError);
             MotorOutput out = MotorMixer::mix(baseSpeed, correction, _scaleFactor);
             leftMotor = out.left;
             rightMotor = out.right;
@@ -144,8 +213,17 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
     }
 
     if (_stopAtIntersectionRequested && intersection) {
-        _stopAtIntersectionRequested = false; _stopped = true; leftMotor = rightMotor = 0; return false;
+        _stopAtIntersectionRequested = false;
+        _stopped = true;
+        leftMotor = rightMotor = 0;
+#if LINE_REGRESSION_DIAGNOSTICS
+        emitLineRegressionDecision(mask, state, fs, semanticError, leftMotor, rightMotor);
+#endif
+        return false;
     }
     if (_turnRequested && mask != 0) _turnRequested = false;
+#if LINE_REGRESSION_DIAGNOSTICS
+    emitLineRegressionDecision(mask, state, fs, semanticError, leftMotor, rightMotor);
+#endif
     return true;
 }

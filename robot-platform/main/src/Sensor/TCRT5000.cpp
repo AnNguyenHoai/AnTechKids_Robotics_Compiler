@@ -1,10 +1,19 @@
 #include "TCRT5000.h"
 #include "LineSensorSnapshot.h"
 #include "../HAL/HAL.h"
+#include <Arduino.h>
+
+#ifndef LINE_REGRESSION_DIAGNOSTICS
+#define LINE_REGRESSION_DIAGNOSTICS 0
+#endif
+
+#ifndef LINE_REGRESSION_LEGACY_ACQUISITION
+#define LINE_REGRESSION_LEGACY_ACQUISITION 0
+#endif
 
 TCRT5000::TCRT5000(int pin, const char* sensorName, int threshold)
     : _pin(pin), _name(sensorName), _threshold(threshold),
-      _lastReading(0), _healthy(true) {}
+      _lastReading(0), _lastDiagnosticReading(-1), _healthy(true) {}
 
 bool TCRT5000::initialize() {
     HAL::getGPIO().pinMode(_pin, HAL::PinMode::INPUT_MODE);
@@ -12,9 +21,28 @@ bool TCRT5000::initialize() {
     return true;
 }
 
-void TCRT5000::SampleHardwareDirect() {
+int TCRT5000::ReadHardwareLevelDirect() const {
     auto state = HAL::getGPIO().digitalRead(_pin);
-    _lastReading = (state == HAL::PinState::HIGH_STATE) ? 1 : 0;
+    return (state == HAL::PinState::HIGH_STATE) ? 1 : 0;
+}
+
+void TCRT5000::SampleHardwareDirect() {
+    _lastReading = ReadHardwareLevelDirect();
+#if LINE_REGRESSION_DIAGNOSTICS
+    // State-change logging avoids turning Serial into the timing bottleneck.
+    if (_lastReading != _lastDiagnosticReading) {
+        Serial.printf(
+            "[LINE-REG][SENSOR] mode=%s name=%s raw=%d cache=%d detected=%d threshold=%d\n",
+            LINE_REGRESSION_LEGACY_ACQUISITION ? "legacy" : "snapshot",
+            _name,
+            _lastReading,
+            _lastReading,
+            isLineDetected() ? 1 : 0,
+            _threshold
+        );
+        _lastDiagnosticReading = _lastReading;
+    }
+#endif
 }
 
 void TCRT5000::ApplySnapshotReading(int reading) {
@@ -22,12 +50,18 @@ void TCRT5000::ApplySnapshotReading(int reading) {
 }
 
 bool TCRT5000::ReadHardwareDetectedDirect() const {
-    auto state = HAL::getGPIO().digitalRead(_pin);
-    const int reading = (state == HAL::PinState::HIGH_STATE) ? 1 : 0;
-    return reading == _threshold;
+    return ReadHardwareLevelDirect() == _threshold;
 }
 
 void TCRT5000::update() {
+#if LINE_REGRESSION_LEGACY_ACQUISITION
+    // Qualification-only A/B path: restore the pre-snapshot behavior where
+    // every consumer update performs an immediate physical GPIO acquisition.
+    // Production builds leave this macro undefined/zero.
+    SampleHardwareDirect();
+    return;
+#endif
+
     if (LineSensorSnapshot::IsCycleActive()) {
         LineSensorSnapshot::EnsureSample();
         LineSensorSnapshot::RecordConsumer();
