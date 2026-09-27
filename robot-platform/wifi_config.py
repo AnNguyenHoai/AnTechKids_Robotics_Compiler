@@ -40,8 +40,10 @@ if env.get("PIOENV") == "esp32dev_ota" and not ota_password:
         "no shared/default credential is permitted"
     )
 
-# First-flash builds must carry a generated bootstrap artifact. The firmware
-# copies these values into NVS on first boot and subsequently uses NVS values.
+# First-flash builds must carry a generated bootstrap artifact. The explicit
+# ROBOT_BOOTSTRAP_BUILD marker is the authority to overwrite NVS. A stale local
+# generated_bootstrap_config.h must never turn a normal/qualification build into
+# a provisioning image.
 if env.get("PIOENV") == "esp32dev_bootstrap":
     if not config_path:
         raise RuntimeError(
@@ -50,7 +52,10 @@ if env.get("PIOENV") == "esp32dev_bootstrap":
     if not ssid or not ota_password:
         raise RuntimeError("Bootstrap config must contain Wi-Fi SSID and OTA password")
 
-    env.Append(CPPDEFINES=[("ROBOT_BOOTSTRAP_PROVISIONED", "1")])
+    env.Append(CPPDEFINES=[
+        ("ROBOT_BOOTSTRAP_BUILD", "1"),
+        ("ROBOT_BOOTSTRAP_PROVISIONED", "1"),
+    ])
 
 env.Append(CPPDEFINES=[
     ("ROBOT_WIFI_SSID", env.StringifyMacro(ssid)),

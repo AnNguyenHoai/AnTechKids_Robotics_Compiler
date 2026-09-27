@@ -65,11 +65,10 @@ bool begin() {
 
     g_initialized = true;
 
-#ifdef ROBOT_BOOTSTRAP_PROVISIONED
-    // A bootstrap image is an explicit recovery/provisioning operation.
-    // Always apply its generated credentials, even when this ESP32 already
-    // contains an older robot-net NVS entry. This is intentionally scoped to
-    // the robot-net namespace; other NVS configuration remains untouched.
+#if defined(ROBOT_BOOTSTRAP_BUILD) && defined(ROBOT_BOOTSTRAP_PROVISIONED)
+    // Only an explicit bootstrap image may force credentials into NVS. A stale
+    // generated bootstrap header can still provide compile-time values, but it
+    // cannot turn production/qualification firmware into a provisioning image.
     if (!hasBootstrap()) {
         Serial.println("[NET] Bootstrap build has no valid Wi-Fi configuration");
         return false;
@@ -127,8 +126,6 @@ bool save(const char* newSsid, const char* newPassword, const char* newOtaPasswo
         return false;
     }
 
-    // Write all values first and mark provisioned last so a partial write
-    // cannot be mistaken for a valid configuration on the next boot.
     if (g_preferences.putString(kSsidKey, newSsid) == 0 && strlen(newSsid) > 0) {
         return false;
     }
