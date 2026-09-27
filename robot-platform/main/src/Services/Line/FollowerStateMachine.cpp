@@ -2,10 +2,11 @@
 #include <Arduino.h>
 
 namespace {
-// Confirm a real line loss by elapsed time instead of by scheduler-dependent
-// sample count. With a 20 ms user wait this confirms on the second lost sample;
-// with a faster loop it still rejects sub-10 ms transients.
-constexpr uint32_t kLostConfirmMs = 10;
+// Physical A/B qualification showed that short 000 gaps are common while the
+// robot is still near the line. Require a sustained loss window before handing
+// steering authority to recovery. With the standard 20 ms student loop this
+// means roughly four consecutive 000 observations (0, 20, 40, 60 ms).
+constexpr uint32_t kLostConfirmMs = 60;
 }
 
 FollowerStateMachine::FollowerStateMachine()
