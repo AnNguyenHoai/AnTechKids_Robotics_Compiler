@@ -58,6 +58,7 @@ private:
     const char* _name;
     int _threshold;
     int _lastReading;
+    int _lastDiagnosticReading;
     bool _healthy;
 };
 
