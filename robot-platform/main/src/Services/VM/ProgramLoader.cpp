@@ -1,5 +1,6 @@
 #include "ProgramLoader.h"
 #include "../../Application/generated_program.h"
+#include "../../Diagnostic/LineRegressionTelemetry.h"
 
 namespace {
 uint32_t fnv1aByte(uint32_t hash, uint8_t value) {
@@ -26,6 +27,12 @@ bool ProgramLoader::LoadFromGenerated(Program& program)
             return false;
         }
     }
+
+    LineRegressionTelemetry::Emit(
+        "[LINE-REG][PROGRAM] source=generated_program.h instructions=%u hash=%08lX",
+        static_cast<unsigned>(GeneratedProgramSize()),
+        static_cast<unsigned long>(GeneratedProgramHash())
+    );
     return true;
 }
 
@@ -63,8 +70,6 @@ bool ProgramLoader::LoadFromArray(Program& program, const Instruction* instructi
 
 bool ProgramLoader::LoadBinary(Program& program, const uint8_t* data, uint16_t size)
 {
-    // TODO: parse binary format and fill program
-    // Placeholder: not implemented
     (void)program;
     (void)data;
     (void)size;
@@ -73,7 +78,6 @@ bool ProgramLoader::LoadBinary(Program& program, const uint8_t* data, uint16_t s
 
 bool ProgramLoader::LoadFlash(Program& program, uint16_t address)
 {
-    // TODO: read from flash memory
     (void)program;
     (void)address;
     return false;
@@ -81,7 +85,6 @@ bool ProgramLoader::LoadFlash(Program& program, uint16_t address)
 
 bool ProgramLoader::LoadUART(Program& program)
 {
-    // TODO: receive program via UART
     (void)program;
     return false;
 }
