@@ -11,8 +11,11 @@ constexpr uint32_t kDeepSearchMs = 1200;
 constexpr uint32_t kSweepPeriodMs = 700;
 constexpr int kSoftInnerSpeed = 35;
 constexpr int kSoftOuterSpeed = 65;
-constexpr int kDeepPivotSpeed = 45;
-constexpr int kSweepPivotSpeed = 55;
+// Physical qualification after the conservative timing fix still showed long
+// SEARCHING episodes with frequent +/-45 pivots and +/-55 sweeps. Reduce only
+// deep-recovery authority so reacquisition is less likely to overshoot the line.
+constexpr int kDeepPivotSpeed = 35;
+constexpr int kSweepPivotSpeed = 40;
 }
 
 RecoveryStrategy::RecoveryStrategy()
@@ -56,8 +59,8 @@ void RecoveryStrategy::update(uint8_t mask, int &left, int &right) {
     }
 
     if (elapsed < kDeepSearchMs) {
-        // Escalate to a bounded pivot only after the longer soft arc has failed
-        // to reacquire the line.
+        // Escalate to a lower-authority pivot only after the longer soft arc has
+        // failed to reacquire the line.
         _phase = DEEP_SEARCH;
         if (direction == DIR_LEFT) {
             left = -kDeepPivotSpeed;
