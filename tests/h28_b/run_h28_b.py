@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 
 import tools.deploy_robot as deploy_robot
 from tools.deployment_runtime import (
+    CLASSROOM_BUILD_TIMEOUT_SECONDS,
     DEFAULT_PROCESS_TIMEOUT_SECONDS,
     DeploymentRuntimeError,
     platformio_command,
@@ -133,7 +134,12 @@ def main() -> int:
     test_bootstrap_propagates_generated_credentials_to_platformio()
     test_bootstrap_build_forces_generated_credentials_before_nvs_fallback()
 
-    assert DEFAULT_PROCESS_TIMEOUT_SECONDS == 300.0
+    # Classroom builds can be much slower than developer/CI builds. H28-B owns
+    # the bounded-process contract, not the historical 300-second value: the
+    # generic deployment default must follow the shared classroom policy while
+    # remaining finite and at least 15 minutes.
+    assert CLASSROOM_BUILD_TIMEOUT_SECONDS >= 900.0
+    assert DEFAULT_PROCESS_TIMEOUT_SECONDS == CLASSROOM_BUILD_TIMEOUT_SECONDS
     assert platformio_command("run", "-e", "esp32dev")[:3] == [sys.executable, "-m", "platformio"]
     assert "subprocess.Popen" in runtime
     assert "DeploymentRuntimeError" in runtime
@@ -186,7 +192,8 @@ def main() -> int:
     assert "platformio_command(" in flash
 
     assert "on_output: DeploymentOutputCallback" in service
-    assert "timeout=360.0" in service
+    assert service.count("timeout=CLASSROOM_BUILD_TIMEOUT_SECONDS") >= 3
+    assert "timeout=360.0" not in service
     assert "self.output.emit" in robot_tab
     assert "def append_logs" in robot_tab
     assert "without stealing the user's scroll position" in robot_tab
