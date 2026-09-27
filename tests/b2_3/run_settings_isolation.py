@@ -188,7 +188,7 @@ def main() -> int:
                 "ROBOSTUDIO_STATE_ROOT",
             )
 
-            staged_firmware = build_isolation.prepare_firmware_workspace(
+            staged_firmware = firmware_workspace.prepare_firmware_workspace(
                 firmware_root,
                 "settings-isolation",
             )
