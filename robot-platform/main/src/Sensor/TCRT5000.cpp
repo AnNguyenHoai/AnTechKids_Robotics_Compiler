@@ -13,7 +13,7 @@
 
 TCRT5000::TCRT5000(int pin, const char* sensorName, int threshold)
     : _pin(pin), _name(sensorName), _threshold(threshold),
-      _lastReading(0), _healthy(true) {}
+      _lastReading(0), _lastDiagnosticReading(-1), _healthy(true) {}
 
 bool TCRT5000::initialize() {
     HAL::getGPIO().pinMode(_pin, HAL::PinMode::INPUT_MODE);
@@ -29,15 +29,19 @@ int TCRT5000::ReadHardwareLevelDirect() const {
 void TCRT5000::SampleHardwareDirect() {
     _lastReading = ReadHardwareLevelDirect();
 #if LINE_REGRESSION_DIAGNOSTICS
-    Serial.printf(
-        "[LINE-REG][SENSOR] mode=%s name=%s raw=%d cache=%d detected=%d threshold=%d\n",
-        LINE_REGRESSION_LEGACY_ACQUISITION ? "legacy" : "snapshot",
-        _name,
-        _lastReading,
-        _lastReading,
-        isLineDetected() ? 1 : 0,
-        _threshold
-    );
+    // State-change logging avoids turning Serial into the timing bottleneck.
+    if (_lastReading != _lastDiagnosticReading) {
+        Serial.printf(
+            "[LINE-REG][SENSOR] mode=%s name=%s raw=%d cache=%d detected=%d threshold=%d\n",
+            LINE_REGRESSION_LEGACY_ACQUISITION ? "legacy" : "snapshot",
+            _name,
+            _lastReading,
+            _lastReading,
+            isLineDetected() ? 1 : 0,
+            _threshold
+        );
+        _lastDiagnosticReading = _lastReading;
+    }
 #endif
 }
 
