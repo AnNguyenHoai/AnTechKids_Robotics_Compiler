@@ -105,12 +105,16 @@ def main() -> int:
         )
         firmware_root = app / "robot-platform"
         firmware_root.mkdir(parents=True)
-        packaged_firmware = firmware_root / "platformio.ini"
-        packaged_firmware.write_text("[env:esp32dev]\n", encoding="utf-8")
+        platformio_ini = firmware_root / "platformio.ini"
+        platformio_ini.write_text("[env:esp32dev]\n", encoding="utf-8")
         (firmware_root / "wifi_config.py").write_text("# fixture\n", encoding="utf-8")
-        sibling = firmware_root / "main.cpp"
+        firmware_main = firmware_root / "main"
+        firmware_main.mkdir(parents=True)
+        packaged_firmware = firmware_main / "main.ino"
+        packaged_firmware.write_text("// packaged-main\n", encoding="utf-8")
+        sibling = firmware_main / "main.cpp"
         sibling.write_text("// packaged firmware sibling\n", encoding="utf-8")
-        include_dir = firmware_root / "main" / "include" / "generated"
+        include_dir = firmware_main / "include" / "generated"
         include_dir.mkdir(parents=True)
         packaged_device = include_dir / "DeviceConfig.h"
         packaged_device.write_text("// packaged-default\n", encoding="utf-8")
@@ -211,24 +215,21 @@ def main() -> int:
                 packaged_device.read_text(encoding="utf-8") == "// packaged-default\n",
             )
 
-            # Firmware config: the immutable packaged firmware is copied to an
-            # external editable location before any edit is possible.
+            # Firmware config: use the current FirmwareService public contract.
+            # Packaged firmware is selected with set_firmware_path(), persisted as
+            # an application-relative firmware_project, then copied outside the
+            # immutable release before editing.
             firmware_service = FirmwareService()
             check(
                 "firmware user config is external",
                 app.resolve() not in firmware_service.config_path.resolve().parents,
             )
-            firmware_service.save_config(
-                {
-                    "source": "robot-platform/platformio.ini",
-                    "source_kind": "packaged",
-                }
-            )
+            firmware_service.set_firmware_path(packaged_firmware)
             check("firmware selection persists externally", firmware_service.config_path.is_file())
             saved_firmware_config = json.loads(firmware_service.config_path.read_text(encoding="utf-8"))
             check(
                 "firmware path is stored relocatably",
-                saved_firmware_config["source"] == "robot-platform/platformio.ini",
+                saved_firmware_config["firmware_project"] == "robot-platform/main/main.ino",
             )
             check(
                 "firmware selection resolves inside application",
@@ -241,21 +242,25 @@ def main() -> int:
             )
             check(
                 "editable firmware preserves packaged content",
-                editable.read_text(encoding="utf-8") == "[env:esp32dev]\n",
+                editable.read_text(encoding="utf-8") == "// packaged-main\n",
             )
             check(
                 "firmware sibling files are copied to editable state",
                 editable.with_name("main.cpp").read_text(encoding="utf-8")
                 == "// packaged firmware sibling\n",
             )
-            editable.write_text("[env:user-edited]\n", encoding="utf-8")
+            editable.write_text("// user-edited\n", encoding="utf-8")
             check(
                 "editing external firmware never changes packaged firmware",
-                packaged_firmware.read_text(encoding="utf-8") == "[env:esp32dev]\n",
+                packaged_firmware.read_text(encoding="utf-8") == "// packaged-main\n",
             )
             check(
                 "firmware service persists external editable path",
-                Path(json.loads(firmware_service.config_path.read_text(encoding="utf-8"))["source"]).resolve()
+                Path(
+                    json.loads(firmware_service.config_path.read_text(encoding="utf-8"))[
+                        "firmware_project"
+                    ]
+                ).resolve()
                 == editable.resolve(),
             )
             check(
