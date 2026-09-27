@@ -1,8 +1,10 @@
-# LINE-REG-01/02 — Physical Line Regression A/B Qualification
+# LINE-REG-01/02/03 — Physical Line Regression A/B Qualification
 
 ## Purpose
 
 Localize the physical `basic_line` regression without changing the production `esp32dev` behavior. The two qualification profiles run the same latest code, hardware mapping, compiler contract, and line follower. They differ only at the TCRT5000 acquisition boundary.
+
+LINE-REG-03 adds qualification-only wireless UDP capture so the robot can run untethered while the laptop records exactly the same `[LINE-REG]` records that were previously visible only over Serial.
 
 ## Profiles
 
@@ -17,6 +19,7 @@ Build flags:
 ```text
 LINE_REGRESSION_DIAGNOSTICS=1
 LINE_REGRESSION_LEGACY_ACQUISITION=0
+LINE_REGRESSION_UDP=1
 ```
 
 Behavior:
@@ -39,6 +42,7 @@ Build flags:
 ```text
 LINE_REGRESSION_DIAGNOSTICS=1
 LINE_REGRESSION_LEGACY_ACQUISITION=1
+LINE_REGRESSION_UDP=1
 ```
 
 Behavior:
@@ -54,7 +58,75 @@ This restores only the pre-snapshot acquisition boundary for qualification. It d
 
 ## Production safety
 
-`env:esp32dev` defines neither LINE-REG flag. Both flags also default to `0` in firmware source, so normal production behavior remains the snapshot path with diagnostics disabled.
+`env:esp32dev` defines no LINE-REG flags. `LINE_REGRESSION_DIAGNOSTICS` and `LINE_REGRESSION_UDP` default to `0` in firmware source, so normal production behavior remains the snapshot path with diagnostic transport disabled.
+
+The control-critical sensor/follower path only formats and enqueues sparse records into a bounded RAM queue. UDP transmission is performed later in the firmware background phase after `RobotNetworkService::update()`. At most one queued record is transmitted per firmware loop.
+
+## Wireless UDP capture
+
+The robot reuses the existing Wi-Fi configuration already consumed by `RobotNetworkService`; no laptop IP is compiled into firmware. When connected, LINE-REG broadcasts records to the current subnet on UDP port `4211`. The sender binds source port `4212`. Robot discovery continues to use its existing UDP port `4210`.
+
+Recommended topology:
+
+```text
+Phone hotspot / Wi-Fi AP
+  |-- laptop
+  `-- ESP32 robot
+```
+
+The laptop and robot must be on the same IPv4 subnet and local firewall rules must allow inbound UDP port `4211` for Python.
+
+Start the receiver from repository root:
+
+```bash
+python tools/line_reg_udp_receiver.py --output snapshot.log
+```
+
+The receiver binds `0.0.0.0:4211`, prints received records to the console, and appends the raw `[LINE-REG]` lines to the requested log. Stop with `Ctrl+C`.
+
+For the legacy run:
+
+```bash
+python tools/line_reg_udp_receiver.py --output legacy.log
+```
+
+If no packet appears, verify in this order:
+
+1. robot Wi-Fi credentials are provisioned by the normal build/bootstrap flow;
+2. laptop and robot are on the same Wi-Fi/hotspot;
+3. Windows Firewall allows Python on the active network profile or explicitly allows UDP `4211`;
+4. the flashed environment is one of the two LINE-REG qualification profiles, not production `esp32dev`;
+5. `basic_line` is actually executing and producing sensor/follower diagnostic changes.
+
+Serial output remains as a bench fallback when USB is attached, but physical dynamic qualification should use UDP so the robot can run untethered.
+
+## Build and physical capture sequence
+
+From `robot-platform`:
+
+```bash
+pio run -e esp32dev_line_snapshot_qualification -t upload
+```
+
+After flashing, unplug USB if required for free movement, power the robot normally, then start the laptop receiver from repository root:
+
+```bash
+python tools/line_reg_udp_receiver.py --output snapshot.log
+```
+
+Run the static matrix and then `basic_line`. Stop capture with `Ctrl+C`.
+
+Flash the legacy profile:
+
+```bash
+pio run -e esp32dev_line_legacy_qualification -t upload
+```
+
+Do not adjust TCRT potentiometers or change the test track/battery setup. Capture:
+
+```bash
+python tools/line_reg_udp_receiver.py --output legacy.log
+```
 
 ## Diagnostic records
 
@@ -96,7 +168,7 @@ The numeric enum values are diagnostic evidence only. The primary comparison is 
 
 ## Static qualification matrix
 
-Use the same robot, track, sensor potentiometer adjustment, battery condition, and USB/power arrangement for both profiles.
+Use the same robot, track, sensor potentiometer adjustment, battery condition, and power arrangement for both profiles.
 
 | Physical condition | Expected mask |
 | --- | --- |
@@ -166,4 +238,4 @@ For each profile capture:
 - dynamic run log
 - short note: follows / does not follow / unstable
 
-Do not close LINE-REG-01 or LINE-REG-02 based on host tests alone. Physical evidence is required.
+Do not close LINE-REG-01, LINE-REG-02, or LINE-REG-03 based on host tests alone. Physical evidence is required.
