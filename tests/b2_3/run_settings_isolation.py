@@ -20,7 +20,13 @@ from services.bootstrap_config_service import BootstrapConfigService
 from services.build_service import BuildService
 from services.firmware_service import FirmwareService
 from services.hardware_macro_service import HardwareMacroService
-from tools import build_isolation, deployment_runtime, runtime_paths
+from tools import (
+    build_isolation,
+    deployment_runtime,
+    firmware_workspace,
+    hardware_feature_config,
+    runtime_paths,
+)
 
 
 def check(name: str, condition: bool) -> None:
@@ -153,16 +159,20 @@ def main() -> int:
             )
 
             # Generated hardware macro is derived from user state and staged only
-            # into an external firmware working copy.
+            # into an external firmware working copy. Validate against the shared
+            # feature contract rather than the retired ROBOT_ENABLE_* spelling.
             macro_service = HardwareMacroService(config_service=hardware_service)
             generated_macro = macro_service.generate()
+            ultrasonic_define = f"#define {hardware_feature_config.macro_name('ultrasonic')}"
+            generated_text = generated_macro.read_text(encoding="utf-8")
             check(
                 "generated hardware macro is external",
                 app.resolve() not in generated_macro.resolve().parents,
             )
             check(
                 "generated hardware macro reflects user state",
-                "ROBOT_ENABLE_ULTRASONIC 1" in generated_macro.read_text(encoding="utf-8"),
+                ultrasonic_define in generated_text
+                and generated_text.split(ultrasonic_define, 1)[1].splitlines()[0].strip() == "1",
             )
             check(
                 "packaged device header remains default before staging",
@@ -170,22 +180,30 @@ def main() -> int:
             )
             expect_error(
                 "generated hardware macro inside release is rejected",
-                lambda: macro_service.generate(app / "DeviceConfig.h"),
-                "outside the packaged RoboStudio application",
+                lambda: HardwareMacroService(
+                    config_service=hardware_service,
+                    output_path=app / "DeviceConfig.h",
+                ),
+                "ROBOSTUDIO_STATE_ROOT",
             )
 
             staged_firmware = build_isolation.prepare_firmware_workspace(
                 firmware_root,
                 "settings-isolation",
             )
-            staged_macro = macro_service.stage_for_firmware(staged_firmware)
+            staged_macro = firmware_workspace.install_device_config_header(
+                generated_macro,
+                staged_firmware,
+            )
+            staged_text = staged_macro.read_text(encoding="utf-8")
             check(
                 "hardware macro is overlaid only into external firmware workspace",
                 app.resolve() not in staged_macro.resolve().parents,
             )
             check(
                 "staged firmware receives user hardware macro",
-                "ROBOT_ENABLE_ULTRASONIC 1" in staged_macro.read_text(encoding="utf-8"),
+                ultrasonic_define in staged_text
+                and staged_text.split(ultrasonic_define, 1)[1].splitlines()[0].strip() == "1",
             )
             check(
                 "packaged device header remains unchanged after staging",
