@@ -1,7 +1,12 @@
-
 build/
 .build/
 .pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+.coverage
+htmlcov/
+artifacts/
 .robot/
 .robostudio/
 robot-platform/main/include/generated/generated_bootstrap_config.h
@@ -9,5 +14,4 @@ runtime/platformio/
 dist/
 release/
 releases/
-*.pyc
 .pio/

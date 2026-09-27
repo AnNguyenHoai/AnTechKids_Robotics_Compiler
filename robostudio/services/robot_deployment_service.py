@@ -29,7 +29,12 @@ from domain.compatibility import (
 )
 from services.robot_discovery_service import RobotDiscoveryClient, RobotInfo
 from tools import runtime_paths
-from tools.deployment_runtime import DeploymentRuntimeError, python_command, run_process
+from tools.deployment_runtime import (
+    CLASSROOM_BUILD_TIMEOUT_SECONDS,
+    DeploymentRuntimeError,
+    python_command,
+    run_process,
+)
 
 DeploymentOutputCallback = Callable[[str], None]
 
@@ -88,7 +93,7 @@ def windows_serial_port_busy_error(port: str) -> str | None:
         handle = create_file(
             device_path,
             generic_read | generic_write,
-            0,  # no sharing: match PlatformIO/QSerialPort ownership semantics
+            0,
             None,
             open_existing,
             0,
@@ -186,7 +191,11 @@ class RobotDeploymentService:
                 "--ota-password", ota_password,
                 "--output", str(output),
             )
-            completed = run_process(command, cwd=self._deployment_cwd(), timeout=300.0)
+            completed = run_process(
+                command,
+                cwd=self._deployment_cwd(),
+                timeout=CLASSROOM_BUILD_TIMEOUT_SECONDS,
+            )
         except DeploymentRuntimeError as exc:
             raise RuntimeError(str(exc)) from exc
         if completed.returncode != 0:
@@ -252,7 +261,7 @@ class RobotDeploymentService:
                 command,
                 cwd=self._deployment_cwd(),
                 env=os.environ.copy(),
-                timeout=360.0,
+                timeout=CLASSROOM_BUILD_TIMEOUT_SECONDS,
                 on_output=on_output,
             )
         except DeploymentRuntimeError as exc:
@@ -350,7 +359,7 @@ class RobotDeploymentService:
                     command,
                     cwd=self._deployment_cwd(),
                     env=env,
-                    timeout=360.0,
+                    timeout=CLASSROOM_BUILD_TIMEOUT_SECONDS,
                     on_output=on_output,
                 )
             except DeploymentRuntimeError as exc:

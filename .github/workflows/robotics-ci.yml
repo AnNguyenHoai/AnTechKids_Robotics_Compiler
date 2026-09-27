@@ -60,6 +60,7 @@ jobs:
         shell: pwsh
         env:
           EVENT_NAME: ${{ github.event_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
@@ -70,8 +71,12 @@ jobs:
           if (-not $base -or $base -match '^0+$') {
             $base = git rev-parse HEAD^
           }
-          Write-Host "Impact diff: $base...$env:HEAD_SHA (scope=$env:REQUESTED_SCOPE)"
-          python tools/ci_impact.py --base $base --head $env:HEAD_SHA --scope $env:REQUESTED_SCOPE --github-output $env:GITHUB_OUTPUT
+          $scope = $env:REQUESTED_SCOPE
+          if ($env:EVENT_NAME -eq 'pull_request' -and $env:PR_TITLE -match '^\[release\]') {
+            $scope = 'release'
+          }
+          Write-Host "Impact diff: $base...$env:HEAD_SHA (scope=$scope)"
+          python tools/ci_impact.py --base $base --head $env:HEAD_SHA --scope $scope --github-output $env:GITHUB_OUTPUT
 
       - name: Validate test topology
         shell: pwsh
