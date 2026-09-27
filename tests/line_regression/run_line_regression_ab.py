@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LINE-REG-01/02/03 source contracts for physical A/B and wireless capture."""
+"""LINE-REG-01/02/03/04 contracts for physical A/B and wireless capture."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,8 +28,13 @@ def main() -> int:
     tcrt_cpp = read("robot-platform/main/src/Sensor/TCRT5000.cpp")
     follower = read("robot-platform/main/src/Services/Line/LineFollower.cpp")
     telemetry = read("robot-platform/main/src/Diagnostic/LineRegressionTelemetry.cpp")
+    program_loader_h = read("robot-platform/main/src/Services/VM/ProgramLoader.h")
+    program_loader_cpp = read("robot-platform/main/src/Services/VM/ProgramLoader.cpp")
     firmware_main = read("robot-platform/main/main.ino")
     receiver = read("tools/line_reg_udp_receiver.py")
+    wifi = read("robot-platform/main/src/Communication/RobotWiFiConfig.cpp")
+    wifi_config = read("robot-platform/wifi_config.py")
+    bootstrap_tool = read("tools/bootstrap_config.py")
     pio = read("robot-platform/platformio.ini")
 
     check(
@@ -100,12 +105,19 @@ def main() -> int:
         and "enqueueRecord(record);" in telemetry,
     )
     check(
-        "wireless queue is bounded and UDP sends one record per update",
+        "wireless queue is bounded and UDP uses dedicated port",
         "kQueueCapacity = 16" in telemetry
         and "kRecordSize = 320" in telemetry
         and "kUdpDestinationPort = 4211" in telemetry
-        and "g_udp.beginPacket" in telemetry
-        and "--g_count;" in telemetry,
+        and "kUdpSourcePort = 4212" in telemetry
+        and "g_udp.beginPacket" in telemetry,
+    )
+    check(
+        "late-join heartbeat is qualification-only and periodic",
+        "kHeartbeatIntervalMs = 2000UL" in telemetry
+        and "[LINE-REG][TRANSPORT] alive" in telemetry
+        and "sendHeartbeatIfDue();" in telemetry
+        and "LINE_REGRESSION_LEGACY_ACQUISITION ? \"legacy\" : \"snapshot\"" in telemetry,
     )
     check(
         "UDP flush occurs after normal network service in background phase",
@@ -117,6 +129,38 @@ def main() -> int:
         "DEFAULT_PORT = 4211" in receiver
         and '"[LINE-REG]" not in line' in receiver
         and 'log.write(line + "\\n")' in receiver,
+    )
+
+    check(
+        "generated program exposes deterministic identity API",
+        "GeneratedProgramSize()" in program_loader_h
+        and "GeneratedProgramHash()" in program_loader_h
+        and "2166136261UL" in program_loader_cpp
+        and "16777619UL" in program_loader_cpp
+        and "instruction.opcode" in program_loader_cpp
+        and "instruction.p1" in program_loader_cpp
+        and "instruction.p4" in program_loader_cpp,
+    )
+    check(
+        "generated program identity is emitted to LINE-REG evidence",
+        "[LINE-REG][PROGRAM]" in program_loader_cpp
+        and "source=generated_program.h" in program_loader_cpp
+        and "instructions=%u" in program_loader_cpp
+        and "hash=%08lX" in program_loader_cpp,
+    )
+
+    bootstrap_guard = "#if defined(ROBOT_BOOTSTRAP_BUILD) && defined(ROBOT_BOOTSTRAP_PROVISIONED)"
+    check(
+        "forced NVS provisioning requires explicit bootstrap build marker",
+        bootstrap_guard in wifi
+        and '("ROBOT_BOOTSTRAP_BUILD", "1")' in wifi_config
+        and '("ROBOT_BOOTSTRAP_PROVISIONED", "1")' in wifi_config
+        and 'env.get("PIOENV") == "esp32dev_bootstrap"' in wifi_config,
+    )
+    check(
+        "generated Arduino bootstrap header carries explicit build marker",
+        '"#define ROBOT_BOOTSTRAP_BUILD 1\\n"' in bootstrap_tool
+        and '"#define ROBOT_BOOTSTRAP_PROVISIONED 1\\n"' in bootstrap_tool,
     )
 
     production = section(pio, "[env:esp32dev]", "[env:esp32dev_ota]")
@@ -151,7 +195,7 @@ def main() -> int:
         and legacy.count("extends = env:esp32dev") >= 1,
     )
 
-    print("LINE-REG-01/02/03 qualification contracts: PASS")
+    print("LINE-REG-01/02/03/04 qualification contracts: PASS")
     return 0
 
 
