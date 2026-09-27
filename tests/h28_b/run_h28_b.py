@@ -93,10 +93,6 @@ def test_bootstrap_propagates_generated_credentials_to_platformio():
     assert "--upload-port" in captured["command"]
     assert "COM4" in captured["command"]
 
-    # B2.3/#282: bootstrap source staging is per-run so a stale Windows handle
-    # can never block the next deployment. PlatformIO must run from
-    # platformio/runs/<run-id>/firmware, not the retired fixed
-    # platformio/firmware path.
     expected_runs = build_isolation.build_workspace("bootstrap") / firmware_workspace.RUNS_DIRECTORY
     assert captured["cwd"].name == firmware_workspace.FIRMWARE_DIRECTORY
     assert captured["cwd"].parent.parent == expected_runs
@@ -112,7 +108,8 @@ def test_bootstrap_build_forces_generated_credentials_before_nvs_fallback():
     wifi = (ROOT / "robot-platform" / "main" / "src" / "Communication" / "RobotWiFiConfig.cpp").read_text(encoding="utf-8")
     wifi_config = (ROOT / "robot-platform" / "wifi_config.py").read_text(encoding="utf-8")
 
-    bootstrap_guard = wifi.index("#ifdef ROBOT_BOOTSTRAP_PROVISIONED")
+    guard = "#if defined(ROBOT_BOOTSTRAP_BUILD) && defined(ROBOT_BOOTSTRAP_PROVISIONED)"
+    bootstrap_guard = wifi.index(guard)
     stored_fallback = wifi.index("if (loadStored())")
 
     assert bootstrap_guard < stored_fallback
@@ -120,7 +117,9 @@ def test_bootstrap_build_forces_generated_credentials_before_nvs_fallback():
     assert "g_password = ROBOT_WIFI_PASSWORD;" in wifi[bootstrap_guard:stored_fallback]
     assert "g_otaPassword = ROBOT_OTA_PASSWORD;" in wifi[bootstrap_guard:stored_fallback]
     assert "save(g_ssid.c_str(), g_password.c_str(), g_otaPassword.c_str())" in wifi[bootstrap_guard:stored_fallback]
-    assert 'env.Append(CPPDEFINES=[("ROBOT_BOOTSTRAP_PROVISIONED", "1")])' in wifi_config
+    assert '("ROBOT_BOOTSTRAP_BUILD", "1")' in wifi_config
+    assert '("ROBOT_BOOTSTRAP_PROVISIONED", "1")' in wifi_config
+    assert 'env.get("PIOENV") == "esp32dev_bootstrap"' in wifi_config
 
 
 def main() -> int:
@@ -134,10 +133,6 @@ def main() -> int:
     test_bootstrap_propagates_generated_credentials_to_platformio()
     test_bootstrap_build_forces_generated_credentials_before_nvs_fallback()
 
-    # Classroom builds can be much slower than developer/CI builds. H28-B owns
-    # the bounded-process contract, not the historical 300-second value: the
-    # generic deployment default must follow the shared classroom policy while
-    # remaining finite and at least 15 minutes.
     assert CLASSROOM_BUILD_TIMEOUT_SECONDS >= 900.0
     assert DEFAULT_PROCESS_TIMEOUT_SECONDS == CLASSROOM_BUILD_TIMEOUT_SECONDS
     assert platformio_command("run", "-e", "esp32dev")[:3] == [sys.executable, "-m", "platformio"]
