@@ -104,12 +104,26 @@ def main() -> int:
             "soft recovery must allow a conservative 250-350 ms reacquisition arc")
     require("kSoftInnerSpeed = 35" in recovery and "kSoftOuterSpeed = 65" in recovery,
             "soft recovery must remain a bounded forward arc")
-    require("kDeepPivotSpeed = 45" in recovery,
-            "deep recovery pivot must remain bounded")
+
+    # Long-loss physical qualification still overshot the line with the old
+    # +/-45 deep pivot and +/-55 sweep. Keep deep recovery intentionally below
+    # those values while preserving enough differential authority to turn.
+    deep_pivot = extract_int(recovery, "kDeepPivotSpeed")
+    sweep_pivot = extract_int(recovery, "kSweepPivotSpeed")
+    require(30 <= deep_pivot <= 35,
+            "deep recovery pivot must stay in the 30-35 low-authority range")
+    require(35 <= sweep_pivot <= 40,
+            "recovery sweep must stay in the 35-40 bounded range")
+    require(sweep_pivot >= deep_pivot,
+            "long-loss sweep may be stronger than deep pivot but not weaker")
+    require("kDeepPivotSpeed = 45" not in recovery,
+            "the physically aggressive +/-45 deep pivot must not return")
+    require("kSweepPivotSpeed = 55" not in recovery,
+            "the physically aggressive +/-55 sweep must not return")
     require("RECOVERY_BASE_SPEED = 80" not in recovery,
             "legacy immediate +/-80 recovery must not return")
 
-    print("PASS: line-follow steering and conservative recovery timing contract")
+    print("PASS: line-follow steering and bounded recovery authority contract")
     return 0
 
 
