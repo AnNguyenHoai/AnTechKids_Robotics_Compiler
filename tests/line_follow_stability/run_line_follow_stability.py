@@ -73,20 +73,21 @@ def main() -> int:
     require("case LineState::CENTER_RIGHT:\n            return 0.5f;" in estimator,
             "CENTER_RIGHT must use a half-scale error")
 
-    # Loss confirmation must be based on elapsed wall time, not a fixed number
-    # of VM/controller invocations. That keeps behavior stable when the scheduler
-    # cadence changes or a user inserts SetWaitForTime(0.02).
+    # Loss confirmation remains elapsed-time based so behavior is independent of
+    # scheduler cadence, but physical A/B evidence requires a longer sustained
+    # 000 window before recovery takes ownership. At the standard 20 ms student
+    # cadence, 0/20/40 ms remains FOLLOWING and 60 ms confirms real loss.
     confirm_ms = extract_int(state_machine, "kLostConfirmMs")
     require("kLostConfirmSamples" not in state_machine,
             "line loss must not depend on a fixed sample count")
     require("_lostCandidateSinceMs" in state_machine,
             "line loss candidate must track a timestamp")
-    require(1 <= confirm_ms <= 20,
-            "line-loss confirmation window must reject glitches without adding multi-cycle latency")
-    require(loss_confirmation_time([0, 5, 9], confirm_ms) is None,
-            "sub-confirmation transient must not enter recovery")
-    require(loss_confirmation_time([0, 20], confirm_ms) == 20,
-            "20 ms student loop must confirm sustained loss on its second sample")
+    require(50 <= confirm_ms <= 80,
+            "line-loss confirmation must tolerate short physical 000 gaps")
+    require(loss_confirmation_time([0, 20, 40], confirm_ms) is None,
+            "up to 40 ms of 000 must remain a loss candidate")
+    require(loss_confirmation_time([0, 20, 40, 60], confirm_ms) == 60,
+            "60 ms sustained 000 must confirm real line loss")
 
     # Every confirmed recovery episode must start from its first phase rather
     # than inheriting a phase timestamp from boot/system uptime.
@@ -95,11 +96,12 @@ def main() -> int:
     require("_recovery.reset();" in follower,
             "recovery must reset at episode boundaries")
 
-    # Recovery still begins with a bounded forward arc, but the arc must be short
-    # enough that it cannot dominate line-loss response latency.
+    # Recovery begins with a bounded forward arc. Physical evidence showed that
+    # the 120 ms handoff pivoted too early, so preserve roughly the original
+    # 300 ms soft-search window before escalating to an in-place pivot.
     soft_ms = extract_int(recovery, "kSoftSearchMs")
-    require(soft_ms <= 150,
-            "soft recovery must hand off to pivot search within 150 ms")
+    require(250 <= soft_ms <= 350,
+            "soft recovery must allow a conservative 250-350 ms reacquisition arc")
     require("kSoftInnerSpeed = 35" in recovery and "kSoftOuterSpeed = 65" in recovery,
             "soft recovery must remain a bounded forward arc")
     require("kDeepPivotSpeed = 45" in recovery,
@@ -107,7 +109,7 @@ def main() -> int:
     require("RECOVERY_BASE_SPEED = 80" not in recovery,
             "legacy immediate +/-80 recovery must not return")
 
-    print("PASS: line-follow steering and temporal response contract")
+    print("PASS: line-follow steering and conservative recovery timing contract")
     return 0
 
 
