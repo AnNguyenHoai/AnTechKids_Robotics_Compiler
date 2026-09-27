@@ -6,6 +6,7 @@
 #include "src/Services/Robot/RobotAPI.h"
 #include "src/Logger/BootLogger.h"
 #include "src/Diagnostic/Diagnostic.h"
+#include "src/Diagnostic/LineRegressionTelemetry.h"
 #include "src/Communication/SerialCommandHandler.h"
 #include "src/Communication/RobotNetworkService.h"
 
@@ -284,6 +285,9 @@ void loop() {
     const uint32_t backgroundStartUs = micros();
     SerialCommandHandler::handle();
     RobotNetworkService::update(ROBOT_NETWORK_SERVICE_BUDGET_US);
+    // Qualification-only wireless evidence is flushed after the normal network
+    // service, never from the control-critical sensor/follower path.
+    LineRegressionTelemetry::Update();
     if (vmRunningBeforeBackground && !vm.IsRunning()) {
         VMRuntimeTelemetry::RecordStopLatency(micros() - backgroundStartUs);
     }
