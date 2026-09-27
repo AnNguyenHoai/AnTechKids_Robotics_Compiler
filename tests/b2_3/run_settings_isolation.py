@@ -107,6 +107,7 @@ def main() -> int:
         firmware_root.mkdir(parents=True)
         packaged_firmware = firmware_root / "platformio.ini"
         packaged_firmware.write_text("[env:esp32dev]\n", encoding="utf-8")
+        (firmware_root / "wifi_config.py").write_text("# fixture\n", encoding="utf-8")
         sibling = firmware_root / "main.cpp"
         sibling.write_text("// packaged firmware sibling\n", encoding="utf-8")
         include_dir = firmware_root / "main" / "include" / "generated"
