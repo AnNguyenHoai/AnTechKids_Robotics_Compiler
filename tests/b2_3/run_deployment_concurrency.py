@@ -138,8 +138,24 @@ def test_source_contract() -> None:
     check("acquire(blocking=False)" in source, "deployment collision fails fast rather than waiting")
     check(source.count("_DEPLOYMENT_OPERATION_LOCK.release()") >= 2,
           "both first-flash and OTA release the deployment lane in finally blocks")
-    check("CreateFileW" in source and "no sharing" in source,
-          "Windows first-flash probes exclusive COM ownership before spawning deployment")
+
+    probe_start = source.index("def windows_serial_port_busy_error")
+    probe_end = source.index("@dataclass", probe_start)
+    probe_source = source[probe_start:probe_end]
+    check(
+        "CreateFileW" in probe_source
+        and "generic_read | generic_write,\n            0," in probe_source,
+        "Windows COM probe opens the port with zero share mode for exclusive ownership",
+    )
+
+    flash_start = source.index("def _flash_first_robot_locked")
+    ota_start = source.index("def deploy_ota", flash_start)
+    flash_source = source[flash_start:ota_start]
+    check(
+        flash_source.index("windows_serial_port_busy_error(usb_port)")
+        < flash_source.index("self.discovery.discover()"),
+        "Windows first-flash probes exclusive COM ownership before discovery/build work",
+    )
 
 
 def main() -> int:
