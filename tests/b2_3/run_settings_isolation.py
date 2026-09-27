@@ -118,12 +118,9 @@ def main() -> int:
         include_dir.mkdir(parents=True)
         packaged_device = include_dir / "DeviceConfig.h"
         packaged_device.write_text("// packaged-default\n", encoding="utf-8")
+        packaged_bootstrap_header = include_dir / "generated_bootstrap_config.h"
         bundled_python = Path(sys.executable).resolve()
         write_runtime_fixture(app, bundled_python)
-
-        arduino_template = app / "robot-platform" / "arduino" / "robot_firmware"
-        arduino_template.mkdir(parents=True)
-        (arduino_template / "robot_firmware.ino").write_text("// template\n", encoding="utf-8")
 
         before = snapshot(app)
 
@@ -268,7 +265,9 @@ def main() -> int:
                 firmware_service.get_firmware_path().resolve() == editable.resolve(),
             )
 
-            # Bootstrap config/header: generated secrets/state must be external.
+            # Bootstrap config/header: generate() now owns creation/refresh of the
+            # writable Arduino workspace. Public accessors expose the external
+            # workspace/header without relying on retired staging APIs.
             bootstrap_service = BootstrapConfigService()
             bootstrap_json = bootstrap_service.generate("Lớp Robotics", "wifi", "ota-secret")
             check("bootstrap JSON is external", app.resolve() not in bootstrap_json.resolve().parents)
@@ -276,13 +275,13 @@ def main() -> int:
                 "bootstrap JSON is valid",
                 json.loads(bootstrap_json.read_text(encoding="utf-8"))["schema_version"] == 1,
             )
-            working_sketch = bootstrap_service.prepare_arduino_working_copy(bootstrap_json)
+            working_sketch = bootstrap_service.arduino_sketch_path()
             check("Arduino working sketch is external", app.resolve() not in working_sketch.resolve().parents)
             check(
                 "Arduino template is copied to external state",
-                (working_sketch / "robot_firmware.ino").is_file(),
+                (working_sketch / "main.ino").is_file(),
             )
-            generated_header = working_sketch / "generated_bootstrap_config.h"
+            generated_header = bootstrap_service.arduino_header_path()
             check("generated Arduino header is external", app.resolve() not in generated_header.resolve().parents)
             check(
                 "generated Arduino header contains bootstrap SSID",
@@ -290,7 +289,7 @@ def main() -> int:
             )
             check(
                 "packaged Arduino template receives no generated bootstrap header",
-                not (arduino_template / "generated_bootstrap_config.h").exists(),
+                not packaged_bootstrap_header.exists(),
             )
             expect_error(
                 "bootstrap output inside release is rejected",
