@@ -119,6 +119,7 @@ jobs:
         run: |
           python -m platformio run -d robot-platform -e esp32dev_line_snapshot_qualification
           python -m platformio run -d robot-platform -e esp32dev_line_legacy_qualification
+          python -m platformio run -d robot-platform -e esp32dev_line_release4_fresh_qualification
 
       - name: Compile VM-RT qualification firmware
         if: ${{ steps.impact.outputs.vm == 'true' || steps.impact.outputs.full == 'true' || steps.impact.outputs.release == 'true' }}
