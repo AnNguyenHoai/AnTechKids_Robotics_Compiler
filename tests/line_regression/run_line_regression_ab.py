@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LINE-REG-01/02/03/04 contracts for physical A/B and wireless capture."""
+"""LINE-REG-01/02/03/04/07 contracts for physical A/B and wireless capture."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -176,7 +176,12 @@ def main() -> int:
         "[env:esp32dev_line_snapshot_qualification]",
         "[env:esp32dev_line_legacy_qualification]",
     )
-    legacy = pio[pio.index("[env:esp32dev_line_legacy_qualification]"):]
+    legacy = section(
+        pio,
+        "[env:esp32dev_line_legacy_qualification]",
+        "[env:esp32dev_line_release4_fresh_qualification]",
+    )
+    release4_fresh = pio[pio.index("[env:esp32dev_line_release4_fresh_qualification]"):]
     check(
         "snapshot qualification enables probe and wireless capture",
         "-DLINE_REGRESSION_DIAGNOSTICS=1" in snapshot
@@ -190,12 +195,23 @@ def main() -> int:
         and "-DLINE_REGRESSION_UDP=1" in legacy,
     )
     check(
-        "both A/B profiles inherit production board configuration",
+        "Release_4 freshness profile aliases only the direct-read qualification",
+        "extends = env:esp32dev_line_legacy_qualification" in release4_fresh
+        and "build_flags" not in release4_fresh,
+    )
+    check(
+        "Release_4 freshness profile does not alter current VM execution model",
+        "RunSlice" in firmware_main
+        and "VM_WORK_UNITS_PER_FIRMWARE_CYCLE" in firmware_main
+        and "VM_MAX_SLICE_DURATION_US" in firmware_main,
+    )
+    check(
+        "A/B profiles inherit production board configuration",
         snapshot.count("extends = env:esp32dev") == 1
-        and legacy.count("extends = env:esp32dev") >= 1,
+        and legacy.count("extends = env:esp32dev") == 1,
     )
 
-    print("LINE-REG-01/02/03/04 qualification contracts: PASS")
+    print("LINE-REG-01/02/03/04/07 qualification contracts: PASS")
     return 0
 
 
