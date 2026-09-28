@@ -73,8 +73,10 @@ def main() -> int:
             "line-loss confirmation must remain time-based at the 60 ms corrective baseline")
     require("_pid(1.2f, 0.0f, 0.0f, 0.02f)" in follower and "_scaleFactor(15.0f)" in follower,
             "responsive P-only line baseline drifted")
-    require("kSoftSearchMs = 120" in recovery,
-            "soft recovery latency drifted")
+    # LINE-REG-05 deliberately restored the softer historical recovery window so a
+    # confirmed loss does not immediately escalate into pivot/sweep behavior.
+    require("kSoftSearchMs = 300" in recovery,
+            "soft recovery window must remain at the 300 ms physical corrective baseline")
 
     require(thresholds["status"] == "UNAPPROVED_PENDING_PHYSICAL_EVIDENCE",
             "corrective change must not auto-approve physical thresholds")
