@@ -1,16 +1,26 @@
-"""BuildWorker – non-blocking compiler contract runner using QProcess.
+"""BuildWorker – non-blocking compiler contract runner.
 
 Compiler-contract JSON remains an internal machine interface. Successful output
 artifacts are copied out of the disposable compiler workspace before cleanup so
 RoboStudio can show useful, durable paths to the user.
+
+The worker owns a background Qt thread, but launches the compiler with the same
+Windows hidden-console policy as deployment. This prevents student-facing
+terminal windows from flashing during Compile while keeping the UI responsive.
 """
 
 import json
+import os
 import shutil
+import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QProcess, Signal
+from PySide6.QtCore import QThread, Signal
 from tools import runtime_paths
+from tools.deployment_runtime import (
+    CLASSROOM_BUILD_TIMEOUT_SECONDS,
+    windows_hidden_process_creation_flags,
+)
 
 
 CONTRACT_SCHEMA = "antechkids.robostudio.compiler-contract"
@@ -22,7 +32,7 @@ ARTIFACT_FIELDS = (
 )
 
 
-class BuildWorker(QObject):
+class BuildWorker(QThread):
     output_received = Signal(str)
     build_finished = Signal(bool, str)
     error_occurred = Signal(str)
@@ -32,13 +42,6 @@ class BuildWorker(QObject):
         self.command = command
         self.env = env
         self.temp_file = temp_file_path
-        self.process = QProcess()
-        self.process.readyReadStandardOutput.connect(self._on_stdout)
-        self.process.readyReadStandardError.connect(self._on_stderr)
-        self.process.finished.connect(self._on_finished)
-        self.process.errorOccurred.connect(self._on_process_error)
-        self._stdout_chunks = []
-        self._stderr_chunks = []
 
     def _workspace(self) -> Path:
         return Path(self.temp_file).expanduser().resolve().parent
@@ -55,22 +58,58 @@ class BuildWorker(QObject):
         except OSError:
             pass
 
-    def start(self):
-        env_list = [f"{k}={v}" for k, v in self.env.items()]
-        self.process.setEnvironment(env_list)
-        self.process.setWorkingDirectory(str(self._workspace()))
-        self.process.start(self.command[0], self.command[1:])
+    def run(self):
+        """Run the compiler off the UI thread with a bounded classroom timeout."""
+        kwargs: dict[str, object] = {
+            "cwd": str(self._workspace()),
+            "env": self.env,
+            "capture_output": True,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "check": False,
+            "timeout": CLASSROOM_BUILD_TIMEOUT_SECONDS,
+        }
+        if os.name == "nt":
+            kwargs["creationflags"] = windows_hidden_process_creation_flags()
+        else:
+            kwargs["start_new_session"] = True
 
-    def _on_stdout(self):
-        data = self.process.readAllStandardOutput()
-        self._stdout_chunks.append(data.data().decode("utf-8", errors="replace"))
+        try:
+            completed = subprocess.run(self.command, **kwargs)
+        except subprocess.TimeoutExpired:
+            self._cleanup_temp_state()
+            self.error_occurred.emit(
+                "Compiler process timed out after "
+                f"{int(CLASSROOM_BUILD_TIMEOUT_SECONDS)} seconds. "
+                "This computer may be unusually slow; close heavy applications and retry."
+            )
+            return
+        except OSError as exc:
+            self._cleanup_temp_state()
+            self.error_occurred.emit(f"Compiler process error: {exc}")
+            return
 
-    def _on_stderr(self):
-        data = self.process.readAllStandardError()
-        text = data.data().decode("utf-8", errors="replace")
-        self._stderr_chunks.append(text)
-        if text:
-            self.output_received.emit(text)
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
+
+        payload = self._parse_contract(stdout)
+        if payload is not None and completed.returncode == 0 and payload.get("status") == "PASS":
+            try:
+                payload = self._publish_contract_artifacts(payload)
+                stdout = json.dumps(payload)
+            except OSError as exc:
+                stderr += f"\nWARNING: unable to publish compiler artifacts: {exc}\n"
+
+        details, summary = self.format_result(
+            stdout=stdout,
+            stderr=stderr,
+            success=(completed.returncode == 0),
+        )
+        self._cleanup_temp_state()
+        if details:
+            self.output_received.emit(details if details.endswith("\n") else details + "\n")
+        self.build_finished.emit(completed.returncode == 0, summary)
 
     @staticmethod
     def _parse_contract(stdout: str):
@@ -143,33 +182,6 @@ class BuildWorker(QObject):
             lines.append("Compiler returned an unsuccessful contract response.")
         return "\n".join(lines)
 
-    def _on_finished(self, exit_code, exit_status):
-        stdout = "".join(self._stdout_chunks)
-        stderr = "".join(self._stderr_chunks)
-
-        if exit_status == QProcess.CrashExit:
-            self._cleanup_temp_state()
-            self.error_occurred.emit("Compiler process crashed.")
-            return
-
-        payload = self._parse_contract(stdout)
-        if payload is not None and exit_code == 0 and payload.get("status") == "PASS":
-            try:
-                payload = self._publish_contract_artifacts(payload)
-                stdout = json.dumps(payload)
-            except OSError as exc:
-                stderr += f"\nWARNING: unable to publish compiler artifacts: {exc}\n"
-
-        details, summary = self.format_result(stdout=stdout, stderr=stderr, success=(exit_code == 0))
-        self._cleanup_temp_state()
-        if details:
-            self.output_received.emit(details if details.endswith("\n") else details + "\n")
-        self.build_finished.emit(exit_code == 0, summary)
-
-    def _on_process_error(self, error):
-        self._cleanup_temp_state()
-        self.error_occurred.emit(f"Compiler process error: {self.process.errorString()}")
-
     @classmethod
     def format_result(cls, stdout: str, stderr: str, success: bool):
         payload = cls._parse_contract(stdout)
@@ -181,7 +193,11 @@ class BuildWorker(QObject):
         if success:
             summary = "✅ Compile completed"
         else:
-            error_lines = [line for line in lines if "error" in line.lower() or "exception" in line.lower() or "failed" in line.lower()]
+            error_lines = [
+                line
+                for line in lines
+                if "error" in line.lower() or "exception" in line.lower() or "failed" in line.lower()
+            ]
             if error_lines:
                 summary = "❌ Compile failed\n" + "\n".join(error_lines[:3])
             else:
