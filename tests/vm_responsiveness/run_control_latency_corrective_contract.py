@@ -66,12 +66,17 @@ def main() -> int:
     require("lineSensor->update();" not in diagnostics,
             "DiagnosticsManager must not own a second physical line read")
 
-    require("kLostConfirmMs = 10" in state and "kLostConfirmSamples" not in state,
-            "line-loss confirmation must remain time-based")
+    # Keep line-loss confirmation time-based so behavior is independent of VM call rate.
+    # The current corrective baseline intentionally uses a 60 ms grace window to reject
+    # transient 000 samples seen on the physical robot; do not regress to sample counting.
+    require("kLostConfirmMs = 60" in state and "kLostConfirmSamples" not in state,
+            "line-loss confirmation must remain time-based at the 60 ms corrective baseline")
     require("_pid(1.2f, 0.0f, 0.0f, 0.02f)" in follower and "_scaleFactor(15.0f)" in follower,
             "responsive P-only line baseline drifted")
-    require("kSoftSearchMs = 120" in recovery,
-            "soft recovery latency drifted")
+    # LINE-REG-05 deliberately restored the softer historical recovery window so a
+    # confirmed loss does not immediately escalate into pivot/sweep behavior.
+    require("kSoftSearchMs = 300" in recovery,
+            "soft recovery window must remain at the 300 ms physical corrective baseline")
 
     require(thresholds["status"] == "UNAPPROVED_PENDING_PHYSICAL_EVIDENCE",
             "corrective change must not auto-approve physical thresholds")
