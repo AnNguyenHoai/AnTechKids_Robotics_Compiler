@@ -324,7 +324,7 @@ def main() -> int:
             ).read_text(encoding="utf-8")
             check(
                 "GUI worker CWD is derived from external compile workspace",
-                "setWorkingDirectory(str(self._workspace()))" in worker_source
+                '"cwd": str(self._workspace())' in worker_source
                 and "ROBOSTUDIO_HOME" not in worker_source,
             )
         finally:
