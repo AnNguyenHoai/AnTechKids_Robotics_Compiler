@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 
 import tools.deploy_robot as deploy_robot
 from tools.deployment_runtime import (
+    CLASSROOM_BUILD_TIMEOUT_SECONDS,
     DEFAULT_PROCESS_TIMEOUT_SECONDS,
     DeploymentRuntimeError,
     platformio_command,
@@ -92,10 +93,6 @@ def test_bootstrap_propagates_generated_credentials_to_platformio():
     assert "--upload-port" in captured["command"]
     assert "COM4" in captured["command"]
 
-    # B2.3/#282: bootstrap source staging is per-run so a stale Windows handle
-    # can never block the next deployment. PlatformIO must run from
-    # platformio/runs/<run-id>/firmware, not the retired fixed
-    # platformio/firmware path.
     expected_runs = build_isolation.build_workspace("bootstrap") / firmware_workspace.RUNS_DIRECTORY
     assert captured["cwd"].name == firmware_workspace.FIRMWARE_DIRECTORY
     assert captured["cwd"].parent.parent == expected_runs
@@ -133,7 +130,8 @@ def main() -> int:
     test_bootstrap_propagates_generated_credentials_to_platformio()
     test_bootstrap_build_forces_generated_credentials_before_nvs_fallback()
 
-    assert DEFAULT_PROCESS_TIMEOUT_SECONDS == 300.0
+    assert DEFAULT_PROCESS_TIMEOUT_SECONDS == CLASSROOM_BUILD_TIMEOUT_SECONDS
+    assert CLASSROOM_BUILD_TIMEOUT_SECONDS == 900.0
     assert platformio_command("run", "-e", "esp32dev")[:3] == [sys.executable, "-m", "platformio"]
     assert "subprocess.Popen" in runtime
     assert "DeploymentRuntimeError" in runtime
