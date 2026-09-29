@@ -184,7 +184,7 @@ def main() -> int:
     assert "platformio_command(" in flash
 
     assert "on_output: DeploymentOutputCallback" in service
-    assert "timeout=360.0" in service
+    assert "timeout=CLASSROOM_BUILD_TIMEOUT_SECONDS" in service
     assert "self.output.emit" in robot_tab
     assert "def append_logs" in robot_tab
     assert "without stealing the user's scroll position" in robot_tab
