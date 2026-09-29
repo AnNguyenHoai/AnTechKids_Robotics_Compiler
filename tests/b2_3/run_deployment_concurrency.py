@@ -138,7 +138,7 @@ def test_source_contract() -> None:
     check("acquire(blocking=False)" in source, "deployment collision fails fast rather than waiting")
     check(source.count("_DEPLOYMENT_OPERATION_LOCK.release()") >= 2,
           "both first-flash and OTA release the deployment lane in finally blocks")
-    check("CreateFileW" in source and "no sharing" in source,
+    check("CreateFileW" in source and "generic_read | generic_write,\n            0," in source,
           "Windows first-flash probes exclusive COM ownership before spawning deployment")
 
 
