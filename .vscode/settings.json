@@ -1,0 +1,4 @@
+{
+    "cmake.sourceDirectory": "D:/TINHOCTRE/08_Robotics/04_Robotics_SW_DeepSeek/packages/robot-common",
+    "python-envs.defaultEnvManager": "ms-python.python:system"
+}
