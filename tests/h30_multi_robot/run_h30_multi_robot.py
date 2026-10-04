@@ -15,7 +15,7 @@ for path in (str(ROOT), str(ROBOSTUDIO)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from services.robot_deployment_service import select_unique_new_robot
+from services.robot_deployment_service import select_robot_by_device_id, select_unique_new_robot
 from services.robot_discovery_service import RobotInfo, serialize_robot_info, validate_robot_info
 from services.robot_registry_service import RobotRegistryService
 
@@ -77,6 +77,17 @@ def test_ip_change_updates_same_identity_without_duplicate() -> None:
         items = service.robots()
         check(len(items) == 1, "IP change does not duplicate a stable device_id")
         check(items[0].robot.ip == "192.168.1.77", "latest discovered IP replaces last-known IP")
+
+
+def test_stale_ip_resolves_by_stable_device_identity() -> None:
+    cached = robot("robot-MMM333", "192.168.1.30")
+    moved = robot("robot-MMM333", "192.168.1.77")
+    other = robot("robot-NNN444", "192.168.1.88")
+    resolved = select_robot_by_device_id(cached.device_id, [other, moved])
+    check(resolved is not None, "selected device_id resolves from a fresh discovery cycle")
+    check(resolved.ip == "192.168.1.77", "fresh endpoint replaces stale cached IP before OTA")
+    check(select_robot_by_device_id(cached.device_id, [other]) is None,
+          "OTA endpoint resolution fails closed when selected device_id is absent")
 
 
 def test_discovery_merge_retains_offline_robots() -> None:
@@ -167,6 +178,10 @@ def test_ui_and_runtime_contract_source() -> None:
           "first-flash path no longer binds first discovered robot")
     check("known_device_ids: set[str] | None = None" in deploy,
           "first-flash distinguishes unavailable baseline from a successful empty scan")
+    check("select_robot_by_device_id" in deploy and "fresh_robot.ip" in deploy,
+          "OTA deployment refreshes cached endpoint by stable device_id")
+    check("self.discovery.discover()" in deploy,
+          "OTA deployment performs a fresh discovery before using an endpoint")
     check("selected_device_id" in registry and "device_id" in registry,
           "registry persistence is keyed by stable device identity")
     check("prepare_user_data_root" in registry,
@@ -176,6 +191,7 @@ def test_ui_and_runtime_contract_source() -> None:
 def main() -> int:
     test_registry_persists_multiple_robots_and_selection()
     test_ip_change_updates_same_identity_without_duplicate()
+    test_stale_ip_resolves_by_stable_device_identity()
     test_discovery_merge_retains_offline_robots()
     test_duplicate_discovery_packets_collapse_by_device_id()
     test_corrupt_registry_fails_safe_and_recovers_on_save()
