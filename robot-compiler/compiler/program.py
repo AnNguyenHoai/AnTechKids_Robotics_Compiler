@@ -4,6 +4,13 @@ from .patch import Patch
 from .generated.opcode import Opcode
 
 
+def _canonical_operand(value):
+    """Keep VM instruction operands language-neutral and C++-emittable."""
+    if isinstance(value, bool):
+        return 1 if value else 0
+    return value
+
+
 class Program:
     def __init__(self):
         self.instructions = []
@@ -12,7 +19,13 @@ class Program:
         self.next_label_id = 0
 
     def emit(self, opcode, p1=0, p2=0, p3=0, p4=0):
-        self.instructions.append(Instruction(opcode, p1, p2, p3, p4))
+        self.instructions.append(Instruction(
+            opcode,
+            _canonical_operand(p1),
+            _canonical_operand(p2),
+            _canonical_operand(p3),
+            _canonical_operand(p4),
+        ))
 
     def new_label(self):
         label = Label(self.next_label_id)
