@@ -145,6 +145,16 @@ def select_unique_new_robot(
     return next(iter(new_by_id.values()))
 
 
+def select_robot_by_device_id(
+    device_id: str, robots: Iterable[RobotInfo]
+) -> RobotInfo | None:
+    """Resolve a fresh robot endpoint from its stable physical identity."""
+    matches = [robot for robot in robots if robot.device_id == device_id]
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
 class RobotDeploymentService:
     def __init__(self, root: Path | None = None):
         self.root = (
@@ -321,21 +331,38 @@ class RobotDeploymentService:
         ota_password: str,
         on_output: DeploymentOutputCallback | None,
     ) -> DeploymentResult:
-        if not robot.ota:
-            return DeploymentResult(False, "", "Selected robot does not advertise OTA support.")
-        if not robot.network_ready:
-            return DeploymentResult(False, "", "Selected robot is not network-ready.")
-
-        compatibility_error = ota_compatibility_error(robot.compatibility_generation)
-        if compatibility_error:
-            return DeploymentResult(False, "", compatibility_error)
-
         if not wifi_ssid.strip():
             return DeploymentResult(False, "", "Wi-Fi SSID is required for OTA deployment.")
         if not ota_password:
             return DeploymentResult(False, "", "OTA password is required for OTA deployment.")
         if not code.strip():
             return DeploymentResult(False, "", "No student program is available to deploy.")
+
+        try:
+            fresh_robot = select_robot_by_device_id(
+                robot.device_id, self.discovery.discover()
+            )
+        except Exception as exc:
+            return DeploymentResult(
+                False,
+                "",
+                f"Unable to refresh selected robot {robot.device_id} before OTA: {exc}",
+            )
+        if fresh_robot is None:
+            return DeploymentResult(
+                False,
+                "",
+                f"Selected robot {robot.device_id} is no longer discoverable on the LAN. "
+                "Check robot power/Wi-Fi and click Discover before retrying.",
+            )
+        if not fresh_robot.ota:
+            return DeploymentResult(False, "", "Selected robot does not advertise OTA support.")
+        if not fresh_robot.network_ready:
+            return DeploymentResult(False, "", "Selected robot is not network-ready.")
+
+        compatibility_error = ota_compatibility_error(fresh_robot.compatibility_generation)
+        if compatibility_error:
+            return DeploymentResult(False, "", compatibility_error)
 
         fd, temp_name = tempfile.mkstemp(prefix="robostudio_", suffix=".py", text=True)
         os.close(fd)
@@ -351,7 +378,7 @@ class RobotDeploymentService:
                 str(self._runtime_tool("deploy_robot.py")),
                 "--input", str(source),
                 "--mode", "ota",
-                "--robot", robot.ip,
+                "--robot", fresh_robot.ip,
                 "--ssid", wifi_ssid.strip(),
             )
             try:
@@ -371,12 +398,24 @@ class RobotDeploymentService:
 
             verified = None
             verification_error = None
-            for host in (robot.hostname, robot.ip):
-                try:
-                    verified = self.discovery.get_info(host)
-                    break
-                except Exception as exc:
-                    verification_error = exc
+            try:
+                verified = select_robot_by_device_id(
+                    robot.device_id, self.discovery.discover()
+                )
+            except Exception as exc:
+                verification_error = exc
+            if verified is None:
+                for host in (fresh_robot.hostname, fresh_robot.ip):
+                    try:
+                        candidate = self.discovery.get_info(host)
+                        if candidate.device_id == robot.device_id:
+                            verified = candidate
+                            break
+                        verification_error = RuntimeError(
+                            f"expected {robot.device_id}, found {candidate.device_id}"
+                        )
+                    except Exception as exc:
+                        verification_error = exc
             if verified is None:
                 return DeploymentResult(False, output,
                     f"Deployment verification failed: {verification_error}")
