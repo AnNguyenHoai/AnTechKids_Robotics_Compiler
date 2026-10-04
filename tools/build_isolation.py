@@ -18,6 +18,8 @@ PLATFORMIO_SHARED_DIR_ENV = "PLATFORMIO_SHARED_DIR"
 
 BUILD_DATA_DIRECTORY = "build"
 DEFAULT_PROJECT_NAME = "robostudio"
+ROBOSTUDIO_TEMP_PROJECT_PREFIX = "robostudio_"
+STUDENT_PROGRAM_PROJECT_NAME = "student-program"
 
 
 class BuildIsolationError(RuntimeError):
@@ -36,6 +38,16 @@ def _validate_project_name(project_name: str) -> str:
         raise BuildIsolationError("Build project name contains control characters.")
     if re.fullmatch(r"(?i)(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?", value):
         raise BuildIsolationError(f"Build project name is reserved: {project_name!r}")
+
+    # RoboStudio writes each student program to a temporary source named
+    # ``robostudio_<random>.py``. Using that random stem directly as the
+    # PlatformIO project key fragments build/libdeps/cache state on every Run,
+    # forcing weak machines toward repeated cold firmware builds. Reserve the
+    # internal prefix and collapse those ephemeral names to one stable project
+    # identity. Per-run firmware source workspaces remain UUID-isolated under
+    # ``platformio/runs`` and therefore keep the Windows handle-lock fix intact.
+    if value.startswith(ROBOSTUDIO_TEMP_PROJECT_PREFIX) and len(value) > len(ROBOSTUDIO_TEMP_PROJECT_PREFIX):
+        return STUDENT_PROGRAM_PROJECT_NAME
     return value
 
 
