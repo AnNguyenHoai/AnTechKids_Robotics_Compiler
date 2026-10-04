@@ -57,8 +57,22 @@ if True:
         HeaderEmitter().emit(program, header)
         generated = header.read_text(encoding="utf-8")
 
-    check("generated C++ does not contain Python True literal", "True" not in generated)
-    check("generated C++ does not contain Python False literal", "False" not in generated)
+    # Opcode names such as JumpIfFalse legitimately contain the word "False".
+    # Only inspect the serialized operand portion after the opcode argument so
+    # this gate catches leaked Python bool literals without rejecting opcodes.
+    instruction_operands = [
+        line.split(",", 1)[1]
+        for line in generated.splitlines()
+        if "Instruction(Opcode::" in line and "," in line
+    ]
+    check(
+        "generated C++ operands do not contain Python True literal",
+        not any("True" in text for text in instruction_operands),
+    )
+    check(
+        "generated C++ operands do not contain Python False literal",
+        not any("False" in text for text in instruction_operands),
+    )
     check("generated C++ still contains LoadConst instructions", "Opcode::LoadConst" in generated)
 
     print("R4-MAINT-BOOL-01 Boolean Constant Codegen: PASS")
