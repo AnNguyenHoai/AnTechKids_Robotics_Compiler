@@ -113,13 +113,15 @@ def main() -> int:
     else:
         raise AssertionError("future robot is rejected at discovery boundary")
 
-    # Defense in depth: even a RobotInfo constructed outside normal discovery
-    # must not bypass the compatibility matrix at the destructive OTA boundary.
+    # Defense in depth: OTA refreshes the selected physical identity before
+    # destructive work, so exercise compatibility against that fresh snapshot
+    # rather than the stale RobotInfo originally supplied by the UI.
     future = replace(current, compatibility_generation=2)
     service = RobotDeploymentService(ROOT)
+    service.discovery.discover = lambda: [future]
     blocked = service._deploy_ota_locked(
         "from rcu import *\n",
-        future,
+        current,
         "classroom-wifi",
         "wifi-password",
         "ota-password",
