@@ -24,12 +24,14 @@ def check(name: str, condition: bool) -> None:
 
 
 def main() -> int:
+    # Keep this regression focused on bool constant lowering itself. Robot API
+    # argument semantics are covered by their own compiler tests and should not
+    # be coupled to this code-generation contract.
     source = """
 flag = True
 disabled = False
 if True:
     flag = False
-forward(True)
 """
     compiler = RobotCompiler()
     program = compiler.compile_ast(ast.parse(source))
