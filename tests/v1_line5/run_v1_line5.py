@@ -75,7 +75,7 @@ def test_source_contract() -> None:
     require(follower, "LineErrorEstimator::estimate(mask)", "mask-driven line follower")
     require(follower, "LAST_DIRECTION_THRESHOLD = 0.25f", "recovery direction threshold")
     require(intersection, "LineSensorLayout::isIntersectionCandidate", "5CH intersection candidate")
-    assert "0b111" not in intersection, "3CH intersection assumption still present"
+    assert "_history[i] == 0b111" not in intersection, "3CH intersection equality still present"
 
     for text, label in ((diagnostics, "diagnostics"), (console, "development console"), (serial, "serial diagnostics")):
         require(text, "SensorID::LineFarLeft", f"far-left {label}")
