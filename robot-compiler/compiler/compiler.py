@@ -184,6 +184,13 @@ class RobotCompiler(ast.NodeVisitor):
             return self.visit(value)
         raise CompilerError(f"Unsupported expression statement: {type(value).__name__}")
 
+    # ---------- Global ----------
+    def visit_Global(self, node):
+        if self.current_scope is self.global_scope:
+            return
+        for name in node.names:
+            self.current_scope.declare_global(name)
+
     # ---------- Assign ----------
     def visit_Assign(self, node):
         if len(node.targets) != 1:
