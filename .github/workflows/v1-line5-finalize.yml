@@ -1,0 +1,91 @@
+name: V1 Line5 Finalize
+
+on:
+  push:
+    branches:
+      - feat/v1-line5-01-five-channel
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/v1-line5-01-five-channel
+          fetch-depth: 0
+
+      - name: Patch remaining V1 Line5 contracts
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path_str, old, new, label):
+              path = Path(path_str)
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          p = 'robot-docs/ROBOT_PLATFORM_API.md'
+          replace(p, 'channel\tint\t0..2\t0=Left, 1=Center, 2=Right',
+                     'channel\tint\t0..4\t0=Left, 1=Center, 2=Right, 3=Far Left, 4=Far Right',
+                     'ReadLine channel range')
+          replace(p, 'channel\tint\tChannel 0..2 (Left, Center, Right)',
+                     'channel\tint\tChannel 0..4 (Left, Center, Right, Far Left, Far Right)',
+                     'GetTraceValue channel range')
+          replace(p, 'channel\tint\tChannel 0..2\nReturn Type: bool',
+                     'channel\tint\tChannel 0..4 (0=L, 1=C, 2=R, 3=FL, 4=FR)\nReturn Type: bool',
+                     'GetTraceState channel range')
+          replace(p, 'Purpose: Get raw bitmask of all 3 trace sensors.',
+                     'Purpose: Get canonical raw bitmask of all 5 trace sensors.',
+                     'GetTraceRaw purpose')
+          replace(p, 'Return Type: int16_t (3-bit mask: bit2=Left, bit1=Center, bit0=Right).',
+                     'Return Type: int16_t (5-bit mask: bit4=Far Left, bit3=Left, bit2=Center, bit1=Right, bit0=Far Right).',
+                     'GetTraceRaw layout')
+          replace(p, 'Return Range: 0..7.\n\nFailure Conditions: Returns 0 if sensors unavailable.',
+                     'Return Range: 0..31.\n\nFailure Conditions: Returns 0 if sensors unavailable.',
+                     'GetTraceRaw range')
+
+          p = 'robot-docs/PERCEPTION_GUIDE.md'
+          replace(p, 'line = read_line(channel)         # channel 0,1,2',
+                     'line = read_line(channel)         # 0=L, 1=C, 2=R, 3=FL, 4=FR',
+                     'perception guide channel contract')
+
+          p = 'robot-platform/main/src/Communication/SerialCommandHandler.cpp'
+          replace(p,
+          '''            auto left = mgr.getSensor(SensorID::LineLeft);\n            auto center = mgr.getSensor(SensorID::LineCenter);\n            auto right = mgr.getSensor(SensorID::LineRight);\n\n            if (left) {''',
+          '''            auto farLeft = mgr.getSensor(SensorID::LineFarLeft);\n            auto left = mgr.getSensor(SensorID::LineLeft);\n            auto center = mgr.getSensor(SensorID::LineCenter);\n            auto right = mgr.getSensor(SensorID::LineRight);\n            auto farRight = mgr.getSensor(SensorID::LineFarRight);\n\n            if (farLeft) {\n                auto fl = static_cast<TCRT5000*>(farLeft);\n                fl->update();\n                Serial.printf("[RAW] FarLeft : raw=%d, detected=%d\\n", fl->rawLevel(), fl->isLineDetected() ? 1 : 0);\n            }\n            if (left) {''',
+          'diag raw sensor list')
+          replace(p,
+          '''            if (right) {\n                auto r = static_cast<TCRT5000*>(right);\n                r->update();\n                Serial.printf("[RAW] Right : raw=%d, detected=%d\\n", r->rawLevel(), r->isLineDetected() ? 1 : 0);\n            }\n        }\n        else if (input.startsWith("diag init")) {''',
+          '''            if (right) {\n                auto r = static_cast<TCRT5000*>(right);\n                r->update();\n                Serial.printf("[RAW] Right : raw=%d, detected=%d\\n", r->rawLevel(), r->isLineDetected() ? 1 : 0);\n            }\n            if (farRight) {\n                auto fr = static_cast<TCRT5000*>(farRight);\n                fr->update();\n                Serial.printf("[RAW] FarRight: raw=%d, detected=%d\\n", fr->rawLevel(), fr->isLineDetected() ? 1 : 0);\n            }\n        }\n        else if (input.startsWith("diag init")) {''',
+          'diag raw far-right')
+          replace(p,
+          '''            auto left = mgr.getSensor(SensorID::LineLeft);\n            auto center = mgr.getSensor(SensorID::LineCenter);\n            auto right = mgr.getSensor(SensorID::LineRight);\n            Serial.println("[INIT] Sensor pointers:");\n            Serial.printf("  Left  : %s\\n", left ? "OK" : "NULL");\n            Serial.printf("  Center: %s\\n", center ? "OK" : "NULL");\n            Serial.printf("  Right : %s\\n", right ? "OK" : "NULL");''',
+          '''            auto farLeft = mgr.getSensor(SensorID::LineFarLeft);\n            auto left = mgr.getSensor(SensorID::LineLeft);\n            auto center = mgr.getSensor(SensorID::LineCenter);\n            auto right = mgr.getSensor(SensorID::LineRight);\n            auto farRight = mgr.getSensor(SensorID::LineFarRight);\n            Serial.println("[INIT] Sensor pointers:");\n            Serial.printf("  FarLeft : %s\\n", farLeft ? "OK" : "NULL");\n            Serial.printf("  Left    : %s\\n", left ? "OK" : "NULL");\n            Serial.printf("  Center  : %s\\n", center ? "OK" : "NULL");\n            Serial.printf("  Right   : %s\\n", right ? "OK" : "NULL");\n            Serial.printf("  FarRight: %s\\n", farRight ? "OK" : "NULL");''',
+          'diag init sensor list')
+          PY
+
+      - name: Verify final Line5 contracts
+        shell: bash
+        run: |
+          grep -q '0=Left, 1=Center, 2=Right, 3=Far Left, 4=Far Right' robot-docs/ROBOT_PLATFORM_API.md
+          grep -q '5-bit mask: bit4=Far Left' robot-docs/ROBOT_PLATFORM_API.md
+          grep -q 'SensorID::LineFarLeft' robot-platform/main/src/Communication/SerialCommandHandler.cpp
+          grep -q 'SensorID::LineFarRight' robot-platform/main/src/Communication/SerialCommandHandler.cpp
+
+      - name: Remove one-shot workflow and commit
+        shell: bash
+        run: |
+          git rm .github/workflows/v1-line5-finalize.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add robot-docs/ROBOT_PLATFORM_API.md robot-docs/PERCEPTION_GUIDE.md robot-platform/main/src/Communication/SerialCommandHandler.cpp
+          git commit -m 'V1-LINE5-01: finalize API docs and diagnostics'
+          git push origin HEAD:feat/v1-line5-01-five-channel
