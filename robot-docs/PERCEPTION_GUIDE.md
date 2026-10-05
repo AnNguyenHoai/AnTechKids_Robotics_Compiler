@@ -16,7 +16,7 @@ dist = read_ultrasonic()          # returns int cm
 state = read_touch(port)          # port 0 or 1
 light = read_light(channel)       # channel 0
 color = read_color()              # placeholder
-line = read_line(channel)         # channel 0,1,2
+line = read_line(channel)         # 0=L, 1=C, 2=R, 3=FL, 4=FR
 
 Calibration
 Use SensorConfig to adjust:
