@@ -1,4 +1,5 @@
 #include "IntersectionDetector.h"
+#include "LineSensorLayout.h"
 
 IntersectionDetector::IntersectionDetector() : _index(0), _count(0) {
     reset();
@@ -11,32 +12,24 @@ void IntersectionDetector::reset() {
 }
 
 bool IntersectionDetector::update(uint8_t mask) {
-    // Store mask
-    _history[_index] = mask;
+    _history[_index] = LineSensorLayout::sanitizeMask(mask);
     _index = (_index + 1) % HISTORY_LEN;
     if (_count < HISTORY_LEN) _count++;
 
-    // Need at least HISTORY_LEN samples
     if (_count < HISTORY_LEN) return false;
 
-    // Count how many are all-ones (intersection pattern)
-    int ones = countAllOnes();
+    const int candidates = countCandidates();
 
-    // Intersection if:
-    // - At least 3 out of last 6 are 111 (persistence)
-    // - And not all 6 are 111 (avoid false positive on a pure long intersection)
-    // - And there is at least one transition (not all same) -> could be detected via pattern
-    // Simpler: if ones >= 3 and ones < HISTORY_LEN (i.e., not all)
-    if (ones >= 3 && ones < HISTORY_LEN) {
-        return true;
-    }
-    return false;
+    // Preserve the existing temporal-persistence policy while replacing the
+    // old exact 0b111 test with a five-channel candidate (>= 4 active eyes).
+    // Hardware validation may tune this threshold/history in a follow-up.
+    return candidates >= 3 && candidates < HISTORY_LEN;
 }
 
-int IntersectionDetector::countAllOnes() const {
-    int cnt = 0;
+int IntersectionDetector::countCandidates() const {
+    int count = 0;
     for (int i = 0; i < HISTORY_LEN; ++i) {
-        if (_history[i] == 0b111) cnt++;
+        if (LineSensorLayout::isIntersectionCandidate(_history[i])) count++;
     }
-    return cnt;
+    return count;
 }
