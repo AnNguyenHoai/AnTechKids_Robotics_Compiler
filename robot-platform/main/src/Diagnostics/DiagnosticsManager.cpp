@@ -1,6 +1,6 @@
 #include "DiagnosticsManager.h"
-#include "../Sensor/SensorManager.h"     // sửa đường dẫn
-#include "../Sensor/TCRT5000.h"          // sửa đường dẫn
+#include "../Sensor/SensorManager.h"
+#include "../Sensor/TCRT5000.h"
 #include "DiagnosticLogger.h"
 #include <Arduino.h>
 
@@ -10,9 +10,11 @@ DiagnosticsManager& DiagnosticsManager::instance() {
 }
 
 void DiagnosticsManager::updateSensors() {
+    updateSensor(SensorID::LineFarLeft);
     updateSensor(SensorID::LineLeft);
     updateSensor(SensorID::LineCenter);
     updateSensor(SensorID::LineRight);
+    updateSensor(SensorID::LineFarRight);
 }
 
 void DiagnosticsManager::updateSensor(SensorID id) {
@@ -20,7 +22,7 @@ void DiagnosticsManager::updateSensor(SensorID id) {
     if (!sensor) return;
 
     auto lineSensor = static_cast<TCRT5000*>(sensor);
-    lineSensor->update();          // đọc giá trị mới
+    lineSensor->update();
     bool value = lineSensor->isLineDetected();
 
     size_t idx = static_cast<size_t>(id);
@@ -65,9 +67,11 @@ void DiagnosticsManager::printReport() {
         DiagnosticLogger::printSensor(label, stat);
     };
 
+    printSensor(SensorID::LineFarLeft, "FAR_LEFT");
     printSensor(SensorID::LineLeft, "LEFT");
     printSensor(SensorID::LineCenter, "CENTER");
     printSensor(SensorID::LineRight, "RIGHT");
+    printSensor(SensorID::LineFarRight, "FAR_RIGHT");
 
     DiagnosticLogger::printRuntime(tickCount, getLoopFrequency(),
                                    lastLoopTimeUs, minLoopTimeUs, maxLoopTimeUs);
