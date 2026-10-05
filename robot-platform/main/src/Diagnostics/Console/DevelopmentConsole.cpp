@@ -5,6 +5,7 @@
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/TCRT5000.h"
 #include "../../Sensor/SensorID.h"
+#include "../../Services/Line/LineSensorLayout.h"
 #include <Arduino.h>
 
 DevelopmentConsole& DevelopmentConsole::instance() {
@@ -55,22 +56,31 @@ void DevelopmentConsole::_output() {
     auto& diagMgr = DiagnosticsManager::instance();
     auto& sensorMgr = SensorManager::instance();
 
-    // Lấy state hiện tại (không gọi update, chỉ đọc giá trị đã có)
+    // Preserve the existing center-three display fields, but make the shared
+    // mask use the canonical V1 Line5 spatial layout FL/L/C/R/FR.
+    auto farLeftSensor = static_cast<TCRT5000*>(sensorMgr.getSensor(SensorID::LineFarLeft));
     auto leftSensor = static_cast<TCRT5000*>(sensorMgr.getSensor(SensorID::LineLeft));
     auto centerSensor = static_cast<TCRT5000*>(sensorMgr.getSensor(SensorID::LineCenter));
     auto rightSensor = static_cast<TCRT5000*>(sensorMgr.getSensor(SensorID::LineRight));
+    auto farRightSensor = static_cast<TCRT5000*>(sensorMgr.getSensor(SensorID::LineFarRight));
 
+    uint8_t farLeftState = farLeftSensor ? farLeftSensor->isLineDetected() : 0;
     uint8_t leftState = leftSensor ? leftSensor->isLineDetected() : 0;
     uint8_t centerState = centerSensor ? centerSensor->isLineDetected() : 0;
     uint8_t rightState = rightSensor ? rightSensor->isLineDetected() : 0;
-    uint8_t mask = (leftState ? 4 : 0) | (centerState ? 2 : 0) | (rightState ? 1 : 0);
+    uint8_t farRightState = farRightSensor ? farRightSensor->isLineDetected() : 0;
 
-    // Lấy stats
+    uint8_t mask = 0;
+    if (farLeftState) mask |= LineSensorLayout::MASK_FAR_LEFT;
+    if (leftState) mask |= LineSensorLayout::MASK_LEFT;
+    if (centerState) mask |= LineSensorLayout::MASK_CENTER;
+    if (rightState) mask |= LineSensorLayout::MASK_RIGHT;
+    if (farRightState) mask |= LineSensorLayout::MASK_FAR_RIGHT;
+
     auto leftStat = diagMgr.getStatistics(SensorID::LineLeft);
     auto centerStat = diagMgr.getStatistics(SensorID::LineCenter);
     auto rightStat = diagMgr.getStatistics(SensorID::LineRight);
 
-    // Runtime
     uint32_t tickCount = diagMgr.getTickCount();
     float loopFreq = diagMgr.getLoopFrequency();
     uint32_t lastLoopUs = diagMgr.getLastLoopTimeUs();

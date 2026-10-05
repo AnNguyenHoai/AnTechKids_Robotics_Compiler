@@ -471,7 +471,7 @@ int16_t ReadLine(int channel);
 Parameters:
 
 Name	Type	Range	Description
-channel	int	0..2	0=Left, 1=Center, 2=Right
+channel	int	0..4	0=Left, 1=Center, 2=Right, 3=Far Left, 4=Far Right
 Return Type: int16_t (0 = no line, 1 = line detected).
 
 Return Range: 0 or 1.
@@ -491,7 +491,7 @@ Parameters:
 
 Name	Type	Description
 port	int	Port number (ignored)
-channel	int	Channel 0..2 (Left, Center, Right)
+channel	int	Channel 0..4 (Left, Center, Right, Far Left, Far Right)
 Return Type: int16_t (100 if line detected, 0 otherwise).
 
 Return Range: 0 or 100.
@@ -511,7 +511,7 @@ Parameters:
 
 Name	Type	Description
 port	int	Port number (ignored)
-channel	int	Channel 0..2
+channel	int	Channel 0..4 (0=L, 1=C, 2=R, 3=FL, 4=FR)
 Return Type: bool (true if line detected).
 
 Return Range: true/false.
@@ -519,7 +519,7 @@ Return Range: true/false.
 Failure Conditions: Returns false if invalid.
 
 6.9 Function: GetTraceRaw
-Purpose: Get raw bitmask of all 3 trace sensors.
+Purpose: Get canonical raw bitmask of all 5 trace sensors.
 
 Signature:
 
@@ -529,9 +529,9 @@ Parameters:
 
 Name	Type	Description
 port	int	Port number (ignored)
-Return Type: int16_t (3-bit mask: bit2=Left, bit1=Center, bit0=Right).
+Return Type: int16_t (5-bit mask: bit4=Far Left, bit3=Left, bit2=Center, bit1=Right, bit0=Far Right).
 
-Return Range: 0..7.
+Return Range: 0..31.
 
 Failure Conditions: Returns 0 if sensors unavailable.
 

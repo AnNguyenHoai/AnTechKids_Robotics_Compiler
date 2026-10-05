@@ -252,10 +252,17 @@ void SerialCommandHandler::handle() {
     else if (input.startsWith("diagnostics") || input.startsWith("diag")) {
         if (input.startsWith("diag raw")) {
             auto& mgr = SensorManager::instance();
+            auto farLeft = mgr.getSensor(SensorID::LineFarLeft);
             auto left = mgr.getSensor(SensorID::LineLeft);
             auto center = mgr.getSensor(SensorID::LineCenter);
             auto right = mgr.getSensor(SensorID::LineRight);
+            auto farRight = mgr.getSensor(SensorID::LineFarRight);
 
+            if (farLeft) {
+                auto fl = static_cast<TCRT5000*>(farLeft);
+                fl->update();
+                Serial.printf("[RAW] FarLeft : raw=%d, detected=%d\n", fl->rawLevel(), fl->isLineDetected() ? 1 : 0);
+            }
             if (left) {
                 auto l = static_cast<TCRT5000*>(left);
                 l->update();
@@ -271,16 +278,25 @@ void SerialCommandHandler::handle() {
                 r->update();
                 Serial.printf("[RAW] Right : raw=%d, detected=%d\n", r->rawLevel(), r->isLineDetected() ? 1 : 0);
             }
+            if (farRight) {
+                auto fr = static_cast<TCRT5000*>(farRight);
+                fr->update();
+                Serial.printf("[RAW] FarRight: raw=%d, detected=%d\n", fr->rawLevel(), fr->isLineDetected() ? 1 : 0);
+            }
         }
         else if (input.startsWith("diag init")) {
             auto& mgr = SensorManager::instance();
+            auto farLeft = mgr.getSensor(SensorID::LineFarLeft);
             auto left = mgr.getSensor(SensorID::LineLeft);
             auto center = mgr.getSensor(SensorID::LineCenter);
             auto right = mgr.getSensor(SensorID::LineRight);
+            auto farRight = mgr.getSensor(SensorID::LineFarRight);
             Serial.println("[INIT] Sensor pointers:");
-            Serial.printf("  Left  : %s\n", left ? "OK" : "NULL");
-            Serial.printf("  Center: %s\n", center ? "OK" : "NULL");
-            Serial.printf("  Right : %s\n", right ? "OK" : "NULL");
+            Serial.printf("  FarLeft : %s\n", farLeft ? "OK" : "NULL");
+            Serial.printf("  Left    : %s\n", left ? "OK" : "NULL");
+            Serial.printf("  Center  : %s\n", center ? "OK" : "NULL");
+            Serial.printf("  Right   : %s\n", right ? "OK" : "NULL");
+            Serial.printf("  FarRight: %s\n", farRight ? "OK" : "NULL");
         }
         else if (input.startsWith("console on")) {
             DevelopmentConsole::instance().setEnabled(true);

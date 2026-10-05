@@ -1,15 +1,21 @@
 #include "LinePerception.h"
+#include "LineErrorEstimator.h"
+#include "LineSensorLayout.h"
 
 LineState LinePerception::interpret(uint8_t mask) {
-    mask &= 0b111;
-    switch (mask) {
-        case 0b000: return LineState::LOST;
-        case 0b010: return LineState::CENTER;
-        case 0b100: return LineState::LEFT;
-        case 0b001: return LineState::RIGHT;
-        case 0b110: return LineState::LEFT_CENTER;
-        case 0b011: return LineState::CENTER_RIGHT;
-        case 0b111: return LineState::INTERSECTION;
-        default:    return LineState::UNKNOWN;
+    mask = LineSensorLayout::sanitizeMask(mask);
+
+    if (mask == 0) {
+        return LineState::LOST;
     }
+    if (LineSensorLayout::isIntersectionCandidate(mask)) {
+        return LineState::INTERSECTION;
+    }
+
+    const float error = LineErrorEstimator::estimate(mask);
+    if (error <= -0.75f) return LineState::LEFT;
+    if (error < 0.0f)    return LineState::LEFT_CENTER;
+    if (error >= 0.75f)  return LineState::RIGHT;
+    if (error > 0.0f)    return LineState::CENTER_RIGHT;
+    return LineState::CENTER;
 }

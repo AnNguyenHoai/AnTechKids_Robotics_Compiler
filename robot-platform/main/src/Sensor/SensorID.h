@@ -5,15 +5,17 @@
 
 /**
  * Unique identifiers for all sensors in the system.
- * 
- * Using enum class provides compile‑time safety and fast array lookups.
+ *
+ * Using enum class provides compile-time safety and fast array lookups.
  * Add new sensors here when expanding the framework.
  */
 enum class SensorID : uint8_t {
-    // TCRT5000 line sensors
+    // TCRT5000 line sensors. Keep the existing three names stable.
+    LineFarLeft,
     LineLeft,
     LineCenter,
     LineRight,
+    LineFarRight,
     Ultrasonic,
 
     // Future sensors (placeholder)
