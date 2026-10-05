@@ -1,26 +1,18 @@
 #include "LineErrorEstimator.h"
+#include "LineSensorLayout.h"
 
-float LineErrorEstimator::estimate(LineState state) {
-    switch (state) {
-        // Left side: negative error (turn left)
-        case LineState::LEFT:
-        case LineState::LEFT_CENTER:
-            return -1.0f;
+float LineErrorEstimator::estimate(uint8_t mask) {
+    mask = LineSensorLayout::sanitizeMask(mask);
+    if (mask == 0) return 0.0f;
 
-        // Center: zero error (straight)
-        case LineState::CENTER:
-            return 0.0f;
+    float weightedSum = 0.0f;
+    int activeCount = 0;
 
-        // Right side: positive error (turn right)
-        case LineState::RIGHT:
-        case LineState::CENTER_RIGHT:
-            return 1.0f;
+    if (mask & LineSensorLayout::MASK_FAR_LEFT)  { weightedSum += -2.0f; activeCount++; }
+    if (mask & LineSensorLayout::MASK_LEFT)      { weightedSum += -1.0f; activeCount++; }
+    if (mask & LineSensorLayout::MASK_CENTER)    { weightedSum +=  0.0f; activeCount++; }
+    if (mask & LineSensorLayout::MASK_RIGHT)     { weightedSum +=  1.0f; activeCount++; }
+    if (mask & LineSensorLayout::MASK_FAR_RIGHT) { weightedSum +=  2.0f; activeCount++; }
 
-        // Special states: fallback to straight (decision handled elsewhere)
-        case LineState::LOST:
-        case LineState::INTERSECTION:
-        case LineState::UNKNOWN:
-        default:
-            return 0.0f;
-    }
+    return activeCount > 0 ? (weightedSum / static_cast<float>(activeCount)) : 0.0f;
 }
