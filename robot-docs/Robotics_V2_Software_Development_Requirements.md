@@ -24,7 +24,7 @@ Mục tiêu chính:
 3. Bổ sung Motor hardware safe-state + START/ARM.
 4. Chuẩn hóa shared System I2C bus.
 5. Tích hợp MCP23017 cho Line5, LEDs và buzzer.
-6. Nâng line sensor từ 3-channel lên 5-channel.
+6. Migrate Line5 physical acquisition từ direct GPIO sang MCP23017 trong khi giữ nguyên public 5-channel semantics.
 7. Hoàn thiện Servo từ DUMMY thành real hardware output.
 8. Bổ sung battery/reset/system health.
 9. Expose Robot Health qua HTTP, OLED và RoboStudio.
@@ -104,7 +104,7 @@ Các gap chính của V1 cần xử lý:
 - no BoardProfile abstraction;
 - no MCP23017;
 - no shared I2C ownership;
-- 3-channel line model;
+- direct-GPIO Line5 acquisition must migrate behind MCP23017 while preserving the V1 Line5 logical contract;
 - Servo firmware still DUMMY;
 - LED/Buzzer direct GPIO assumptions;
 - no Motor ARM/STBY runtime safety state;
@@ -688,7 +688,7 @@ Migrate V1 peripheral assumptions to V2 physical interfaces.
 
 ### Requirement
 
-Replace three independent direct-GPIO TCRT5000 reads with one 5-channel bank backed by MCP23017 Port A.
+Replace five independent direct-GPIO TCRT5000 reads with one 5-channel bank backed by MCP23017 Port A.
 
 Minimum API:
 
