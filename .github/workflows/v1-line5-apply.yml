@@ -1,0 +1,45 @@
+name: V1 Line5 Apply Patch
+
+on:
+  push:
+    branches:
+      - feat/v1-line5-01-five-channel
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/v1-line5-01-five-channel
+          fetch-depth: 0
+
+      - name: Apply guarded RobotAPI patch
+        run: python tools/v1_line5_apply.py
+
+      - name: Verify Line5 source contracts
+        shell: bash
+        run: |
+          grep -q 'case 3: id = SensorID::LineFarLeft' robot-platform/main/src/Services/Line/LineSensorLayout.h
+          grep -q 'case 4: id = SensorID::LineFarRight' robot-platform/main/src/Services/Line/LineSensorLayout.h
+          grep -q 'MASK_FAR_LEFT' robot-platform/main/src/Services/Robot/RobotAPI.cpp
+          grep -q 'SENSOR_TRCT5000_FL_PIN' robot-platform/main/src/Services/Robot/RobotAPI.cpp
+          grep -q 'SENSOR_TRCT5000_FR_PIN' robot-platform/main/src/Services/Robot/RobotAPI.cpp
+          grep -q 'LineErrorEstimator::estimate(mask)' robot-platform/main/src/Services/Line/LineFollower.cpp
+
+      - name: Commit patched source
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No patch changes detected.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add robot-platform/main/src/Services/Robot/RobotAPI.cpp
+          git commit -m 'V1-LINE5-01: extend RobotAPI to five line channels'
+          git push origin HEAD:feat/v1-line5-01-five-channel
