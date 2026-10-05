@@ -19,19 +19,26 @@
 #define ROBOT_PIN_33    33
 #define ROBOT_PIN_13    13
 #define ROBOT_PIN_21    21
-
+#define ROBOT_PIN_34    34
+#define ROBOT_PIN_35    35
+#define ROBOT_PIN_36    36
+#define ROBOT_PIN_39    39
 
 // --- ĐẶT ALIAS (TÊN GỢI NHỚ) THEO CHỨC NĂNG PHẦN CỨNG ---
 
-// Cảm biến vạch đường TCRT5000 3CH
-#define SENSOR_TRCT5000_L_PIN   ROBOT_PIN_18  
-#define SENSOR_TRCT5000_C_PIN   ROBOT_PIN_16   // Lưu ý: Nếu dùng GPIO5, hãy đổi dòng trên thành ROBOT_PIN_5 5
-#define SENSOR_TRCT5000_R_PIN   ROBOT_PIN_17  
+// Cảm biến vạch đường TCRT5000 5CH.
+// Giữ nguyên L/C/R để tương thích V1; GPIO34/35 dành cho hai mắt ngoài.
+#define SENSOR_TRCT5000_FL_PIN  ROBOT_PIN_34
+#define SENSOR_TRCT5000_L_PIN   ROBOT_PIN_18
+#define SENSOR_TRCT5000_C_PIN   ROBOT_PIN_16
+#define SENSOR_TRCT5000_R_PIN   ROBOT_PIN_17
+#define SENSOR_TRCT5000_FR_PIN  ROBOT_PIN_35
 
 // Còi báo và Đầu ra đèn LED lớn
 #define OUTPUT_BUZZER_PIN       ROBOT_PIN_19
 #define OUTPUT_LED_LEFT_PIN     ROBOT_PIN_32
 #define OUTPUT_LED_RIGHT_PIN    ROBOT_PIN_33
+
 // Cảm biến siêu âm HC-SR04
 #define SONIC_TRIG_PIN          ROBOT_PIN_23
 #define SONIC_ECHO_PIN          ROBOT_PIN_22
@@ -46,18 +53,7 @@
 #define MPU6050_SDA_PIN ROBOT_PIN_21
 #define MPU6050_SCL_PIN ROBOT_PIN_13
 
-#define ROBOT_PIN_34    34
-
-#define ROBOT_PIN_35    35
-
-#define ROBOT_PIN_36    36
-
-#define ROBOT_PIN_39    39
-
-// Encoder quadrature inputs (ESP32 input-only pins)
-#define ENCODER_LEFT_A_PIN      ROBOT_PIN_34
-#define ENCODER_LEFT_B_PIN      ROBOT_PIN_35
-#define ENCODER_RIGHT_A_PIN     ROBOT_PIN_36
-#define ENCODER_RIGHT_B_PIN     ROBOT_PIN_39
+// GPIO36/39 remain reserved input-only pins in the V1 hardware contract.
+// Encoder pin ownership is intentionally not defined for the V1 Line5 baseline.
 
 #endif
