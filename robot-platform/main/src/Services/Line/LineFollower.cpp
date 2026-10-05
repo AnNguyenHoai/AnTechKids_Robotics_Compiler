@@ -1,10 +1,13 @@
 #include "LineFollower.h"
-#include "LinePerception.h"
 #include "LineErrorEstimator.h"
 #include "MotorMixer.h"
 #include <Arduino.h>
 #include "../Robot/MotionConfig.h"
 #include <math.h>
+
+namespace {
+constexpr float LAST_DIRECTION_THRESHOLD = 0.25f;
+}
 
 LineFollower& LineFollower::instance() {
     static LineFollower follower;
@@ -23,7 +26,7 @@ LineFollower::LineFollower()
       _lastLineDirection(RecoveryStrategy::DIR_UNKNOWN),
       _lastControlUpdate(0),
       _wasRecovering(false),
-      _scaleFactor(15.0f)  // default scale factor for MotorMixer
+      _scaleFactor(15.0f)
 {
     _pid.setLimits(-100, 100);
 }
@@ -51,7 +54,7 @@ void LineFollower::reset() {
 
 void LineFollower::turnEncounterLine(int direction) {
     _turnRequested = true;
-    _turnDirection = direction; // 1 left, 2 right
+    _turnDirection = direction;
     _stateMachine.requestTurn(direction);
 }
 
@@ -61,7 +64,7 @@ void LineFollower::stopAtIntersection() {
 }
 
 void LineFollower::followForBmp(int speed, int degree) {
-    _bmpDuration = degree * 5; // ms per degree (calibrate later)
+    _bmpDuration = degree * 5;
     _bmpStart = millis();
     _bmpActive = true;
     _speed = speed;
@@ -82,13 +85,13 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
         _bmpActive = false; _stopped = true; leftMotor = rightMotor = 0; return false;
     }
 
-    LineState state = LinePerception::interpret(mask);
+    const float error = LineErrorEstimator::estimate(mask);
 
-    // Remember the last side that actually saw the line.
-    if (state == LineState::LEFT || state == LineState::LEFT_CENTER) {
+    // Track the last meaningful side from the continuous five-eye estimate.
+    if (error < -LAST_DIRECTION_THRESHOLD) {
         _lastLineDirection = RecoveryStrategy::DIR_LEFT;
         _recovery.setLastDirection(_lastLineDirection);
-    } else if (state == LineState::RIGHT || state == LineState::CENTER_RIGHT) {
+    } else if (error > LAST_DIRECTION_THRESHOLD) {
         _lastLineDirection = RecoveryStrategy::DIR_RIGHT;
         _recovery.setLastDirection(_lastLineDirection);
     }
@@ -98,8 +101,8 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
     FollowerState fs = _stateMachine.getState();
     bool recovering = (fs == FollowerState::LOST || fs == FollowerState::SEARCHING);
 
-    // Reacquiring a line exits recovery in the same control cycle. Reset the
-    // PID transient so the old search state cannot cause a derivative kick.
+    // Keep V1 reacquire semantics for this task: any active line sensor exits
+    // recovery. Center-zone-only reacquire remains a hardware-validation item.
     if (_wasRecovering && mask != 0) {
         _pid.reset();
         _recovery.reset();
@@ -127,14 +130,9 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
             else leftMotor = rightMotor = 0;
             break;
 
-        default: { // FOLLOWING
-            // ---- PID-based line following ----
+        default: {
             const int baseSpeed = constrain(speed, 0, 100);
-            // Get continuous error from LineState
-            float error = LineErrorEstimator::estimate(state);
-            // Update PID and get correction
-            float correction = _pid.update(error);
-            // Mix correction with base speed
+            const float correction = _pid.update(error);
             MotorOutput out = MotorMixer::mix(baseSpeed, correction, _scaleFactor);
             leftMotor = out.left;
             rightMotor = out.right;
@@ -143,7 +141,10 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
     }
 
     if (_stopAtIntersectionRequested && intersection) {
-        _stopAtIntersectionRequested = false; _stopped = true; leftMotor = rightMotor = 0; return false;
+        _stopAtIntersectionRequested = false;
+        _stopped = true;
+        leftMotor = rightMotor = 0;
+        return false;
     }
     if (_turnRequested && mask != 0) _turnRequested = false;
     return true;
