@@ -2419,6 +2419,15 @@ Software regression:
 - RobotHealth aggregate and HTTP serializer regressions are executed in the same focused workflow;
 - dedicated CI: `.github/workflows/v2-robostudio-health-panel.yml`.
 
+Software verification evidence:
+
+- implementation commit: `16846a2c3917ac639c3788bbdfc3e36aba7e14a1`;
+- GitHub Actions `V2 RoboStudio Health Panel` run `37420210724`: **PASS**;
+- GitHub Actions `V2 Robot Health Aggregate` run `37420210617`: **PASS**;
+- GitHub Actions `V2 Health HTTP Contract` run `37420210461`: **PASS**;
+- GitHub Actions `V2 Encoder Contract` run `37420210472`: **PASS**;
+- focused regression verifies Student simplicity, complete Teacher diagnostics including encoder counts, async endpoint consumption, network/payload error separation, and shared panel integration in standard/responsive Robot tabs.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `IMPLEMENTED`
 
