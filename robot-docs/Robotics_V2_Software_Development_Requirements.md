@@ -3040,7 +3040,8 @@ invalid version
 
 ## V2-TEST-010 — OTA Safety Regression
 
-**Priority:** P0
+**Priority:** P0  
+**Status:** IMPLEMENTED
 
 Verify:
 
@@ -3060,6 +3061,38 @@ SAFE
 ```
 
 Robot shall never automatically re-arm after OTA.
+
+### Integrated software acceptance
+
+Dedicated runner: `tests/v2_ota_safety_acceptance/run_v2_ota_safety_acceptance.py`.
+
+The acceptance verifies:
+
+- real `MotorSafetyController` + `StartArmController` execute the required ARMED -> RUNNING -> OTA disarm -> SAFE transition;
+- OTA disarm disables the physical gate and blocks subsequent non-zero motor commands;
+- a held START cannot undo OTA disarm;
+- reboot creates a fresh MotorSafety instance in SAFE with the driver disabled;
+- a START held through boot/readiness cannot auto-arm; a fresh release -> press sequence is required;
+- ArduinoOTA `onOtaStart()` disarms before marking the update active;
+- HTTP OTA upload-start disarms before `Update.begin(...)`;
+- system disarm clears motor PWM/state before lowering STBY;
+- while OTA is active, the main loop stops motion and returns before VM/behavior execution;
+- successful HTTP OTA disarms with `REBOOT` before `ESP.restart()`;
+- OTA error/abort/failure paths contain no arm operation;
+- boot initializes MotorSafety SAFE before motor PWM channels are attached.
+
+Regression dependencies executed in the same focused workflow:
+
+- VM/student safety boundary;
+- fail-safe disarm contract;
+- integrated motor-safety acceptance.
+
+Focused CI: `.github/workflows/v2-ota-safety-acceptance.yml`.
+
+No separate hardware claim is made here until physical OTA/STBY behavior is exercised on V2 hardware; software contract closure is recorded independently from V2-TEST-003 physical motor-safety acceptance.
+
+**Software verification status:** `IMPLEMENTED_PENDING_CI`  
+**Task status:** `IMPLEMENTED`
 
 ---
 
@@ -3118,7 +3151,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 29 | V2-TEST-007 | Health Schema Contract — DONE | P1 | M6 |
 | 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension | P1 | M6 |
 | 31 | V2-TEST-009 | Config Migration Regression | P1 | M6 |
-| 32 | V2-TEST-010 | OTA Safety Regression | P0 | M6 |
+| 32 | V2-TEST-010 | OTA Safety Regression — IMPLEMENTED | P0 | M6 |
 
 ---
 
