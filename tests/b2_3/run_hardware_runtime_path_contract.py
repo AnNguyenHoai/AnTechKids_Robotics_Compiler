@@ -40,6 +40,11 @@ def default_template_contract() -> None:
     default_json = json.loads(
         (ROOT / "robostudio" / "config" / "hardware.json").read_text(encoding="utf-8")
     )
+    check("shipped hardware.json is schema V2", default_json.get("version") == 2)
+    check(
+        "shipped hardware.json freezes V2 board profile",
+        default_json.get("board_profile") == "antech_robot_v2",
+    )
     normalized = hardware_feature_config.normalize_hardware_payload(default_json)
     check(
         "shipped hardware.json defaults match shared runtime defaults",
@@ -165,7 +170,16 @@ def packaged_mode_contract(base: Path) -> None:
     os.environ[runtime_paths.DEPENDENCY_MODE_ENV] = "artifact-closed"
     os.environ.pop(runtime_paths.PORTABLE_DATA_ENV, None)
 
+    # The packaged default above is intentionally legacy V1. Loading it must
+    # migrate in memory without losing feature state; first save writes V2.
+    migrated = HardwareConfigService().load()
+    check("packaged V1 default migrates to schema V2", migrated.version == 2)
+    check("packaged V1 default maps to frozen V2 board profile", migrated.board_profile == "antech_robot_v2")
+
     config_service = configure_user_state(ultrasonic=True, servo=True, buzzer=True)
+    saved_payload = json.loads(config_service.user_config_path.read_text(encoding="utf-8"))
+    check("first user save persists schema V2", saved_payload.get("version") == 2)
+    check("first user save persists board profile", saved_payload.get("board_profile") == "antech_robot_v2")
     macro = HardwareMacroService(config_service=config_service)
     output = macro.generate()
     expected = state.resolve() / "generated" / "generated_device_config.h"

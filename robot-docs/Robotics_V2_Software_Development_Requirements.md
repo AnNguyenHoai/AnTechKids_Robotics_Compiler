@@ -2136,7 +2136,8 @@ Make RoboStudio aware of V2 physical board and Robot Health without exposing GPI
 
 ## V2-CONF-001 — HardwareConfig V2 / Migration
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IMPLEMENTED
 
 ### Requirement
 
@@ -2168,6 +2169,51 @@ Old v1 configuration shall be migrated or loaded through a deterministic compati
 - Unknown board profile fails clearly.
 - Feature defaults remain deterministic.
 - Generated feature macros continue to work.
+
+### Implementation / verification record
+
+Implemented schema contract:
+
+- current schema version is `2`;
+- frozen board profile is `antech_robot_v2`;
+- shipped `robostudio/config/hardware.json` now persists:
+  - `version: 2`;
+  - `board_profile: antech_robot_v2`;
+  - capability-only `devices` flags.
+- both RoboStudio domain code and deployment/runtime tools use the same schema constants and deterministic migration policy.
+
+V1 compatibility policy:
+
+- V1 (`version: 1`) has no persisted board profile;
+- V1 is accepted and migrated in memory to schema V2 with `board_profile=antech_robot_v2`;
+- every existing known device selection is preserved exactly;
+- missing registered devices still receive deterministic registry defaults;
+- loading a V1 file does not silently rewrite the file;
+- the next explicit save writes schema V2.
+
+V2 validation:
+
+- V2 requires `board_profile`;
+- any V2 board profile other than `antech_robot_v2` fails clearly;
+- unsupported schema versions fail clearly;
+- unknown devices remain rejected.
+
+Physical/capability separation:
+
+- generated `ROBOT_FEATURE_*` macros continue to represent capability ON/OFF only;
+- generated headers do not contain `board_profile`, GPIO numbers, or BoardProfile pin ownership;
+- `BoardProfile.h` remains the sole firmware physical-wiring source of truth;
+- changing a feature flag cannot remap a connector.
+
+Software regression:
+
+- `tests/v2_hardware_config/run_v2_hardware_config.py` verifies V1->V2 feature preservation, save-time migration, board-profile validation, shared RoboStudio/deployment semantics, capability-only header generation and shipped V2 defaults;
+- existing B2.3 hardware runtime-path regression now also verifies legacy packaged V1 defaults migrate correctly and first user save persists V2;
+- existing RoboStudio hardware-config and macro-generator unit tests are retained;
+- dedicated CI: `.github/workflows/v2-hardware-config-migration.yml`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `IMPLEMENTED`
 
 ### Dependencies
 
@@ -2635,7 +2681,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 17 | V2-HLT-004 | RobotHealth Aggregate — IN_PROGRESS | P1 | M4 |
 | 18 | V2-NET-001 | Health API V2 | P1 | M4 |
 | 19 | V2-HLT-005 | OLED Health Display | P2 | M4 |
-| 20 | V2-CONF-001 | HardwareConfig V2 / Migration | P1 | M5 |
+| 20 | V2-CONF-001 | HardwareConfig V2 / Migration — IMPLEMENTED | P1 | M5 |
 | 21 | V2-RS-001 | RoboStudio Board Awareness | P1 | M5 |
 | 22 | V2-RS-002 | Robot Health Panel | P2 | M5 |
 | 23 | V2-TEST-001 | Board Mapping Contract Tests — DONE | P0 | M6 |

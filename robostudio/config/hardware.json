@@ -1,5 +1,6 @@
 {
-  "version": 1,
+  "version": 2,
+  "board_profile": "antech_robot_v2",
   "devices": {
     "motor": true,
     "encoder": false,

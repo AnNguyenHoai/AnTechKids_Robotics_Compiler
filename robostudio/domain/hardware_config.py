@@ -3,9 +3,16 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable
 
+from tools.hardware_feature_config import (
+    HARDWARE_CONFIG_VERSION,
+    LEGACY_HARDWARE_CONFIG_VERSION,
+    V2_BOARD_PROFILE,
+)
+
 from .device_registry import DeviceRegistry
 
-DEVICE_CONFIG_VERSION = 1
+DEVICE_CONFIG_VERSION = HARDWARE_CONFIG_VERSION
+BOARD_PROFILE = V2_BOARD_PROFILE
 
 
 @dataclass(frozen=True)
@@ -24,12 +31,16 @@ class HardwareConfig:
     """Aggregate root and serializable source of truth for device selection."""
 
     version: int = DEVICE_CONFIG_VERSION
+    board_profile: str = BOARD_PROFILE
     devices: Dict[str, DeviceConfig] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.version = int(self.version)
         if self.version != DEVICE_CONFIG_VERSION:
             raise ValueError(f"Unsupported hardware configuration version: {self.version}")
+        self.board_profile = str(self.board_profile).strip()
+        if self.board_profile != BOARD_PROFILE:
+            raise ValueError(f"Unsupported board profile: {self.board_profile}")
         if not self.devices:
             self.devices = {
                 device_id: DeviceConfig(device_id, enabled)
@@ -46,12 +57,22 @@ class HardwareConfig:
         if not isinstance(data, dict):
             raise ValueError("Hardware configuration must be a JSON object")
 
-        version = data.get("version", DEVICE_CONFIG_VERSION)
+        version = data.get("version", LEGACY_HARDWARE_CONFIG_VERSION)
         try:
             version = int(version)
         except (TypeError, ValueError) as exc:
             raise ValueError("Hardware configuration version must be an integer") from exc
-        if version != DEVICE_CONFIG_VERSION:
+
+        if version == LEGACY_HARDWARE_CONFIG_VERSION:
+            # Deterministic V1 migration: V1 never persisted physical board
+            # identity, so legacy AnTechKids config is assigned to the frozen
+            # V2 board profile while preserving every device selection.
+            board_profile = BOARD_PROFILE
+        elif version == DEVICE_CONFIG_VERSION:
+            board_profile = str(data.get("board_profile", "")).strip()
+            if board_profile != BOARD_PROFILE:
+                raise ValueError(f"Unsupported board profile: {board_profile or '<missing>'}")
+        else:
             raise ValueError(f"Unsupported hardware configuration version: {version}")
 
         raw_devices = data.get("devices", {})
@@ -71,11 +92,16 @@ class HardwareConfig:
                 )
             devices[device_id] = DeviceConfig(device_id, enabled)
 
-        return cls(version=version, devices=devices)
+        return cls(
+            version=DEVICE_CONFIG_VERSION,
+            board_profile=board_profile,
+            devices=devices,
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "version": self.version,
+            "board_profile": self.board_profile,
             "devices": {
                 device_id: config.enabled
                 for device_id, config in self.devices.items()

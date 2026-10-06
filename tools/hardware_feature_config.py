@@ -16,7 +16,9 @@ from typing import Any, Iterable, Mapping
 
 from tools import runtime_paths
 
-HARDWARE_CONFIG_VERSION = 1
+LEGACY_HARDWARE_CONFIG_VERSION = 1
+HARDWARE_CONFIG_VERSION = 2
+V2_BOARD_PROFILE = "antech_robot_v2"
 GENERATED_HEADER_RELATIVE = Path("generated") / "generated_device_config.h"
 USER_HARDWARE_CONFIG_NAME = "hardware.json"
 
@@ -117,17 +119,29 @@ def normalize_hardware_payload(data: Any) -> dict[str, bool]:
     if not isinstance(data, dict):
         raise ValueError("Hardware configuration must be a JSON object")
 
-    version = data.get("version", HARDWARE_CONFIG_VERSION)
+    version = data.get("version", LEGACY_HARDWARE_CONFIG_VERSION)
     try:
         version = int(version)
     except (TypeError, ValueError) as exc:
         raise ValueError("Hardware configuration version must be an integer") from exc
-    if version != HARDWARE_CONFIG_VERSION:
+
+    if version == LEGACY_HARDWARE_CONFIG_VERSION:
+        # V1 compatibility: no physical board profile was persisted.
+        board_profile = V2_BOARD_PROFILE
+    elif version == HARDWARE_CONFIG_VERSION:
+        board_profile = str(data.get("board_profile", "")).strip()
+        if board_profile != V2_BOARD_PROFILE:
+            raise ValueError(f"Unsupported board profile: {board_profile or '<missing>'}")
+    else:
         raise ValueError(f"Unsupported hardware configuration version: {version}")
 
     raw_devices = data.get("devices", {})
     if not isinstance(raw_devices, dict):
         raise ValueError("'devices' must be an object")
+
+    # board_profile is validated above but deliberately does not participate in
+    # capability macros. BoardProfile.h remains the firmware physical truth.
+    _ = board_profile
 
     state = defaults()
     for device_id, raw in raw_devices.items():
