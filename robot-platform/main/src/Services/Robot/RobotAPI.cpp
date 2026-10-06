@@ -1229,12 +1229,8 @@ void Initialize() {
     touch0.init();
     touch1.init();
 
-    pinMode(OUTPUT_LED_LEFT_PIN, OUTPUT);
-    pinMode(OUTPUT_LED_RIGHT_PIN, OUTPUT);
-    digitalWrite(OUTPUT_LED_LEFT_PIN, LOW);
-    digitalWrite(OUTPUT_LED_RIGHT_PIN, LOW);
-    Serial.println("[RobotAPI] LEDs initialized (OFF)");
-
+    // V2-SW-008: MCP auxiliary outputs are initialized lazily by
+    // AuxOutputService. RobotAPI does not own direct LED GPIO initialization.
     lightSensor.init();
     colorSensor.init();
 
@@ -1269,9 +1265,8 @@ void Initialize() {
     }
 
 #if ROBOT_FEATURE_BUZZER
-    pinMode(OUTPUT_BUZZER_PIN, OUTPUT);
-    digitalWrite(OUTPUT_BUZZER_PIN, LOW);
-    Serial.println("[RobotAPI] Buzzer initialized (OFF)");
+    // Buzzer GPB2 remains LOW/unclaimed until the first SetMp3Play call.
+    Serial.println("[RobotAPI] MCP buzzer enabled; lazy output initialization.");
 #endif
 
     loadSensorConfigFromStorage();

@@ -70,7 +70,8 @@ def test_gpio_facade_uses_board_profile() -> None:
         assert "BoardProfile::" in line, f"{alias} bypasses BoardProfile: {line}"
 
     assert "SENSOR_TRCT5000_" not in gpio, "V2-SW-004 must remove direct-GPIO Line5 aliases"
-    require(gpio, "V2-SW-008 migrates these outputs", "aux-output transition debt marker")
+    for legacy in ("OUTPUT_LED_LEFT_PIN", "OUTPUT_LED_RIGHT_PIN", "OUTPUT_BUZZER_PIN"):
+        assert legacy not in gpio, f"V2-SW-008 must remove direct-GPIO auxiliary alias: {legacy}"
 
 
 def test_hardware_config_cannot_remap_wiring() -> None:
