@@ -3068,7 +3068,8 @@ Software verification evidence:
 
 ## V2-TEST-009 — Config Migration Regression
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IMPLEMENTED
 
 Test:
 
@@ -3080,6 +3081,28 @@ unknown feature
 missing device field
 invalid version
 ```
+
+### Integrated software acceptance
+
+Dedicated runner: `tests/v2_config_migration_acceptance/run_v2_config_migration_acceptance.py`.
+
+The acceptance verifies:
+
+- V1 configuration is migrated in memory to schema V2 with `board_profile=antech_robot_v2` while preserving all known device selections;
+- loading legacy V1 state does not silently rewrite the file; the next explicit save persists schema V2;
+- V2 save/reload is stable;
+- unknown board profiles fail clearly in both RoboStudio domain and shared deployment tooling;
+- unknown feature IDs are rejected rather than silently ignored;
+- missing individual device fields and a missing `devices` object resolve to deterministic DeviceRegistry defaults;
+- unsupported/non-integer schema versions are rejected;
+- RoboStudio domain normalization and deployment/runtime normalization produce identical capability state.
+
+Focused CI: `.github/workflows/v2-config-migration-acceptance.yml`.
+
+This is a software persistence/schema compatibility contract and requires no physical hardware evidence.
+
+**Software verification status:** `IMPLEMENTED_PENDING_CI`  
+**Task status:** `IMPLEMENTED`
 
 ---
 
@@ -3204,7 +3227,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 28 | V2-TEST-006 | Servo Regression — PENDING_HW | P1 | M6 |
 | 29 | V2-TEST-007 | Health Schema Contract — DONE | P1 | M6 |
 | 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension — DONE | P1 | M6 |
-| 31 | V2-TEST-009 | Config Migration Regression | P1 | M6 |
+| 31 | V2-TEST-009 | Config Migration Regression — IMPLEMENTED | P1 | M6 |
 | 32 | V2-TEST-010 | OTA Safety Regression — DONE | P0 | M6 |
 
 ---
