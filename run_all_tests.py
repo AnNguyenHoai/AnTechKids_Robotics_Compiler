@@ -25,7 +25,7 @@ def run_script(path:Path)->bool:
 def main()->int:
     _configure_utf8_output()
     tests=[ROOT/"robot-compiler"/"tests"/"run_tests.py",ROOT/"robot-frontend-robosim"/"test"/"run_tests.py",ROOT/"robot-compiler"/"integration"/"end_to_end"/"run_integration_tests.py",ROOT/"tests"/"c4"/"test_language_semantics.py",ROOT/"tests"/"c5"/"test_c5_pipeline.py"]
-    tests.append(ROOT/"tests"/"v1_line5"/"run_v1_line5.py")
+    tests.append(ROOT/"tests"/"v1_line5"/"run_v1_line5.py")\n    tests.append(ROOT/"tests"/"v2_board_profile"/"run_v2_board_profile.py")
     for name in ["rsd_02","rsd_03","rsd_04","rsd_05","rsd_06","rsd_07","rsd_08","rsd_09","rsd_10","rsd_11","rsd_12","rsd_13","rsd_14","rsd_15","rsd_16","rsd_17","rsd_18","rsd_19","rsd_20_p","rsd_20_p1","rsd_20","rsd_21","rsd_21_2","rsd_21_3","rsd_21_4","rsd_21_5","rsd_21_6","rsd_21_7","rsd_21_8"]:tests.append(ROOT/"tests"/name/f"run_{name}.py")
     for script in ["run_b2_3.py","run_settings_isolation.py","run_hardware_runtime_path_contract.py","run_firmware_workspace_lock_regression.py","run_deployment_concurrency.py","run_artifact_output_contract.py"]: tests.append(ROOT/"tests"/"b2_3"/script)
     tests.append(ROOT/"tests"/"b2_2"/"run_b2_2.py"); tests.append(ROOT/"tests"/"b2_2"/"run_portable_child_closure.py")

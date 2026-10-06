@@ -325,7 +325,8 @@ Tạo physical board abstraction ổn định trước khi migrate peripheral.
 
 ## V2-SW-001 — Board Profile Contract
 
-**Priority:** P0
+**Priority:** P0  
+**Status:** VERIFIED_SW
 
 ### Requirement
 
@@ -383,6 +384,30 @@ HardwareConfig shall not be allowed to remap connector GPIO ownership.
 - One physical connector always maps to the same signals.
 - Board mapping is centralized and testable.
 - Existing code paths no longer depend on scattered V1 GPIO constants where V2 BoardProfile should be authoritative.
+
+### Implementation / verification record
+
+**Implementation commit target:** `main_V2`
+
+Implemented contract:
+
+- `robot-platform/main/src/HardwareAbstraction/BoardProfile.h` is the authoritative V2 physical mapping.
+- Stable profile ID: `antech_robot_v2`.
+- `GPIO.h` is retained only as a compatibility facade for existing firmware call sites and delegates V2-owned signals to `BoardProfile`.
+- Existing V1 Line5 direct-GPIO aliases are explicitly transitional debt and must be removed by `V2-SW-004`; they are not part of V2 physical truth.
+- Existing LED/Buzzer direct-GPIO aliases are explicitly transitional debt for `V2-SW-008`.
+- `robostudio/config/hardware.json` and `generated_device_config.h` remain feature enable/disable sources only and do not own connector/pin mapping.
+- `tests/v2_board_profile/run_v2_board_profile.py` locks the fixed mapping and ownership boundary.
+- The BoardProfile contract test is registered in `run_all_tests.py`.
+
+Software verification:
+
+- Board mapping contract: covered by `tests/v2_board_profile/run_v2_board_profile.py`.
+- HardwareConfig cannot remap wiring: covered by the same regression.
+- No hardware is required to verify this ownership/mapping contract.
+- Hardware-dependent electrical validation belongs to later peripheral tasks and remains outside V2-SW-001.
+
+**Verification status:** `VERIFIED_SW`
 
 ### Dependencies
 
@@ -1612,7 +1637,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 
 | Order | ID | Requirement | Priority | Milestone |
 |---:|---|---|:---:|---|
-| 1 | V2-SW-001 | Board Profile Contract | P0 | M1 |
+| 1 | V2-SW-001 | Board Profile Contract — VERIFIED_SW | P0 | M1 |
 | 2 | V2-SW-002 | System I2C Bus Manager | P0 | M1 |
 | 3 | V2-SW-003 | MCP23017 Driver/HAL | P0 | M1 |
 | 4 | V2-SAFE-001 | MotorSafetyController | P0 | M2 |
