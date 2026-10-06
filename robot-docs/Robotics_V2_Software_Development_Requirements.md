@@ -326,7 +326,7 @@ Tạo physical board abstraction ổn định trước khi migrate peripheral.
 ## V2-SW-001 — Board Profile Contract
 
 **Priority:** P0  
-**Status:** VERIFIED_SW
+**Status:** IN_PROGRESS
 
 ### Requirement
 
@@ -407,7 +407,7 @@ Software verification:
 - No hardware is required to verify this ownership/mapping contract.
 - Hardware-dependent electrical validation belongs to later peripheral tasks and remains outside V2-SW-001.
 
-**Verification status:** `VERIFIED_SW`
+**Verification status:** `IN_PROGRESS` — focused CI execution pending
 
 ### Dependencies
 
@@ -1637,7 +1637,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 
 | Order | ID | Requirement | Priority | Milestone |
 |---:|---|---|:---:|---|
-| 1 | V2-SW-001 | Board Profile Contract — VERIFIED_SW | P0 | M1 |
+| 1 | V2-SW-001 | Board Profile Contract — IN_PROGRESS | P0 | M1 |
 | 2 | V2-SW-002 | System I2C Bus Manager | P0 | M1 |
 | 3 | V2-SW-003 | MCP23017 Driver/HAL | P0 | M1 |
 | 4 | V2-SAFE-001 | MotorSafetyController | P0 | M2 |

@@ -1,0 +1,29 @@
+name: V2 BoardProfile Contract
+
+on:
+  push:
+    branches:
+      - main_V2
+    paths:
+      - "robot-platform/main/src/HardwareAbstraction/BoardProfile.h"
+      - "robot-platform/main/src/HardwareAbstraction/GPIO.h"
+      - "robostudio/config/hardware.json"
+      - "robot-platform/main/include/generated/generated_device_config.h"
+      - "tests/v2_board_profile/**"
+      - "run_all_tests.py"
+      - "robot-docs/Robotics_V2_Software_Development_Requirements.md"
+      - ".github/workflows/v2-board-profile-contract.yml"
+  workflow_dispatch:
+
+jobs:
+  board-profile-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main_V2
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run V2 BoardProfile contract
+        run: python tests/v2_board_profile/run_v2_board_profile.py
