@@ -2841,6 +2841,15 @@ Software evidence:
 - verify supply/load behavior and brownout risk under servo stall/start current;
 - verify feature-OFF firmware produces no servo waveform on physical pins.
 
+Software verification evidence:
+
+- integrated acceptance implementation: `646cc3bec890731959af52ed3329db12ccb2b5ab`;
+- GitHub Actions `V2 Servo Acceptance` run `37423933928`: **PASS**;
+- component `V2 Servo HAL Contract` regression is included in the same acceptance workflow;
+- host C++ acceptance verifies Servo1/Servo2, 0°/90°/180°, clamp behavior, invalid port isolation, lazy attach, PWM attach/write failures and current duty mapping;
+- static/transport acceptance verifies feature-OFF no-drive behavior, CRITICAL-battery servo blocking, BoardProfile pin ownership, public RobotAPI stability, compiler opcode emission and VM dispatch;
+- regression verifies Servo HAL does not own MotorSafety STBY or motor output pins.
+
 **Verification status:** `VERIFIED_SW`  
 **Task status:** `PENDING_HW`
 
