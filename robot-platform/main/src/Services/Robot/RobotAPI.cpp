@@ -23,6 +23,8 @@
 #include "../../HardwareAbstraction/HardwareCapability.h"
 #include "../../HardwareAbstraction/SystemI2CBusManager.h"
 #include "../../HardwareAbstraction/MCP23017Platform.h"
+#include "../../HardwareAbstraction/ServoHAL.h"
+#include "../../HardwareAbstraction/ServoLEDCTransport.h"
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/TCRT5000.h"
 #include "../../Sensor/MCPLineSensor.h"
@@ -78,6 +80,10 @@ static LightSensor lightSensor(ROBOT_PIN_5);
 static ColorSensor colorSensor;
 #if ROBOT_FEATURE_LINE_SENSOR
 static LineSensorBank g_lineSensorBank(systemMCP23017());
+#endif
+#if ROBOT_FEATURE_SERVO
+static ServoLEDCTransport g_servoPwmTransport;
+static ServoHAL g_servoHAL(g_servoPwmTransport);
 #endif
 static bool g_headingStartupDiagnosticEnabled = true; 
 static bool g_motorPwmDiagnosticEnabled = true;
@@ -1048,10 +1054,20 @@ void LineForBmp(int speed, int degree) {
 
 void SetServo(int port, int angle) {
 #if !ROBOT_FEATURE_SERVO
-    (void)port; (void)angle;
+    (void)port;
+    (void)angle;
     return;
 #else
-    Serial.printf("[DUMMY][SetServo] port=%d angle=%d\n", port, angle);
+    const int clamped = ServoHAL::clampAngle(angle);
+    if (!g_servoHAL.setAngle(port, angle)) {
+        if (g_servoHAL.lastError() == ServoError::INVALID_PORT) {
+            Serial.printf("[SERVO] Invalid port=%d (valid: 1,2)\n", port);
+        } else {
+            Serial.printf("[SERVO] PWM failure port=%d angle=%d\n", port, clamped);
+        }
+        return;
+    }
+    Serial.printf("[SERVO] port=%d angle=%d\n", port, clamped);
 #endif
 }
 

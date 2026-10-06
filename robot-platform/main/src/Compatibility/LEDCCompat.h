@@ -23,6 +23,8 @@ static inline uint8_t robotLedcChannelForPin(uint8_t pin)
         case 26: return 1;
         case 27: return 2;
         case 14: return 3;
+        case 16: return 4;
+        case 17: return 5;
         default: return 0;
     }
 }

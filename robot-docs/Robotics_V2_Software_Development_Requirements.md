@@ -1089,7 +1089,8 @@ V2-SW-004.
 
 ## V2-SW-007 — Servo HAL
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -1124,6 +1125,49 @@ angle clamp 0..180
 - Invalid port handled deterministically.
 - Servo implementation is isolated from VM/compiler internals.
 - No Servo operation alters motor safety gate.
+
+### Implementation / verification record
+
+Implemented architecture:
+
+- `ServoHAL` owns port mapping, angle clamp, pulse-to-duty conversion and lazy per-port PWM attachment.
+- `IServoPwmTransport` makes the HAL testable without ESP32 hardware.
+- `ServoLEDCTransport` is the production ESP32 adapter.
+- Fixed BoardProfile mapping is preserved:
+  - port 1 -> GPIO16;
+  - port 2 -> GPIO17.
+- Servo PWM contract is 50 Hz, 16-bit, initial software pulse mapping 500..2500 us for 0..180 degrees.
+- `RobotAPI::SetServo(port, angle)` is no longer DUMMY; it remains feature-guarded by `ROBOT_FEATURE_SERVO`.
+- Invalid ports are rejected deterministically without attaching or writing PWM.
+- Feature OFF performs no ServoHAL/PWM operation.
+- Servo HAL has no dependency on MotorSafety or drive-motor output pins.
+- LEDC compatibility mapping reserves channels 4 and 5 for GPIO16/GPIO17; existing motor channels 0..3 remain unchanged.
+- Compiler `ServoHandler.set_servo` now emits `Opcode::SetServo` instead of silently dropping the command.
+- Existing VM `Opcode::SetServo` dispatch remains unchanged and calls `RobotAPI::SetServo`.
+- `tests/v2_servo/run_v2_servo.py` compiles and runs the real C++ ServoHAL against a fake PWM transport and verifies compiler-to-VM transport.
+
+Software verification covers:
+
+- Servo1/Servo2 port mapping;
+- 0/90/180 degree monotonic duty mapping;
+- out-of-range clamp to 0/180;
+- invalid-port rejection;
+- lazy attach/no repeated attach per port;
+- injected PWM attach/write failures;
+- feature-OFF RobotAPI guard;
+- compiler emits SetServo opcode;
+- VM dispatch exists;
+- independence from motor safety.
+
+Hardware-dependent acceptance criteria:
+
+- physical Servo1 movement on GPIO16: `PENDING_HW`;
+- physical Servo2 movement on GPIO17: `PENDING_HW`;
+- actual servo pulse endpoint/calibration validation: `PENDING_HW`;
+- power/load behavior with the V2 electrical design: `PENDING_HW`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -1796,7 +1840,8 @@ Acceptance threshold shall be set after first hardware measurement.
 
 ## V2-TEST-006 — Servo Regression
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IN_PROGRESS
 
 Test:
 
@@ -1810,6 +1855,30 @@ out-of-range clamp
 invalid port
 feature OFF
 ```
+
+### Implementation / verification record
+
+Software regression implemented at `tests/v2_servo/run_v2_servo.py`.
+
+Covered in software:
+
+- Servo1 / Servo2 fixed mapping;
+- 0 / 90 / 180 degrees;
+- out-of-range clamp;
+- invalid port;
+- feature-OFF guard;
+- PWM attach/write failure paths;
+- compiler/VM transport;
+- no motor-safety coupling.
+
+Still pending:
+
+- physical movement on both ports;
+- endpoint calibration against the selected servo hardware;
+- power/load behavior.
+
+**Verification status:** `VERIFIED_SW_PARTIAL`  
+**Task status:** `IN_PROGRESS`
 
 ---
 
@@ -1923,7 +1992,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 8 | V2-SW-004 | LineSensorBank 5CH — PENDING_HW | P1 | M3 |
 | 9 | V2-SW-005 | Line5 Public API Compatibility — DONE | P1 | M3 |
 | 10 | V2-SW-006 | Line5 Perception / Control Upgrade — PENDING_HW | P1 | M3 |
-| 11 | V2-SW-007 | Servo HAL | P1 | M3 |
+| 11 | V2-SW-007 | Servo HAL — PENDING_HW | P1 | M3 |
 | 12 | V2-SW-008 | MCP LED/Buzzer Migration | P1 | M3 |
 | 13 | V2-SW-009 | Encoder V2 Board Integration | P1 | M3 |
 | 14 | V2-HLT-001 | BatteryMonitor | P1 | M4 |
@@ -1940,7 +2009,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 25 | V2-TEST-003 | Motor Safety Contract Tests | P0 | M6 |
 | 26 | V2-TEST-004 | Line5 Regression — IN_PROGRESS | P1 | M6 |
 | 27 | V2-TEST-005 | Line Response Performance | P1 | M6 |
-| 28 | V2-TEST-006 | Servo Regression | P1 | M6 |
+| 28 | V2-TEST-006 | Servo Regression — IN_PROGRESS | P1 | M6 |
 | 29 | V2-TEST-007 | Health Schema Contract | P1 | M6 |
 | 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension | P1 | M6 |
 | 31 | V2-TEST-009 | Config Migration Regression | P1 | M6 |
