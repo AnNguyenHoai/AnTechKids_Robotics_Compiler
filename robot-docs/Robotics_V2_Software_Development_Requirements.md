@@ -908,7 +908,8 @@ V2-SAFE-001.
 
 ## V2-SAFE-004 — VM / Student Code Safety Boundary
 
-**Priority:** P0
+**Priority:** P0  
+**Status:** IMPLEMENTED
 
 ### Requirement
 
@@ -921,6 +922,30 @@ This preserves non-motion program execution while keeping safety independent fro
 - VM can execute sensor/logic code in SAFE.
 - Motion commands are ignored/blocked at physical motor gate until ARM.
 - Existing VM execution model does not require major redesign.
+
+### Implementation / verification record
+
+Implemented boundary:
+
+- VM execution is intentionally independent from MotorSafety ARM state; the platform loop may continue stepping student logic while the robot is SAFE.
+- VM has no dependency on `MotorSafetyController`, `RobotMotorSafetyInternal`, `systemMotorSafety()`, `arm()` or `disarm()`.
+- motion opcodes dispatch only through the existing public `RobotAPI` surface;
+- public `RobotAPI.h` exposes no MotorSafety controller, arm API, disarm reason or system-only safety boundary;
+- `StartArmController` remains the only approved production owner of `MotorSafetyController::arm()`;
+- the lowest common physical path `RobotAPI::_setMotorsRaw()` calls `systemMotorSafety().allowPhysicalOutput(...)` before any normal non-zero motor PWM write;
+- blocked motion explicitly clears all four TB6612 PWM outputs to zero.
+
+Software acceptance:
+
+- `tests/v2_vm_safety_boundary/run_v2_vm_safety_boundary.py` compiles and executes the real `MotorSafetyController` and verifies SAFE blocks non-zero output while zero-output/software execution remains allowed;
+- static integration checks verify VM logic/sensor dispatch is not ARM-gated, motion opcodes remain behind RobotAPI, student/VM surfaces cannot arm/disarm, and the real physical PWM path is safety-gated;
+- the dedicated acceptance is registered in `run_all_tests.py`;
+- focused CI: `.github/workflows/v2-vm-safety-boundary.yml`.
+
+No separate hardware criterion is introduced by this task: physical STBY/PWM behavior is already owned by V2-SAFE-001 / V2-TEST-003. This task verifies the software ownership/bypass boundary.
+
+**Software verification status:** `IMPLEMENTED_PENDING_CI`  
+**Task status:** `IMPLEMENTED`
 
 ### Dependencies
 
@@ -3068,7 +3093,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 4 | V2-SAFE-001 | MotorSafetyController — PENDING_HW | P0 | M2 |
 | 5 | V2-SAFE-002 | START/ARM Button — PENDING_HW | P0 | M2 |
 | 6 | V2-SAFE-003 | Fail-Safe Disarm Conditions — IN_PROGRESS | P0 | M2 |
-| 7 | V2-SAFE-004 | VM / Student Code Safety Boundary | P0 | M2 |
+| 7 | V2-SAFE-004 | VM / Student Code Safety Boundary — IMPLEMENTED | P0 | M2 |
 | 8 | V2-SW-004 | LineSensorBank 5CH — PENDING_HW | P1 | M3 |
 | 9 | V2-SW-005 | Line5 Public API Compatibility — DONE | P1 | M3 |
 | 10 | V2-SW-006 | Line5 Perception / Control Upgrade — PENDING_HW | P1 | M3 |
