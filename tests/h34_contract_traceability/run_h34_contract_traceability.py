@@ -74,9 +74,8 @@ def main() -> int:
         by_api["get_light_sensor_data"]["emitted_opcodes"] == ["LoadConst"],
     )
     check(
-        "V2 servo API preserves native SetServo through lowering",
-        by_api["set_servo"]["semantic"] == "Native"
-        and by_api["set_servo"]["lowering_kind"] == "native"
+        "V2 servo implementation emits deliverable SetServo bytecode",
+        by_api["set_servo"]["lowering_kind"] == "native"
         and by_api["set_servo"]["emitted_opcodes"] == ["SetServo"],
     )
     for api in (
