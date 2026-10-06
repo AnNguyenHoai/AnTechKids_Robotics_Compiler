@@ -16,15 +16,16 @@
 
 // Sửa đường dẫn: từ Services/Robot lên src, rồi vào Devices
 #include "../../Devices/Touch.h"
-#include "../../Devices/LineSensor.h"
 #include "../../Devices/LightSensor.h"
 #include "../../Devices/ColorSensor.h"
 #include "../../Devices/SensorConfig.h"
 #include "../../HardwareAbstraction/GPIO.h"
 #include "../../HardwareAbstraction/HardwareCapability.h"
 #include "../../HardwareAbstraction/SystemI2CBusManager.h"
+#include "../../HardwareAbstraction/MCP23017Platform.h"
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/TCRT5000.h"
+#include "../../Sensor/MCPLineSensor.h"
 #include "../../Sensor/SensorID.h"
 #include "../../Sensor/Ultrasonic.h"
 #if ROBOT_FEATURE_IMU
@@ -34,6 +35,7 @@
 // Line Follower
 #include "../../Services/Line/LineFollower.h"
 #include "../../Services/Line/LineSensorLayout.h"
+#include "../../Services/Line/LineSensorBank.h"
 
 // Heading Estimator & Controller
 #include "../../Services/Motion/HeadingEstimator.h"
@@ -74,6 +76,9 @@ static Touch touch0(ROBOT_PIN_5);
 static Touch touch1(ROBOT_PIN_5);
 static LightSensor lightSensor(ROBOT_PIN_5);
 static ColorSensor colorSensor;
+#if ROBOT_FEATURE_LINE_SENSOR
+static LineSensorBank g_lineSensorBank(systemMCP23017());
+#endif
 static bool g_headingStartupDiagnosticEnabled = true; 
 static bool g_motorPwmDiagnosticEnabled = true;
 static bool g_motorMappingDiagnosticEnabled = false;
@@ -1129,25 +1134,7 @@ int16_t GetTraceRaw(int port) {
 #else
     (void)port;
     uint8_t mask = 0;
-
-    struct Entry { SensorID id; uint8_t bit; };
-    static const Entry entries[] = {
-        {SensorID::LineFarLeft,  LineSensorLayout::MASK_FAR_LEFT},
-        {SensorID::LineLeft,     LineSensorLayout::MASK_LEFT},
-        {SensorID::LineCenter,   LineSensorLayout::MASK_CENTER},
-        {SensorID::LineRight,    LineSensorLayout::MASK_RIGHT},
-        {SensorID::LineFarRight, LineSensorLayout::MASK_FAR_RIGHT},
-    };
-
-    auto& manager = SensorManager::instance();
-    for (const auto& entry : entries) {
-        auto sensor = manager.getSensor(entry.id);
-        if (!sensor) continue;
-        auto lineSensor = static_cast<TCRT5000*>(sensor);
-        lineSensor->update();
-        if (lineSensor->isLineDetected()) mask |= entry.bit;
-    }
-    return mask;
+    return g_lineSensorBank.readMask(mask) ? mask : 0;
 #endif
 }
 
@@ -1228,16 +1215,19 @@ void Initialize() {
 
     auto& mgr = SensorManager::instance();
 #if ROBOT_FEATURE_LINE_SENSOR
+    if (!g_lineSensorBank.begin()) {
+        Serial.println("[RobotAPI] LineSensorBank unavailable (MCP23017/Line5 init failed).");
+    }
     mgr.registerSensor(SensorID::LineFarLeft,
-                       new TCRT5000(SENSOR_TRCT5000_FL_PIN, "line_far_left"));
+                       new MCPLineSensor(g_lineSensorBank, 3, "line_far_left"));
     mgr.registerSensor(SensorID::LineLeft,
-                       new TCRT5000(SENSOR_TRCT5000_L_PIN, "line_left"));
+                       new MCPLineSensor(g_lineSensorBank, 0, "line_left"));
     mgr.registerSensor(SensorID::LineCenter,
-                       new TCRT5000(SENSOR_TRCT5000_C_PIN, "line_center"));
+                       new MCPLineSensor(g_lineSensorBank, 1, "line_center"));
     mgr.registerSensor(SensorID::LineRight,
-                       new TCRT5000(SENSOR_TRCT5000_R_PIN, "line_right"));
+                       new MCPLineSensor(g_lineSensorBank, 2, "line_right"));
     mgr.registerSensor(SensorID::LineFarRight,
-                       new TCRT5000(SENSOR_TRCT5000_FR_PIN, "line_far_right"));
+                       new MCPLineSensor(g_lineSensorBank, 4, "line_far_right"));
 #endif
 #if ROBOT_FEATURE_ULTRASONIC
     mgr.registerSensor(SensorID::Ultrasonic,

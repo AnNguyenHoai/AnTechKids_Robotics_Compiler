@@ -60,6 +60,7 @@ private:
 
     IMCP23017Transport& _transport;
     uint8_t _address;
+    bool _begun = false;
     bool _healthy = false;
     MCP23017Error _lastError = MCP23017Error::I2C_ERROR;
 };

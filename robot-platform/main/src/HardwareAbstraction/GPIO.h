@@ -62,18 +62,6 @@
 #define MPU6050_SDA_PIN         BoardProfile::Pins::SYSTEM_I2C_SDA
 #define MPU6050_SCL_PIN         BoardProfile::Pins::SYSTEM_I2C_SCL
 
-// ---------------------------------------------------------------------------
-// Transitional V1 Line5 direct-GPIO compatibility.
-// These five aliases are NOT V2 physical truth. They exist only so the frozen
-// V1 Line5 implementation remains buildable until V2-SW-004 migrates line
-// acquisition to MCP23017 Port A. V2-SW-004 must remove this block.
-// ---------------------------------------------------------------------------
-#define SENSOR_TRCT5000_FL_PIN  ROBOT_PIN_34
-#define SENSOR_TRCT5000_L_PIN   ROBOT_PIN_18
-#define SENSOR_TRCT5000_C_PIN   ROBOT_PIN_16
-#define SENSOR_TRCT5000_R_PIN   ROBOT_PIN_17
-#define SENSOR_TRCT5000_FR_PIN  ROBOT_PIN_35
-
 // Legacy direct GPIO output aliases. V2-SW-008 migrates these outputs to
 // MCP23017 Port B; they are intentionally excluded from BoardProfile V2 pins.
 #define OUTPUT_BUZZER_PIN       ROBOT_PIN_19

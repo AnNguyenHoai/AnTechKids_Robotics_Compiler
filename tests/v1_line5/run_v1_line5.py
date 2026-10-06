@@ -30,14 +30,11 @@ def test_source_contract() -> None:
     sensor_spec = (ROOT / "robot-docs/ROBOTAPI_SENSOR_SPEC.md").read_text(encoding="utf-8")
     platform_api = (ROOT / "robot-docs/ROBOT_PLATFORM_API.md").read_text(encoding="utf-8")
 
-    for needle in (
-        "SENSOR_TRCT5000_FL_PIN  ROBOT_PIN_34",
-        "SENSOR_TRCT5000_L_PIN   ROBOT_PIN_18",
-        "SENSOR_TRCT5000_C_PIN   ROBOT_PIN_16",
-        "SENSOR_TRCT5000_R_PIN   ROBOT_PIN_17",
-        "SENSOR_TRCT5000_FR_PIN  ROBOT_PIN_35",
-    ):
-        require(gpio, needle, "Line5 GPIO ownership")
+    # V2 preserves the frozen V1 logical contract while moving physical
+    # acquisition from direct ESP32 GPIO to MCP23017/LineSensorBank.
+    assert "SENSOR_TRCT5000_" not in gpio
+    require(robot_api, "LineSensorBank", "V2 Line5 acquisition boundary")
+
 
     require(sensor_id, "LineFarLeft", "far-left SensorID")
     require(sensor_id, "LineFarRight", "far-right SensorID")
@@ -67,8 +64,7 @@ def test_source_contract() -> None:
     require(robot_api, "LineSensorLayout::sensorIdFromChannel(channel, id)", "centralized channel mapping")
     require(robot_api, "SensorID::LineFarLeft", "far-left RobotAPI registration/raw path")
     require(robot_api, "SensorID::LineFarRight", "far-right RobotAPI registration/raw path")
-    require(robot_api, "LineSensorLayout::MASK_FAR_LEFT", "canonical FL raw bit")
-    require(robot_api, "LineSensorLayout::MASK_FAR_RIGHT", "canonical FR raw bit")
+    require(robot_api, "g_lineSensorBank.readMask", "canonical raw-mask acquisition")
 
     for weight in ("-2.0f", "-1.0f", "0.0f", "1.0f", "2.0f"):
         require(estimator, weight, f"weighted estimator {weight}")

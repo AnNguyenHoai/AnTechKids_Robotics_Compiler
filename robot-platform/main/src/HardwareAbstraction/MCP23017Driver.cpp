@@ -15,6 +15,10 @@ MCP23017Driver::MCP23017Driver(IMCP23017Transport& transport, uint8_t address)
     : _transport(transport), _address(address) {}
 
 bool MCP23017Driver::begin() {
+    if (_begun && healthy()) {
+        return true;
+    }
+
     _healthy = false;
     _lastError = MCP23017Error::I2C_ERROR;
 
@@ -37,6 +41,7 @@ bool MCP23017Driver::begin() {
         return false;
     }
 
+    _begun = true;
     _healthy = true;
     _lastError = MCP23017Error::OK;
     return true;

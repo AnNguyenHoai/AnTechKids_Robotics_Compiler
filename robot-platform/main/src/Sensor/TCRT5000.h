@@ -43,6 +43,9 @@ private:
     int _pin;
     const char* _name;
     int _threshold;
+
+protected:
+    // Protected for hardware-compatible adapters such as V2 MCPLineSensor.
     int _lastReading;
     bool _healthy;
 };

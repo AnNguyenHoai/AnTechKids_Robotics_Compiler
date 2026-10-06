@@ -1,0 +1,29 @@
+name: V2 LineSensorBank Contract
+on:
+  push:
+    branches: [main_V2]
+    paths:
+      - "robot-platform/main/src/Services/Line/LineSensorBank.*"
+      - "robot-platform/main/src/Sensor/MCPLineSensor.*"
+      - "robot-platform/main/src/Sensor/TCRT5000.h"
+      - "robot-platform/main/src/Services/Robot/RobotAPI.cpp"
+      - "robot-platform/main/src/HardwareAbstraction/MCP23017*"
+      - "robot-platform/main/src/HardwareAbstraction/GPIO.h"
+      - "tests/v1_line5/**"
+      - "tests/v2_line_sensor_bank/**"
+      - ".github/workflows/v2-line-sensor-bank-contract.yml"
+  workflow_dispatch:
+jobs:
+  line-sensor-bank:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: MCP regression
+        run: python tests/v2_mcp23017/run_v2_mcp23017.py
+      - name: V1 logical Line5 compatibility
+        run: python tests/v1_line5/run_v1_line5.py
+      - name: V2 LineSensorBank contract
+        run: python tests/v2_line_sensor_bank/run_v2_line_sensor_bank.py
