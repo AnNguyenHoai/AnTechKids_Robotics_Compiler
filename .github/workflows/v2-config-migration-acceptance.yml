@@ -1,0 +1,31 @@
+name: V2 Config Migration Acceptance
+
+on:
+  push:
+    branches: [main_V2]
+    paths:
+      - "robostudio/domain/hardware_config.py"
+      - "robostudio/domain/hardware_config_service.py"
+      - "robostudio/domain/device_registry.py"
+      - "tools/hardware_feature_config.py"
+      - "tests/v2_config_migration_acceptance/**"
+      - "tests/v2_hardware_config/**"
+      - "run_all_tests.py"
+      - "robot-docs/Robotics_V2_Software_Development_Requirements.md"
+      - ".github/workflows/v2-config-migration-acceptance.yml"
+  workflow_dispatch:
+
+jobs:
+  v2-config-migration-acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate runner syntax
+        run: python -m py_compile run_all_tests.py tests/v2_config_migration_acceptance/run_v2_config_migration_acceptance.py
+      - name: Config migration acceptance
+        run: python tests/v2_config_migration_acceptance/run_v2_config_migration_acceptance.py
+      - name: HardwareConfig V2 regression
+        run: python tests/v2_hardware_config/run_v2_hardware_config.py
