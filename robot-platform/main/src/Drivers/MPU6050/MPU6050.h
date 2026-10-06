@@ -2,8 +2,6 @@
 #define MPU6050_H
 
 #include <Arduino.h>
-#include <Wire.h>
-#include "../../HardwareAbstraction/GPIO.h"
 // Cấu hình mặc định
 #define MPU6050_DEFAULT_ADDRESS     0x68
 #define MPU6050_WHO_AM_I            0x75

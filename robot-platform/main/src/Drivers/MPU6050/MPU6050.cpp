@@ -1,5 +1,7 @@
 #include "MPU6050.h"
 #include <math.h>
+#include <Wire.h>
+#include "../../HardwareAbstraction/SystemI2CBusManager.h"
 
 MPU6050::MPU6050() {
     _bias.bx = 0.0f;
@@ -10,8 +12,12 @@ MPU6050::MPU6050() {
 bool MPU6050::begin(const MPU6050Config& config) {
     _config = config;
 
-    // Khởi tạo Wire (I2C) nếu chưa được khởi tạo
-    Wire.begin(MPU6050_SDA_PIN, MPU6050_SCL_PIN);
+    // Shared V2 System I2C ownership: MPU6050 may use transactions but must
+    // never initialize/reconfigure the bus itself.
+    if (!SystemI2CBusManager::instance().ensureInitialized()) {
+        Serial.println("[MPU6050] System I2C bus unavailable");
+        return false;
+    }
 
     // Kiểm tra kết nối bằng cách đọc WHO_AM_I
     uint8_t whoami = 0;

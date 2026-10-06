@@ -422,7 +422,8 @@ None.
 
 ## V2-SW-002 — System I2C Bus Manager
 
-**Priority:** P0
+**Priority:** P0  
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -454,6 +455,38 @@ Peripheral drivers shall not independently call `Wire.begin(...)`.
 - MCP23017 can coexist with MPU6050.
 - Bus initialization is deterministic after reset.
 - Device failure does not permanently block main loop.
+
+### Implementation / verification record
+
+Implemented contract:
+
+- `SystemI2CBusManager` is the single software owner of `Wire.begin(...)`.
+- Physical bus configuration is sourced only from `BoardProfile`: SDA GPIO21, SCL GPIO13, initial 400 kHz.
+- Bus initialization is attempted at most once per boot and is idempotent for all later consumers.
+- A finite 20 ms Wire transaction timeout is configured so a missing/misbehaving I2C device cannot create an unbounded wait at the shared-bus layer.
+- `RobotAPI::Initialize()` initializes System I2C before `SensorManager::initializeAll()`, independent of optional IMU/device feature flags.
+- MPU6050 no longer calls `Wire.begin(...)`; it consumes the shared bus through `ensureInitialized()`.
+- Shared-bus initialization failure is diagnostic and non-blocking; boot continues and individual I2C peripherals may report unavailable.
+- Contract regression is implemented at `tests/v2_system_i2c/run_v2_system_i2c.py` and registered in `run_all_tests.py`.
+- Dedicated CI gate: `.github/workflows/v2-system-i2c-contract.yml`.
+
+Software verification covers:
+
+- fixed SDA/SCL/frequency contract;
+- exactly one `Wire.begin(...)` owner in robot-platform;
+- idempotent one-attempt initialization;
+- finite I2C timeout/no retry loop;
+- platform init ordering before sensors;
+- MPU6050 shared-bus migration.
+
+Hardware-dependent acceptance criteria:
+
+- MPU6050 communication on physical V2 bus: `PENDING_HW`.
+- MCP23017 + MPU6050 coexistence: `PENDING_HW` (also depends on V2-SW-003).
+- reset-level deterministic physical bus behavior: `PENDING_HW`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -1656,7 +1689,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | Order | ID | Requirement | Priority | Milestone |
 |---:|---|---|:---:|---|
 | 1 | V2-SW-001 | Board Profile Contract — DONE | P0 | M1 |
-| 2 | V2-SW-002 | System I2C Bus Manager | P0 | M1 |
+| 2 | V2-SW-002 | System I2C Bus Manager — PENDING_HW | P0 | M1 |
 | 3 | V2-SW-003 | MCP23017 Driver/HAL | P0 | M1 |
 | 4 | V2-SAFE-001 | MotorSafetyController | P0 | M2 |
 | 5 | V2-SAFE-002 | START/ARM Button | P0 | M2 |

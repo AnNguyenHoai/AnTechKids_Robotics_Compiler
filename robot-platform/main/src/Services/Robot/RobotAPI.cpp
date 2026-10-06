@@ -22,6 +22,7 @@
 #include "../../Devices/SensorConfig.h"
 #include "../../HardwareAbstraction/GPIO.h"
 #include "../../HardwareAbstraction/HardwareCapability.h"
+#include "../../HardwareAbstraction/SystemI2CBusManager.h"
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/TCRT5000.h"
 #include "../../Sensor/SensorID.h"
@@ -1178,6 +1179,13 @@ bool GetEncoderInverted(int side) { (void)side; return false; }
 
 void Initialize() {
     HardwareCapability::printStatus();
+
+    // V2-SW-002: System I2C is board infrastructure, independent from optional
+    // feature flags. Failure is diagnostic and non-blocking; peripheral
+    // drivers report their own unavailable state later.
+    if (!SystemI2CBusManager::instance().begin()) {
+        Serial.println("[RobotAPI] System I2C unavailable; I2C peripherals may be unavailable.");
+    }
 #if ROBOT_FEATURE_ENCODER
     leftEncoder.begin();
     rightEncoder.begin();
