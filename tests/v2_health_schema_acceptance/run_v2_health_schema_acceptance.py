@@ -44,7 +44,8 @@ static RobotHealth normal() {
     h.system.resetReason = ResetReason::WATCHDOG;
     h.system.firmwareVersion = "2.0\nrelease";
     h.system.boardProfile = "antech_robot_v2";
-    h.system.boardRevision = std::string("v2\tctrl") + char(1);
+    static const char kBoardRevision[] = "v2\tctrl\x01";
+    h.system.boardRevision = kBoardRevision;
 
     h.battery.voltage = 7.61f;
     h.battery.state = BatteryState::GOOD;
