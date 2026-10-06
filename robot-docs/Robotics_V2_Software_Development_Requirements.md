@@ -458,6 +458,8 @@ Peripheral drivers shall not independently call `Wire.begin(...)`.
 
 ### Implementation / verification record
 
+**Implementation commits:** `780ac7ec703deafd6fdc02ee851a6507e1657c30` (shared bus manager + MPU migration + tests/CI), `2fe0eb8bdd7e385a9597985d94a7fe85cfbc0958` and `0dccf474a3c44e42fcee5da5272b35edace3b009` (ownership-regression false-positive hardening).
+
 Implemented contract:
 
 - `SystemI2CBusManager` is the single software owner of `Wire.begin(...)`.
@@ -478,6 +480,7 @@ Software verification covers:
 - finite I2C timeout/no retry loop;
 - platform init ordering before sensors;
 - MPU6050 shared-bus migration.
+- Focused GitHub Actions `V2 System I2C Contract` run `37406127227`: **PASS** on `0dccf474a3c44e42fcee5da5272b35edace3b009`.
 
 Hardware-dependent acceptance criteria:
 
