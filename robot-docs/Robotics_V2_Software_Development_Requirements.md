@@ -3047,7 +3047,7 @@ invalid version
 ## V2-TEST-010 — OTA Safety Regression
 
 **Priority:** P0  
-**Status:** IMPLEMENTED
+**Status:** DONE
 
 Verify:
 
@@ -3097,8 +3097,17 @@ Focused CI: `.github/workflows/v2-ota-safety-acceptance.yml`.
 
 No separate hardware claim is made here until physical OTA/STBY behavior is exercised on V2 hardware; software contract closure is recorded independently from V2-TEST-003 physical motor-safety acceptance.
 
-**Software verification status:** `IMPLEMENTED_PENDING_CI`  
-**Task status:** `IMPLEMENTED`
+Software verification evidence:
+
+- acceptance implementation: `d3f8bc2b3a799f26298b1234dcbe682167eed0d8`, `d4e5be300a11662a9e4ac38640d595a54fe2cf46`, `7059448e1c583f7fda993c93e156163d039ec937`;
+- GitHub Actions `V2 OTA Safety Acceptance` run `37432018516`: **PASS** on `4f6ba372f46593c2d934e749d57f9b5fe94b09b8`;
+- GitHub Actions `V2 VM Safety Boundary` run `37432018264`: **PASS**;
+- GitHub Actions `V2 Motor Safety Acceptance` run `37432018442`: **PASS**;
+- GitHub Actions `V2 Motor Safety Contract` run `37432018341`: **PASS**;
+- GitHub Actions `V2 Fail Safe Disarm Contract` run `37432018196`: **PASS**.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `DONE`
 
 ---
 
@@ -3157,7 +3166,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 29 | V2-TEST-007 | Health Schema Contract — DONE | P1 | M6 |
 | 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension | P1 | M6 |
 | 31 | V2-TEST-009 | Config Migration Regression | P1 | M6 |
-| 32 | V2-TEST-010 | OTA Safety Regression — IMPLEMENTED | P0 | M6 |
+| 32 | V2-TEST-010 | OTA Safety Regression — DONE | P0 | M6 |
 
 ---
 
