@@ -3069,7 +3069,7 @@ Software verification evidence:
 ## V2-TEST-009 — Config Migration Regression
 
 **Priority:** P1  
-**Status:** IMPLEMENTED
+**Status:** DONE
 
 Test:
 
@@ -3101,8 +3101,15 @@ Focused CI: `.github/workflows/v2-config-migration-acceptance.yml`.
 
 This is a software persistence/schema compatibility contract and requires no physical hardware evidence.
 
-**Software verification status:** `IMPLEMENTED_PENDING_CI`  
-**Task status:** `IMPLEMENTED`
+Software verification evidence:
+
+- acceptance implementation: `790caa5eb9a7990b9219c3e4d575269d293bdc27`, `36819d85df7b62379bca6f826e6152baa380e1d7`, `063334250cfaeded707b687d62bf39779b7fcfc9`;
+- GitHub Actions `V2 Config Migration Acceptance` run `37432737465`: **PASS** on `063334250cfaeded707b687d62bf39779b7fcfc9`;
+- GitHub Actions `V2 HardwareConfig Migration` run `37432737642`: **PASS** on the same commit;
+- all required migration/error/default cases pass in both RoboStudio domain and shared deployment tooling.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `DONE`
 
 ---
 
@@ -3227,7 +3234,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 28 | V2-TEST-006 | Servo Regression — PENDING_HW | P1 | M6 |
 | 29 | V2-TEST-007 | Health Schema Contract — DONE | P1 | M6 |
 | 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension — DONE | P1 | M6 |
-| 31 | V2-TEST-009 | Config Migration Regression — IMPLEMENTED | P1 | M6 |
+| 31 | V2-TEST-009 | Config Migration Regression — DONE | P1 | M6 |
 | 32 | V2-TEST-010 | OTA Safety Regression — DONE | P0 | M6 |
 
 ---
