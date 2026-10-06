@@ -888,6 +888,15 @@ Remaining acceptance:
 - watchdog/fatal reset reason exposure: deferred to `V2-HLT-003`;
 - physical OTA failure/recovery remains SAFE: `PENDING_HW`.
 
+Software verification evidence:
+
+- implementation commit: `2ce40700210bbc6700df4750a72ef65d2ea50a82`;
+- GitHub Actions `V2 Fail Safe Disarm Contract` run `37414318207`: **PASS**;
+- GitHub Actions `V2 START ARM Contract` run `37414318344`: **PASS**;
+- GitHub Actions `V2 Motor Safety Contract` run `37414318107`: **PASS**;
+- BatteryMonitor, Servo, MCP23017, System I2C, Encoder, Line API, LineSensorBank, Line Perception, BoardProfile and Auxiliary Output regressions remain green on the same commit lineage;
+- regression verifies clear-PWM-before-STBY ordering, ArduinoOTA/HTTP OTA disarm, OTA failure persistence, reboot disarm before `ESP.restart()`, fatal halt disarm and explicit operator safety stop.
+
 **Software verification status:** `VERIFIED_SW_PARTIAL`  
 **Task status:** `IN_PROGRESS`
 
