@@ -2780,9 +2780,9 @@ Software verification evidence:
 ## V2-TEST-006 — Servo Regression
 
 **Priority:** P1  
-**Status:** IN_PROGRESS
+**Status:** PENDING_HW
 
-Test:
+Required cases:
 
 ```text
 Servo1
@@ -2795,29 +2795,54 @@ invalid port
 feature OFF
 ```
 
-### Implementation / verification record
+### Integrated software acceptance
 
-Software regression implemented at `tests/v2_servo/run_v2_servo.py`.
+A dedicated acceptance runner now executes the real `ServoHAL` with an injected PWM transport and verifies the complete software contract:
 
-Covered in software:
+- Servo1 maps only through `BoardProfile::Pins::SERVO1 = GPIO16`;
+- Servo2 maps only through `BoardProfile::Pins::SERVO2 = GPIO17`;
+- both ports accept 0°, 90°, and 180°;
+- values below 0° clamp to 0°;
+- values above 180° clamp to 180°;
+- duty is monotonic across 0° < 90° < 180°;
+- repeated commands use lazy per-port PWM attach rather than reattaching on every write;
+- invalid ports do not attach or write PWM and return `INVALID_PORT`;
+- PWM attach/write failures return `PWM_ERROR`;
+- feature OFF path returns before `ServoHAL::setAngle()` and cannot attach/write PWM;
+- CRITICAL battery safety gate is evaluated before servo PWM submission and blocks new servo activity;
+- public `RobotAPI::SetServo(port, angle)` signature remains unchanged;
+- compiler emits `Opcode::SetServo`;
+- VM dispatches `Opcode::SetServo -> RobotAPI::SetServo`;
+- Servo HAL owns no motor pins and no MotorSafety/STBY path.
 
-- Servo1 / Servo2 fixed mapping;
-- 0 / 90 / 180 degrees;
-- out-of-range clamp;
-- invalid port;
-- feature-OFF guard;
-- PWM attach/write failure paths;
-- compiler/VM transport;
-- no motor-safety coupling.
+Current software PWM contract remains:
 
-Still pending:
+```text
+frequency: 50 Hz
+resolution: 16 bit
+pulse range: 500..2500 us
+angle range: 0..180 degrees
+```
 
-- physical movement on both ports;
-- endpoint calibration against the selected servo hardware;
-- power/load behavior.
+This task verifies consistency of that contract; it does not claim that 500/2500 µs are physically calibrated endpoints for every attached servo model.
 
-**Verification status:** `VERIFIED_SW_PARTIAL`  
-**Task status:** `IN_PROGRESS`
+Software evidence:
+
+- component regression: `tests/v2_servo/run_v2_servo.py`;
+- integrated acceptance: `tests/v2_servo_acceptance/run_v2_servo_acceptance.py`;
+- dedicated CI: `.github/workflows/v2-servo-acceptance.yml`.
+
+### Remaining hardware acceptance
+
+- verify physical movement on Servo1/GPIO16;
+- verify physical movement on Servo2/GPIO17;
+- verify commanded 0°/90°/180° against the selected servo hardware;
+- determine whether 500/2500 µs endpoints require calibration/limiting for the actual servo model;
+- verify supply/load behavior and brownout risk under servo stall/start current;
+- verify feature-OFF firmware produces no servo waveform on physical pins.
+
+**Verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ---
 
