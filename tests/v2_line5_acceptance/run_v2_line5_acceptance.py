@@ -203,7 +203,7 @@ def test_station_pattern_is_explicit_requirement_gap() -> None:
     ).read_text(encoding="utf-8")
     section = requirement[
         requirement.index("## V2-TEST-004"):
-        requirement.index("## V2-TEST-005"),
+        requirement.index("## V2-TEST-005")
     ]
     assert "REQUIREMENT_GAP" in section
     assert "station" in section.lower()
