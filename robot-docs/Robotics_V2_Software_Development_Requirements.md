@@ -1775,7 +1775,8 @@ None.
 
 ## V2-HLT-004 — RobotHealth Aggregate
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IN_PROGRESS
 
 ### Requirement
 
@@ -1830,6 +1831,56 @@ RobotHealth
 - HTTP, OLED and Serial consume the same health model.
 - No duplicated battery/safety health logic in UI layers.
 - Optional devices can report unavailable without making whole robot unhealthy.
+
+### Implementation / verification record
+
+Implemented architecture:
+
+- `RobotHealthService` is the single aggregate owner of the current `RobotHealth` snapshot.
+- the minimum V2 model is implemented for:
+  - system: uptime, reset reason, firmware version, board profile, board revision;
+  - battery: voltage, state;
+  - motor: armed, enabled, safety state, last stop/disarm reason;
+  - START: pressed, ready-for-press, armed-by-START-this-boot;
+  - line: available, healthy, cached 5-bit mask;
+  - encoder: available, healthy;
+  - System I2C: healthy, MCP23017 health;
+  - network: connected, IP, RSSI.
+- `RobotHealthPlatformSource` is the production adapter that reads the existing subsystem owners.
+- health refresh is intentionally read-only:
+  - it does not trigger a BatteryMonitor ADC sample;
+  - it does not perform a new Line5 MCP read;
+  - it does not initialize/probe MCP23017;
+  - it does not arm/disarm or otherwise mutate safety state.
+- `RobotHealthInputsInternal` bridges Line/Encoder runtime health without adding those health internals to public RobotAPI/VM surfaces.
+- Encoder initialization success is retained explicitly for aggregate health instead of assuming feature ON means healthy.
+- network IP/RSSI are exposed read-only by RobotNetworkService; Wi-Fi ownership remains inside the network service.
+- BoardProfile ID/revision and RobotIdentity firmware version are reused rather than duplicated.
+
+Consumer migration:
+
+- Serial `robot status` now consumes `systemRobotHealth().refresh()` for system, battery, motor, START, Line, Encoder, I2C/MCP and network health.
+- existing HTTP `/api/v1/health` is intentionally not migrated in this task; schema/compatibility migration belongs to `V2-NET-001`.
+- OLED is not present in the current baseline; `V2-HLT-005` must consume RobotHealthService when implemented.
+
+Optional-device semantics:
+
+- disabled Line/Encoder report `available=false` / `healthy=false` without changing unrelated health fields;
+- optional-device unavailability does not mutate battery, motor, network, or system health.
+
+Software regression:
+
+- `tests/v2_robot_health/run_v2_robot_health.py` compiles and executes the real aggregate service with an injected source and verifies the minimum model, read-only production aggregation, internal Line/Encoder bridge, Serial migration and HTTP scope boundary;
+- dedicated CI: `.github/workflows/v2-robot-health-aggregate.yml`.
+
+Remaining acceptance:
+
+- HTTP must consume RobotHealthService: owned by `V2-NET-001`;
+- OLED must consume RobotHealthService if introduced: owned by `V2-HLT-005`;
+- physical health values remain subject to their subsystem `PENDING_HW` acceptance.
+
+**Software verification status:** `VERIFIED_SW_PARTIAL`  
+**Task status:** `IN_PROGRESS`
 
 ### Dependencies
 
@@ -2446,7 +2497,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 14 | V2-HLT-001 | BatteryMonitor — PENDING_HW | P1 | M4 |
 | 15 | V2-HLT-002 | Critical Battery Safety Policy — PENDING_HW | P1 | M4 |
 | 16 | V2-HLT-003 | ResetReasonService — IMPLEMENTED | P1 | M4 |
-| 17 | V2-HLT-004 | RobotHealth Aggregate | P1 | M4 |
+| 17 | V2-HLT-004 | RobotHealth Aggregate — IN_PROGRESS | P1 | M4 |
 | 18 | V2-NET-001 | Health API V2 | P1 | M4 |
 | 19 | V2-HLT-005 | OLED Health Display | P2 | M4 |
 | 20 | V2-CONF-001 | HardwareConfig V2 / Migration | P1 | M5 |

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Arduino.h>
+
 namespace RobotNetworkService {
 
 // Initializes Wi-Fi, HTTP, mDNS, OTA and LAN discovery services.
@@ -20,4 +22,6 @@ void setUpdateInProgress(bool value);
 bool isUpdateInProgress();
 
 const char* hostname();
+const char* ipAddress();
+int32_t rssi();
 }

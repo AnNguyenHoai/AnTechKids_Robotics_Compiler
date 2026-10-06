@@ -322,5 +322,13 @@ void setRobotReady(bool value) { g_robotReady = value; }
 void setUpdateInProgress(bool value) { g_updateInProgress = value; }
 bool isUpdateInProgress() { return g_updateInProgress; }
 const char* hostname() { return RobotIdentity::hostname(); }
+const char* ipAddress() {
+    static String ip;
+    ip = g_networkReady ? WiFi.localIP().toString() : String("");
+    return ip.c_str();
+}
+int32_t rssi() {
+    return g_networkReady ? WiFi.RSSI() : 0;
+}
 
 }

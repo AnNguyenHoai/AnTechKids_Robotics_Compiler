@@ -1,0 +1,34 @@
+name: V2 Robot Health Aggregate
+
+on:
+  push:
+    branches: [main_V2]
+    paths:
+      - "robot-platform/main/src/Health/RobotHealth*"
+      - "robot-platform/main/src/Health/IRobotHealthSource.h"
+      - "robot-platform/main/src/Services/Robot/RobotHealthInputsInternal.h"
+      - "robot-platform/main/src/Services/Robot/RobotAPI.cpp"
+      - "robot-platform/main/src/Communication/RobotNetworkService.*"
+      - "robot-platform/main/src/Communication/SerialCommandHandler.cpp"
+      - "tests/v2_robot_health/**"
+      - "run_all_tests.py"
+      - "robot-docs/Robotics_V2_Software_Development_Requirements.md"
+      - ".github/workflows/v2-robot-health-aggregate.yml"
+  workflow_dispatch:
+
+jobs:
+  robot-health-aggregate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate test runner syntax
+        run: python -m py_compile run_all_tests.py
+      - name: Reset reason regression
+        run: python tests/v2_reset_reason/run_v2_reset_reason.py
+      - name: Battery safety regression
+        run: python tests/v2_battery_safety/run_v2_battery_safety.py
+      - name: RobotHealth aggregate contract
+        run: python tests/v2_robot_health/run_v2_robot_health.py

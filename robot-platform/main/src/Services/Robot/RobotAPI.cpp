@@ -11,6 +11,7 @@
 #include "MotorControlContract.h"
 #include "MotorOutputMapper.h"
 #include "RobotMotorSafetyInternal.h"
+#include "RobotHealthInputsInternal.h"
 #include "../../../include/generated/generated_device_config.h"
 #include <Arduino.h>
 #include <esp32-hal-ledc.h>
@@ -63,6 +64,8 @@ static bool g_headingDiagnosticEnabled = true;   // ON by default
 #if ROBOT_FEATURE_ENCODER
 static Encoder leftEncoder(ENCODER_LEFT_A_PIN, ENCODER_LEFT_B_PIN, 1.0f);
 static Encoder rightEncoder(ENCODER_RIGHT_A_PIN, ENCODER_RIGHT_B_PIN, 1.0f);
+static bool g_leftEncoderReady = false;
+static bool g_rightEncoderReady = false;
 #endif
 
 namespace RobotAPI {
@@ -1237,9 +1240,11 @@ void Initialize() {
         Serial.println("[RobotAPI] System I2C unavailable; I2C peripherals may be unavailable.");
     }
 #if ROBOT_FEATURE_ENCODER
-    leftEncoder.begin();
-    rightEncoder.begin();
-    Serial.println("[RobotAPI] Encoders enabled and initialized.");
+    g_leftEncoderReady = leftEncoder.begin();
+    g_rightEncoderReady = rightEncoder.begin();
+    Serial.printf("[RobotAPI] Encoders enabled: left=%s right=%s\n",
+                  g_leftEncoderReady ? "READY" : "FAILED",
+                  g_rightEncoderReady ? "READY" : "FAILED");
 #else
     Serial.println("[RobotAPI] Encoders disabled by hardware configuration.");
 #endif
@@ -1330,4 +1335,50 @@ void Initialize() {
     ultraFailCount = 0;
 }
 
+
 } // namespace RobotAPI
+
+namespace RobotHealthInputsInternal {
+
+bool lineAvailable() {
+#if ROBOT_FEATURE_LINE_SENSOR
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool lineHealthy() {
+#if ROBOT_FEATURE_LINE_SENSOR
+    return RobotAPI::g_lineSensorBank.healthy();
+#else
+    return false;
+#endif
+}
+
+uint8_t lineMask() {
+#if ROBOT_FEATURE_LINE_SENSOR
+    return RobotAPI::g_lineSensorBank.lastMask();
+#else
+    return 0;
+#endif
+}
+
+bool encoderAvailable() {
+#if ROBOT_FEATURE_ENCODER
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool encoderHealthy() {
+#if ROBOT_FEATURE_ENCODER
+    return RobotAPI::g_leftEncoderReady && RobotAPI::g_rightEncoderReady;
+#else
+    return false;
+#endif
+}
+
+} // namespace RobotHealthInputsInternal
+

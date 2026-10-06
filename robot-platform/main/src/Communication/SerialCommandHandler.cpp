@@ -4,6 +4,7 @@
 #include "../../include/generated/generated_device_config.h"
 #include "../Services/Robot/MotionConfig.h"
 #include "../Services/Robot/RobotAPI.h"
+#include "../Health/RobotHealthPlatform.h"
 #include "../Services/Robot/RobotMotorSafetyInternal.h"
 #include "../Services/Robot/MotorOutputMapper.h"
 #include "../HardwareAbstraction/HardwareCapability.h"
@@ -611,20 +612,39 @@ void SerialCommandHandler::handle() {
 
     // ---------- Robot Status ----------
     else if (input.startsWith("robot status")) {
-        auto* imu = static_cast<IMUSensor*>(SensorManager::instance().getSensor(SensorID::IMU));
-        Serial.println("--- Robot Status ---");
-        Serial.printf("Robot Ready  : %s\n", RobotAPI::isRobotReady() ? "YES" : "NO");
-        if (imu) {
-            Serial.printf("IMU Ready    : %s\n", imu->isReady() ? "YES" : "NO");
-            Serial.printf("IMU Calibrated: %s\n", imu->isCalibrated() ? "YES" : "NO");
-            MPU6050Bias bias = imu->getBias();
-            Serial.printf("Bias Z       : %.3f deg/s\n", bias.bz);
-        } else {
-            Serial.println("IMU: NOT AVAILABLE");
-        }
-        Serial.printf("Heading      : %.2f deg\n", g_headingEstimator.getHeadingDeg());
-        Serial.printf("Heading Hold : %s\n", RobotAPI::isHeadingHoldActive() ? "ACTIVE" : "INACTIVE");
-        Serial.println("-------------------");
+        const RobotHealth& health = systemRobotHealth().refresh();
+        Serial.println("--- Robot Health ---");
+        Serial.printf("Uptime       : %lu ms\n", static_cast<unsigned long>(health.system.uptimeMs));
+        Serial.printf("Reset        : %s\n", ResetReasonService::nameOf(health.system.resetReason));
+        Serial.printf("Firmware     : %s\n", health.system.firmwareVersion);
+        Serial.printf("Board        : %s / %s\n", health.system.boardProfile, health.system.boardRevision);
+        Serial.printf("Battery      : %.2f V / %s\n",
+                      health.battery.voltage,
+                      BatteryMonitor::stateName(health.battery.state));
+        Serial.printf("Motor        : %s armed=%s enabled=%s stop=%s\n",
+                      RobotHealthService::motorStateName(health.motor.state),
+                      health.motor.armed ? "YES" : "NO",
+                      health.motor.enabled ? "YES" : "NO",
+                      RobotHealthService::motorStopReasonName(health.motor.lastStopReason));
+        Serial.printf("START        : pressed=%s ready=%s armed_this_boot=%s\n",
+                      health.start.pressed ? "YES" : "NO",
+                      health.start.readyForPress ? "YES" : "NO",
+                      health.start.armedByStartThisBoot ? "YES" : "NO");
+        Serial.printf("Line         : available=%s healthy=%s mask=0x%02X\n",
+                      health.line.available ? "YES" : "NO",
+                      health.line.healthy ? "YES" : "NO",
+                      health.line.mask);
+        Serial.printf("Encoder      : available=%s healthy=%s\n",
+                      health.encoder.available ? "YES" : "NO",
+                      health.encoder.healthy ? "YES" : "NO");
+        Serial.printf("I2C          : healthy=%s MCP23017=%s\n",
+                      health.i2c.healthy ? "YES" : "NO",
+                      health.i2c.mcp23017 ? "YES" : "NO");
+        Serial.printf("Network      : connected=%s ip=%s rssi=%ld\n",
+                      health.network.connected ? "YES" : "NO",
+                      health.network.ip,
+                      static_cast<long>(health.network.rssi));
+        Serial.println("--------------------");
     }
 
     // ---------- Ultrasonic Diagnostics ----------
