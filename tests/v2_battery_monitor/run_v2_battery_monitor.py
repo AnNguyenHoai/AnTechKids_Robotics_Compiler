@@ -59,9 +59,9 @@ int main() {
                      710, 710, 710, 710, 710,
                      721, 721, 721, 721, 721}};
         BatteryMonitor m(adc, cfg());
-        assert(m.sample() && m.state() == BatteryState::LOW);
+        assert(m.sample() && m.state() == BatteryState::LOW_VOLTAGE);
         // 7.10 V does not clear LOW because recovery threshold is 7.20 V.
-        assert(m.sample() && m.state() == BatteryState::LOW);
+        assert(m.sample() && m.state() == BatteryState::LOW_VOLTAGE);
         assert(m.sample() && m.state() == BatteryState::GOOD);
     }
 
@@ -73,7 +73,7 @@ int main() {
         assert(m.sample() && m.state() == BatteryState::CRITICAL);
         // 6.10 V stays CRITICAL until 6.20 V hysteresis is cleared.
         assert(m.sample() && m.state() == BatteryState::CRITICAL);
-        assert(m.sample() && m.state() == BatteryState::LOW);
+        assert(m.sample() && m.state() == BatteryState::LOW_VOLTAGE);
     }
 
     {
@@ -111,7 +111,7 @@ int main() {
     }
 
     assert(std::string(BatteryMonitor::stateName(BatteryState::GOOD)) == "GOOD");
-    assert(std::string(BatteryMonitor::stateName(BatteryState::LOW)) == "LOW");
+    assert(std::string(BatteryMonitor::stateName(BatteryState::LOW_VOLTAGE)) == "LOW");
     assert(std::string(BatteryMonitor::stateName(BatteryState::CRITICAL)) == "CRITICAL");
     assert(std::string(BatteryMonitor::stateName(BatteryState::INVALID)) == "INVALID");
 

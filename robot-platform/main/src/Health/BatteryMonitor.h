@@ -6,7 +6,7 @@
 
 enum class BatteryState : uint8_t {
     GOOD = 0,
-    LOW,
+    LOW_VOLTAGE,
     CRITICAL,
     INVALID
 };

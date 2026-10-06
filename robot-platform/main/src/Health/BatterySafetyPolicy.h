@@ -25,7 +25,7 @@ public:
     bool criticalLatched() const { return _criticalLatched; }
     bool servoActivityAllowed() const { return !_criticalLatched; }
     bool lowWarningActive() const {
-        return _lastState == BatteryState::LOW || _lastState == BatteryState::CRITICAL;
+        return _lastState == BatteryState::LOW_VOLTAGE || _lastState == BatteryState::CRITICAL;
     }
     BatteryState lastState() const { return _lastState; }
 

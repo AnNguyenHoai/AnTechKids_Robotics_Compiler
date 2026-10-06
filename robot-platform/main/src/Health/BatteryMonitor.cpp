@@ -62,16 +62,16 @@ BatteryState BatteryMonitor::classify(float voltage) const {
                 return BatteryState::CRITICAL;
             }
             if (voltage < _config.lowThresholdVolts + _config.hysteresisVolts) {
-                return BatteryState::LOW;
+                return BatteryState::LOW_VOLTAGE;
             }
             return BatteryState::GOOD;
 
-        case BatteryState::LOW:
+        case BatteryState::LOW_VOLTAGE:
             if (voltage <= _config.criticalThresholdVolts) {
                 return BatteryState::CRITICAL;
             }
             if (voltage < _config.lowThresholdVolts + _config.hysteresisVolts) {
-                return BatteryState::LOW;
+                return BatteryState::LOW_VOLTAGE;
             }
             return BatteryState::GOOD;
 
@@ -80,7 +80,7 @@ BatteryState BatteryMonitor::classify(float voltage) const {
                 return BatteryState::CRITICAL;
             }
             if (voltage <= _config.lowThresholdVolts) {
-                return BatteryState::LOW;
+                return BatteryState::LOW_VOLTAGE;
             }
             return BatteryState::GOOD;
 
@@ -90,7 +90,7 @@ BatteryState BatteryMonitor::classify(float voltage) const {
                 return BatteryState::CRITICAL;
             }
             if (voltage <= _config.lowThresholdVolts) {
-                return BatteryState::LOW;
+                return BatteryState::LOW_VOLTAGE;
             }
             return BatteryState::GOOD;
     }
@@ -99,7 +99,7 @@ BatteryState BatteryMonitor::classify(float voltage) const {
 const char* BatteryMonitor::stateName(BatteryState state) {
     switch (state) {
         case BatteryState::GOOD: return "GOOD";
-        case BatteryState::LOW: return "LOW";
+        case BatteryState::LOW_VOLTAGE: return "LOW";
         case BatteryState::CRITICAL: return "CRITICAL";
         case BatteryState::INVALID: return "INVALID";
         default: return "INVALID";

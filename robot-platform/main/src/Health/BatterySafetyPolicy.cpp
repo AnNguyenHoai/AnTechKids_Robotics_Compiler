@@ -39,7 +39,7 @@ BatterySafetyEvent BatterySafetyPolicy::update(uint32_t nowMs) {
         return BatterySafetyEvent::NONE;
     }
 
-    if (_lastState == BatteryState::LOW) {
+    if (_lastState == BatteryState::LOW_VOLTAGE) {
         return BatterySafetyEvent::LOW_WARNING;
     }
 
