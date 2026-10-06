@@ -13,7 +13,7 @@ bool MPU6050::begin(const MPU6050Config& config) {
     _config = config;
 
     // Shared V2 System I2C ownership: MPU6050 may use transactions but must
-    // never initialize/reconfigure the bus itself.
+    // never initialize or reconfigure the physical bus itself.
     if (!SystemI2CBusManager::instance().ensureInitialized()) {
         Serial.println("[MPU6050] System I2C bus unavailable");
         return false;
