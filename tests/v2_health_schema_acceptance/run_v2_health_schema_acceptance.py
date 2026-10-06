@@ -44,7 +44,7 @@ static RobotHealth normal() {
     h.system.resetReason = ResetReason::WATCHDOG;
     h.system.firmwareVersion = "2.0\nrelease";
     h.system.boardProfile = "antech_robot_v2";
-    h.system.boardRevision = "v2";
+    h.system.boardRevision = std::string("v2\tctrl") + char(1);
 
     h.battery.voltage = 7.61f;
     h.battery.state = BatteryState::GOOD;
@@ -162,6 +162,9 @@ def test_backward_compatibility_and_v2_schema() -> None:
     assert payload["hostname"] == 'robot-"health\\node'
     assert payload["firmware_version"] == "2.0\nrelease"
     assert payload["board_profile"] == "antech_robot_v2"
+    assert payload["board_revision"] == "v2\tctrl\x01"
+    assert payload["line_mask"] == payload["line"]["mask"]
+    assert payload["i2c_ok"] == payload["i2c"]["healthy"]
 
     assert set(payload["battery"]) == {"voltage", "state"}
     assert set(payload["motor"]) == {"armed", "enabled", "state", "last_stop_reason"}
@@ -192,17 +195,43 @@ def test_degraded_optional_devices_do_not_corrupt_json() -> None:
     validate_health_payload(payload)
 
 
+def _expect_payload_error(payload: dict, label: str) -> None:
+    try:
+        validate_health_payload(payload)
+    except RobotHealthPayloadError:
+        return
+    raise AssertionError(f"consumer accepted malformed/incompatible payload: {label}")
+
+
 def test_consumer_rejects_missing_required_v2_fields() -> None:
     payload = build()
-    for field in ("board_profile", "battery", "encoder", "i2c", "reset_reason"):
+
+    for field in sorted(COMPAT | V2_TOP):
         malformed = json.loads(json.dumps(payload))
         del malformed[field]
-        try:
-            validate_health_payload(malformed)
-        except RobotHealthPayloadError:
-            pass
-        else:
-            raise AssertionError(f"consumer accepted payload missing required field: {field}")
+        _expect_payload_error(malformed, f"missing top-level field {field}")
+
+    required_nested = {
+        "battery": ("voltage", "state"),
+        "motor": ("armed", "enabled", "state", "last_stop_reason"),
+        "start": ("pressed", "ready_for_press", "armed_by_start_this_boot"),
+        "line": ("available", "healthy", "mask"),
+        "encoder": ("available", "healthy", "left_count", "right_count"),
+        "i2c": ("healthy", "mcp23017"),
+    }
+    for obj, fields in required_nested.items():
+        for field in fields:
+            malformed = json.loads(json.dumps(payload))
+            del malformed[obj][field]
+            _expect_payload_error(malformed, f"missing nested field {obj}.{field}")
+
+    malformed = json.loads(json.dumps(payload))
+    malformed["line_mask"] = payload["line"]["mask"] ^ 0x01
+    _expect_payload_error(malformed, "line_mask alias mismatch")
+
+    malformed = json.loads(json.dumps(payload))
+    malformed["i2c_ok"] = not payload["i2c"]["healthy"]
+    _expect_payload_error(malformed, "i2c_ok alias mismatch")
 
 
 def test_endpoint_is_aggregate_only_and_secret_free() -> None:
@@ -242,7 +271,7 @@ def test_schema_has_no_hardware_dependent_omission() -> None:
 
 def main() -> int:
     test_backward_compatibility_and_v2_schema()
-    print("PASS: compatibility fields and mandatory V2 health schema are stable")
+    print("PASS: compatibility fields, aliases, mandatory V2 schema and control-character escaping are stable")
     test_degraded_optional_devices_do_not_corrupt_json()
     print("PASS: invalid/unavailable optional devices serialize valid complete JSON")
     test_consumer_rejects_missing_required_v2_fields()
