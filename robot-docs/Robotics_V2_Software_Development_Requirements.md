@@ -1334,6 +1334,25 @@ Acceptance split:
 - physical count direction, signal quality and RPM calibration: `PENDING_HW`;
 - RobotHealth aggregation: deferred to `V2-HLT-004`.
 
+Software verification evidence:
+
+- regression/source-of-truth commit: `7f643bdbc326cf89163cb2287b7e6978c2d638c4`;
+- GitHub Actions `V2 Encoder Contract` run `37412125165`: **PASS**;
+- GitHub Actions `V2 BoardProfile Contract` run `37412125220`: **PASS**;
+- GitHub Actions `V2 Servo HAL Contract` run `37412125291`: **PASS**;
+- GitHub Actions `V2 MCP23017 Contract` run `37412125076`: **PASS**;
+- GitHub Actions `V2 System I2C Contract` run `37412125229`: **PASS**;
+- GitHub Actions `V2 MCP Auxiliary Outputs` run `37412125167`: **PASS**;
+- GitHub Actions `V2 Line Perception Control` run `37412125143`: **PASS**;
+- GitHub Actions `V2 Line API Compatibility` run `37412125140`: **PASS**.
+
+Remaining acceptance:
+
+- physical count direction on left/right wheels: `PENDING_HW`;
+- encoder electrical signal quality/noise: `PENDING_HW`;
+- actual counts-per-revolution calibration: `PENDING_HW`;
+- RobotHealth encoder availability/health aggregation: deferred to `V2-HLT-004`.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `IN_PROGRESS`
 
