@@ -23,7 +23,9 @@ struct FakeTransport : IMCP23017Transport {
     bool ensureBusInitialized() override { return busOk; }
     bool probe(uint8_t) override { return present; }
     bool writeRegister(uint8_t,uint8_t reg,uint8_t value) override {
-        if(failWrite) return false; regs[reg]=value; return true;
+        if (failWrite) return false;
+        regs[reg] = value;
+        return true;
     }
     bool readRegister(uint8_t,uint8_t reg,uint8_t& value) override {
         if(failRead) return false;
