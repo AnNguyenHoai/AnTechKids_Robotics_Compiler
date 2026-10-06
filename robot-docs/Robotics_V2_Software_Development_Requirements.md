@@ -2522,7 +2522,7 @@ Still pending:
 ## V2-TEST-003 — Motor Safety Contract Tests
 
 **Priority:** P0  
-**Status:** IN_PROGRESS
+**Status:** PENDING_HW
 
 Required cases:
 
@@ -2531,8 +2531,8 @@ BOOT -> SAFE
 motion before START -> blocked
 START -> ARMED
 OTA -> SAFE
-critical battery -> SAFE
-fault -> SAFE
+critical battery -> safe physical state
+fault -> safe physical state
 reset -> SAFE
 ```
 
@@ -2540,35 +2540,54 @@ Hard requirement:
 
 > No software path shall produce non-zero physical motor output while `armed == false`.
 
-### Implementation / verification record
+### Software acceptance contract
 
-Software coverage now includes:
+A dedicated integrated acceptance runner now executes the real C++ controllers together rather than relying only on separate unit/regression suites:
 
-- BOOT -> SAFE;
-- motion before START blocked at lowest physical output path;
-- debounced START -> ARMED;
-- held START at boot/readiness requires release;
-- MOTOR feature OFF cannot arm;
-- no RobotAPI/VM arm surface;
-- all physical motor PWM writes remain behind MotorSafety.
+- `MotorSafetyController`;
+- `StartArmController`;
+- `BatteryMonitor`;
+- `BatterySafetyPolicy`;
+- `ResetReasonService`.
 
-Still pending in this test family:
+Verified software behavior:
 
-- critical battery -> FAULT, hysteretic recovery -> SAFE without auto-arm: `VERIFIED_SW`;
-- watchdog/reset-reason integration: `VERIFIED_SW` by V2-HLT-003;
-- physical GPIO4/GPIO33, reset-cause and OTA validation.
+- BOOT begins in `BOOT`, then `begin()` forces `SAFE` with physical gate disabled;
+- non-zero motion before START is rejected;
+- a valid debounced START edge transitions `SAFE -> ARMED`;
+- armed motion may transition `ARMED -> RUNNING`;
+- OTA disarm returns motor safety to `SAFE`, disables driver and blocks later non-zero output until a new START edge;
+- critical battery intentionally transitions to `FAULT` with STBY disabled, which is the required physically-safe state;
+- battery hysteresis recovery transitions the matching LOW_BATTERY `FAULT -> SAFE` without auto-arm;
+- fatal platform fault remains `FAULT`, driver disabled, and cannot be direct-armed;
+- watchdog/reset reboot context starts `SAFE`, driver disabled, and requires a fresh START;
+- all physical motor `ledcWrite(MOTOR_*)` calls remain inside `_setMotorsRaw()`;
+- `_setMotorsRaw()` evaluates `MotorSafetyController::allowPhysicalOutput()` before any non-zero PWM write;
+- blocked requests actively write zero duty on all four motor inputs;
+- OTA/reboot/fatal lifecycle sources route through the system fail-safe disarm boundary;
+- public RobotAPI/VM do not expose arm ownership;
+- `StartArmController` remains the only approved production caller of `MotorSafetyController::arm()`.
 
-New SAFE-003 software coverage:
+Clarification of the original shorthand acceptance wording:
 
-- ArduinoOTA + HTTP OTA start disarm;
-- OTA failure stays disarmed;
-- reboot disarm before `ESP.restart()`;
-- fatal program/IMU/VM halt disarm;
-- explicit operator safety stop;
-- PWM clear occurs before STBY LOW.
+- `critical battery -> SAFE` means **physically safe / motor driver disabled**; software state is deliberately `FAULT` while voltage remains CRITICAL, then becomes `SAFE` only after hysteretic recovery;
+- `fault -> SAFE` means **physical output safe (STBY LOW / no non-zero drive)**; fatal faults remain logically `FAULT` until their defined recovery/reset policy.
 
-**Verification status:** `VERIFIED_SW_PARTIAL`  
-**Task status:** `IN_PROGRESS`
+Software evidence:
+
+- integrated runner: `tests/v2_motor_safety_acceptance/run_v2_motor_safety_acceptance.py`;
+- dedicated CI: `.github/workflows/v2-motor-safety-acceptance.yml`;
+- component regressions remain mandatory in the same workflow.
+
+Hardware acceptance still required:
+
+- verify GPIO4/STBY is LOW during boot/reset/fault/OTA/critical battery on a physical V2 board;
+- verify non-zero commands before START produce no motor movement;
+- verify GPIO33 START debounce/held-at-boot behavior electrically;
+- verify physical motor remains stopped through OTA failure/reboot and critical-battery events.
+
+**Verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ---
 
@@ -2820,7 +2839,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 22 | V2-RS-002 | Robot Health Panel — IMPLEMENTED | P2 | M5 |
 | 23 | V2-TEST-001 | Board Mapping Contract Tests — DONE | P0 | M6 |
 | 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests — IN_PROGRESS | P0/P1 | M6 |
-| 25 | V2-TEST-003 | Motor Safety Contract Tests — IN_PROGRESS | P0 | M6 |
+| 25 | V2-TEST-003 | Motor Safety Contract Tests — PENDING_HW | P0 | M6 |
 | 26 | V2-TEST-004 | Line5 Regression — IN_PROGRESS | P1 | M6 |
 | 27 | V2-TEST-005 | Line Response Performance | P1 | M6 |
 | 28 | V2-TEST-006 | Servo Regression — IN_PROGRESS | P1 | M6 |
