@@ -81,11 +81,18 @@ def validate_health_payload(data: Any) -> RobotHealthSnapshot:
     if not isinstance(motor.get("state"), str) or not isinstance(motor.get("last_stop_reason"), str):
         raise RobotHealthPayloadError("invalid motor state")
 
+    start = _require_dict(data, "start")
+    for key in ("pressed", "ready_for_press", "armed_by_start_this_boot"):
+        if not isinstance(start.get(key), bool):
+            raise RobotHealthPayloadError(f"invalid start.{key}")
+
     line = _require_dict(data, "line")
     if not isinstance(line.get("available"), bool) or not isinstance(line.get("healthy"), bool):
         raise RobotHealthPayloadError("invalid line status")
     if not isinstance(line.get("mask"), int):
         raise RobotHealthPayloadError("invalid line mask")
+    if not isinstance(data.get("line_mask"), int) or data["line_mask"] != line["mask"]:
+        raise RobotHealthPayloadError("missing/invalid line_mask compatibility alias")
 
     encoder = _require_dict(data, "encoder")
     if not isinstance(encoder.get("available"), bool) or not isinstance(encoder.get("healthy"), bool):
@@ -96,6 +103,8 @@ def validate_health_payload(data: Any) -> RobotHealthSnapshot:
     i2c = _require_dict(data, "i2c")
     if not isinstance(i2c.get("healthy"), bool) or not isinstance(i2c.get("mcp23017"), bool):
         raise RobotHealthPayloadError("invalid i2c status")
+    if not isinstance(data.get("i2c_ok"), bool) or data["i2c_ok"] != i2c["healthy"]:
+        raise RobotHealthPayloadError("missing/invalid i2c_ok compatibility alias")
 
     return RobotHealthSnapshot(dict(data))
 
