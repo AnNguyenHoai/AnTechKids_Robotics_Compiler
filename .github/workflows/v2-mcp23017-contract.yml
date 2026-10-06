@@ -26,6 +26,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Validate repository test runner syntax
+        run: python -m py_compile run_all_tests.py
       - name: Run System I2C regression
         run: python tests/v2_system_i2c/run_v2_system_i2c.py
       - name: Run MCP23017 contract
