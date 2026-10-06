@@ -33,6 +33,7 @@ public:
     bool arm();
     void disarm(MotorDisarmReason reason);
     bool recoverFaultToSafe(MotorDisarmReason reason);
+    void setBootSafetyContext(MotorDisarmReason reason);
 
     bool isArmed() const;
     bool isDriverEnabled() const { return _driverEnabled; }

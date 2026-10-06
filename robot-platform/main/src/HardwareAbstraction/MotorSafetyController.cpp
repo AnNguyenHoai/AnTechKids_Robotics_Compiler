@@ -41,6 +41,15 @@ bool MotorSafetyController::recoverFaultToSafe(MotorDisarmReason reason) {
     return true;
 }
 
+void MotorSafetyController::setBootSafetyContext(MotorDisarmReason reason) {
+    // Boot/reset has already forced the physical gate LOW in begin().
+    // Preserve SAFE state while exposing the safety-relevant reset context.
+    _gate.setDriverEnabled(false);
+    _driverEnabled = false;
+    _lastDisarmReason = reason;
+    _state = MotorSafetyState::SAFE;
+}
+
 bool MotorSafetyController::isArmed() const {
     return _driverEnabled &&
            (_state == MotorSafetyState::ARMED || _state == MotorSafetyState::RUNNING);

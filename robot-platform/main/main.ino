@@ -10,6 +10,8 @@
 #include "src/HardwareAbstraction/StartArmPlatform.h"
 #include "src/Services/Robot/RobotMotorSafetyInternal.h"
 #include "src/Health/BatterySafetyPlatform.h"
+#include "src/Health/ResetReasonPlatform.h"
+#include "src/HardwareAbstraction/MotorSafetyPlatform.h"
 
 // === Behavior Engine ===
 #include "src/Behavior/BehaviorScheduler.h"
@@ -62,7 +64,18 @@ void setup() {
 
     BootLogger::log("BOOT", "Power On");
 
+    // V2-HLT-003: capture reset cause before normal runtime initialization.
+    systemResetReasonService().capture();
+    BootLogger::logFormat("BOOT", "Reset reason: %s", systemResetReasonService().name());
+
     RobotAPI::Initialize();
+
+    // A watchdog reset is safety-relevant context, but reboot itself must
+    // always come up SAFE/STBY LOW rather than remaining FAULT.
+    if (ResetReasonService::isWatchdog(systemResetReasonService().reason())) {
+        systemMotorSafety().setBootSafetyContext(MotorDisarmReason::WATCHDOG);
+    }
+
     systemStartArm().begin(millis());
     BootLogger::log("BOOT", "Hardware Ready");
 

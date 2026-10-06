@@ -1684,7 +1684,8 @@ V2-HLT-001, V2-SAFE-001, V2-SAFE-003.
 
 ## V2-HLT-003 — ResetReasonService
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IMPLEMENTED
 
 ### Requirement
 
@@ -1707,6 +1708,47 @@ UNKNOWN
 - Reset reason is captured before normal runtime overwrites context.
 - Brownout can be distinguished from normal software reset.
 - Reset reason is exposed through RobotHealth and HTTP.
+
+### Implementation / verification record
+
+Implemented architecture:
+
+- `ResetReasonService` captures the boot reset cause exactly once and exposes normalized read-only state for later RobotHealth/HTTP consumption.
+- `Esp32ResetReasonSource` is the production ESP32 adapter and uses `esp_reset_reason()`.
+- normalized values are:
+  - `POWER_ON`;
+  - `SOFTWARE_RESET`;
+  - `WATCHDOG`;
+  - `BROWNOUT`;
+  - `PANIC`;
+  - `DEEP_SLEEP`;
+  - `UNKNOWN`.
+- ESP32 watchdog variants `ESP_RST_INT_WDT`, `ESP_RST_TASK_WDT`, and `ESP_RST_WDT` normalize to `WATCHDOG`.
+- `ESP_RST_BROWNOUT` remains distinct from `ESP_RST_SW`.
+- capture occurs in `setup()` before `RobotAPI::Initialize()`, diagnostics, VM, network, or other normal runtime initialization can overwrite contextual state.
+- capture is one-shot; later calls cannot replace the recorded boot reason.
+
+Safety integration:
+
+- `MotorSafetyController::setBootSafetyContext(reason)` records safety-relevant boot context while forcing driver disabled and preserving `SAFE`.
+- when reset reason is `WATCHDOG`, main boot flow records `MotorDisarmReason::WATCHDOG` after MotorSafety initialization.
+- watchdog reboot therefore remains `SAFE` / STBY LOW and requires a fresh START press; it does not boot into FAULT and does not auto-arm.
+- other normalized reset reasons remain available to RobotHealth without inventing a motor fault policy.
+
+Software regression:
+
+- `tests/v2_reset_reason/run_v2_reset_reason.py` compiles and executes the real `ResetReasonService` and `MotorSafetyController`;
+- covers every normalized reason, one-shot capture, ESP32 mapping contract, brownout/software distinction, boot capture ordering and watchdog SAFE context;
+- dedicated CI: `.github/workflows/v2-reset-reason-contract.yml`.
+
+Remaining integration:
+
+- expose reset reason through `RobotHealthService`: owned by `V2-HLT-004`;
+- expose through HTTP: owned by `V2-NET-001`;
+- physical reset-cause acceptance on real ESP32 for brownout/watchdog/panic/deep-sleep remains `PENDING_HW`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `IMPLEMENTED`
 
 ### Dependencies
 
@@ -2130,8 +2172,8 @@ Software coverage now includes:
 Still pending in this test family:
 
 - critical battery -> FAULT, hysteretic recovery -> SAFE without auto-arm: `VERIFIED_SW`;
-- watchdog/reset-reason integration (`V2-HLT-003`);
-- physical GPIO4/GPIO33 and OTA validation.
+- watchdog/reset-reason integration: `VERIFIED_SW` by V2-HLT-003;
+- physical GPIO4/GPIO33, reset-cause and OTA validation.
 
 New SAFE-003 software coverage:
 
@@ -2386,7 +2428,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 13 | V2-SW-009 | Encoder V2 Board Integration — IN_PROGRESS | P1 | M3 |
 | 14 | V2-HLT-001 | BatteryMonitor — PENDING_HW | P1 | M4 |
 | 15 | V2-HLT-002 | Critical Battery Safety Policy — PENDING_HW | P1 | M4 |
-| 16 | V2-HLT-003 | ResetReasonService | P1 | M4 |
+| 16 | V2-HLT-003 | ResetReasonService — IMPLEMENTED | P1 | M4 |
 | 17 | V2-HLT-004 | RobotHealth Aggregate | P1 | M4 |
 | 18 | V2-NET-001 | Health API V2 | P1 | M4 |
 | 19 | V2-HLT-005 | OLED Health Display | P2 | M4 |
