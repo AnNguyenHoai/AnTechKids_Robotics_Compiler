@@ -1,5 +1,5 @@
 name: V2 Servo HAL Contract
-# V2-SW-007 focused software verification gate.
+# V2-SW-007 focused software verification gate; host C++ harness enabled.
 
 on:
   push:

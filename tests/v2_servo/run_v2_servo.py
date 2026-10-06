@@ -18,6 +18,7 @@ from compiler.generated.opcode import Opcode
 
 HARNESS = r"""
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 #include "ServoHAL.h"
