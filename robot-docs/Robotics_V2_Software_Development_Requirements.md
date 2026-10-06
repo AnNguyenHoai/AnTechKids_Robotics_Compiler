@@ -1747,6 +1747,23 @@ Remaining integration:
 - expose through HTTP: owned by `V2-NET-001`;
 - physical reset-cause acceptance on real ESP32 for brownout/watchdog/panic/deep-sleep remains `PENDING_HW`.
 
+Software verification evidence:
+
+- implementation commit: `956660d772c1868ee51d0a221ea7065a2a83d1de`;
+- GitHub Actions `V2 Reset Reason Contract` run `37416220137`: **PASS**;
+- GitHub Actions `V2 Motor Safety Contract` run `37416220005`: **PASS**;
+- GitHub Actions `V2 Fail Safe Disarm Contract` run `37416220211`: **PASS**;
+- GitHub Actions `V2 START ARM Contract` run `37416220086`: **PASS**;
+- GitHub Actions `V2 Critical Battery Safety` run `37416220065`: **PASS**;
+- GitHub Actions `V2 Battery Monitor Contract` run `37416220031`: **PASS**;
+- host C++ regression verifies all normalized reset values, one-shot capture, brownout/software distinction, watchdog SAFE context and fresh-START requirement after watchdog reboot.
+
+Hardware acceptance still pending:
+
+- induce and verify physical brownout reset reporting;
+- induce and verify physical watchdog reset reporting;
+- verify panic/deep-sleep reporting on real ESP32 where applicable.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `IMPLEMENTED`
 
