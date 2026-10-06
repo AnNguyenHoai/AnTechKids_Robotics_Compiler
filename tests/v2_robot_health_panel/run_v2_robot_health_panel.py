@@ -27,10 +27,12 @@ GOOD = {
     "robot_ready": True,
     "network_ready": True,
     "ota": True,
+    "http_ota": True,
     "hostname": "robot-1",
     "ip": "192.168.1.20",
     "uptime_ms": 12345,
     "firmware_version": "2.0",
+    "board_profile": "antech_robot_v2",
     "board_revision": "v2",
     "reset_reason": "BROWNOUT",
     "battery": {"voltage": 7.42, "state": "GOOD"},
@@ -40,7 +42,13 @@ GOOD = {
         "state": "SAFE",
         "last_stop_reason": "RESET",
     },
+    "start": {
+        "pressed": False,
+        "ready_for_press": True,
+        "armed_by_start_this_boot": False,
+    },
     "line": {"available": True, "healthy": True, "mask": 4},
+    "line_mask": 4,
     "encoder": {
         "available": True,
         "healthy": True,
@@ -48,6 +56,7 @@ GOOD = {
         "right_count": -45,
     },
     "i2c": {"healthy": True, "mcp23017": True},
+    "i2c_ok": True,
     "rssi": -55,
 }
 
