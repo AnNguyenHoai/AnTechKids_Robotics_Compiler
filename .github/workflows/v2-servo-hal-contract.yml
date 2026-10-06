@@ -1,4 +1,5 @@
 name: V2 Servo HAL Contract
+# V2-SW-007 focused software verification gate.
 
 on:
   push:
