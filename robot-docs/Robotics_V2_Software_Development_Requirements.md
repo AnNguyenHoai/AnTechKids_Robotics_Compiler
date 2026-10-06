@@ -2304,6 +2304,14 @@ Software regression:
 - dedicated CI: `.github/workflows/v2-robostudio-board-profile.yml`;
 - BoardProfile and HardwareConfig V2 regressions run in the same focused workflow.
 
+Software verification evidence:
+
+- implementation commit: `ccb3040eb60d20f89c4ea18956ca9738555808e4`;
+- GitHub Actions `V2 RoboStudio Board Profile` run `37419587630`: **PASS**;
+- GitHub Actions `V2 Motor Safety Contract` run `37419587379`: **PASS**;
+- GitHub Actions `V2 Robot Health Aggregate` run `37419587453`: **PASS**;
+- focused regression verifies shared board metadata matches firmware `BoardProfile`, both Hardware-tab variants expose board identity/revision, infrastructure devices are not selectable, no GPIO/pin remapping controls exist, and unknown profiles fail clearly.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `IMPLEMENTED`
 
