@@ -1249,6 +1249,21 @@ Acceptance split:
 - Physical LED/buzzer operation remains `PENDING_HW`.
 - Requirement “MCP failure is reported through health” is integration-owned by `V2-HLT-004`; this task provides the health-ready status surface but does not invent RobotHealth early.
 
+Software verification evidence:
+
+- implementation commit: `93ed976e7987f6b4df54197eb812611d9ac4927f`;
+- direct-startup-GPIO cleanup / BoardProfile regression alignment: `bdbe82a4d0228772bd774209375fed898e72e580`;
+- GitHub Actions `V2 MCP Auxiliary Outputs` run `37411547214`: **PASS** on `bdbe82a4d0228772bd774209375fed898e72e580`;
+- GitHub Actions `V2 BoardProfile Contract` run `37411547251`: **PASS** on the same commit;
+- GitHub Actions `V2 System I2C Contract` run `37411547282`: **PASS** on the same commit;
+- existing LineSensorBank, Line Perception and Servo regressions also remain green on the same implementation lineage.
+
+Remaining acceptance:
+
+- physical LED Left/Right behavior via GPB0/GPB1: `PENDING_HW`;
+- physical buzzer control via GPB2 + external driver: `PENDING_HW`;
+- RobotHealth reporting of auxiliary/MCP failure: deferred integration to `V2-HLT-004` (service exposes `healthy()/lastError()` now).
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `IN_PROGRESS`
 
