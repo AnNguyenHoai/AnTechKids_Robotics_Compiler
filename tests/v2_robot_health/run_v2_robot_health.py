@@ -134,7 +134,7 @@ def test_line_encoder_internal_health_bridge() -> None:
     assert "RobotHealthInputsInternal" not in public_api
 
 
-def test_serial_consumes_health_model_and_http_not_migrated_early() -> None:
+def test_serial_and_http_consume_same_health_model() -> None:
     serial = SERIAL.read_text(encoding="utf-8")
     network = (COMM / "RobotNetworkService.cpp").read_text(encoding="utf-8")
 
@@ -149,8 +149,13 @@ def test_serial_consumes_health_model_and_http_not_migrated_early() -> None:
     assert "health.i2c" in status
     assert "health.network" in status
 
-    # V2-NET-001 owns HTTP schema migration; HLT-004 must not do it early.
-    assert "systemRobotHealth().refresh()" not in network
+    # V2-NET-001 migration is now complete: HTTP and Serial must consume the
+    # same RobotHealth aggregate rather than duplicate subsystem health logic.
+    health_start = network.index("void sendHealth()")
+    health_end = network.index("void sendInfo()", health_start)
+    health = network[health_start:health_end]
+    assert "systemRobotHealth().refresh()" in health
+    assert "RobotHealthJsonSerializer::serialize" in health
 
 
 def main() -> int:
@@ -162,8 +167,8 @@ def main() -> int:
     print("PASS: platform health source is read-only and side-effect free")
     test_line_encoder_internal_health_bridge()
     print("PASS: Line/Encoder health bridged internally without public API leakage")
-    test_serial_consumes_health_model_and_http_not_migrated_early()
-    print("PASS: Serial consumes RobotHealth; HTTP migration remains V2-NET-001")
+    test_serial_and_http_consume_same_health_model()
+    print("PASS: Serial and HTTP consume the same RobotHealth aggregate")
     return 0
 
 
