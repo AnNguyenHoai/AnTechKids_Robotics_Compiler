@@ -41,6 +41,8 @@ struct RobotHealthLine {
 struct RobotHealthEncoder {
     bool available = false;
     bool healthy = false;
+    int64_t leftCount = 0;
+    int64_t rightCount = 0;
 };
 
 struct RobotHealthI2C {

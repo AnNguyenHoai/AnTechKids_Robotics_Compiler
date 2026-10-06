@@ -2323,7 +2323,8 @@ V2-CONF-001.
 
 ## V2-RS-002 — Robot Health Panel
 
-**Priority:** P2
+**Priority:** P2  
+**Status:** IMPLEMENTED
 
 ### Student view
 
@@ -2360,6 +2361,66 @@ last stop reason
 - Network error is distinguishable from robot fault.
 - Student view remains simple.
 - Teacher view provides enough data to diagnose loose wire, low battery, brownout and sensor failure.
+
+### Implementation / verification record
+
+Implemented RoboStudio health architecture:
+
+- `RobotHealthClient` is a read-only HTTP client for `GET /api/v1/health`.
+- network/transport failures raise `RobotHealthNetworkError`.
+- reachable-but-malformed/incompatible health responses raise `RobotHealthPayloadError`.
+- `RobotHealthPresenter` maps one validated endpoint snapshot into separate Student and Teacher views.
+- `RobotHealthPanel` is shared by standard and responsive Robot tabs.
+- health retrieval runs in a `QThread` worker so the UI is not blocked.
+- selecting an online robot refreshes health automatically; a manual `Refresh Health` action remains available.
+
+Student view:
+
+- shows only:
+  - `Robot Connected`;
+  - `Battery <state>`;
+  - `Motor SAFE/ARMED/FAULT`;
+  - `Line Sensor OK/CHECK/N/A`.
+- raw reset/RSSI/count/I2C details are not included in the Student presenter.
+- Teacher Diagnostics is collapsed by default.
+
+Teacher/Diagnostic view:
+
+- battery voltage/state;
+- reset reason;
+- Wi-Fi RSSI;
+- raw 5-bit Line5 mask;
+- encoder availability/health and left/right counts;
+- motor state/armed/enabled;
+- firmware version;
+- board revision;
+- uptime;
+- System I2C/MCP23017 health;
+- last motor stop/disarm reason.
+
+Health-source completion required by this task:
+
+- V2-RS-002 requirement includes encoder count/status, while V2-NET-001 initially exposed only encoder availability/health.
+- `RobotHealthEncoder` is therefore extended with read-only `leftCount/rightCount`.
+- `RobotHealthInputsInternal` reads existing Encoder counters without adding a student/public RobotAPI.
+- `/api/v1/health` now serializes `encoder.left_count/right_count`.
+- all health consumers remain aggregate/endpoint based; RoboStudio does not call RobotAPI or hardware subsystems directly.
+
+Network-vs-robot-fault semantics:
+
+- an HTTP transport failure renders `Connection error` and clears subsystem summary values to unknown placeholders;
+- it does not display Battery/Motor/Line as FAULT;
+- malformed robot health data renders a separate `Health data error`;
+- actual robot fault states are rendered only from a valid health payload.
+
+Software regression:
+
+- `tests/v2_robot_health_panel/run_v2_robot_health_panel.py` verifies Student simplicity, full Teacher diagnostics, network/payload error separation, collapsed Teacher details and shared async panel integration in both Robot tabs;
+- RobotHealth aggregate and HTTP serializer regressions are executed in the same focused workflow;
+- dedicated CI: `.github/workflows/v2-robostudio-health-panel.yml`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `IMPLEMENTED`
 
 ### Dependencies
 
@@ -2747,7 +2808,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 19 | V2-HLT-005 | OLED Health Display | P2 | M4 |
 | 20 | V2-CONF-001 | HardwareConfig V2 / Migration — IMPLEMENTED | P1 | M5 |
 | 21 | V2-RS-001 | RoboStudio Board Awareness | P1 | M5 |
-| 22 | V2-RS-002 | Robot Health Panel | P2 | M5 |
+| 22 | V2-RS-002 | Robot Health Panel — IMPLEMENTED | P2 | M5 |
 | 23 | V2-TEST-001 | Board Mapping Contract Tests — DONE | P0 | M6 |
 | 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests — IN_PROGRESS | P0/P1 | M6 |
 | 25 | V2-TEST-003 | Motor Safety Contract Tests — IN_PROGRESS | P0 | M6 |

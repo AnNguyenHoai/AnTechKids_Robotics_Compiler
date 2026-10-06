@@ -30,6 +30,7 @@ from ui.first_flash_dialog import FirstFlashSetupDialog
 from ui.responsive import AdaptiveSplitter, make_scroll_area
 from ui.responsive_serial_console import ResponsiveSerialConsoleWidget
 from ui.robot_tab import RobotTab
+from ui.robot_health_panel import RobotHealthPanel
 
 
 class ResponsiveRobotTab(RobotTab):
@@ -125,6 +126,10 @@ class ResponsiveRobotTab(RobotTab):
         self.robot_details_toggle.toggled.connect(self.robot_details.setVisible)
         robot_card.add_widget(self.robot_details)
         layout.addWidget(robot_card)
+
+        self.health_panel = RobotHealthPanel()
+        self.health_panel.refresh_button.clicked.connect(self.refresh_health)
+        layout.addWidget(self.health_panel)
 
         connection_group = QGroupBox("Deployment Connection")
         form = QFormLayout(connection_group)

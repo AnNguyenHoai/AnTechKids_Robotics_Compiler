@@ -41,6 +41,8 @@ void RobotHealthPlatformSource::populate(RobotHealth& health) {
 
     health.encoder.available = RobotHealthInputsInternal::encoderAvailable();
     health.encoder.healthy = RobotHealthInputsInternal::encoderHealthy();
+    health.encoder.leftCount = RobotHealthInputsInternal::encoderLeftCount();
+    health.encoder.rightCount = RobotHealthInputsInternal::encoderRightCount();
 
     health.i2c.healthy = SystemI2CBusManager::instance().initialized();
     health.i2c.mcp23017 = systemMCP23017().healthy();

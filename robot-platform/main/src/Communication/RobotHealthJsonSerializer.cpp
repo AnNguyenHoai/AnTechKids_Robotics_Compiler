@@ -83,7 +83,9 @@ std::string RobotHealthJsonSerializer::serialize(
 
     out << ",\"encoder\":{"
         << "\"available\":" << boolText(health.encoder.available)
-        << ",\"healthy\":" << boolText(health.encoder.healthy) << "}";
+        << ",\"healthy\":" << boolText(health.encoder.healthy)
+        << ",\"left_count\":" << health.encoder.leftCount
+        << ",\"right_count\":" << health.encoder.rightCount << "}";
 
     out << ",\"i2c\":{"
         << "\"healthy\":" << boolText(health.i2c.healthy)

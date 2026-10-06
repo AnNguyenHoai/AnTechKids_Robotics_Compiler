@@ -1,0 +1,39 @@
+name: V2 RoboStudio Health Panel
+
+on:
+  push:
+    branches: [main_V2]
+    paths:
+      - "robostudio/services/robot_health_service.py"
+      - "robostudio/services/robot_health_presenter.py"
+      - "robostudio/ui/robot_health_panel.py"
+      - "robostudio/ui/robot_tab.py"
+      - "robostudio/ui/responsive_robot_tab.py"
+      - "robot-platform/main/src/Health/RobotHealth*"
+      - "robot-platform/main/src/Services/Robot/RobotHealthInputsInternal.h"
+      - "robot-platform/main/src/Services/Robot/RobotAPI.cpp"
+      - "robot-platform/main/src/Communication/RobotHealthJsonSerializer.cpp"
+      - "tests/v2_robot_health_panel/**"
+      - "tests/v2_robot_health/**"
+      - "tests/v2_health_http/**"
+      - "run_all_tests.py"
+      - "robot-docs/Robotics_V2_Software_Development_Requirements.md"
+      - ".github/workflows/v2-robostudio-health-panel.yml"
+  workflow_dispatch:
+
+jobs:
+  robostudio-health-panel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate runner syntax
+        run: python -m py_compile run_all_tests.py
+      - name: RobotHealth aggregate regression
+        run: python tests/v2_robot_health/run_v2_robot_health.py
+      - name: Health HTTP regression
+        run: python tests/v2_health_http/run_v2_health_http.py
+      - name: RoboStudio health panel contract
+        run: python tests/v2_robot_health_panel/run_v2_robot_health_panel.py

@@ -14,7 +14,13 @@ from services.bootstrap_config_service import BootstrapConfigService
 from services.robot_deployment_service import RobotDeploymentService, DeploymentResult
 from services.robot_discovery_service import RobotDiscoveryClient, RobotInfo
 from services.robot_registry_service import ManagedRobot, RobotRegistryError, RobotRegistryService
+from services.robot_health_service import (
+    RobotHealthClient,
+    RobotHealthNetworkError,
+    RobotHealthPayloadError,
+)
 from services.serial_console_service import SerialConsoleService
+from ui.robot_health_panel import RobotHealthPanel
 from ui.serial_console import SerialConsoleWidget
 
 
@@ -27,6 +33,27 @@ class _DiscoveryWorker(QThread):
             self.completed.emit(RobotDiscoveryClient().discover())
         except Exception as exc:
             self.failed.emit(str(exc))
+
+
+class _HealthWorker(QThread):
+    completed = Signal(object)
+    network_failed = Signal(str)
+    payload_failed = Signal(str)
+
+    def __init__(self, host):
+        super().__init__()
+        self.host = host
+
+    def run(self):
+        try:
+            snapshot = RobotHealthClient().get_health(self.host)
+        except RobotHealthNetworkError as exc:
+            self.network_failed.emit(str(exc))
+            return
+        except RobotHealthPayloadError as exc:
+            self.payload_failed.emit(str(exc))
+            return
+        self.completed.emit(snapshot)
 
 
 class _BootstrapFlashWorker(QThread):
@@ -76,6 +103,7 @@ class RobotTab(QWidget):
         self._discovery_worker = None
         self._bootstrap_flash_worker = None
         self._deployment_worker = None
+        self._health_worker = None
         self._bootstrap_service = BootstrapConfigService()
         self._registry = RobotRegistryService()
         self._build_ui()
@@ -184,6 +212,10 @@ class RobotTab(QWidget):
         self.robot_details.setStyleSheet("color: #666666;")
         discovery_layout.addWidget(self.robot_details)
         layout.addWidget(discovery_group)
+
+        self.health_panel = RobotHealthPanel()
+        self.health_panel.refresh_button.clicked.connect(self.refresh_health)
+        layout.addWidget(self.health_panel)
 
         connection_group = QGroupBox("2 · Wi-Fi / OTA")
         form = QFormLayout(connection_group)
@@ -331,6 +363,7 @@ class RobotTab(QWidget):
             self.robot_status.setText("No robot selected")
             self.robot_details.setText("")
             self.robot_details.setStyleSheet("color: #666666;")
+            self.health_panel.show_no_robot()
             self._refresh_deploy_enabled()
             return
 
@@ -353,6 +386,10 @@ class RobotTab(QWidget):
             f"Capabilities: {capabilities}"
         )
         self.robot_details.setStyleSheet("color: #666666;")
+        if item.online:
+            self.refresh_health()
+        else:
+            self.health_panel.show_offline()
         self._refresh_deploy_enabled()
 
     def _refresh_usb_ports(self):
@@ -555,6 +592,30 @@ class RobotTab(QWidget):
     def _on_robot_selected(self, index):
         device_id = self.robot_combo.itemData(index) if 0 <= index < self.robot_combo.count() else None
         self._apply_selected_device(device_id, persist=bool(device_id))
+
+    def refresh_health(self):
+        item = self._selected
+        if item is None:
+            self.health_panel.show_no_robot()
+            return
+        if not item.online:
+            self.health_panel.show_offline()
+            return
+        if self._health_worker and self._health_worker.isRunning():
+            return
+
+        self.health_panel.show_loading()
+        self._health_worker = _HealthWorker(item.robot.ip)
+        self._health_worker.completed.connect(self.health_panel.show_health)
+        self._health_worker.network_failed.connect(self.health_panel.show_network_error)
+        self._health_worker.payload_failed.connect(self.health_panel.show_payload_error)
+        self._health_worker.finished.connect(self._health_finished)
+        self._health_worker.start()
+
+    def _health_finished(self):
+        self._health_worker = None
+        if self._selected is not None and self._selected.online:
+            self.health_panel.refresh_button.setEnabled(True)
 
     def _refresh_deploy_enabled(self):
         code_available = bool(self._code_provider().strip())

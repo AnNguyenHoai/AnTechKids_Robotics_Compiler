@@ -1380,5 +1380,21 @@ bool encoderHealthy() {
 #endif
 }
 
+int64_t encoderLeftCount() {
+#if ROBOT_FEATURE_ENCODER
+    return RobotAPI::leftEncoder.getCount();
+#else
+    return 0;
+#endif
+}
+
+int64_t encoderRightCount() {
+#if ROBOT_FEATURE_ENCODER
+    return RobotAPI::rightEncoder.getCount();
+#else
+    return 0;
+#endif
+}
+
 } // namespace RobotHealthInputsInternal
 

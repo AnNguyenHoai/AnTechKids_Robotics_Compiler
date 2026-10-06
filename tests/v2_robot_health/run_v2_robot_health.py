@@ -42,8 +42,10 @@ struct FakeSource : IRobotHealthSource {
         h.line.healthy = true;
         h.line.mask = 0x04;
 
-        h.encoder.available = false;
-        h.encoder.healthy = false;
+        h.encoder.available = true;
+        h.encoder.healthy = true;
+        h.encoder.leftCount = 123;
+        h.encoder.rightCount = -45;
 
         h.i2c.healthy = true;
         h.i2c.mcp23017 = true;
@@ -68,7 +70,9 @@ int main() {
     assert(h.motor.lastStopReason == MotorDisarmReason::LOW_BATTERY);
     assert(h.start.readyForPress);
     assert(h.line.mask == 0x04);
-    assert(!h.encoder.available);
+    assert(h.encoder.available && h.encoder.healthy);
+    assert(h.encoder.leftCount == 123);
+    assert(h.encoder.rightCount == -45);
     assert(h.i2c.healthy && h.i2c.mcp23017);
     assert(h.network.connected && h.network.rssi == -52);
 
@@ -101,7 +105,7 @@ def test_minimum_model_contract() -> None:
         "voltage", "BatteryState state",
         "armed", "enabled", "lastStopReason",
         "RobotHealthLine", "mask",
-        "RobotHealthEncoder",
+        "RobotHealthEncoder", "leftCount", "rightCount",
         "RobotHealthI2C", "mcp23017",
         "RobotHealthNetwork", "connected", "ip", "rssi",
     ):
@@ -128,6 +132,8 @@ def test_line_encoder_internal_health_bridge() -> None:
     assert "g_rightEncoderReady = rightEncoder.begin()" in api
     assert "g_lineSensorBank.healthy()" in api
     assert "g_lineSensorBank.lastMask()" in api
+    assert "leftEncoder.getCount()" in api
+    assert "rightEncoder.getCount()" in api
     assert "RobotHealthInputsInternal" in bridge
 
     public_api = (ROBOT / "RobotAPI.h").read_text(encoding="utf-8")

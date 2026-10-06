@@ -39,8 +39,10 @@ int main() {
     h.line.healthy = true;
     h.line.mask = 4;
 
-    h.encoder.available = false;
-    h.encoder.healthy = false;
+    h.encoder.available = true;
+    h.encoder.healthy = true;
+    h.encoder.leftCount = 123;
+    h.encoder.rightCount = -45;
 
     h.i2c.healthy = true;
     h.i2c.mcp23017 = true;
@@ -115,7 +117,12 @@ def test_schema_and_compatibility() -> None:
 
     assert payload["line"] == {"available": True, "healthy": True, "mask": 4}
     assert payload["line_mask"] == 4
-    assert payload["encoder"] == {"available": False, "healthy": False}
+    assert payload["encoder"] == {
+        "available": True,
+        "healthy": True,
+        "left_count": 123,
+        "right_count": -45,
+    }
     assert payload["i2c"] == {"healthy": True, "mcp23017": True}
     assert payload["i2c_ok"] is True
     assert payload["rssi"] == -52
