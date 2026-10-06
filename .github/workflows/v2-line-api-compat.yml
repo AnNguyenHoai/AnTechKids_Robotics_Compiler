@@ -1,0 +1,37 @@
+name: V2 Line API Compatibility
+
+on:
+  push:
+    branches: [main_V2]
+    paths:
+      - "robot-platform/main/src/Services/Robot/RobotAPI.*"
+      - "robot-platform/main/src/Services/Line/**"
+      - "robot-platform/main/src/Sensor/MCPLineSensor.*"
+      - "robostudio/domain/hardware_requirements.py"
+      - "robostudio/domain/hardware_requirement_validator.py"
+      - "robot-docs/ROBOTAPI_SENSOR_SPEC.md"
+      - "robot-docs/ROBOT_PLATFORM_API.md"
+      - "tests/v1_line5/**"
+      - "tests/v2_line_sensor_bank/**"
+      - "tests/v2_line_api_compat/**"
+      - "run_all_tests.py"
+      - "robot-docs/Robotics_V2_Software_Development_Requirements.md"
+      - ".github/workflows/v2-line-api-compat.yml"
+  workflow_dispatch:
+
+jobs:
+  line-api-compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate test runner syntax
+        run: python -m py_compile run_all_tests.py
+      - name: V1 logical Line5 regression
+        run: python tests/v1_line5/run_v1_line5.py
+      - name: V2 LineSensorBank regression
+        run: python tests/v2_line_sensor_bank/run_v2_line_sensor_bank.py
+      - name: V2 public Line API compatibility
+        run: python tests/v2_line_api_compat/run_v2_line_api_compat.py

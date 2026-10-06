@@ -907,7 +907,8 @@ V2-SW-003.
 
 ## V2-SW-005 — Line5 Public API Compatibility
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IN_PROGRESS
 
 ### Requirement
 
@@ -937,6 +938,25 @@ Legacy programs using center/left/right semantics shall continue to work.
 - `GetTraceRaw()` returns the canonical 5-bit mask `bit4..bit0 = FL,L,C,R,FR`.
 - MCP23017 physical bit ordering does not leak into the public API.
 - Hardware Requirement Validator continues to enforce `line_sensor`.
+
+### Implementation / verification record
+
+Compatibility contract is enforced by `tests/v2_line_api_compat/run_v2_line_api_compat.py` and dedicated CI `.github/workflows/v2-line-api-compat.yml`.
+
+The regression freezes:
+
+- public RobotAPI signatures for `ReadLine`, trace APIs and line behavior entry points;
+- public channel IDs `0=L, 1=C, 2=R, 3=FL, 4=FR`;
+- canonical `GetTraceRaw()` mask `bit4..0 = FL,L,C,R,FR`;
+- MCP physical ordering remains hidden behind `LineSensorBank`;
+- line feature OFF returns neutral values / safe behavior;
+- compiler transports `read_line(0..4)`;
+- Hardware Requirement Validator continues to require `line_sensor` for sensing and `motor + line_sensor` for line behaviors;
+- public API documentation remains aligned with the frozen compatibility contract.
+
+This requirement is a software/API compatibility contract. Physical sensor correctness is owned by `V2-SW-004` and remains `PENDING_HW` there; it is not duplicated as a blocker here.
+
+**Task status:** `IN_PROGRESS`
 
 ### Dependencies
 
@@ -1810,7 +1830,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 6 | V2-SAFE-003 | Fail-Safe Disarm Conditions | P0 | M2 |
 | 7 | V2-SAFE-004 | VM / Student Code Safety Boundary | P0 | M2 |
 | 8 | V2-SW-004 | LineSensorBank 5CH — PENDING_HW | P1 | M3 |
-| 9 | V2-SW-005 | Line5 Public API Compatibility | P1 | M3 |
+| 9 | V2-SW-005 | Line5 Public API Compatibility — IN_PROGRESS | P1 | M3 |
 | 10 | V2-SW-006 | Line5 Perception / Control Upgrade | P1 | M3 |
 | 11 | V2-SW-007 | Servo HAL | P1 | M3 |
 | 12 | V2-SW-008 | MCP LED/Buzzer Migration | P1 | M3 |
