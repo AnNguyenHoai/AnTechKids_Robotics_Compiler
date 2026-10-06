@@ -977,7 +977,8 @@ V2-SW-004.
 
 ## V2-SW-006 — Line5 Perception / Control Upgrade
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -1027,6 +1028,51 @@ Minimum regression masks:
 ```
 
 Line response timing diagnostics shall remain available.
+
+### Implementation / verification record
+
+V2 preserves the frozen V1 Line5 perception/control implementation rather than rewriting or tuning it without hardware evidence.
+
+Software regression is implemented at `tests/v2_line_perception/run_v2_line_perception.py` and dedicated CI `.github/workflows/v2-line-perception-control.yml`.
+
+Verified in software:
+
+- weighted estimator positions remain `FL=-2, L=-1, C=0, R=+1, FR=+2`;
+- representative masks are deterministic:
+  - `00100` -> error `0.0`, `CENTER`;
+  - `01100` -> error `-0.5`, `LEFT_CENTER`;
+  - `11000` -> error `-1.5`, `LEFT`;
+  - `00011` -> error `+1.5`, `RIGHT`;
+  - `00000` -> `LOST`;
+  - `11111` -> `INTERSECTION`;
+- mask sanitization prevents non-Line5 high bits leaking into perception;
+- `LineFollower` continues to use `LineErrorEstimator`, `IntersectionDetector`, `RecoveryStrategy`, PID reset on reacquire, and `LAST_DIRECTION_THRESHOLD=0.25`;
+- recovery continues to search toward the last meaningful line direction and exits immediately on reacquire;
+- existing line response diagnostics remain available for sensor/control/output/total timing.
+
+Explicitly not changed without hardware evidence:
+
+- intersection history length/threshold;
+- current temporal policy where a sustained `6/6` candidate history does not assert intersection because the frozen implementation uses `candidates >= 3 && candidates < 6`;
+- recovery phase speed tuning;
+- center-zone-only reacquire policy;
+- PID gains / motor mixing scale.
+
+Requirement gap recorded:
+
+- the frozen baseline contains no distinct `station pattern` classifier/service. Current pattern detection is `IntersectionDetector` only.
+- V2-SW-006 does not invent a station algorithm silently. A separate station-pattern requirement must be defined if hardware/product behavior requires semantics beyond intersection detection.
+
+Hardware-dependent acceptance criteria:
+
+- real line tracking quality across center/slight/strong corrections: `PENDING_HW`;
+- recovery effectiveness and phase tuning: `PENDING_HW`;
+- intersection persistence/false-positive tuning: `PENDING_HW`;
+- station-pattern semantics beyond current intersection detection: `PENDING_HW / REQUIREMENT_GAP`;
+- line response latency acceptance threshold: `PENDING_HW` and tracked by `V2-TEST-005`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -1669,7 +1715,8 @@ Hard requirement:
 
 ## V2-TEST-004 — Line5 Regression
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IN_PROGRESS
 
 Representative masks:
 
@@ -1692,6 +1739,26 @@ intersection
 station pattern
 public API raw mask
 ```
+
+### Implementation / verification record
+
+Software coverage now includes:
+
+- representative-mask weighted error and perception;
+- LOST / center / left / right / intersection interpretation;
+- recovery last-direction behavior and immediate reacquire exit;
+- current intersection temporal policy;
+- public API raw-mask compatibility through V2-SW-005;
+- LineSensorBank physical-to-canonical conversion through V2-SW-004.
+
+Still pending:
+
+- hardware recovery effectiveness;
+- hardware intersection/station behavior;
+- dedicated station-pattern semantics are not present in the frozen baseline and require an explicit follow-up requirement if needed.
+
+**Verification status:** `VERIFIED_SW_PARTIAL`  
+**Task status:** `IN_PROGRESS`
 
 ---
 
@@ -1842,7 +1909,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 7 | V2-SAFE-004 | VM / Student Code Safety Boundary | P0 | M2 |
 | 8 | V2-SW-004 | LineSensorBank 5CH — PENDING_HW | P1 | M3 |
 | 9 | V2-SW-005 | Line5 Public API Compatibility — DONE | P1 | M3 |
-| 10 | V2-SW-006 | Line5 Perception / Control Upgrade | P1 | M3 |
+| 10 | V2-SW-006 | Line5 Perception / Control Upgrade — PENDING_HW | P1 | M3 |
 | 11 | V2-SW-007 | Servo HAL | P1 | M3 |
 | 12 | V2-SW-008 | MCP LED/Buzzer Migration | P1 | M3 |
 | 13 | V2-SW-009 | Encoder V2 Board Integration | P1 | M3 |
@@ -1858,7 +1925,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 23 | V2-TEST-001 | Board Mapping Contract Tests — DONE | P0 | M6 |
 | 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests — IN_PROGRESS | P0/P1 | M6 |
 | 25 | V2-TEST-003 | Motor Safety Contract Tests | P0 | M6 |
-| 26 | V2-TEST-004 | Line5 Regression | P1 | M6 |
+| 26 | V2-TEST-004 | Line5 Regression — IN_PROGRESS | P1 | M6 |
 | 27 | V2-TEST-005 | Line Response Performance | P1 | M6 |
 | 28 | V2-TEST-006 | Servo Regression | P1 | M6 |
 | 29 | V2-TEST-007 | Health Schema Contract | P1 | M6 |
