@@ -28,6 +28,19 @@ void MotorSafetyController::disarm(MotorDisarmReason reason) {
     _state = isFaultReason(reason) ? MotorSafetyState::FAULT : MotorSafetyState::SAFE;
 }
 
+bool MotorSafetyController::recoverFaultToSafe(MotorDisarmReason reason) {
+    if (_state != MotorSafetyState::FAULT || _lastDisarmReason != reason) {
+        return false;
+    }
+
+    // Recovery never enables the physical driver. A fresh approved START
+    // press is still required to transition SAFE -> ARMED.
+    _gate.setDriverEnabled(false);
+    _driverEnabled = false;
+    _state = MotorSafetyState::SAFE;
+    return true;
+}
+
 bool MotorSafetyController::isArmed() const {
     return _driverEnabled &&
            (_state == MotorSafetyState::ARMED || _state == MotorSafetyState::RUNNING);

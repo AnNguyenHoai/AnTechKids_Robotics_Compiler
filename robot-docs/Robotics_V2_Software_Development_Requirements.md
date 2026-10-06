@@ -883,8 +883,8 @@ Software regression:
 
 Remaining acceptance:
 
-- critical battery source -> `disarm(LOW_BATTERY)`: deferred to `V2-HLT-002`;
-- physical STBY behavior during OTA/fatal/reboot: `PENDING_HW`;
+- critical battery source -> `disarm(LOW_BATTERY)`: `VERIFIED_SW` by V2-HLT-002;
+- physical STBY behavior during OTA/fatal/reboot/critical battery: `PENDING_HW`;
 - watchdog/fatal reset reason exposure: deferred to `V2-HLT-003`;
 - physical OTA failure/recovery remains SAFE: `PENDING_HW`.
 
@@ -1607,7 +1607,8 @@ V2-SW-001.
 
 ## V2-HLT-002 — Critical Battery Safety Policy
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -1631,9 +1632,41 @@ Servo policy shall be defined; recommended behavior is to block new high-load se
 - Returning briefly above threshold does not automatically re-arm.
 - START must be required again after safety recovery/reset policy as defined.
 
+### Implementation / verification record
+
+Implemented policy:
+
+- `BatterySafetyPolicy` samples `BatteryMonitor` on a bounded 250 ms cadence.
+- LOW emits a warning event but does not disarm the motor driver.
+- CRITICAL latches battery safety, routes through `RobotMotorSafetyInternal::disarm(LOW_BATTERY)`, clears motor PWM before STBY LOW, and blocks new servo commands.
+- servo policy is explicitly defined for V2: new `SetServo()` activity is blocked while the CRITICAL battery latch is active; LOW does not block servo.
+- INVALID is not silently treated as CRITICAL because V2-HLT-001 production calibration remains intentionally invalid until divider/threshold values are approved.
+- if a CRITICAL latch is already active and a later sample becomes INVALID, the latch remains active and servo remains blocked.
+- BatteryMonitor hysteresis owns electrical recovery. Only after the monitor exits CRITICAL to LOW/GOOD does the policy attempt fault recovery.
+- `MotorSafetyController::recoverFaultToSafe(LOW_BATTERY)` is reason-specific and transitions only matching `FAULT -> SAFE`; it never enables STBY and never arms the robot.
+- after battery recovery, a new approved START press is required for `SAFE -> ARMED`.
+- another fault reason such as `FATAL_PLATFORM_FAULT` cannot be cleared by battery recovery.
+- battery safety evaluation runs before START processing in the main loop, so a same-loop CRITICAL condition wins over an arm request.
+
+Software regression:
+
+- `tests/v2_battery_safety/run_v2_battery_safety.py` compiles and executes the real `BatteryMonitor`, `BatterySafetyPolicy`, and `MotorSafetyController`;
+- covers LOW warning, CRITICAL disarm, critical hysteresis, FAULT->SAFE recovery without auto-arm, START-required semantics, servo blocking, INVALID-before-critical behavior, INVALID-after-critical latch persistence, and reason-specific recovery;
+- dedicated CI: `.github/workflows/v2-critical-battery-safety.yml`.
+
+Hardware-dependent acceptance criteria:
+
+- actual LOW/CRITICAL thresholds and hysteresis are still `PENDING_HW` under V2-HLT-001 calibration;
+- physical CRITICAL voltage must force GPIO4/STBY LOW: `PENDING_HW`;
+- recovery above the measured hysteresis must leave the robot SAFE until START: `PENDING_HW`;
+- servo power/load behavior under low/critical battery requires physical validation: `PENDING_HW`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
+
 ### Dependencies
 
-V2-HLT-001, V2-SAFE-001.
+V2-HLT-001, V2-SAFE-001, V2-SAFE-003.
 
 ---
 
@@ -2084,7 +2117,7 @@ Software coverage now includes:
 
 Still pending in this test family:
 
-- critical battery -> SAFE/FAULT (`V2-HLT-002` + `V2-SAFE-003`);
+- critical battery -> FAULT, hysteretic recovery -> SAFE without auto-arm: `VERIFIED_SW`;
 - watchdog/reset-reason integration (`V2-HLT-003`);
 - physical GPIO4/GPIO33 and OTA validation.
 
@@ -2340,7 +2373,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 12 | V2-SW-008 | MCP LED/Buzzer Migration — IN_PROGRESS | P1 | M3 |
 | 13 | V2-SW-009 | Encoder V2 Board Integration — IN_PROGRESS | P1 | M3 |
 | 14 | V2-HLT-001 | BatteryMonitor — PENDING_HW | P1 | M4 |
-| 15 | V2-HLT-002 | Critical Battery Safety Policy | P1 | M4 |
+| 15 | V2-HLT-002 | Critical Battery Safety Policy — PENDING_HW | P1 | M4 |
 | 16 | V2-HLT-003 | ResetReasonService | P1 | M4 |
 | 17 | V2-HLT-004 | RobotHealth Aggregate | P1 | M4 |
 | 18 | V2-NET-001 | Health API V2 | P1 | M4 |

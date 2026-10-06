@@ -27,6 +27,7 @@
 #include "../../HardwareAbstraction/ServoHAL.h"
 #include "../../HardwareAbstraction/ServoLEDCTransport.h"
 #include "../../HardwareAbstraction/MotorSafetyPlatform.h"
+#include "../../Health/BatterySafetyPlatform.h"
 #include "../../Services/Output/AuxOutputService.h"
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/TCRT5000.h"
@@ -1087,6 +1088,11 @@ void SetServo(int port, int angle) {
     (void)angle;
     return;
 #else
+    if (!systemBatterySafetyPolicy().servoActivityAllowed()) {
+        Serial.printf("[SERVO] Blocked by CRITICAL battery safety policy port=%d angle=%d\n",
+                      port, angle);
+        return;
+    }
     const int clamped = ServoHAL::clampAngle(angle);
     if (!g_servoHAL.setAngle(port, angle)) {
         if (g_servoHAL.lastError() == ServoError::INVALID_PORT) {

@@ -9,6 +9,7 @@
 #include "src/Communication/RobotNetworkService.h"
 #include "src/HardwareAbstraction/StartArmPlatform.h"
 #include "src/Services/Robot/RobotMotorSafetyInternal.h"
+#include "src/Health/BatterySafetyPlatform.h"
 
 // === Behavior Engine ===
 #include "src/Behavior/BehaviorScheduler.h"
@@ -180,6 +181,27 @@ void loop() {
         DiagnosticsManager::instance().recordLoopTime(micros() - start);
         delay(1);
         return;
+    }
+
+    // V2-HLT-002: evaluate battery safety before accepting a START edge.
+    // CRITICAL therefore wins over any same-loop arm request.
+    const BatterySafetyEvent batterySafetyEvent = systemBatterySafetyPolicy().update(millis());
+    switch (batterySafetyEvent) {
+        case BatterySafetyEvent::LOW_WARNING:
+            BootLogger::log("BATTERY", "LOW: battery warning active.");
+            break;
+        case BatterySafetyEvent::CRITICAL_DISARMED:
+            BootLogger::log("BATTERY", "CRITICAL: motors disarmed; servo commands blocked.");
+            break;
+        case BatterySafetyEvent::RECOVERED_SAFE:
+            BootLogger::log("BATTERY", "Recovered above CRITICAL hysteresis; motor remains SAFE, press START to re-arm.");
+            break;
+        case BatterySafetyEvent::INVALID_READING:
+            // Calibration/read validity is reported by health/diagnostics.
+            break;
+        case BatterySafetyEvent::NONE:
+        default:
+            break;
     }
 
     if (g_robotReady && systemStartArm().update(millis())) {
