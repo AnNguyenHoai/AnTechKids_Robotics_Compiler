@@ -4,6 +4,7 @@
 #include "../../include/generated/generated_device_config.h"
 #include "../Services/Robot/MotionConfig.h"
 #include "../Services/Robot/RobotAPI.h"
+#include "../Services/Robot/RobotMotorSafetyInternal.h"
 #include "../Services/Robot/MotorOutputMapper.h"
 #include "../HardwareAbstraction/HardwareCapability.h"
 #include "../Devices/SensorConfig.h"
@@ -46,6 +47,7 @@ void SerialCommandHandler::handle() {
         Serial.println("  config set <key> <value> - set motion config");
         Serial.println("  config save         - save motion config");
         Serial.println("  speed <left> <right> - set motor speeds directly");
+        Serial.println("  safety stop         - disarm motor driver; START required to re-arm");
         Serial.println("  sensor show         - show sensor config");
         Serial.println("  sensor set <key> <value> - set sensor config");
         Serial.println("  behavior list       - list registered behaviors");
@@ -100,6 +102,12 @@ void SerialCommandHandler::handle() {
         Serial.println("  run                 - start VM execution (manual-start mode)");
 #endif
         return;
+    }
+
+    // ---------- Explicit Safety Stop (V2-SAFE-003) ----------
+    else if (input == "safety stop") {
+        RobotMotorSafetyInternal::disarm(MotorDisarmReason::EXPLICIT_SAFETY_STOP);
+        Serial.println("[SAFETY] Motor driver disarmed. Press START to re-arm.");
     }
 
     // ---------- Hardware Capability Contract (H25-I) ----------

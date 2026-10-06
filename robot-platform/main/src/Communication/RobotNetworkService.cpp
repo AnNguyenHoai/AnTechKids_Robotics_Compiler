@@ -12,6 +12,7 @@
 #include "RobotWiFiConfig.h"
 #include "../Logger/BootLogger.h"
 #include "../Services/Robot/RobotAPI.h"
+#include "../Services/Robot/RobotMotorSafetyInternal.h"
 
 namespace {
 constexpr uint32_t kWifiRetryIntervalMs = 5000UL;
@@ -60,9 +61,10 @@ void sendInfo() {
 }
 
 void onOtaStart() {
+    RobotMotorSafetyInternal::disarm(MotorDisarmReason::OTA);
     RobotNetworkService::setUpdateInProgress(true);
     g_otaReady = false;
-    BootLogger::log("OTA", "ArduinoOTA firmware update started");
+    BootLogger::log("OTA", "ArduinoOTA firmware update started; motors disarmed");
 }
 
 void onOtaEnd() {
@@ -98,9 +100,9 @@ void handleHttpOtaUpload() {
             return;
         }
 
+        RobotMotorSafetyInternal::disarm(MotorDisarmReason::OTA);
         g_updateInProgress = true;
-        RobotAPI::Stop();
-        BootLogger::logFormat("OTA", "HTTP OTA started: %s", upload.filename.c_str());
+        BootLogger::logFormat("OTA", "HTTP OTA started with motors disarmed: %s", upload.filename.c_str());
 
         if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
             Update.printError(Serial);
@@ -157,6 +159,7 @@ void handleHttpOtaFinish() {
     g_server.send(200, "text/plain", "OK - firmware received, rebooting");
     g_httpOtaAuthenticated = false;
     g_updateInProgress = false;
+    RobotMotorSafetyInternal::disarm(MotorDisarmReason::REBOOT);
     delay(250);
     ESP.restart();
 }
@@ -212,6 +215,10 @@ void onWifiConnected() {
     ArduinoOTA.setHostname(RobotIdentity::hostname());
     if (strlen(RobotWiFiConfig::otaPassword()) != 0) {
         ArduinoOTA.setPassword(RobotWiFiConfig::otaPassword());
+        ArduinoOTA.onStart(onOtaStart);
+        ArduinoOTA.onEnd(onOtaEnd);
+        ArduinoOTA.onProgress(onOtaProgress);
+        ArduinoOTA.onError(onOtaError);
         g_otaReady = true;
         ArduinoOTA.begin();
         BootLogger::logFormat("NET", "OTA ready at %s.local", RobotIdentity::hostname());

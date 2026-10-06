@@ -809,7 +809,8 @@ V2-SAFE-001.
 
 ## V2-SAFE-003 — Fail-Safe Disarm Conditions
 
-**Priority:** P0
+**Priority:** P0  
+**Status:** IN_PROGRESS
 
 ### Requirement
 
@@ -842,6 +843,53 @@ not only `RobotAPI::Stop()`.
 - Critical battery prevents new motion.
 - Fatal error cannot leave driver enabled.
 - OTA failure also leaves robot SAFE.
+
+### Implementation / verification record
+
+Implemented fail-safe boundary:
+
+- system lifecycle code uses `RobotMotorSafetyInternal::disarm(reason)`; this surface is intentionally not declared in public `RobotAPI.h` or VM/student APIs;
+- the boundary first calls the internal motion stop path to write zero motor PWM/state, then calls `MotorSafetyController::disarm(reason)` to drive TB6612 STBY LOW;
+- this ordering prevents stale PWM duty from causing immediate motion when a later approved START re-arms the driver.
+
+Integrated disarm sources:
+
+- ArduinoOTA start -> `disarm(OTA)`;
+- HTTP OTA upload start -> `disarm(OTA)`;
+- HTTP OTA successful reboot -> `disarm(REBOOT)` immediately before `ESP.restart()`;
+- generated-program load fatal halt -> `disarm(FATAL_PLATFORM_FAULT)`;
+- IMU startup fatal halt -> `disarm(FATAL_PLATFORM_FAULT)`;
+- VM fatal error halt -> `disarm(FATAL_PLATFORM_FAULT)`;
+- operator `safety stop` command -> `disarm(EXPLICIT_SAFETY_STOP)`.
+
+OTA hardening:
+
+- previously-existing ArduinoOTA callbacks are now registered with `ArduinoOTA.onStart/onEnd/onProgress/onError`;
+- OTA failure/abort clears update state but never calls `arm()`; once OTA start disarms the robot, it remains SAFE until a new START release->press sequence;
+- normal student `RobotAPI::Stop()` remains a motion stop and does not disarm, preserving expected lesson/program semantics.
+
+Reset/watchdog/fault policy:
+
+- `MotorSafetyController::begin()` always restores `SAFE`, STBY LOW and `RESET` reason after boot/reset;
+- watchdog/fatal/motor-safety/low-battery disarm reasons remain fault-class and cannot be re-armed directly;
+- `LOW_BATTERY` source integration is owned by `V2-HLT-002`;
+- there is no dedicated motor-safety-fault detector in the current baseline; the reason/interface is ready, but detector integration remains a follow-up source requirement;
+- watchdog reset-reason observation will be integrated with `V2-HLT-003`; boot still always returns physically SAFE regardless of reset reason.
+
+Software regression:
+
+- `tests/v2_fail_safe_disarm/run_v2_fail_safe_disarm.py` verifies clear-PWM-before-STBY ordering, OTA callbacks, HTTP/Arduino OTA safety, reboot ordering, fatal halt disarm, operator safety stop and absence of student disarm/arm surfaces;
+- dedicated CI: `.github/workflows/v2-fail-safe-disarm.yml`.
+
+Remaining acceptance:
+
+- critical battery source -> `disarm(LOW_BATTERY)`: deferred to `V2-HLT-002`;
+- physical STBY behavior during OTA/fatal/reboot: `PENDING_HW`;
+- watchdog/fatal reset reason exposure: deferred to `V2-HLT-003`;
+- physical OTA failure/recovery remains SAFE: `PENDING_HW`.
+
+**Software verification status:** `VERIFIED_SW_PARTIAL`  
+**Task status:** `IN_PROGRESS`
 
 ### Dependencies
 
@@ -2027,10 +2075,18 @@ Software coverage now includes:
 
 Still pending in this test family:
 
-- OTA -> SAFE (`V2-SAFE-003`);
 - critical battery -> SAFE/FAULT (`V2-HLT-002` + `V2-SAFE-003`);
-- reset/watchdog/fatal integration (`V2-SAFE-003`);
-- physical GPIO4/GPIO33 validation.
+- watchdog/reset-reason integration (`V2-HLT-003`);
+- physical GPIO4/GPIO33 and OTA validation.
+
+New SAFE-003 software coverage:
+
+- ArduinoOTA + HTTP OTA start disarm;
+- OTA failure stays disarmed;
+- reboot disarm before `ESP.restart()`;
+- fatal program/IMU/VM halt disarm;
+- explicit operator safety stop;
+- PWM clear occurs before STBY LOW.
 
 **Verification status:** `VERIFIED_SW_PARTIAL`  
 **Task status:** `IN_PROGRESS`
@@ -2266,7 +2322,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 3 | V2-SW-003 | MCP23017 Driver/HAL — PENDING_HW | P0 | M1 |
 | 4 | V2-SAFE-001 | MotorSafetyController — PENDING_HW | P0 | M2 |
 | 5 | V2-SAFE-002 | START/ARM Button — PENDING_HW | P0 | M2 |
-| 6 | V2-SAFE-003 | Fail-Safe Disarm Conditions | P0 | M2 |
+| 6 | V2-SAFE-003 | Fail-Safe Disarm Conditions — IN_PROGRESS | P0 | M2 |
 | 7 | V2-SAFE-004 | VM / Student Code Safety Boundary | P0 | M2 |
 | 8 | V2-SW-004 | LineSensorBank 5CH — PENDING_HW | P1 | M3 |
 | 9 | V2-SW-005 | Line5 Public API Compatibility — DONE | P1 | M3 |

@@ -8,6 +8,7 @@
 #include "src/Communication/SerialCommandHandler.h"
 #include "src/Communication/RobotNetworkService.h"
 #include "src/HardwareAbstraction/StartArmPlatform.h"
+#include "src/Services/Robot/RobotMotorSafetyInternal.h"
 
 // === Behavior Engine ===
 #include "src/Behavior/BehaviorScheduler.h"
@@ -68,7 +69,8 @@ void setup() {
     BootLogger::log("BOOT", "Diagnostics Complete");
 
     if (!ProgramLoader::LoadFromGenerated(program)) {
-        BootLogger::log("ERROR", "Failed to load program. Halted.");
+        RobotMotorSafetyInternal::disarm(MotorDisarmReason::FATAL_PLATFORM_FAULT);
+        BootLogger::log("ERROR", "Failed to load program. Motors disarmed; halted.");
         while (1) { }
     }
     BootLogger::log("BOOT", "Binary Loaded");
@@ -135,7 +137,8 @@ void setup() {
     }
 
     if (!g_robotReady) {
-        BootLogger::log("ERROR", "System halted due to IMU calibration failure");
+        RobotMotorSafetyInternal::disarm(MotorDisarmReason::FATAL_PLATFORM_FAULT);
+        BootLogger::log("ERROR", "System halted due to IMU calibration failure; motors disarmed");
         while (1) {
             delay(1000);
             Serial.println("[ERROR] IMU calibration failed. Please reset or use 'imu calibrate' manually.");
@@ -224,7 +227,8 @@ void loop() {
 #endif
                 uint8_t err = vm.GetErrorCode();
                 if (err != 0) {
-                    BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
+                    RobotMotorSafetyInternal::disarm(MotorDisarmReason::FATAL_PLATFORM_FAULT);
+                    BootLogger::logFormat("ERROR", "VM stopped with error code: %d; motors disarmed", err);
                     while (1) { }
                 }
                 executionCounter++;

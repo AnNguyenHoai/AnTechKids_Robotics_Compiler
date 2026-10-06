@@ -10,6 +10,7 @@
 #include "MotionConfig.h"
 #include "MotorControlContract.h"
 #include "MotorOutputMapper.h"
+#include "RobotMotorSafetyInternal.h"
 #include "../../../include/generated/generated_device_config.h"
 #include <Arduino.h>
 #include <esp32-hal-ledc.h>
@@ -661,6 +662,21 @@ void TurnRight(int16_t speed) {
 void Stop() {
     _stopMotion(STOP_REASON_COMMAND_STOP);
 }
+
+} // namespace RobotAPI
+
+namespace RobotMotorSafetyInternal {
+
+void disarm(MotorDisarmReason reason) {
+    // Clear PWM/motion state before dropping STBY so a later approved ARM
+    // cannot resurrect stale non-zero duty cycles.
+    RobotAPI::_stopMotion(RobotAPI::STOP_REASON_COMMAND_STOP);
+    systemMotorSafety().disarm(reason);
+}
+
+} // namespace RobotMotorSafetyInternal
+
+namespace RobotAPI {
 
 void updateMotion() {
     if (g_motionControlMode == MotionControlMode::Heading && g_isMoving && g_robotReady) {
