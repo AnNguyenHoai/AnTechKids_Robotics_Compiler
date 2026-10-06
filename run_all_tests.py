@@ -51,6 +51,7 @@ def main()->int:
     tests.append(ROOT/"tests"/"v2_vm_safety_boundary"/"run_v2_vm_safety_boundary.py")
     tests.append(ROOT/"tests"/"v2_ota_safety_acceptance"/"run_v2_ota_safety_acceptance.py")
     tests.append(ROOT/"tests"/"v2_hardware_on_off_matrix"/"run_v2_hardware_on_off_matrix.py")
+    tests.append(ROOT/"tests"/"v2_config_migration_acceptance"/"run_v2_config_migration_acceptance.py")
     tests.append(ROOT/"tests"/"v2_line5_acceptance"/"run_v2_line5_acceptance.py")
     tests.append(ROOT/"tests"/"v2_line_response_performance"/"run_v2_line_response_performance.py")
     tests.append(ROOT/"tests"/"v2_servo_acceptance"/"run_v2_servo_acceptance.py")
