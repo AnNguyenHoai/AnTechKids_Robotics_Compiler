@@ -58,8 +58,12 @@ def validate_health_payload(data: Any) -> RobotHealthSnapshot:
         if not isinstance(data.get(key), bool):
             raise RobotHealthPayloadError(f"missing/invalid {key}")
 
-    for key in ("firmware_version", "board_revision", "reset_reason"):
+    for key in ("hostname", "ip", "firmware_version", "board_profile", "board_revision", "reset_reason"):
         if not isinstance(data.get(key), str):
+            raise RobotHealthPayloadError(f"missing/invalid {key}")
+
+    for key in ("ota", "http_ota"):
+        if not isinstance(data.get(key), bool):
             raise RobotHealthPayloadError(f"missing/invalid {key}")
 
     if not isinstance(data.get("uptime_ms"), int):

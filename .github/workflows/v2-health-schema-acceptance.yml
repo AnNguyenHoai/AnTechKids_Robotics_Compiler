@@ -1,0 +1,34 @@
+name: V2 Health Schema Acceptance
+
+on:
+  push:
+    branches: [main_V2]
+    paths:
+      - "robot-platform/main/src/Communication/RobotHealthJsonSerializer.*"
+      - "robot-platform/main/src/Communication/RobotNetworkService.cpp"
+      - "robot-platform/main/src/Health/RobotHealth*"
+      - "robostudio/services/robot_health_service.py"
+      - "tests/v2_health_schema_acceptance/**"
+      - "tests/v2_health_http/**"
+      - "tests/v2_robot_health/**"
+      - "run_all_tests.py"
+      - "robot-docs/Robotics_V2_Software_Development_Requirements.md"
+      - ".github/workflows/v2-health-schema-acceptance.yml"
+  workflow_dispatch:
+
+jobs:
+  health-schema-acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate runner syntax
+        run: python -m py_compile run_all_tests.py robostudio/services/robot_health_service.py
+      - name: RobotHealth aggregate regression
+        run: python tests/v2_robot_health/run_v2_robot_health.py
+      - name: Health HTTP regression
+        run: python tests/v2_health_http/run_v2_health_http.py
+      - name: Health schema acceptance
+        run: python tests/v2_health_schema_acceptance/run_v2_health_schema_acceptance.py

@@ -2857,7 +2857,8 @@ Software verification evidence:
 
 ## V2-TEST-007 — Health Schema Contract
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** DONE
 
 Verify `/api/v1/health`:
 
@@ -2865,6 +2866,100 @@ Verify `/api/v1/health`:
 - new V2 fields exist;
 - invalid optional devices do not corrupt JSON;
 - no credentials/secrets exposed.
+
+### Acceptance contract
+
+A dedicated serializer/schema acceptance test compiles and executes the real `RobotHealthJsonSerializer` and parses the emitted JSON.
+
+Compatibility-critical top-level fields are locked:
+
+```text
+status
+ready
+robot_ready
+network_ready
+ota
+http_ota
+hostname
+ip
+```
+
+Mandatory V2 top-level fields are locked:
+
+```text
+uptime_ms
+firmware_version
+board_profile
+board_revision
+reset_reason
+battery
+motor
+start
+line
+line_mask
+encoder
+i2c
+i2c_ok
+rssi
+```
+
+Nested object shapes are also locked:
+
+- `battery { voltage, state }`;
+- `motor { armed, enabled, state, last_stop_reason }`;
+- `start { pressed, ready_for_press, armed_by_start_this_boot }`;
+- `line { available, healthy, mask }`;
+- `encoder { available, healthy, left_count, right_count }`;
+- `i2c { healthy, mcp23017 }`.
+
+### Degraded/optional-device contract
+
+A degraded snapshot is serialized and parsed with:
+
+- Battery state `INVALID`;
+- Line unavailable/unhealthy;
+- Encoder unavailable/unhealthy;
+- I2C/MCP23017 unhealthy;
+- empty IP / RSSI 0;
+- Motor `FAULT`.
+
+The degraded response must:
+
+- remain valid JSON;
+- preserve the exact same schema shape as a normal response;
+- expose unavailable/invalid state explicitly rather than omit fields;
+- remain accepted by the RoboStudio health schema validator.
+
+### Consumer/schema strictness
+
+RoboStudio health validation now requires the published compatibility/V2 identity fields including:
+
+- `hostname`;
+- `ip`;
+- `ota`;
+- `http_ota`;
+- `board_profile`.
+
+Missing required schema fields are rejected as `RobotHealthPayloadError`; the client does not invent defaults.
+
+### Security / ownership
+
+- `sendHealth()` consumes exactly one `RobotHealthService` snapshot and delegates serialization.
+- HTTP layer does not recompute battery, motor, Line, MCP or I2C state.
+- serializer/health endpoint expose no SSID, Wi-Fi password, OTA password, Authorization, Basic Auth or HTTP OTA credential data.
+- JSON string escaping is exercised with quote, backslash and newline characters.
+
+Software evidence:
+
+- existing component HTTP regression: `tests/v2_health_http/run_v2_health_http.py`;
+- aggregate regression: `tests/v2_robot_health/run_v2_robot_health.py`;
+- integrated schema acceptance: `tests/v2_health_schema_acceptance/run_v2_health_schema_acceptance.py`;
+- dedicated CI: `.github/workflows/v2-health-schema-acceptance.yml`.
+
+No physical hardware criterion is required for this schema/serialization contract. Hardware-dependent subsystem correctness remains owned by each subsystem task, but its health representation is verified here.
+
+**Verification status:** `VERIFIED_SW`  
+**Task status:** `DONE`
 
 ---
 
@@ -2983,7 +3078,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 26 | V2-TEST-004 | Line5 Regression — BLOCKED (station requirement gap) | P1 | M6 |
 | 27 | V2-TEST-005 | Line Response Performance — PENDING_HW | P1 | M6 |
 | 28 | V2-TEST-006 | Servo Regression — IN_PROGRESS | P1 | M6 |
-| 29 | V2-TEST-007 | Health Schema Contract | P1 | M6 |
+| 29 | V2-TEST-007 | Health Schema Contract — DONE | P1 | M6 |
 | 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension | P1 | M6 |
 | 31 | V2-TEST-009 | Config Migration Regression | P1 | M6 |
 | 32 | V2-TEST-010 | OTA Safety Regression | P0 | M6 |
