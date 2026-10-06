@@ -790,6 +790,14 @@ Hardware-dependent acceptance criteria:
 - held START through actual ESP32 boot/reset cannot enable TB6612: `PENDING_HW`;
 - START state in RobotHealth aggregate: deferred to `V2-HLT-004`.
 
+Software verification evidence:
+
+- implementation commit: `b26b6965590ec4c1fca4faefb04730c31b56623f`;
+- GitHub Actions `V2 START ARM Contract` run `37413758524`: **PASS**;
+- GitHub Actions `V2 Motor Safety Contract` run `37413758474`: **PASS**;
+- BoardProfile, BatteryMonitor, Encoder, Servo, System I2C, MCP23017, Auxiliary Outputs, Line API and Line Perception regressions remain green on the same commit lineage;
+- host C++ regression validates debounce, pre-ready/held-boot protection, release-before-arm, one-shot held press, re-arm edge, MOTOR-OFF behavior and student-surface isolation.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `PENDING_HW`
 
