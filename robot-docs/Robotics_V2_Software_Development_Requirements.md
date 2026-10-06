@@ -1275,7 +1275,8 @@ V2-SW-003.
 
 ## V2-SW-009 — Encoder V2 Board Integration
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IN_PROGRESS
 
 ### Requirement
 
@@ -1296,6 +1297,45 @@ GPIO39 Encoder R-B
 - Encoder feature ON/OFF behavior remains compatible.
 - Line5 no longer shares encoder GPIO.
 - Encoder data becomes available to RobotHealth/diagnostics.
+
+### Implementation / verification record
+
+The existing `Encoder` quadrature driver is retained unchanged and the V2 integration is frozen around the BoardProfile mapping:
+
+- Left A = GPIO34;
+- Left B = GPIO35;
+- Right A = GPIO36;
+- Right B = GPIO39.
+
+Software contract:
+
+- RobotAPI continues to construct the left/right encoders from BoardProfile-backed GPIO aliases;
+- existing count, CPS, RPM, reset, CPR and inversion APIs remain unchanged;
+- `ROBOT_FEATURE_ENCODER=0` retains callable neutral/no-op fallbacks;
+- initialization is feature-guarded;
+- Line5 direct-GPIO aliases are absent, so Line5 no longer shares GPIO34/35 with encoders;
+- serial diagnostics continue to expose count/CPS/RPM/CPR/inverted data;
+- RobotHealth integration is owned by `V2-HLT-004`; V2-SW-009 preserves the encoder query surface required by that aggregate.
+
+Verification strategy:
+
+- `tests/v2_encoder/run_v2_encoder.py` compiles and executes the real `Encoder.cpp` against a fake Arduino GPIO/interrupt environment;
+- regression covers quadrature edge count, CPS, RPM, direction, inversion, reset and CPR configuration;
+- dedicated CI: `.github/workflows/v2-encoder-contract.yml`.
+
+Known implementation debt intentionally not changed without hardware evidence:
+
+- `Encoder.cpp` and `Sensor/QuadratureDecoder.h` currently encode opposite sign conventions for the same quadrature sequence.
+- V2-SW-009 freezes the existing `Encoder.cpp` behavior to avoid silently reversing physical wheel direction. Consolidation requires physical direction verification.
+
+Acceptance split:
+
+- mapping/API/feature/diagnostic compatibility: software-verifiable here;
+- physical count direction, signal quality and RPM calibration: `PENDING_HW`;
+- RobotHealth aggregation: deferred to `V2-HLT-004`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `IN_PROGRESS`
 
 ### Dependencies
 
@@ -2060,7 +2100,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 10 | V2-SW-006 | Line5 Perception / Control Upgrade — PENDING_HW | P1 | M3 |
 | 11 | V2-SW-007 | Servo HAL — PENDING_HW | P1 | M3 |
 | 12 | V2-SW-008 | MCP LED/Buzzer Migration — IN_PROGRESS | P1 | M3 |
-| 13 | V2-SW-009 | Encoder V2 Board Integration | P1 | M3 |
+| 13 | V2-SW-009 | Encoder V2 Board Integration — IN_PROGRESS | P1 | M3 |
 | 14 | V2-HLT-001 | BatteryMonitor | P1 | M4 |
 | 15 | V2-HLT-002 | Critical Battery Safety Policy | P1 | M4 |
 | 16 | V2-HLT-003 | ResetReasonService | P1 | M4 |
