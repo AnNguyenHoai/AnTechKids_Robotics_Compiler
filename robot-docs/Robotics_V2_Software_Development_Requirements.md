@@ -2689,6 +2689,18 @@ Closure requires an explicit product/algorithm requirement defining station sema
 - verify station behavior only after station semantics are defined;
 - measure V2 MCP23017 line-response latency under `V2-TEST-005`.
 
+Software verification evidence:
+
+- integrated acceptance implementation: `7d117e79b73eb2bede9551a426f4d40260725b89`;
+- test-harness correction only: `1ebfd881774eb26075c44f536ecc97718a037d1f`;
+- GitHub Actions `V2 Line5 Acceptance` run `37422721154`: **PASS**;
+- component regressions executed in the same workflow:
+  - LineSensorBank: **PASS**;
+  - Line API Compatibility: **PASS**;
+  - Line Perception / Control: **PASS**;
+- integrated host C++ acceptance verifies physical MCP Port-A mapping, canonical 5-bit masks, representative weighted error/perception, frozen intersection temporal behavior and recovery semantics;
+- static acceptance verifies one-read public raw-mask acquisition, public Line5 API stability, explicit station requirement gap and preservation of line-response timing diagnostics.
+
 **Verification status:** `VERIFIED_SW_PARTIAL`  
 **Task status:** `BLOCKED` — `REQUIREMENT_GAP / PENDING_HW`
 
