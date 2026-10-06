@@ -1661,6 +1661,18 @@ Hardware-dependent acceptance criteria:
 - recovery above the measured hysteresis must leave the robot SAFE until START: `PENDING_HW`;
 - servo power/load behavior under low/critical battery requires physical validation: `PENDING_HW`.
 
+Software verification evidence:
+
+- implementation commit: `6a921788eee3ddf3cc097fc23ffc619bd42febb4`;
+- GitHub Actions `V2 Critical Battery Safety` run `37415009778`: **PASS**;
+- GitHub Actions `V2 Fail Safe Disarm Contract` run `37415009856`: **PASS**;
+- GitHub Actions `V2 Motor Safety Contract` run `37415009755`: **PASS**;
+- GitHub Actions `V2 Battery Monitor Contract` run `37415009791`: **PASS**;
+- GitHub Actions `V2 START ARM Contract` run `37415009735`: **PASS**;
+- GitHub Actions `V2 Servo HAL Contract` run `37415009781`: **PASS**;
+- BoardProfile, MCP23017, Line API and Line Perception regressions remain green on the same implementation lineage;
+- host C++ regression verifies LOW warning, CRITICAL latch/disarm, hysteretic recovery to SAFE without auto-arm, invalid-reading policy, reason-specific fault recovery and servo blocking.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `PENDING_HW`
 
