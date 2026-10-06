@@ -34,11 +34,26 @@ class ResponsiveHardwareTab(HardwareTab):
         layout.addWidget(title)
 
         description = QLabel(
-            "Select the hardware installed on this robot. The selection is saved to hardware.json "
-            "and will be used by later build steps to generate firmware feature macros."
+            "Select capabilities installed on this robot. Physical pins/connectors are fixed by the "
+            "board profile and cannot be remapped here. The selection is saved to hardware.json and "
+            "used to generate firmware feature macros."
         )
         description.setWordWrap(True)
         layout.addWidget(description)
+
+        board_group = QGroupBox("Board Profile")
+        board_layout = QVBoxLayout(board_group)
+        board_layout.setContentsMargins(10, 8, 10, 8)
+        board_layout.setSpacing(2)
+        self.board_profile_label = QLabel("")
+        self.board_profile_label.setObjectName("board_profile_label")
+        self.board_profile_label.setStyleSheet("font-weight: bold;")
+        self.board_revision_label = QLabel("")
+        self.board_revision_label.setObjectName("board_revision_label")
+        self.board_revision_label.setStyleSheet("color: #666666;")
+        board_layout.addWidget(self.board_profile_label)
+        board_layout.addWidget(self.board_revision_label)
+        layout.addWidget(board_group)
 
         for category in CATEGORY_TITLES:
             devices = DeviceRegistry.by_category(category)

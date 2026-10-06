@@ -2234,7 +2234,8 @@ V2-SW-001.
 
 ## V2-RS-001 — RoboStudio Board Profile Awareness
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IMPLEMENTED
 
 ### Requirement
 
@@ -2261,6 +2262,50 @@ Robot Health
 - User cannot remap physical pins.
 - Device ON/OFF configuration remains simple.
 - Board revision is visible for diagnostics/support.
+
+### Implementation / verification record
+
+Implemented board-profile awareness:
+
+- RoboStudio shared hardware metadata defines:
+  - profile ID: `antech_robot_v2`;
+  - display name: `AnTech Robot V2`;
+  - revision: `v2`.
+- metadata is validated against the frozen firmware `BoardProfile::ID` and `BoardProfile::REVISION`.
+- both standard and responsive Hardware Configuration tabs show a dedicated read-only Board Profile section:
+  - `Board: AnTech Robot V2`;
+  - `Revision: v2`;
+  - profile ID for diagnostics/support.
+- UI copy explicitly states that students configure capabilities while physical pins/connectors are fixed by the board profile.
+- unknown board profiles fail clearly through the shared board-profile definition contract.
+
+Student capability boundary:
+
+- selectable devices remain only the registered capability features:
+  - Motor;
+  - Motor Encoder;
+  - Line Sensor;
+  - Ultrasonic Sensor;
+  - MPU6050 IMU;
+  - Servo;
+  - Buzzer.
+- board infrastructure is not registered as student-selectable devices:
+  - MCP23017;
+  - Battery Monitor;
+  - Motor Safety;
+  - START;
+  - Robot Health.
+- Hardware tab uses capability checkboxes only; no GPIO/pin/address/connector editor is introduced.
+- `hardware.json` still contains only schema/profile metadata plus capability flags and cannot remap physical wiring.
+
+Software regression:
+
+- `tests/v2_robostudio_board_profile/run_v2_robostudio_board_profile.py` verifies firmware/UI board metadata alignment, board/revision presentation in both Hardware tabs, infrastructure exclusion, no pin-remapping UI/config fields, and unknown-profile rejection;
+- dedicated CI: `.github/workflows/v2-robostudio-board-profile.yml`;
+- BoardProfile and HardwareConfig V2 regressions run in the same focused workflow.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `IMPLEMENTED`
 
 ### Dependencies
 

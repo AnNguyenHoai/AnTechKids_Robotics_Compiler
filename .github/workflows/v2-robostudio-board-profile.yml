@@ -1,0 +1,36 @@
+name: V2 RoboStudio Board Profile
+
+on:
+  push:
+    branches: [main_V2]
+    paths:
+      - "tools/hardware_feature_config.py"
+      - "robostudio/ui/hardware_tab.py"
+      - "robostudio/ui/responsive_hardware_tab.py"
+      - "robostudio/domain/device_registry.py"
+      - "robostudio/config/hardware.json"
+      - "robot-platform/main/src/HardwareAbstraction/BoardProfile.h"
+      - "tests/v2_robostudio_board_profile/**"
+      - "tests/v2_hardware_config/**"
+      - "tests/v2_board_profile/**"
+      - "run_all_tests.py"
+      - "robot-docs/Robotics_V2_Software_Development_Requirements.md"
+      - ".github/workflows/v2-robostudio-board-profile.yml"
+  workflow_dispatch:
+
+jobs:
+  robostudio-board-profile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate runner syntax
+        run: python -m py_compile run_all_tests.py
+      - name: BoardProfile firmware regression
+        run: python tests/v2_board_profile/run_v2_board_profile.py
+      - name: HardwareConfig V2 regression
+        run: python tests/v2_hardware_config/run_v2_hardware_config.py
+      - name: RoboStudio board profile contract
+        run: python tests/v2_robostudio_board_profile/run_v2_robostudio_board_profile.py

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckB
 from domain.device_registry import DeviceRegistry
 from domain.hardware_config_service import HardwareConfigService
 from services.hardware_macro_service import HardwareMacroService
+from tools.hardware_feature_config import board_profile_definition
 
 CATEGORY_TITLES = {"motion": "Motion", "sensors": "Sensors", "expansion": "Expansion"}
 
@@ -28,8 +29,12 @@ class HardwareTab(QWidget):
     def _build_ui(self):
         layout = QVBoxLayout(self); layout.setSpacing(12); layout.setContentsMargins(16, 16, 16, 16)
         title = QLabel("Hardware Configuration"); title.setStyleSheet("font-size: 18px; font-weight: bold;"); layout.addWidget(title)
-        description = QLabel("Select the hardware installed on this robot. The selection is saved to hardware.json and will be used by later build steps to generate firmware feature macros.")
+        description = QLabel("Select capabilities installed on this robot. Physical pins/connectors are fixed by the board profile and cannot be remapped here. The selection is saved to hardware.json and used to generate firmware feature macros.")
         description.setWordWrap(True); layout.addWidget(description)
+        board_group = QGroupBox("Board Profile"); board_layout = QVBoxLayout(board_group)
+        self.board_profile_label = QLabel(""); self.board_profile_label.setObjectName("board_profile_label"); self.board_profile_label.setStyleSheet("font-weight: bold;")
+        self.board_revision_label = QLabel(""); self.board_revision_label.setObjectName("board_revision_label"); self.board_revision_label.setStyleSheet("color: #666666;")
+        board_layout.addWidget(self.board_profile_label); board_layout.addWidget(self.board_revision_label); layout.addWidget(board_group)
         for category in CATEGORY_TITLES:
             devices = DeviceRegistry.by_category(category)
             if not devices: continue
@@ -46,6 +51,9 @@ class HardwareTab(QWidget):
     def reload(self):
         try:
             self._config = self._config_service.load()
+            profile = board_profile_definition(self._config.board_profile)
+            self.board_profile_label.setText(f"Board: {profile.display_name}")
+            self.board_revision_label.setText(f"Revision: {profile.revision}  •  Profile: {profile.profile_id}")
             for device_id, checkbox in self._checkboxes.items(): checkbox.setChecked(self._config.is_enabled(device_id))
             self._set_status(f"Loaded: {self._config_service.config_path}", "#666666")
         except Exception as exc:
@@ -61,6 +69,7 @@ class HardwareTab(QWidget):
             artifact_text = (
                 "Hardware configuration generated successfully.\n"
                 "Output artifacts:\n"
+                f"  Board profile: {self._config.board_profile}\n"
                 f"  Hardware config: {config_path}\n"
                 f"  Firmware macros: {macro_path}"
             )

@@ -19,8 +19,31 @@ from tools import runtime_paths
 LEGACY_HARDWARE_CONFIG_VERSION = 1
 HARDWARE_CONFIG_VERSION = 2
 V2_BOARD_PROFILE = "antech_robot_v2"
+V2_BOARD_DISPLAY_NAME = "AnTech Robot V2"
+V2_BOARD_REVISION = "v2"
 GENERATED_HEADER_RELATIVE = Path("generated") / "generated_device_config.h"
 USER_HARDWARE_CONFIG_NAME = "hardware.json"
+
+
+@dataclass(frozen=True)
+class BoardProfileDefinition:
+    profile_id: str
+    display_name: str
+    revision: str
+
+
+V2_BOARD_DEFINITION = BoardProfileDefinition(
+    V2_BOARD_PROFILE,
+    V2_BOARD_DISPLAY_NAME,
+    V2_BOARD_REVISION,
+)
+
+
+def board_profile_definition(profile_id: str) -> BoardProfileDefinition:
+    profile = str(profile_id).strip()
+    if profile != V2_BOARD_PROFILE:
+        raise ValueError(f"Unsupported board profile: {profile or '<missing>'}")
+    return V2_BOARD_DEFINITION
 
 
 @dataclass(frozen=True)
