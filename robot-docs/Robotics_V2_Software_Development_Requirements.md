@@ -2011,6 +2011,15 @@ Software regression:
 - `tests/v2_health_http/run_v2_health_http.py` compiles and runs the real serializer, parses its output with a JSON parser, and verifies old fields, V2 fields, escaping, optional-device behavior, aggregate-only ownership, and secret exclusion;
 - dedicated CI: `.github/workflows/v2-health-http-contract.yml`.
 
+Software verification evidence:
+
+- implementation commit: `a72b35f030b52b28c4e449000257eca5f22d1bd4`;
+- HLT-004 transition-regression alignment: `ed806568ec5d68e34c305dcc7c58fff8a65168ca`;
+- GitHub Actions `V2 Health HTTP Contract` run `37417762294`: **PASS**;
+- GitHub Actions `V2 Robot Health Aggregate` run `37417762355`: **PASS**;
+- serializer C++ was compiled and executed in CI; emitted payload was parsed with a JSON parser;
+- compatibility-critical V1 fields, V2 aggregate fields, string escaping, optional-device serialization, aggregate-only ownership and secret exclusion were all verified.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `IMPLEMENTED`
 
