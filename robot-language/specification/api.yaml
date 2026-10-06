@@ -273,7 +273,7 @@ categories:
       - name: set_servo
         opcode: SetServo
         opcode_id: 36
-        semantic: Stub
+        semantic: Native
         priority: P2
         description: Set servo angle
         args:
