@@ -12,7 +12,7 @@ class SystemI2CBusManager {
 public:
     static SystemI2CBusManager& instance();
 
-    // Performs at most one Wire.begin() attempt per boot.
+    // Performs at most one physical bus initialization attempt per boot.
     bool begin();
 
     // Idempotent convenience entry point for peripheral drivers.
