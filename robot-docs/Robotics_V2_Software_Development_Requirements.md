@@ -1370,7 +1370,7 @@ V2-SW-001.
 ## V2-SW-008 — MCP23017 LED/Buzzer Migration
 
 **Priority:** P1  
-**Status:** IN_PROGRESS
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -1446,7 +1446,7 @@ Remaining acceptance:
 - RobotHealth reporting of auxiliary/MCP failure: deferred integration to `V2-HLT-004` (service exposes `healthy()/lastError()` now).
 
 **Software verification status:** `VERIFIED_SW`  
-**Task status:** `IN_PROGRESS`
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -1457,7 +1457,7 @@ V2-SW-003.
 ## V2-SW-009 — Encoder V2 Board Integration
 
 **Priority:** P1  
-**Status:** IN_PROGRESS
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -1535,7 +1535,7 @@ Remaining acceptance:
 - RobotHealth encoder availability/health aggregation: deferred to `V2-HLT-004`.
 
 **Software verification status:** `VERIFIED_SW`  
-**Task status:** `IN_PROGRESS`
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -1726,7 +1726,7 @@ V2-HLT-001, V2-SAFE-001, V2-SAFE-003.
 ## V2-HLT-003 — ResetReasonService
 
 **Priority:** P1  
-**Status:** IMPLEMENTED
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -1806,7 +1806,7 @@ Hardware acceptance still pending:
 - verify panic/deep-sleep reporting on real ESP32 where applicable.
 
 **Software verification status:** `VERIFIED_SW`  
-**Task status:** `IMPLEMENTED`
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -1817,7 +1817,7 @@ None.
 ## V2-HLT-004 — RobotHealth Aggregate
 
 **Priority:** P1  
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 ### Requirement
 
@@ -1938,8 +1938,16 @@ Software verification evidence:
 - host C++ regression verifies the aggregate model independently through an injected source;
 - static regression verifies production refresh is read-only, Line/Encoder internals do not leak into public RobotAPI, Serial uses the aggregate, and HTTP remains explicitly deferred to V2-NET-001.
 
-**Software verification status:** `VERIFIED_SW_PARTIAL`  
-**Task status:** `IN_PROGRESS`
+Closure reconciliation:
+
+- HTTP aggregate consumption is verified by V2-NET-001 and V2-TEST-007;
+- OLED software controller consumes RobotHealthService only, while the concrete OLED transport remains separately blocked by V2-HLT-005;
+- Serial already consumes the aggregate;
+- optional-device unavailable semantics are covered by aggregate/schema regressions;
+- physical correctness of individual subsystem values remains owned by those subsystem tasks and does not block closure of the aggregate ownership contract.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `DONE`
 
 ### Dependencies
 
@@ -1950,7 +1958,7 @@ V2-SAFE-001, V2-HLT-001, V2-HLT-003, V2-SW-003.
 ## V2-NET-001 — `/api/v1/health` V2
 
 **Priority:** P1  
-**Status:** IMPLEMENTED
+**Status:** DONE
 
 ### Requirement
 
@@ -2062,7 +2070,7 @@ Software verification evidence:
 - compatibility-critical V1 fields, V2 aggregate fields, string escaping, optional-device serialization, aggregate-only ownership and secret exclusion were all verified.
 
 **Software verification status:** `VERIFIED_SW`  
-**Task status:** `IMPLEMENTED`
+**Task status:** `DONE`
 
 ### Dependencies
 
@@ -2178,7 +2186,7 @@ Make RoboStudio aware of V2 physical board and Robot Health without exposing GPI
 ## V2-CONF-001 — HardwareConfig V2 / Migration
 
 **Priority:** P1  
-**Status:** IMPLEMENTED
+**Status:** DONE
 
 ### Requirement
 
@@ -2265,7 +2273,7 @@ Software verification evidence:
 - existing HardwareConfig unittest regression remains green under the canonical import layout.
 
 **Software verification status:** `VERIFIED_SW`  
-**Task status:** `IMPLEMENTED`
+**Task status:** `DONE`
 
 ### Dependencies
 
@@ -2276,7 +2284,7 @@ V2-SW-001.
 ## V2-RS-001 — RoboStudio Board Profile Awareness
 
 **Priority:** P1  
-**Status:** IMPLEMENTED
+**Status:** DONE
 
 ### Requirement
 
@@ -2354,7 +2362,7 @@ Software verification evidence:
 - focused regression verifies shared board metadata matches firmware `BoardProfile`, both Hardware-tab variants expose board identity/revision, infrastructure devices are not selectable, no GPIO/pin remapping controls exist, and unknown profiles fail clearly.
 
 **Software verification status:** `VERIFIED_SW`  
-**Task status:** `IMPLEMENTED`
+**Task status:** `DONE`
 
 ### Dependencies
 
@@ -2365,7 +2373,7 @@ V2-CONF-001.
 ## V2-RS-002 — Robot Health Panel
 
 **Priority:** P2  
-**Status:** IMPLEMENTED
+**Status:** DONE
 
 ### Student view
 
@@ -2470,7 +2478,7 @@ Software verification evidence:
 - focused regression verifies Student simplicity, complete Teacher diagnostics including encoder counts, async endpoint consumption, network/payload error separation, and shared panel integration in standard/responsive Robot tabs.
 
 **Software verification status:** `VERIFIED_SW`  
-**Task status:** `IMPLEMENTED`
+**Task status:** `DONE`
 
 ### Dependencies
 
@@ -2524,7 +2532,7 @@ Test must fail if physical contract changes accidentally.
 ## V2-TEST-002 — MCP23017 Unit/Mock Tests
 
 **Priority:** P0/P1  
-**Status:** IN_PROGRESS
+**Status:** PENDING_HW
 
 Test:
 
@@ -2556,7 +2564,7 @@ Still pending:
 - Line5 mask conversion: `VERIFIED_SW` by `V2-SW-004` / `tests/v2_line_sensor_bank`; physical verification remains `PENDING_HW`.
 
 **Verification status:** `VERIFIED_SW`  
-**Task status:** `IN_PROGRESS`
+**Task status:** `PENDING_HW`
 
 ---
 
@@ -3215,19 +3223,19 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 9 | V2-SW-005 | Line5 Public API Compatibility — DONE | P1 | M3 |
 | 10 | V2-SW-006 | Line5 Perception / Control Upgrade — PENDING_HW | P1 | M3 |
 | 11 | V2-SW-007 | Servo HAL — PENDING_HW | P1 | M3 |
-| 12 | V2-SW-008 | MCP LED/Buzzer Migration — IN_PROGRESS | P1 | M3 |
-| 13 | V2-SW-009 | Encoder V2 Board Integration — IN_PROGRESS | P1 | M3 |
+| 12 | V2-SW-008 | MCP LED/Buzzer Migration — PENDING_HW | P1 | M3 |
+| 13 | V2-SW-009 | Encoder V2 Board Integration — PENDING_HW | P1 | M3 |
 | 14 | V2-HLT-001 | BatteryMonitor — PENDING_HW | P1 | M4 |
 | 15 | V2-HLT-002 | Critical Battery Safety Policy — PENDING_HW | P1 | M4 |
-| 16 | V2-HLT-003 | ResetReasonService — IMPLEMENTED | P1 | M4 |
-| 17 | V2-HLT-004 | RobotHealth Aggregate — IN_PROGRESS | P1 | M4 |
-| 18 | V2-NET-001 | Health API V2 — IMPLEMENTED | P1 | M4 |
+| 16 | V2-HLT-003 | ResetReasonService — PENDING_HW | P1 | M4 |
+| 17 | V2-HLT-004 | RobotHealth Aggregate — DONE | P1 | M4 |
+| 18 | V2-NET-001 | Health API V2 — DONE | P1 | M4 |
 | 19 | V2-HLT-005 | OLED Health Display — BLOCKED (hardware contract gap) | P2 | M4 |
-| 20 | V2-CONF-001 | HardwareConfig V2 / Migration — IMPLEMENTED | P1 | M5 |
-| 21 | V2-RS-001 | RoboStudio Board Awareness — IMPLEMENTED | P1 | M5 |
-| 22 | V2-RS-002 | Robot Health Panel — IMPLEMENTED | P2 | M5 |
+| 20 | V2-CONF-001 | HardwareConfig V2 / Migration — DONE | P1 | M5 |
+| 21 | V2-RS-001 | RoboStudio Board Awareness — DONE | P1 | M5 |
+| 22 | V2-RS-002 | Robot Health Panel — DONE | P2 | M5 |
 | 23 | V2-TEST-001 | Board Mapping Contract Tests — DONE | P0 | M6 |
-| 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests — IN_PROGRESS | P0/P1 | M6 |
+| 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests — PENDING_HW | P0/P1 | M6 |
 | 25 | V2-TEST-003 | Motor Safety Contract Tests — PENDING_HW | P0 | M6 |
 | 26 | V2-TEST-004 | Line5 Regression — BLOCKED (station requirement gap) | P1 | M6 |
 | 27 | V2-TEST-005 | Line Response Performance — PENDING_HW | P1 | M6 |
