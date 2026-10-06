@@ -1447,6 +1447,15 @@ Hardware-dependent acceptance criteria:
 - stable pack-voltage reading under normal motor/servo load: `PENDING_HW`;
 - invalid/open/saturated ADC behavior on the physical board: `PENDING_HW`.
 
+Software verification evidence:
+
+- implementation commit: `12125c2a93397d80e999d9c85f219d89f4dc6f9b`;
+- host-test construction correction: `5ef0ab938a1062f6b515326247600f43c5dfbb62`;
+- GitHub Actions `V2 Battery Monitor Contract` run `37412705047`: **PASS** on `5ef0ab938a1062f6b515326247600f43c5dfbb62`;
+- focused workflow also passes BoardProfile and Encoder regressions;
+- host C++ regression validates filtering, calibration factor, GOOD/LOW/CRITICAL classification, hysteresis, raw invalid detection and fail-safe uncalibrated behavior;
+- obsolete GPIO34 battery ADC diagnostic path is removed.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `PENDING_HW`
 
