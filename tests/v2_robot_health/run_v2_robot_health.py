@@ -27,7 +27,7 @@ struct FakeSource : IRobotHealthSource {
         h.system.boardRevision = "v2";
 
         h.battery.voltage = 7.42f;
-        h.battery.state = BatteryState::LOW;
+        h.battery.state = BatteryState::LOW_VOLTAGE;
 
         h.motor.armed = false;
         h.motor.enabled = false;
@@ -65,7 +65,7 @@ int main() {
     assert(h.system.uptimeMs == 1234);
     assert(h.system.resetReason == ResetReason::BROWNOUT);
     assert(std::strcmp(h.system.boardProfile, "antech_robot_v2") == 0);
-    assert(h.battery.state == BatteryState::LOW);
+    assert(h.battery.state == BatteryState::LOW_VOLTAGE);
     assert(h.motor.state == MotorSafetyState::SAFE);
     assert(h.motor.lastStopReason == MotorDisarmReason::LOW_BATTERY);
     assert(h.start.readyForPress);
