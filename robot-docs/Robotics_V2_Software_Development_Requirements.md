@@ -1372,7 +1372,8 @@ Create one health source of truth consumed by HTTP, OLED, Serial and RoboStudio.
 
 ## V2-HLT-001 — BatteryMonitor
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -1410,6 +1411,44 @@ Initial V2 shall not expose fake high-precision SOC percentage.
 - LOW/CRITICAL does not chatter around thresholds.
 - Calibration factor can be tuned.
 - Invalid ADC readings are detectable.
+
+### Implementation / verification record
+
+Implemented architecture:
+
+- `BatteryMonitor` owns filtering, calibrated voltage conversion, health-state classification and hysteresis.
+- `IBatteryAdcSource` makes the monitor host-testable.
+- `ArduinoBatteryAdcSource` is the production adapter and reads only `BoardProfile::Pins::BATTERY_ADC = GPIO32` through the GPIO HAL.
+- Health states are exactly `GOOD`, `LOW`, `CRITICAL`, `INVALID`.
+- Each sample uses a configurable multi-sample arithmetic filter.
+- Calibration factor, LOW threshold, CRITICAL threshold, hysteresis, sample count and raw-validity window are configurable.
+- Raw readings at/beyond the configured validity boundaries are reported `INVALID`.
+- LOW and CRITICAL recovery require crossing their threshold plus hysteresis, preventing threshold chatter.
+- No SOC/percentage estimate is exposed.
+- Legacy `Diagnostic::checkBattery()` no longer reads GPIO34 or assumes a hard-coded 2:1 divider; it consumes `systemBatteryMonitor()`.
+
+Calibration/threshold governance:
+
+- repository hardware docs identify a 7.5 V battery pack, but the V2 requirements/hardware docs do not define the GPIO32 resistor-divider ratio or approved LOW/CRITICAL thresholds;
+- therefore production `BatteryMonitorConfig` defaults to `calibrationValid=false`;
+- until hardware values are measured/approved, production sampling reports `INVALID` rather than publishing a false battery-pack voltage/state;
+- host regression injects an explicit synthetic calibration config to verify the algorithm independently of board-specific values.
+
+Software regression:
+
+- `tests/v2_battery_monitor/run_v2_battery_monitor.py` compiles and executes the real `BatteryMonitor.cpp`;
+- covers sample averaging, calibration factor, GOOD/LOW/CRITICAL classification, LOW/CRITICAL hysteresis, invalid raw readings and uncalibrated fail-safe behavior;
+- dedicated CI: `.github/workflows/v2-battery-monitor-contract.yml`.
+
+Hardware-dependent acceptance criteria:
+
+- GPIO32 divider ratio/calibration factor: `PENDING_HW`;
+- approved LOW/CRITICAL thresholds: `PENDING_HW`;
+- stable pack-voltage reading under normal motor/servo load: `PENDING_HW`;
+- invalid/open/saturated ADC behavior on the physical board: `PENDING_HW`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -2120,7 +2159,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 11 | V2-SW-007 | Servo HAL — PENDING_HW | P1 | M3 |
 | 12 | V2-SW-008 | MCP LED/Buzzer Migration — IN_PROGRESS | P1 | M3 |
 | 13 | V2-SW-009 | Encoder V2 Board Integration — IN_PROGRESS | P1 | M3 |
-| 14 | V2-HLT-001 | BatteryMonitor | P1 | M4 |
+| 14 | V2-HLT-001 | BatteryMonitor — PENDING_HW | P1 | M4 |
 | 15 | V2-HLT-002 | Critical Battery Safety Policy | P1 | M4 |
 | 16 | V2-HLT-003 | ResetReasonService | P1 | M4 |
 | 17 | V2-HLT-004 | RobotHealth Aggregate | P1 | M4 |

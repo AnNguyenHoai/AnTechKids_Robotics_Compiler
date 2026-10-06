@@ -1,5 +1,6 @@
 #include "Diagnostic.h"
 #include "../HardwareAbstraction/GPIO.h"
+#include "../Health/BatteryMonitorPlatform.h"
 
 void Diagnostic::runAll() {
     Serial.println("[DIAG] ===== Starting Diagnostics ===== ");
@@ -12,12 +13,22 @@ void Diagnostic::runAll() {
 }
 
 void Diagnostic::checkBattery() {
-    // Giả sử dùng ADC trên chân GPIO34 (không có pull-up)
-    analogRead(34); // Đọc trước để ổn định
-    int raw = analogRead(34);
-    // Giả sử cầu phân áp 2:1, Vref = 3.3V
-    float voltage = (raw / 4095.0) * 3.3 * 2.0;
-    Serial.printf("[DIAG] Battery Voltage: %.2f V\n", voltage);
+    auto& battery = systemBatteryMonitor();
+    if (!battery.sample()) {
+        Serial.printf(
+            "[DIAG] Battery: state=%s raw=%d calibration=PENDING_HW\n",
+            BatteryMonitor::stateName(battery.state()),
+            battery.lastRawAverage()
+        );
+        return;
+    }
+
+    Serial.printf(
+        "[DIAG] Battery: voltage=%.2fV state=%s raw=%d\n",
+        battery.voltage(),
+        BatteryMonitor::stateName(battery.state()),
+        battery.lastRawAverage()
+    );
 }
 
 void Diagnostic::checkMotor() {
