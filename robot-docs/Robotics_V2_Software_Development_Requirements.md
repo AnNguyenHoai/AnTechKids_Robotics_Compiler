@@ -2605,7 +2605,7 @@ Software verification evidence:
 ## V2-TEST-004 — Line5 Regression
 
 **Priority:** P1  
-**Status:** IN_PROGRESS
+**Status:** BLOCKED
 
 Representative masks:
 
@@ -2618,7 +2618,7 @@ Representative masks:
 11111
 ```
 
-Test:
+Required test scope:
 
 ```text
 perception
@@ -2629,37 +2629,68 @@ station pattern
 public API raw mask
 ```
 
-### Implementation / verification record
+### Integrated software acceptance
 
-Software coverage now includes:
+A dedicated Line5 acceptance runner now executes the real V2 acquisition and perception components together:
 
-- representative-mask weighted error and perception;
-- LOST / center / left / right / intersection interpretation;
-- recovery last-direction behavior and immediate reacquire exit;
-- current intersection temporal policy;
-- public API raw-mask compatibility through V2-SW-005;
-- LineSensorBank physical-to-canonical conversion through V2-SW-004.
+```text
+MCP23017 Port-A physical bits
+        ↓
+LineSensorBank
+        ↓
+canonical FL/L/C/R/FR 5-bit mask
+        ↓
+LineErrorEstimator / LinePerception
+        ↓
+IntersectionDetector / RecoveryStrategy
+        ↓
+public Line5 raw/API contract
+```
 
-Still pending:
+Verified software behavior:
 
-- hardware recovery effectiveness;
-- hardware intersection/station behavior;
-- dedicated station-pattern semantics are not present in the frozen baseline and require an explicit follow-up requirement if needed.
+- physical GPA0..GPA4 ordering converts to canonical `FL/L/C/R/FR` without leaking MCP pin order to public APIs;
+- each `LineSensorBank::readMask()` performs exactly one Port-A read;
+- representative masks are locked:
+  - `00100` -> error 0.0 -> CENTER;
+  - `01100` -> error -0.5 -> LEFT_CENTER;
+  - `11000` -> error -1.5 -> LEFT;
+  - `00011` -> error +1.5 -> RIGHT;
+  - `00000` -> LOST;
+  - `11111` -> INTERSECTION at perception level;
+- high bits are sanitized to the canonical five-bit contract;
+- current intersection temporal policy is locked as a six-sample history with 3..5 candidates producing detection after the window is full;
+- the frozen baseline quirk that 6/6 candidate samples returns false is recorded, not silently changed;
+- recovery follows the last meaningful direction;
+- any non-zero mask preserves the frozen V1 immediate-reacquire behavior;
+- public `GetTraceRaw()` performs one canonical LineSensorBank acquisition and does not fall back to SensorManager/direct GPIO;
+- public Line5 signatures and channel compatibility remain covered by `V2-SW-005`;
+- existing line-response timing markers remain available for `V2-TEST-005` hardware measurement.
 
-Software evidence:
+### Station-pattern requirement gap
 
-- `tests/v2_line_perception/run_v2_line_perception.py`: PASS;
-- focused CI run `37410091227`: PASS;
-- representative masks, weighted error, perception, recovery direction/reacquire, current intersection temporal policy, and line-response diagnostic wiring are covered.
+The required item `station pattern` cannot be honestly marked PASS:
 
-Software evidence:
+- the frozen Line service contains no distinct `StationPattern` / `StationDetector` implementation;
+- current `IntersectionDetector` only classifies masks with >=4 active eyes as intersection candidates and applies its temporal window;
+- the source-of-truth does not define what distinguishes a delivery station from an intersection, which masks encode a station, persistence/timing rules, or false-positive policy;
+- therefore intersection behavior must not be silently relabeled as station detection.
 
-- `tests/v2_servo/run_v2_servo.py`: PASS;
-- focused CI run `37411071744`: PASS;
-- Servo1/Servo2 mapping, clamp, invalid port, feature OFF, PWM failures, compiler transport and VM dispatch are covered.
+**Blocker:** `REQUIREMENT_GAP`
+
+Closure requires an explicit product/algorithm requirement defining station semantics. If station detection is intended to be physically equivalent to intersection detection, that equivalence must be stated explicitly in source-of-truth before this test can close.
+
+### Remaining hardware acceptance
+
+- verify physical sensor active polarity;
+- verify representative-mask perception on real Line5 hardware;
+- verify recovery effectiveness/timing;
+- verify intersection persistence and false-positive behavior;
+- verify station behavior only after station semantics are defined;
+- measure V2 MCP23017 line-response latency under `V2-TEST-005`.
 
 **Verification status:** `VERIFIED_SW_PARTIAL`  
-**Task status:** `IN_PROGRESS`
+**Task status:** `BLOCKED` — `REQUIREMENT_GAP / PENDING_HW`
 
 ---
 
@@ -2851,7 +2882,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 23 | V2-TEST-001 | Board Mapping Contract Tests — DONE | P0 | M6 |
 | 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests — IN_PROGRESS | P0/P1 | M6 |
 | 25 | V2-TEST-003 | Motor Safety Contract Tests — PENDING_HW | P0 | M6 |
-| 26 | V2-TEST-004 | Line5 Regression — IN_PROGRESS | P1 | M6 |
+| 26 | V2-TEST-004 | Line5 Regression — BLOCKED (station requirement gap) | P1 | M6 |
 | 27 | V2-TEST-005 | Line Response Performance | P1 | M6 |
 | 28 | V2-TEST-006 | Servo Regression — IN_PROGRESS | P1 | M6 |
 | 29 | V2-TEST-007 | Health Schema Contract | P1 | M6 |
