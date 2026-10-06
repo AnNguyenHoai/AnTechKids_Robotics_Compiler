@@ -2947,7 +2947,7 @@ Missing required schema fields are rejected as `RobotHealthPayloadError`; the cl
 - `sendHealth()` consumes exactly one `RobotHealthService` snapshot and delegates serialization.
 - HTTP layer does not recompute battery, motor, Line, MCP or I2C state.
 - serializer/health endpoint expose no SSID, Wi-Fi password, OTA password, Authorization, Basic Auth or HTTP OTA credential data.
-- JSON string escaping is exercised with quote, backslash and newline characters.
+- JSON string escaping is exercised with quote, backslash, newline, tab and raw control characters.
 
 Software evidence:
 
@@ -2967,6 +2967,8 @@ Software verification evidence:
 - schema-shape equality is verified between healthy and degraded optional-device states;
 - RoboStudio validator accepts complete degraded health but rejects missing mandatory compatibility/V2 fields;
 - endpoint ownership and secret-exclusion checks pass.
+- schema hardening commits `5c8d9537ae36138944dbdcbfc0c0d79b07ceb8c4`, `a4cfa6b672de4efb773c117ec102366ccdecfe83`, and `887dd0ce98d370a1a699131e2ea5fb1e1261c50b` extend RoboStudio validation to `start`, `line_mask`, `i2c_ok`, alias consistency, every mandatory top-level/nested field, tab escaping and raw control-character escaping;
+- GitHub Actions `V2 Health Schema Acceptance` run `37429914179`: **PASS** on `887dd0ce98d370a1a699131e2ea5fb1e1261c50b`.
 
 **Verification status:** `VERIFIED_SW`  
 **Task status:** `DONE`
@@ -3077,17 +3079,17 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 15 | V2-HLT-002 | Critical Battery Safety Policy — PENDING_HW | P1 | M4 |
 | 16 | V2-HLT-003 | ResetReasonService — IMPLEMENTED | P1 | M4 |
 | 17 | V2-HLT-004 | RobotHealth Aggregate — IN_PROGRESS | P1 | M4 |
-| 18 | V2-NET-001 | Health API V2 | P1 | M4 |
-| 19 | V2-HLT-005 | OLED Health Display | P2 | M4 |
+| 18 | V2-NET-001 | Health API V2 — IMPLEMENTED | P1 | M4 |
+| 19 | V2-HLT-005 | OLED Health Display — BLOCKED (hardware contract gap) | P2 | M4 |
 | 20 | V2-CONF-001 | HardwareConfig V2 / Migration — IMPLEMENTED | P1 | M5 |
-| 21 | V2-RS-001 | RoboStudio Board Awareness | P1 | M5 |
+| 21 | V2-RS-001 | RoboStudio Board Awareness — IMPLEMENTED | P1 | M5 |
 | 22 | V2-RS-002 | Robot Health Panel — IMPLEMENTED | P2 | M5 |
 | 23 | V2-TEST-001 | Board Mapping Contract Tests — DONE | P0 | M6 |
 | 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests — IN_PROGRESS | P0/P1 | M6 |
 | 25 | V2-TEST-003 | Motor Safety Contract Tests — PENDING_HW | P0 | M6 |
 | 26 | V2-TEST-004 | Line5 Regression — BLOCKED (station requirement gap) | P1 | M6 |
 | 27 | V2-TEST-005 | Line Response Performance — PENDING_HW | P1 | M6 |
-| 28 | V2-TEST-006 | Servo Regression — IN_PROGRESS | P1 | M6 |
+| 28 | V2-TEST-006 | Servo Regression — PENDING_HW | P1 | M6 |
 | 29 | V2-TEST-007 | Health Schema Contract — DONE | P1 | M6 |
 | 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension | P1 | M6 |
 | 31 | V2-TEST-009 | Config Migration Regression | P1 | M6 |
