@@ -1166,6 +1166,17 @@ Hardware-dependent acceptance criteria:
 - actual servo pulse endpoint/calibration validation: `PENDING_HW`;
 - power/load behavior with the V2 electrical design: `PENDING_HW`.
 
+Software verification evidence:
+
+- implementation commit: `8346b93d0711327e37ebd7bc7c1680c81a767458`;
+- host-test/include corrections and focused-gate retrigger: `e9a776594f9eb81a7509e9788894ae509f991798`, `82019c3e4dec96b9eb2fb2f281fa67c14fc7dfec`, `3aea89a8c8e064e8c1ffdb8dcb4485db3d478f79`;
+- GitHub Actions `V2 Servo HAL Contract` run `37411071744`: **PASS** on `3aea89a8c8e064e8c1ffdb8dcb4485db3d478f79`;
+- real C++ `ServoHAL` executed against mock PWM transport;
+- compiler `set_servo` emits `Opcode::SetServo`;
+- existing VM dispatch to `RobotAPI::SetServo` verified;
+- feature-OFF and invalid-port behavior verified in software;
+- no Servo HAL dependency on MotorSafety or motor wiring.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `PENDING_HW`
 
@@ -1813,6 +1824,12 @@ Software evidence:
 - `tests/v2_line_perception/run_v2_line_perception.py`: PASS;
 - focused CI run `37410091227`: PASS;
 - representative masks, weighted error, perception, recovery direction/reacquire, current intersection temporal policy, and line-response diagnostic wiring are covered.
+
+Software evidence:
+
+- `tests/v2_servo/run_v2_servo.py`: PASS;
+- focused CI run `37411071744`: PASS;
+- Servo1/Servo2 mapping, clamp, invalid port, feature OFF, PWM failures, compiler transport and VM dispatch are covered.
 
 **Verification status:** `VERIFIED_SW_PARTIAL`  
 **Task status:** `IN_PROGRESS`
