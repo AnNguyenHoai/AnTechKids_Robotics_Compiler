@@ -897,6 +897,16 @@ Software verification evidence:
 - BatteryMonitor, Servo, MCP23017, System I2C, Encoder, Line API, LineSensorBank, Line Perception, BoardProfile and Auxiliary Output regressions remain green on the same commit lineage;
 - regression verifies clear-PWM-before-STBY ordering, ArduinoOTA/HTTP OTA disarm, OTA failure persistence, reboot disarm before `ESP.restart()`, fatal halt disarm and explicit operator safety stop.
 
+Software status reconciliation (2026-10-06):
+
+- fresh GitHub Actions `V2 Fail Safe Disarm Contract` run `37432018196`: **PASS**;
+- fresh GitHub Actions `V2 Motor Safety Contract` run `37432018341`: **PASS**;
+- fresh GitHub Actions `V2 Motor Safety Acceptance` run `37432018442`: **PASS**;
+- fresh GitHub Actions `V2 OTA Safety Acceptance` run `37432018516`: **PASS**;
+- OTA, reboot, critical-battery, fatal-platform-fault, watchdog/reset and explicit safety-stop software paths are verified;
+- remaining software gap is a concrete producer/detector for `MOTOR_SAFETY_FAULT`; the enum/reason handling exists, but no runtime detector/source currently emits that reason;
+- physical STBY behavior remains `PENDING_HW`.
+
 **Software verification status:** `VERIFIED_SW_PARTIAL`  
 **Task status:** `IN_PROGRESS`
 
@@ -3008,7 +3018,8 @@ Software verification evidence:
 
 ## V2-TEST-008 — Hardware ON/OFF Matrix Extension
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IMPLEMENTED
 
 Extend existing matrix for V2 features/configurations.
 
@@ -3024,6 +3035,27 @@ Display optional ON/OFF if introduced
 ```
 
 Board infrastructure remains fixed.
+
+### Integrated software acceptance
+
+Dedicated runner: `tests/v2_hardware_on_off_matrix/run_v2_hardware_on_off_matrix.py`.
+
+The V2 acceptance reuses the existing H25-G `HardwareBuildMatrix` rather than creating a second configuration model, and verifies:
+
+- the existing full ON/OFF matrix remains green for every registered device;
+- Line, Encoder, Servo, IMU and Buzzer each have explicit ON and OFF cases;
+- toggling one V2 capability changes only that feature's `ROBOT_FEATURE_*` macro and leaves every other capability macro unchanged;
+- generated capability headers contain no GPIO, connector, MCP address or BoardProfile physical mapping;
+- `BoardProfile.h` remains byte-for-byte unchanged while all required V2 feature states are rendered;
+- fixed V2 physical assignments remain frozen for MotorSafety, System I2C, Servo, Encoder and MCP23017 Line/LED/Buzzer allocation;
+- Display/OLED is not silently invented as a selectable capability while V2-HLT-005 remains blocked on the OLED hardware contract.
+
+Focused CI: `.github/workflows/v2-hardware-on-off-matrix.yml`.
+
+This task is a software configuration/build-contract test; it does not require physical hardware acceptance.
+
+**Software verification status:** `IMPLEMENTED_PENDING_CI`  
+**Task status:** `IMPLEMENTED`
 
 ---
 
@@ -3164,7 +3196,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 27 | V2-TEST-005 | Line Response Performance — PENDING_HW | P1 | M6 |
 | 28 | V2-TEST-006 | Servo Regression — PENDING_HW | P1 | M6 |
 | 29 | V2-TEST-007 | Health Schema Contract — DONE | P1 | M6 |
-| 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension | P1 | M6 |
+| 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension — IMPLEMENTED | P1 | M6 |
 | 31 | V2-TEST-009 | Config Migration Regression | P1 | M6 |
 | 32 | V2-TEST-010 | OTA Safety Regression — DONE | P0 | M6 |
 
