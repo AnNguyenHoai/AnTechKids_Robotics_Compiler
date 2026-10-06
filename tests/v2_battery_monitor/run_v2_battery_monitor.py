@@ -21,6 +21,8 @@ struct FakeAdc : IBatteryAdcSource {
     std::vector<int> samples;
     size_t index = 0;
 
+    FakeAdc(std::initializer_list<int> values) : samples(values) {}
+
     int readRaw() override {
         assert(index < samples.size());
         return samples[index++];
@@ -118,7 +120,7 @@ int main() {
 """
 
 def test_real_battery_monitor_cpp() -> None:
-    harness = HARNESS.replace("#include <vector>", "#include <vector>\n#include <cstddef>\n#include <string>")
+    harness = HARNESS.replace("#include <vector>", "#include <vector>\n#include <cstddef>\n#include <initializer_list>\n#include <string>")
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         src = td / "battery_monitor_test.cpp"
