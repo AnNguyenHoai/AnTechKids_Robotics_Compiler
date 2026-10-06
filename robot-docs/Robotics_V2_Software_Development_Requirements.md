@@ -2958,6 +2958,16 @@ Software evidence:
 
 No physical hardware criterion is required for this schema/serialization contract. Hardware-dependent subsystem correctness remains owned by each subsystem task, but its health representation is verified here.
 
+Software verification evidence:
+
+- acceptance implementation: `9cb0179405d61b4647ef38fc76e81546fb576b62`;
+- GitHub Actions `V2 Health Schema Acceptance` run `37427164927`: **PASS**;
+- GitHub Actions `V2 Health HTTP Contract` run `37427164885`: **PASS**;
+- normal and degraded snapshots both compile through the real C++ serializer and parse as JSON;
+- schema-shape equality is verified between healthy and degraded optional-device states;
+- RoboStudio validator accepts complete degraded health but rejects missing mandatory compatibility/V2 fields;
+- endpoint ownership and secret-exclusion checks pass.
+
 **Verification status:** `VERIFIED_SW`  
 **Task status:** `DONE`
 
