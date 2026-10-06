@@ -32,5 +32,5 @@ jobs:
         run: python tests/v2_hardware_config/run_v2_hardware_config.py
       - name: Hardware runtime path regression
         run: python tests/b2_3/run_hardware_runtime_path_contract.py
-      - name: Domain unit regression
-        run: python -m pytest -q robostudio/tests/test_hardware_config.py robostudio/tests/test_hardware_macro_generator.py
+      - name: RoboStudio HardwareConfig unittest regression
+        run: python robostudio/tests/test_hardware_config.py

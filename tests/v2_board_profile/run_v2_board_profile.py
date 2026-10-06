@@ -76,7 +76,9 @@ def test_gpio_facade_uses_board_profile() -> None:
 
 def test_hardware_config_cannot_remap_wiring() -> None:
     config = json.loads(HARDWARE_JSON.read_text(encoding="utf-8"))
-    assert set(config.keys()) == {"version", "devices"}, "HardwareConfig gained board wiring fields"
+    assert set(config.keys()) == {"version", "board_profile", "devices"}, "HardwareConfig gained unexpected fields"
+    assert config["version"] == 2
+    assert config["board_profile"] == "antech_robot_v2"
     assert isinstance(config["devices"], dict)
     assert all(isinstance(v, bool) for v in config["devices"].values())
     serialized = json.dumps(config).lower()
