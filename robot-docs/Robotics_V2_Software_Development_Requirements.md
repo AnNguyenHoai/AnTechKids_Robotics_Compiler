@@ -1879,6 +1879,24 @@ Remaining acceptance:
 - OLED must consume RobotHealthService if introduced: owned by `V2-HLT-005`;
 - physical health values remain subject to their subsystem `PENDING_HW` acceptance.
 
+Software verification evidence:
+
+- implementation commit: `b8a5cc31d676c27a6719da45a53b0816151cb168`;
+- GitHub Actions `V2 Robot Health Aggregate` run `37416808206`: **PASS**;
+- GitHub Actions `V2 Reset Reason Contract` run `37416808056`: **PASS**;
+- GitHub Actions `V2 Critical Battery Safety` run `37416807962`: **PASS**;
+- GitHub Actions `V2 Battery Monitor Contract` run `37416808098`: **PASS**;
+- GitHub Actions `V2 Motor Safety Contract` run `37416808039`: **PASS**;
+- GitHub Actions `V2 Encoder Contract` run `37416808019`: **PASS**;
+- GitHub Actions `V2 LineSensorBank Contract` run `37416808037`: **PASS**;
+- GitHub Actions `V2 Line API Compatibility` run `37416807982`: **PASS**;
+- GitHub Actions `V2 System I2C Contract` run `37416808082`: **PASS**;
+- GitHub Actions `V2 MCP23017 Contract` run `37416808118`: **PASS**;
+- GitHub Actions `V2 MCP Auxiliary Outputs` run `37416808079`: **PASS**;
+- GitHub Actions `V2 Servo HAL Contract` run `37416808032`: **PASS**;
+- host C++ regression verifies the aggregate model independently through an injected source;
+- static regression verifies production refresh is read-only, Line/Encoder internals do not leak into public RobotAPI, Serial uses the aggregate, and HTTP remains explicitly deferred to V2-NET-001.
+
 **Software verification status:** `VERIFIED_SW_PARTIAL`  
 **Task status:** `IN_PROGRESS`
 
