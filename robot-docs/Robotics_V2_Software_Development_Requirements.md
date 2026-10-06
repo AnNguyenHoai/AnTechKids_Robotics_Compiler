@@ -1071,6 +1071,13 @@ Hardware-dependent acceptance criteria:
 - station-pattern semantics beyond current intersection detection: `PENDING_HW / REQUIREMENT_GAP`;
 - line response latency acceptance threshold: `PENDING_HW` and tracked by `V2-TEST-005`.
 
+Software verification evidence:
+
+- implementation/regression commit: `024bfb812faa9039365c8b3eaed4e8dd9d6c2dc3`;
+- temporal-policy regression correction: `3531d4d08fd388d7a70de761cc63924546ef5e07`;
+- GitHub Actions `V2 Line Perception Control` run `37410091227`: **PASS** on `3531d4d08fd388d7a70de761cc63924546ef5e07`;
+- the same workflow also passed V1 Line5 logical regression, V2 LineSensorBank regression, and V2 public Line API compatibility.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `PENDING_HW`
 
@@ -1756,6 +1763,12 @@ Still pending:
 - hardware recovery effectiveness;
 - hardware intersection/station behavior;
 - dedicated station-pattern semantics are not present in the frozen baseline and require an explicit follow-up requirement if needed.
+
+Software evidence:
+
+- `tests/v2_line_perception/run_v2_line_perception.py`: PASS;
+- focused CI run `37410091227`: PASS;
+- representative masks, weighted error, perception, recovery direction/reacquire, current intersection temporal policy, and line-response diagnostic wiring are covered.
 
 **Verification status:** `VERIFIED_SW_PARTIAL`  
 **Task status:** `IN_PROGRESS`
