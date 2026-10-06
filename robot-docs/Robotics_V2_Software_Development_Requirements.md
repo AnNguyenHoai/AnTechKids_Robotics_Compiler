@@ -1875,7 +1875,7 @@ Software regression:
 
 Remaining acceptance:
 
-- HTTP must consume RobotHealthService: owned by `V2-NET-001`;
+- HTTP consumes RobotHealthService: `VERIFIED_SW` by `V2-NET-001`;
 - OLED must consume RobotHealthService if introduced: owned by `V2-HLT-005`;
 - physical health values remain subject to their subsystem `PENDING_HW` acceptance.
 
@@ -1908,7 +1908,8 @@ V2-SAFE-001, V2-HLT-001, V2-HLT-003, V2-SW-003.
 
 ## V2-NET-001 — `/api/v1/health` V2
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IMPLEMENTED
 
 ### Requirement
 
@@ -1962,6 +1963,56 @@ Example:
 - V2 health fields come from RobotHealthService.
 - Endpoint remains responsive when optional devices fail.
 - Health endpoint shall not expose Wi-Fi/OTA secrets.
+
+### Implementation / verification record
+
+Implemented architecture:
+
+- `RobotNetworkService::sendHealth()` now refreshes exactly one `RobotHealthService` snapshot and delegates JSON generation to `RobotHealthJsonSerializer`.
+- V2 subsystem health is not recomputed in the HTTP layer.
+- serializer is a deterministic, hardware-independent transformation from `RobotHealth` + compatibility fields to JSON.
+- JSON string values are escaped before emission.
+
+Compatibility-critical top-level fields preserved:
+
+- `status`;
+- `ready`;
+- `robot_ready`;
+- `network_ready`;
+- `ota`;
+- `hostname`;
+- `ip`.
+- existing `http_ota` is also retained.
+
+V2 fields added from RobotHealthService:
+
+- `uptime_ms`;
+- `firmware_version`;
+- `board_profile`;
+- `board_revision`;
+- `reset_reason`;
+- `battery { voltage, state }`;
+- `motor { armed, enabled, state, last_stop_reason }`;
+- `start { pressed, ready_for_press, armed_by_start_this_boot }`;
+- `line { available, healthy, mask }` plus compatibility/convenience `line_mask`;
+- `encoder { available, healthy }`;
+- `i2c { healthy, mcp23017 }` plus compatibility/convenience `i2c_ok`;
+- `rssi`.
+
+Resilience/security contract:
+
+- optional devices serialize their `available/healthy` state and do not block the endpoint;
+- HTTP serialization performs no direct ADC, Line5, MCP23017, MotorSafety, START, or I2C hardware operations;
+- endpoint and serializer do not access/expose SSID, Wi-Fi password, OTA password, Authorization, or Basic Auth credentials;
+- health remains responsive based on the already-collected aggregate snapshot.
+
+Software regression:
+
+- `tests/v2_health_http/run_v2_health_http.py` compiles and runs the real serializer, parses its output with a JSON parser, and verifies old fields, V2 fields, escaping, optional-device behavior, aggregate-only ownership, and secret exclusion;
+- dedicated CI: `.github/workflows/v2-health-http-contract.yml`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `IMPLEMENTED`
 
 ### Dependencies
 

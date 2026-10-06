@@ -10,6 +10,8 @@
 #include "RobotIdentity.h"
 #include "RobotDiscoveryService.h"
 #include "RobotWiFiConfig.h"
+#include "RobotHealthJsonSerializer.h"
+#include "../Health/RobotHealthPlatform.h"
 #include "../Logger/BootLogger.h"
 #include "../Services/Robot/RobotAPI.h"
 #include "../Services/Robot/RobotMotorSafetyInternal.h"
@@ -45,15 +47,18 @@ uint32_t g_wifiStateSinceMs = 0;
 uint32_t g_lastWifiAttemptMs = 0;
 
 void sendHealth() {
-    const bool aggregateReady = g_robotReady && g_networkReady;
-    String body = "{\"status\":\"ok\",\"ready\":" + String(aggregateReady ? "true" : "false") +
-                  ",\"robot_ready\":" + String(g_robotReady ? "true" : "false") +
-                  ",\"network_ready\":" + String(g_networkReady ? "true" : "false") +
-                  ",\"ota\":" + String(g_otaReady ? "true" : "false") +
-                  ",\"http_ota\":true\n" +
-                  ",\"hostname\":\"" + String(RobotIdentity::hostname()) +
-                  "\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
-    g_server.send(200, "application/json", body);
+    const RobotHealth& health = systemRobotHealth().refresh();
+
+    RobotHealthCompatibilityFields compatibility;
+    compatibility.ready = g_robotReady && g_networkReady;
+    compatibility.robotReady = g_robotReady;
+    compatibility.networkReady = g_networkReady;
+    compatibility.otaReady = g_otaReady;
+    compatibility.httpOtaAvailable = true;
+    compatibility.hostname = RobotIdentity::hostname();
+
+    const std::string payload = RobotHealthJsonSerializer::serialize(health, compatibility);
+    g_server.send(200, "application/json", payload.c_str());
 }
 
 void sendInfo() {
