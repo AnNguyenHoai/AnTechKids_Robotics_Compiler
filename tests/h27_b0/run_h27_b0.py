@@ -46,7 +46,13 @@ def main() -> int:
     assert "[env:esp32dev_bootstrap]" in pio
     assert "extends = env:esp32dev" in pio
     assert "src_dir = main" in pio
-    assert "build_src_filter = +<*>" in pio
+    assert "build_src_filter =" in pio
+    assert "+<*>" in pio
+    # V2 first-flash must use the same production source boundary and must not
+    # compile the retired direct-GPIO line stack.
+    assert "-<src/Application/LineFollowerApp.cpp>" in pio
+    assert "-<src/Devices/Sensor.cpp>" in pio
+    assert "-<src/Drivers/Sensor_TRCT5000_3CH.cpp>" in pio
 
     wifi = wifi_script.read_text(encoding="utf-8")
     assert "ROBOT_BOOTSTRAP_CONFIG" in wifi
