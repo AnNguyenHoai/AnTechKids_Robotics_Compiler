@@ -2212,6 +2212,17 @@ Software regression:
 - existing RoboStudio hardware-config and macro-generator unit tests are retained;
 - dedicated CI: `.github/workflows/v2-hardware-config-migration.yml`.
 
+Software verification evidence:
+
+- implementation commit: `4cb701e5293ed5bfafef824b7361be3b206a76de`;
+- BoardProfile/schema regression alignment: `4e4144666b9bd966e0baf517d6d9a6e349e86633`;
+- CI runner/import-path corrections: `cc0121c6a48d9a5195bfead4203f0ded8cb224a9`, `b3fb1bf3d86b337a1025fe64e074c1ced3663b9e`;
+- GitHub Actions `V2 HardwareConfig Migration` run `37419006668`: **PASS**;
+- GitHub Actions `V2 BoardProfile Contract` run `37418795703`: **PASS**;
+- focused V2 migration regression verifies V1->V2 feature preservation, no silent rewrite on load, explicit-save migration, unknown/missing profile rejection, shared RoboStudio/deployment semantics and capability-only header generation;
+- B2.3 runtime-path regression verifies both source and packaged flows, including a legacy packaged V1 default migrating deterministically to V2;
+- existing HardwareConfig unittest regression remains green under the canonical import layout.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `IMPLEMENTED`
 
