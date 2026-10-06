@@ -908,7 +908,7 @@ V2-SW-003.
 ## V2-SW-005 — Line5 Public API Compatibility
 
 **Priority:** P1  
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 ### Requirement
 
@@ -956,7 +956,18 @@ The regression freezes:
 
 This requirement is a software/API compatibility contract. Physical sensor correctness is owned by `V2-SW-004` and remains `PENDING_HW` there; it is not duplicated as a blocker here.
 
-**Task status:** `IN_PROGRESS`
+Software verification evidence:
+
+- implementation / contract commit: `96bee29fccf33977434fea11bc2c24e32eccabd6`;
+- test-runner syntax repair: `229caf2b9c0cf8d21bf4d7bb88a7fe2b2b9620bb`;
+- test import-path repair: `cb002336180edc03fb86f9f64a4c7872ee7ba070`;
+- GitHub Actions `V2 Line API Compatibility` run `37409368909`: **PASS** on `cb002336180edc03fb86f9f64a4c7872ee7ba070`;
+- upstream V1 logical Line5 regression: PASS inside the same workflow;
+- V2 LineSensorBank regression: PASS inside the same workflow;
+- public signatures, channel IDs, raw-mask contract, feature-OFF behavior, compiler channel transport, Hardware Requirement Validator and public docs: PASS.
+
+**Verification status:** `VERIFIED_SW`  
+**Task status:** `DONE`
 
 ### Dependencies
 
@@ -1830,7 +1841,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 6 | V2-SAFE-003 | Fail-Safe Disarm Conditions | P0 | M2 |
 | 7 | V2-SAFE-004 | VM / Student Code Safety Boundary | P0 | M2 |
 | 8 | V2-SW-004 | LineSensorBank 5CH — PENDING_HW | P1 | M3 |
-| 9 | V2-SW-005 | Line5 Public API Compatibility — IN_PROGRESS | P1 | M3 |
+| 9 | V2-SW-005 | Line5 Public API Compatibility — DONE | P1 | M3 |
 | 10 | V2-SW-006 | Line5 Perception / Control Upgrade | P1 | M3 |
 | 11 | V2-SW-007 | Servo HAL | P1 | M3 |
 | 12 | V2-SW-008 | MCP LED/Buzzer Migration | P1 | M3 |
