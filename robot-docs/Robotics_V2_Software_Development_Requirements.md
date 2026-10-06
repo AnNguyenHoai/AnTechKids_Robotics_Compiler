@@ -909,7 +909,7 @@ V2-SAFE-001.
 ## V2-SAFE-004 — VM / Student Code Safety Boundary
 
 **Priority:** P0  
-**Status:** IMPLEMENTED
+**Status:** DONE
 
 ### Requirement
 
@@ -942,10 +942,16 @@ Software acceptance:
 - the dedicated acceptance is registered in `run_all_tests.py`;
 - focused CI: `.github/workflows/v2-vm-safety-boundary.yml`.
 
+Software verification evidence:
+
+- acceptance implementation: `68120ca4823c6c22ed6d7c8b60b91185e9b425e3`, `12611317103eb2a1e1db68a4c09265aa05098c10`, `bcd1f80a13d26c9cc122a175dd0493e4c89eccfe`;
+- GitHub Actions `V2 VM Safety Boundary` run `37431928715`: **PASS** on `7059448e1c583f7fda993c93e156163d039ec937`;
+- the real MotorSafetyController host harness, VM/RobotAPI ownership checks and integrated motor-safety regression all pass.
+
 No separate hardware criterion is introduced by this task: physical STBY/PWM behavior is already owned by V2-SAFE-001 / V2-TEST-003. This task verifies the software ownership/bypass boundary.
 
-**Software verification status:** `IMPLEMENTED_PENDING_CI`  
-**Task status:** `IMPLEMENTED`
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `DONE`
 
 ### Dependencies
 
@@ -3126,7 +3132,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 4 | V2-SAFE-001 | MotorSafetyController — PENDING_HW | P0 | M2 |
 | 5 | V2-SAFE-002 | START/ARM Button — PENDING_HW | P0 | M2 |
 | 6 | V2-SAFE-003 | Fail-Safe Disarm Conditions — IN_PROGRESS | P0 | M2 |
-| 7 | V2-SAFE-004 | VM / Student Code Safety Boundary — IMPLEMENTED | P0 | M2 |
+| 7 | V2-SAFE-004 | VM / Student Code Safety Boundary — DONE | P0 | M2 |
 | 8 | V2-SW-004 | LineSensorBank 5CH — PENDING_HW | P1 | M3 |
 | 9 | V2-SW-005 | Line5 Public API Compatibility — DONE | P1 | M3 |
 | 10 | V2-SW-006 | Line5 Perception / Control Upgrade — PENDING_HW | P1 | M3 |
