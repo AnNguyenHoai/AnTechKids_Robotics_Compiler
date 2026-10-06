@@ -499,7 +499,8 @@ V2-SW-001.
 
 ## V2-SW-003 — MCP23017 Driver/HAL
 
-**Priority:** P0
+**Priority:** P0  
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -562,6 +563,47 @@ No I2C failure may block forever.
 - Missing MCP produces deterministic diagnostic.
 - Robot motor safety remains independent from MCP state.
 - Driver can be mocked for unit testing.
+
+### Implementation / verification record
+
+Implemented architecture:
+
+- `MCP23017Driver` owns MCP23017 register semantics only.
+- `IMCP23017Transport` is an injectable transport contract so the real driver can be unit tested without ESP32 hardware.
+- `MCP23017WireTransport` is the production adapter over the shared System I2C bus and never initializes `Wire` itself.
+- Address defaults to `BoardProfile::MCP23017::ADDRESS = 0x20`.
+- BoardProfile now freezes MCP allocation: GPA0..4 = FL/L/C/R/FR and GPB0..2 = LED Left/LED Right/Buzzer.
+- `begin()` probes the device and puts both ports into fail-safe input mode with pull-ups disabled before feature-specific ownership is configured.
+- Error states are explicit: `OK`, `NOT_FOUND`, `I2C_ERROR`.
+- Register operations are bounded by the shared System I2C timeout; the MCP layer contains no retry/blocking loop.
+- Driver has no dependency on MotorSafety or motor output GPIO.
+- `tests/v2_mcp23017/run_v2_mcp23017.py` compiles and executes the real C++ driver against a mock transport.
+- Focused CI: `.github/workflows/v2-mcp23017-contract.yml`.
+- Verification infrastructure regression in `run_all_tests.py` (literal `\\n`) was repaired while registering the MCP test.
+
+Software verification covers:
+
+- device present / deterministic `NOT_FOUND`;
+- shared-bus unavailable / `I2C_ERROR`;
+- Port A full-byte read;
+- Port B full-byte read;
+- input/output direction and pull-up configuration;
+- pin read and output-latch pin write;
+- invalid pin handling;
+- injected read/write I2C failures;
+- mockability using the production driver implementation;
+- independence from motor safety;
+- no new System I2C owner.
+
+Hardware-dependent acceptance criteria:
+
+- physical MCP detection at boot: `PENDING_HW`;
+- physical Port A byte read: `PENDING_HW`;
+- physical Port B output write: `PENDING_HW`;
+- physical MCP + MPU6050 coexistence: `PENDING_HW`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -1487,7 +1529,8 @@ Test must fail if physical contract changes accidentally.
 
 ## V2-TEST-002 — MCP23017 Unit/Mock Tests
 
-**Priority:** P0/P1
+**Priority:** P0/P1  
+**Status:** IN_PROGRESS
 
 Test:
 
@@ -1500,6 +1543,25 @@ I2C error
 timeout/recovery
 Line mask conversion
 ```
+
+### Implementation / verification record
+
+Implemented now:
+
+- device present / missing;
+- Port A read;
+- Port B read/write-path primitives;
+- I2C read/write failure injection;
+- shared-bus ownership regression;
+- real C++ driver executed against mock transport.
+
+Still pending:
+
+- physical timeout/recovery behavior: `PENDING_HW`;
+- Line5 mask conversion: deferred to `V2-SW-004` / `V2-TEST-004` because canonical-mask conversion belongs to `LineSensorBank`, not the MCP register HAL.
+
+**Verification status:** `VERIFIED_SW_PARTIAL`  
+**Task status:** `IN_PROGRESS`
 
 ---
 
@@ -1693,7 +1755,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 |---:|---|---|:---:|---|
 | 1 | V2-SW-001 | Board Profile Contract — DONE | P0 | M1 |
 | 2 | V2-SW-002 | System I2C Bus Manager — PENDING_HW | P0 | M1 |
-| 3 | V2-SW-003 | MCP23017 Driver/HAL | P0 | M1 |
+| 3 | V2-SW-003 | MCP23017 Driver/HAL — PENDING_HW | P0 | M1 |
 | 4 | V2-SAFE-001 | MotorSafetyController | P0 | M2 |
 | 5 | V2-SAFE-002 | START/ARM Button | P0 | M2 |
 | 6 | V2-SAFE-003 | Fail-Safe Disarm Conditions | P0 | M2 |
@@ -1714,7 +1776,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 21 | V2-RS-001 | RoboStudio Board Awareness | P1 | M5 |
 | 22 | V2-RS-002 | Robot Health Panel | P2 | M5 |
 | 23 | V2-TEST-001 | Board Mapping Contract Tests — DONE | P0 | M6 |
-| 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests | P0/P1 | M6 |
+| 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests — IN_PROGRESS | P0/P1 | M6 |
 | 25 | V2-TEST-003 | Motor Safety Contract Tests | P0 | M6 |
 | 26 | V2-TEST-004 | Line5 Regression | P1 | M6 |
 | 27 | V2-TEST-005 | Line Response Performance | P1 | M6 |

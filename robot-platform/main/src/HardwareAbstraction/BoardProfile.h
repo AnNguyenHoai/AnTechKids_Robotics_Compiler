@@ -46,6 +46,20 @@ constexpr uint32_t INITIAL_FREQUENCY_HZ = 400000;
 
 namespace MCP23017 {
 constexpr uint8_t ADDRESS = 0x20;
+
+namespace PortA {
+constexpr uint8_t LINE_FAR_LEFT = 0;
+constexpr uint8_t LINE_LEFT = 1;
+constexpr uint8_t LINE_CENTER = 2;
+constexpr uint8_t LINE_RIGHT = 3;
+constexpr uint8_t LINE_FAR_RIGHT = 4;
+} // namespace PortA
+
+namespace PortB {
+constexpr uint8_t LED_LEFT = 0;
+constexpr uint8_t LED_RIGHT = 1;
+constexpr uint8_t BUZZER_CTRL = 2;
+} // namespace PortB
 } // namespace MCP23017
 
 } // namespace BoardProfile
