@@ -33,4 +33,4 @@ jobs:
       - name: Hardware runtime path regression
         run: python tests/b2_3/run_hardware_runtime_path_contract.py
       - name: RoboStudio HardwareConfig unittest regression
-        run: python robostudio/tests/test_hardware_config.py
+        run: PYTHONPATH=robostudio:. python robostudio/tests/test_hardware_config.py
