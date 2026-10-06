@@ -62,10 +62,4 @@
 #define MPU6050_SDA_PIN         BoardProfile::Pins::SYSTEM_I2C_SDA
 #define MPU6050_SCL_PIN         BoardProfile::Pins::SYSTEM_I2C_SCL
 
-// Legacy direct GPIO output aliases. V2-SW-008 migrates these outputs to
-// MCP23017 Port B; they are intentionally excluded from BoardProfile V2 pins.
-#define OUTPUT_BUZZER_PIN       ROBOT_PIN_19
-#define OUTPUT_LED_LEFT_PIN     ROBOT_PIN_32
-#define OUTPUT_LED_RIGHT_PIN    ROBOT_PIN_33
-
 #endif

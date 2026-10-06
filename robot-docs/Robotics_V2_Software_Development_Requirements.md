@@ -1188,7 +1188,8 @@ V2-SW-001.
 
 ## V2-SW-008 — MCP23017 LED/Buzzer Migration
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** IN_PROGRESS
 
 ### Requirement
 
@@ -1217,6 +1218,39 @@ Introduce an auxiliary/status output abstraction.
 - Buzzer works through MCP output + external driver.
 - Feature guard for buzzer remains functional.
 - MCP failure is reported through health but does not compromise motor safety.
+
+### Implementation / verification record
+
+Implemented architecture:
+
+- `AuxOutputService` is the V2 auxiliary/status output abstraction over the shared `systemMCP23017()` instance.
+- RobotAPI no longer owns direct LED/buzzer GPIO or MCP register logic.
+- BoardProfile allocation is used:
+  - GPB0 = LED Left;
+  - GPB1 = LED Right;
+  - GPB2 = Buzzer control.
+- V1 `Set3CLed` parity semantics are preserved:
+  - odd public port -> logical Right LED -> GPB1;
+  - even public port -> logical Left LED -> GPB0.
+- Non-positive LED ports are rejected deterministically.
+- Each MCP output is initialized lazily. OLAT is primed LOW before switching the corresponding pin to output to avoid a startup-high pulse.
+- `SetMp3Play(index)` preserves the existing fixed 200 ms beep approximation and now drives GPB2 through `AuxOutputService`.
+- `ROBOT_FEATURE_BUZZER=0` returns before any buzzer-output initialization/write.
+- Legacy direct aliases `OUTPUT_LED_LEFT_PIN`, `OUTPUT_LED_RIGHT_PIN`, and `OUTPUT_BUZZER_PIN` are removed from `GPIO.h`.
+- Compiler/VM transport for `Set3CLed` and `SetMp3Play` remains unchanged.
+- Auxiliary output code has no MotorSafety/motor-output dependency.
+- `AuxOutputService::healthy()` / `lastError()` expose MCP failure state for later `V2-HLT-004 RobotHealthService` integration.
+
+Software verification is implemented at `tests/v2_aux_output/run_v2_aux_output.py` with dedicated CI `.github/workflows/v2-mcp-aux-output.yml`.
+
+Acceptance split:
+
+- LED/Buzzer migration, feature guard, public compatibility and failure propagation are software-verifiable here.
+- Physical LED/buzzer operation remains `PENDING_HW`.
+- Requirement “MCP failure is reported through health” is integration-owned by `V2-HLT-004`; this task provides the health-ready status surface but does not invent RobotHealth early.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `IN_PROGRESS`
 
 ### Dependencies
 
@@ -2010,7 +2044,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 9 | V2-SW-005 | Line5 Public API Compatibility — DONE | P1 | M3 |
 | 10 | V2-SW-006 | Line5 Perception / Control Upgrade — PENDING_HW | P1 | M3 |
 | 11 | V2-SW-007 | Servo HAL — PENDING_HW | P1 | M3 |
-| 12 | V2-SW-008 | MCP LED/Buzzer Migration | P1 | M3 |
+| 12 | V2-SW-008 | MCP LED/Buzzer Migration — IN_PROGRESS | P1 | M3 |
 | 13 | V2-SW-009 | Encoder V2 Board Integration | P1 | M3 |
 | 14 | V2-HLT-001 | BatteryMonitor | P1 | M4 |
 | 15 | V2-HLT-002 | Critical Battery Safety Policy | P1 | M4 |

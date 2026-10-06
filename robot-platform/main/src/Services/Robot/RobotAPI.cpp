@@ -25,6 +25,7 @@
 #include "../../HardwareAbstraction/MCP23017Platform.h"
 #include "../../HardwareAbstraction/ServoHAL.h"
 #include "../../HardwareAbstraction/ServoLEDCTransport.h"
+#include "../../Services/Output/AuxOutputService.h"
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/TCRT5000.h"
 #include "../../Sensor/MCPLineSensor.h"
@@ -85,6 +86,7 @@ static LineSensorBank g_lineSensorBank(systemMCP23017());
 static ServoLEDCTransport g_servoPwmTransport;
 static ServoHAL g_servoHAL(g_servoPwmTransport);
 #endif
+static AuxOutputService g_auxOutputService(systemMCP23017());
 static bool g_headingStartupDiagnosticEnabled = true; 
 static bool g_motorPwmDiagnosticEnabled = true;
 static bool g_motorMappingDiagnosticEnabled = false;
@@ -1072,14 +1074,14 @@ void SetServo(int port, int angle) {
 }
 
 void Set3CLed(int port, int state) {
-    int pin;
-    if ((port % 2) == 0) {
-        pin = OUTPUT_LED_LEFT_PIN;   // GPIO32
-    } else {
-        pin = OUTPUT_LED_RIGHT_PIN;  // GPIO33
+    if (!g_auxOutputService.setLed(port, state != 0)) {
+        Serial.printf("[LED] MCP output failed port=%d state=%d error=%u\n",
+                      port, state,
+                      static_cast<unsigned>(g_auxOutputService.lastError()));
+        return;
     }
-    digitalWrite(pin, state ? HIGH : LOW);
-    Serial.printf("[LED] Set3CLed port=%d -> GPIO%d state=%d\n", port, pin, state);
+    Serial.printf("[LED] Set3CLed port=%d state=%d via MCP23017\n",
+                  port, state != 0 ? 1 : 0);
 }
 
 void SetLightSensorLed(int port, int state) {
@@ -1100,10 +1102,17 @@ void SetMp3Play(int index) {
     (void)index;
     return;
 #else
-    Serial.printf("[BUZZER] SetMp3Play index=%d -> fixed beep 200ms\n", index);
-    digitalWrite(OUTPUT_BUZZER_PIN, HIGH);
+    Serial.printf("[BUZZER] SetMp3Play index=%d -> fixed beep 200ms via MCP23017\n", index);
+    if (!g_auxOutputService.setBuzzer(true)) {
+        Serial.printf("[BUZZER] MCP output failed error=%u\n",
+                      static_cast<unsigned>(g_auxOutputService.lastError()));
+        return;
+    }
     delay(200);
-    digitalWrite(OUTPUT_BUZZER_PIN, LOW);
+    if (!g_auxOutputService.setBuzzer(false)) {
+        Serial.printf("[BUZZER] MCP clear failed error=%u\n",
+                      static_cast<unsigned>(g_auxOutputService.lastError()));
+    }
 #endif
 }
 
