@@ -729,7 +729,8 @@ V2-SW-001.
 
 ## V2-SAFE-002 — START / ARM Button
 
-**Priority:** P0
+**Priority:** P0  
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -757,6 +758,40 @@ Student code shall not directly arm the robot.
 - Holding/pressing START during boot shall not accidentally auto-run motors before system readiness.
 - Student code calling motion APIs while SAFE remains physically blocked.
 - START state is exposed to RobotHealth.
+
+### Implementation / verification record
+
+Implemented architecture:
+
+- `StartArmController` is the sole production software owner allowed to call `MotorSafetyController::arm()`.
+- `StartArmGpioInput` owns the START input on `BoardProfile::Pins::START_ARM = GPIO33`.
+- GPIO33 is configured as active-low with `INPUT_PULLUP_MODE` to maintain a defined software input state; the physical external pull-up requirement remains hardware-owned.
+- debounce interval is 30 ms.
+- controller is initialized immediately after `RobotAPI::Initialize()`, while MotorSafety is still SAFE/STBY LOW.
+- `onSystemReady()` explicitly re-samples START at the readiness boundary.
+- if START is held at boot, pressed during setup, or held when readiness is declared, a stable release is mandatory before a later press can arm.
+- a debounced press is accepted only when system readiness has been declared and MotorSafety state is exactly `SAFE`.
+- holding START does not repeatedly arm; after any later disarm, a new release->press edge is required.
+- MOTOR feature OFF remains non-armable through the approved START path.
+- START update runs after the OTA-in-progress early-return check, so an active OTA transaction cannot create an ARM event.
+- RobotAPI and VM expose no MotorSafety arm API; production `MotorSafetyController::arm()` is called only inside `StartArmController`.
+- read-only `isPressed()`, `isReadyForPress()`, and `armedByStartThisBoot()` surfaces are available for later `V2-HLT-004` RobotHealth integration.
+
+Software regression:
+
+- `tests/v2_start_arm/run_v2_start_arm.py` compiles and executes the real START + MotorSafety controllers with fake input/gate;
+- covers debounce, pre-ready press, held-at-boot, press-during-setup, release-before-arm, one-shot held press, re-arm edge, MOTOR OFF and student-surface isolation;
+- dedicated CI: `.github/workflows/v2-start-arm-contract.yml`.
+
+Hardware-dependent acceptance criteria:
+
+- physical GPIO33 active-low electrical behavior / external defined-state network: `PENDING_HW`;
+- physical switch bounce profile vs 30 ms debounce: `PENDING_HW`;
+- held START through actual ESP32 boot/reset cannot enable TB6612: `PENDING_HW`;
+- START state in RobotHealth aggregate: deferred to `V2-HLT-004`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -1951,7 +1986,8 @@ Still pending:
 
 ## V2-TEST-003 — Motor Safety Contract Tests
 
-**Priority:** P0
+**Priority:** P0  
+**Status:** IN_PROGRESS
 
 Required cases:
 
@@ -1968,6 +2004,28 @@ reset -> SAFE
 Hard requirement:
 
 > No software path shall produce non-zero physical motor output while `armed == false`.
+
+### Implementation / verification record
+
+Software coverage now includes:
+
+- BOOT -> SAFE;
+- motion before START blocked at lowest physical output path;
+- debounced START -> ARMED;
+- held START at boot/readiness requires release;
+- MOTOR feature OFF cannot arm;
+- no RobotAPI/VM arm surface;
+- all physical motor PWM writes remain behind MotorSafety.
+
+Still pending in this test family:
+
+- OTA -> SAFE (`V2-SAFE-003`);
+- critical battery -> SAFE/FAULT (`V2-HLT-002` + `V2-SAFE-003`);
+- reset/watchdog/fatal integration (`V2-SAFE-003`);
+- physical GPIO4/GPIO33 validation.
+
+**Verification status:** `VERIFIED_SW_PARTIAL`  
+**Task status:** `IN_PROGRESS`
 
 ---
 
@@ -2199,7 +2257,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 2 | V2-SW-002 | System I2C Bus Manager — PENDING_HW | P0 | M1 |
 | 3 | V2-SW-003 | MCP23017 Driver/HAL — PENDING_HW | P0 | M1 |
 | 4 | V2-SAFE-001 | MotorSafetyController — PENDING_HW | P0 | M2 |
-| 5 | V2-SAFE-002 | START/ARM Button | P0 | M2 |
+| 5 | V2-SAFE-002 | START/ARM Button — PENDING_HW | P0 | M2 |
 | 6 | V2-SAFE-003 | Fail-Safe Disarm Conditions | P0 | M2 |
 | 7 | V2-SAFE-004 | VM / Student Code Safety Boundary | P0 | M2 |
 | 8 | V2-SW-004 | LineSensorBank 5CH — PENDING_HW | P1 | M3 |
@@ -2219,7 +2277,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 22 | V2-RS-002 | Robot Health Panel | P2 | M5 |
 | 23 | V2-TEST-001 | Board Mapping Contract Tests — DONE | P0 | M6 |
 | 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests — IN_PROGRESS | P0/P1 | M6 |
-| 25 | V2-TEST-003 | Motor Safety Contract Tests | P0 | M6 |
+| 25 | V2-TEST-003 | Motor Safety Contract Tests — IN_PROGRESS | P0 | M6 |
 | 26 | V2-TEST-004 | Line5 Regression — IN_PROGRESS | P1 | M6 |
 | 27 | V2-TEST-005 | Line Response Performance | P1 | M6 |
 | 28 | V2-TEST-006 | Servo Regression — IN_PROGRESS | P1 | M6 |

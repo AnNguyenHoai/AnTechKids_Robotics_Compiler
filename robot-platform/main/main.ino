@@ -7,6 +7,7 @@
 #include "src/Diagnostic/Diagnostic.h"
 #include "src/Communication/SerialCommandHandler.h"
 #include "src/Communication/RobotNetworkService.h"
+#include "src/HardwareAbstraction/StartArmPlatform.h"
 
 // === Behavior Engine ===
 #include "src/Behavior/BehaviorScheduler.h"
@@ -60,6 +61,7 @@ void setup() {
     BootLogger::log("BOOT", "Power On");
 
     RobotAPI::Initialize();
+    systemStartArm().begin(millis());
     BootLogger::log("BOOT", "Hardware Ready");
 
     Diagnostic::runAll();
@@ -145,6 +147,13 @@ void setup() {
     BootLogger::log("Robot", "READY (no IMU / no heading hold)");
 #endif
 
+    // V2-SAFE-002: readiness is a hard ARM boundary. If START is held now,
+    // a stable release followed by a new debounced press is required.
+    if (g_robotReady) {
+        systemStartArm().onSystemReady(millis());
+        BootLogger::log("SAFETY", "START/ARM ready; press START to arm motors.");
+    }
+
     RobotNetworkService::begin(g_robotReady);
     if (RobotNetworkService::isReady()) {
         BootLogger::logFormat("BOOT", "Network Ready: %s.local", RobotNetworkService::hostname());
@@ -168,6 +177,10 @@ void loop() {
         DiagnosticsManager::instance().recordLoopTime(micros() - start);
         delay(1);
         return;
+    }
+
+    if (g_robotReady && systemStartArm().update(millis())) {
+        BootLogger::log("SAFETY", "START accepted: motors ARMED.");
     }
 
     SensorManager::instance().updateAll();
