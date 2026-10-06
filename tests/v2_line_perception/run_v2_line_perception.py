@@ -61,8 +61,8 @@ int main() {
         for (int i = 0; i < 5; ++i) {
             assert(!detector.update(0b11111));
         }
-        assert(!detector.update(0b00100)); // history now has five candidates
-        assert(detector.update(0b11111));  // still five candidates after rollover
+        assert(detector.update(0b00100));  // first full window: five candidates
+        assert(detector.update(0b11111));  // rollover still keeps five candidates
     }
 
     {
