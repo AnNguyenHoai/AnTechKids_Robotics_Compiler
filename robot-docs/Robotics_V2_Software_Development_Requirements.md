@@ -326,7 +326,7 @@ Tạo physical board abstraction ổn định trước khi migrate peripheral.
 ## V2-SW-001 — Board Profile Contract
 
 **Priority:** P0  
-**Status:** VERIFIED_SW
+**Status:** DONE
 
 ### Requirement
 
@@ -408,9 +408,11 @@ Software verification:
 - `BoardProfile.h` passed a C++11 compile/static-assert smoke check.
 - No hardware is required to verify this ownership/mapping contract.
 - Hardware-dependent electrical validation belongs to later peripheral tasks and remains outside V2-SW-001.
-- A dedicated `.github/workflows/v2-board-profile-contract.yml` gate is present for future `main_V2`/manual CI enforcement; no GitHub Actions run was used as completion evidence for this task.
+- Dedicated GitHub Actions gate `.github/workflows/v2-board-profile-contract.yml` is active on `main_V2`.
+- GitHub Actions run `37405436764` completed successfully against commit `6eae9ebdfe415c67423530ab785814499577c789`.
 
-**Verification status:** `VERIFIED_SW`
+**Verification status:** `VERIFIED_SW`  
+**Task status:** `DONE`
 
 ### Dependencies
 
@@ -1415,7 +1417,7 @@ Prevent V2 hardware migration from breaking existing behavior or introducing uns
 ## V2-TEST-001 — Board Mapping Contract Tests
 
 **Priority:** P0  
-**Status:** VERIFIED_SW
+**Status:** DONE
 
 Verify fixed mapping:
 
@@ -1442,7 +1444,8 @@ Test must fail if physical contract changes accidentally.
 - C++11 BoardProfile compile/static-assert smoke verification: PASS.
 - Hardware verification: not required for the software mapping contract; electrical/peripheral behavior is verified by dependent V2 tasks.
 
-**Verification status:** `VERIFIED_SW`
+**Verification status:** `VERIFIED_SW`  
+**Task status:** `DONE`
 
 ---
 
@@ -1652,7 +1655,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 
 | Order | ID | Requirement | Priority | Milestone |
 |---:|---|---|:---:|---|
-| 1 | V2-SW-001 | Board Profile Contract — VERIFIED_SW | P0 | M1 |
+| 1 | V2-SW-001 | Board Profile Contract — DONE | P0 | M1 |
 | 2 | V2-SW-002 | System I2C Bus Manager | P0 | M1 |
 | 3 | V2-SW-003 | MCP23017 Driver/HAL | P0 | M1 |
 | 4 | V2-SAFE-001 | MotorSafetyController | P0 | M2 |
@@ -1674,7 +1677,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 20 | V2-CONF-001 | HardwareConfig V2 / Migration | P1 | M5 |
 | 21 | V2-RS-001 | RoboStudio Board Awareness | P1 | M5 |
 | 22 | V2-RS-002 | Robot Health Panel | P2 | M5 |
-| 23 | V2-TEST-001 | Board Mapping Contract Tests — VERIFIED_SW | P0 | M6 |
+| 23 | V2-TEST-001 | Board Mapping Contract Tests — DONE | P0 | M6 |
 | 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests | P0/P1 | M6 |
 | 25 | V2-TEST-003 | Motor Safety Contract Tests | P0 | M6 |
 | 26 | V2-TEST-004 | Line5 Regression | P1 | M6 |
