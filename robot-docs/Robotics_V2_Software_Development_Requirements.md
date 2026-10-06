@@ -1876,7 +1876,7 @@ Software regression:
 Remaining acceptance:
 
 - HTTP consumes RobotHealthService: `VERIFIED_SW` by `V2-NET-001`;
-- OLED must consume RobotHealthService if introduced: owned by `V2-HLT-005`;
+- OLED software controller consumes RobotHealthService only: `VERIFIED_SW` by V2-HLT-005; concrete OLED transport is BLOCKED by missing hardware contract;
 - physical health values remain subject to their subsystem `PENDING_HW` acceptance.
 
 Software verification evidence:
@@ -2031,7 +2031,8 @@ V2-HLT-004.
 
 ## V2-HLT-005 — Local OLED Health Display
 
-**Priority:** P2
+**Priority:** P2  
+**Status:** BLOCKED
 
 ### Requirement
 
@@ -2062,6 +2063,52 @@ OLED failure shall never stop robot runtime.
 - OLED consumes RobotHealthService only.
 - Display update is non-blocking enough for normal runtime.
 - Missing OLED is treated as optional failure.
+
+### Implementation / verification record
+
+Software-side display architecture is implemented without inventing an undefined OLED hardware contract:
+
+- `ILocalHealthDisplay` defines the optional display transport boundary.
+- `LocalHealthDisplayFormatter` formats only a supplied `RobotHealth` snapshot.
+- `LocalHealthDisplayController` consumes `RobotHealthService` only and updates on a bounded 500 ms cadence.
+- normal frame matches the requirement intent:
+  - `ANTECH ROBOT`;
+  - battery state/voltage;
+  - Wi-Fi OK/OFF;
+  - motor safety state.
+- current-fault frame is selected when motor state is `FAULT` or battery state is `CRITICAL` and includes:
+  - `FAULT`;
+  - normalized reset reason;
+  - battery state/voltage;
+  - motor LOCKED/ENABLED.
+- missing display is optional: failed `begin()` causes no health refresh/render attempt and robot runtime continues.
+- a runtime render failure disables future display attempts but does not stop robot execution or mutate health/safety state.
+- `main.ino` integrates display begin/update without making readiness or control flow depend on display availability.
+- `NullLocalHealthDisplay` is the current production transport because no real OLED hardware contract exists.
+
+Hardware-contract gap:
+
+- current hardware docs only list “OLED Display” as a planned module;
+- no OLED controller/model is specified;
+- no I2C address is specified;
+- no display geometry is specified;
+- no power/electrical contract is specified;
+- no driver/library dependency is specified in `platformio.ini`;
+- therefore this task must not silently choose SSD1306/SH1106, address 0x3C/0x3D, or a third-party library.
+
+Software regression:
+
+- `tests/v2_local_health_display/run_v2_local_health_display.py` compiles and executes the real formatter/controller with fake RobotHealth source/display;
+- verifies normal/fault content, bounded update cadence, RobotHealth-only consumption, missing-display optional behavior, runtime render failure handling and absence of invented OLED hardware assumptions;
+- dedicated CI: `.github/workflows/v2-local-health-display.yml`.
+
+Closure condition:
+
+- define/freeze OLED model/controller, System-I2C address, geometry, power/electrical requirements and approved firmware driver/library;
+- then replace `NullLocalHealthDisplay` with the concrete optional System-I2C adapter and perform physical validation.
+
+**Software foundation status:** `VERIFIED_SW`  
+**Task status:** `BLOCKED` — `REQUIREMENT_GAP / PENDING_HW_CONTRACT`
 
 ### Dependencies
 

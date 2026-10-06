@@ -12,6 +12,7 @@
 #include "src/Health/BatterySafetyPlatform.h"
 #include "src/Health/ResetReasonPlatform.h"
 #include "src/HardwareAbstraction/MotorSafetyPlatform.h"
+#include "src/Health/LocalHealthDisplayPlatform.h"
 
 // === Behavior Engine ===
 #include "src/Behavior/BehaviorScheduler.h"
@@ -176,6 +177,11 @@ void setup() {
         BootLogger::logFormat("BOOT", "Network Ready: %s.local", RobotNetworkService::hostname());
     }
 
+    systemLocalHealthDisplay().begin(millis());
+    if (!systemLocalHealthDisplay().displayAvailable()) {
+        BootLogger::log("DISPLAY", "Local OLED unavailable/undefined; runtime continues.");
+    }
+
     BootLogger::log("EXEC", "System Ready. Type 'help' for commands.");
     BootLogger::log("INFO", "Default mode: VM. Type 'mode behavior' to switch.");
 }
@@ -223,6 +229,7 @@ void loop() {
 
     SensorManager::instance().updateAll();
     DiagnosticsManager::instance().updateSensors();
+    systemLocalHealthDisplay().update(millis());
 
     if (g_robotReady) {
 #if ROBOT_FEATURE_IMU
