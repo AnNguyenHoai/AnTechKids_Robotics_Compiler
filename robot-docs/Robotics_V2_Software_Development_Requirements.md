@@ -566,6 +566,8 @@ No I2C failure may block forever.
 
 ### Implementation / verification record
 
+**Implementation commits:** `ab9b7a9933b021eb963919ac41f8eacc1446f34f` (driver/transport/tests/CI + BoardProfile allocation) and `6018e50a26fcd7dbc479a5aa627db6e86204a723` (full-suite runner syntax repair + CI syntax gate).
+
 Implemented architecture:
 
 - `MCP23017Driver` owns MCP23017 register semantics only.
@@ -594,6 +596,10 @@ Software verification covers:
 - mockability using the production driver implementation;
 - independence from motor safety;
 - no new System I2C owner.
+- GitHub Actions `V2 MCP23017 Contract` run `37406898368`: **PASS** on `6018e50a26fcd7dbc479a5aa627db6e86204a723`.
+- GitHub Actions `V2 System I2C Contract` run `37406898412`: **PASS** on the same commit.
+- GitHub Actions `V2 BoardProfile Contract` run `37406898381`: **PASS** on the same commit.
+- MCP focused CI also validates `run_all_tests.py` with `python -m py_compile` before contract execution.
 
 Hardware-dependent acceptance criteria:
 
@@ -1554,6 +1560,7 @@ Implemented now:
 - I2C read/write failure injection;
 - shared-bus ownership regression;
 - real C++ driver executed against mock transport.
+- focused MCP CI PASS: run `37406898368`.
 
 Still pending:
 
