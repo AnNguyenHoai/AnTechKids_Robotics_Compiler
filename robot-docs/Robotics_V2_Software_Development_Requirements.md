@@ -798,7 +798,8 @@ Migrate V1 peripheral assumptions to V2 physical interfaces.
 
 ## V2-SW-004 — LineSensorBank 5CH
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -856,6 +857,47 @@ Therefore `LineSensorBank::readMask()` shall convert Port-A physical bits into t
 - No five independent I2C transactions per control iteration.
 - Missing MCP or line sensor subsystem returns health error instead of hanging.
 - Feature flag OFF excludes active Line5 behavior.
+
+### Implementation / verification record
+
+**Implementation commits:** `012194f0c192f5fdbad96b04bcba6bd7ff680c9e` (LineSensorBank/MCP migration) and `49ab48ee9a26ec497d214fe0703b1e6ae6c73388` (regression alignment).
+
+Implemented architecture:
+
+- `LineSensorBank` is the V2 Line5 physical acquisition boundary.
+- One `LineSensorBank::readMask()` performs one MCP23017 Port-A byte read and converts physical `GPA0..4 = FL,L,C,R,FR` into the frozen canonical software mask `bit4..0 = FL,L,C,R,FR`.
+- Public channel semantics remain frozen as `0=L, 1=C, 2=R, 3=FL, 4=FR`.
+- V1 direct-TCRT GPIO aliases were removed from `GPIO.h`; V2 no longer registers direct-GPIO TCRT5000 instances for Line5.
+- `MCPLineSensor` preserves the existing TCRT5000/ISensor-facing diagnostic compatibility surface while sourcing state from LineSensorBank.
+- `GetTraceRaw()` now uses exactly one LineSensorBank acquisition instead of iterating five direct sensors.
+- Existing V1 line estimator/follower/intersection/recovery logic remains unchanged above the canonical mask boundary.
+- MCP ownership is shared through `systemMCP23017()`; successful `MCP23017Driver::begin()` is idempotent so later V2 feature services do not reset MCP direction state.
+- V1 Line5 compatibility regression was updated to validate logical/API compatibility rather than obsolete direct-GPIO ownership.
+- `tests/v2_line_sensor_bank/run_v2_line_sensor_bank.py` compiles and executes the real C++ LineSensorBank + MCP driver against a fake transport.
+- Test is registered in repository `run_all_tests.py`.
+
+Software verification:
+
+- physical GPA0..4 to canonical mask conversion: PASS;
+- one Port-A read per `readMask()`: PASS;
+- channel mapping 0..4: PASS;
+- invalid channel deterministic false: PASS;
+- I2C/read failure -> mask 0 + unhealthy: PASS;
+- direct V1 Line5 GPIO aliases absent: PASS;
+- V1 logical Line5 compatibility regression: PASS;
+- MCP regression: PASS;
+- GitHub Actions `V2 LineSensorBank Contract` run `37408109215`: **PASS** on `49ab48ee9a26ec497d214fe0703b1e6ae6c73388`;
+- GitHub Actions `V2 BoardProfile Contract` run `37408109220`: **PASS** on the same commit.
+
+Hardware-dependent acceptance criteria:
+
+- physical MCP Port-A 5-channel sampling: `PENDING_HW`;
+- TCRT5000 electrical polarity/active-level confirmation: `PENDING_HW`;
+- missing-MCP runtime behavior on ESP32: `PENDING_HW`;
+- control-loop timing/latency relative to V1 direct GPIO: deferred to `V2-TEST-005`, `PENDING_HW`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -1565,9 +1607,9 @@ Implemented now:
 Still pending:
 
 - physical timeout/recovery behavior: `PENDING_HW`;
-- Line5 mask conversion: deferred to `V2-SW-004` / `V2-TEST-004` because canonical-mask conversion belongs to `LineSensorBank`, not the MCP register HAL.
+- Line5 mask conversion: `VERIFIED_SW` by `V2-SW-004` / `tests/v2_line_sensor_bank`; physical verification remains `PENDING_HW`.
 
-**Verification status:** `VERIFIED_SW_PARTIAL`  
+**Verification status:** `VERIFIED_SW`  
 **Task status:** `IN_PROGRESS`
 
 ---
@@ -1767,7 +1809,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 5 | V2-SAFE-002 | START/ARM Button | P0 | M2 |
 | 6 | V2-SAFE-003 | Fail-Safe Disarm Conditions | P0 | M2 |
 | 7 | V2-SAFE-004 | VM / Student Code Safety Boundary | P0 | M2 |
-| 8 | V2-SW-004 | LineSensorBank 5CH | P1 | M3 |
+| 8 | V2-SW-004 | LineSensorBank 5CH — PENDING_HW | P1 | M3 |
 | 9 | V2-SW-005 | Line5 Public API Compatibility | P1 | M3 |
 | 10 | V2-SW-006 | Line5 Perception / Control Upgrade | P1 | M3 |
 | 11 | V2-SW-007 | Servo HAL | P1 | M3 |
