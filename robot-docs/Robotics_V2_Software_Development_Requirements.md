@@ -710,6 +710,14 @@ Hardware-dependent acceptance criteria:
 - physical TB6612 remains disabled for pre-ARM non-zero command: `PENDING_HW`;
 - physical STBY HIGH enables motor driver after approved ARM path: `PENDING_HW`.
 
+Software verification evidence:
+
+- implementation commit: `07742a0fcfa4dc3c024c9d57be974ad093b4608b`;
+- GitHub Actions `V2 Motor Safety Contract` run `37413076981`: **PASS**;
+- GitHub Actions `V2 BoardProfile Contract` run `37413076806`: **PASS**;
+- Battery, Encoder, System I2C, MCP23017, Auxiliary Outputs, Servo, Line API, LineSensorBank and Line Perception regressions remain green on the same commit lineage;
+- host C++ regression validates BOOT/SAFE/ARMED/RUNNING/FAULT transitions, MOTOR-OFF behavior, normal/fault disarm and non-zero pre-ARM blocking.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `PENDING_HW`
 
