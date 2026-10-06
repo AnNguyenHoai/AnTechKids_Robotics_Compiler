@@ -2586,6 +2586,17 @@ Hardware acceptance still required:
 - verify GPIO33 START debounce/held-at-boot behavior electrically;
 - verify physical motor remains stopped through OTA failure/reboot and critical-battery events.
 
+Software verification evidence:
+
+- integrated acceptance implementation: `d615aabc123294cf907dd176c58f91774ccd7d06`;
+- GitHub Actions `V2 Motor Safety Acceptance` run `37421146181`: **PASS**;
+- GitHub Actions `V2 Motor Safety Contract` run `37421146124`: **PASS**;
+- GitHub Actions `V2 START ARM Contract` run `37421145989`: **PASS**;
+- GitHub Actions `V2 Fail Safe Disarm Contract` run `37421146154`: **PASS**;
+- GitHub Actions `V2 Critical Battery Safety` run `37421146063`: **PASS**;
+- GitHub Actions `V2 Reset Reason Contract` run `37421146088`: **PASS**;
+- the integrated host C++ acceptance executes BOOT, START, OTA, CRITICAL battery, fatal fault and watchdog/reset semantics in one scenario and verifies the physical-output gate remains disabled whenever motion is not authorized.
+
 **Verification status:** `VERIFIED_SW`  
 **Task status:** `PENDING_HW`
 
