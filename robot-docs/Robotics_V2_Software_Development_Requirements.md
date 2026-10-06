@@ -2763,6 +2763,15 @@ Use equivalent track transitions/control conditions and retain:
 
 After the first approved hardware measurement, source-of-truth must be updated with the selected acceptance metric(s) and threshold before this task can close.
 
+Software verification evidence:
+
+- implementation commit: `dfff396fbdf088b2ad1725c13991461079158a96`;
+- GitHub Actions `V2 Line Response Performance` run `37423273192`: **PASS**;
+- Line Perception regression executed in the same workflow: **PASS**;
+- parser/report tool was executed against synthetic `[LINE-RESPONSE]` logs and verified field extraction, CSV export and count/min/median/p95/max/mean summaries;
+- static contract verifies production instrumentation still measures sensor/control/output/total timestamps and remains controllable via `line diag on/off/status`;
+- regression explicitly verifies no acceptance threshold or PASS/FAIL verdict is invented before hardware evidence.
+
 **Software verification status:** `VERIFIED_SW`  
 **Task status:** `PENDING_HW`
 
