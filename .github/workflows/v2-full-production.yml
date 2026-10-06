@@ -1,0 +1,110 @@
+name: V2 Full Test & Production
+
+on:
+  push:
+    branches:
+      - main_V2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-full-production-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-test-and-production:
+    name: Full Regression + Production Package
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Show build identity
+        shell: pwsh
+        run: |
+          Write-Host "Ref: $env:GITHUB_REF"
+          Write-Host "SHA: $env:GITHUB_SHA"
+          python --version
+          git log -1 --oneline
+
+      - name: Install test dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tests/requirements-ci.txt
+
+      - name: Validate canonical entry points
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; required=['run_all_tests.py','BUILD_PRODUCTION_ZIP.cmd','scripts/Build-ProductionZip.ps1','tools/one_click_production_zip.py','tools/packaged_platformio_offline_first_flash.py']; missing=[p for p in required if not Path(p).exists()]; assert not missing, f'Missing canonical entry points: {missing}'; print('PASS: canonical V2 CI entry points present')"
+
+      - name: Run full repository regression suite
+        shell: pwsh
+        run: python run_all_tests.py
+
+      - name: Build production package
+        shell: cmd
+        run: BUILD_PRODUCTION_ZIP.cmd --clean
+
+      - name: Verify packaged offline first-flash acceptance
+        shell: pwsh
+        run: python tests/b2_7/run_packaged_offline_first_flash.py
+
+      - name: Create production checksum manifest
+        shell: pwsh
+        run: |
+          $releaseRoot = Resolve-Path "releases/production"
+          $files = Get-ChildItem -Path $releaseRoot -Recurse -File | Sort-Object FullName
+          if (-not $files) { throw "Production build produced no files." }
+          $manifest = Join-Path $releaseRoot "CI_SHA256SUMS.txt"
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 -Path $file.FullName).Hash.ToLowerInvariant()
+            $relative = [System.IO.Path]::GetRelativePath($releaseRoot, $file.FullName).Replace('\','/')
+            "$hash  $relative"
+          }
+          $lines | Set-Content -Path $manifest -Encoding utf8
+          Write-Host "Production files: $($files.Count)"
+          Write-Host "Checksum manifest: $manifest"
+
+      - name: Upload production software-test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoboStudio-V2-Production-Windows
+          path: releases/production/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Collect failure evidence
+        if: failure()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/ci-failure | Out-Null
+          Get-ChildItem -Path . -Recurse -File -Include *.json,*.log,*.txt |
+            Where-Object {
+              $_.FullName -notmatch '\\.git[\\/]' -and
+              $_.FullName -notmatch 'releases[\\/]production'
+            } |
+            Select-Object -First 500 |
+            ForEach-Object {
+              $safe = ($_.FullName.Substring($env:GITHUB_WORKSPACE.Length).TrimStart('\','/') -replace '[:\\/]','_')
+              Copy-Item $_.FullName (Join-Path "artifacts/ci-failure" $safe) -Force -ErrorAction SilentlyContinue
+            }
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: V2-Full-Test-Failure-Evidence
+          path: artifacts/ci-failure/
+          if-no-files-found: ignore
+          retention-days: 14
