@@ -26,9 +26,14 @@ def test_production_firmware_source_filter_excludes_legacy():
     text = platformio.read_text(encoding="utf-8")
     lines = text.splitlines()
     # H26-O follows the canonical PlatformIO layout: the production
-    # firmware source root is main/ and the source filter includes only
-    # that canonical tree. Do not resurrect the retired src_filter syntax.
+    # firmware source root is main/. V2 may exclude retired V1 sources from
+    # that tree, but must not resurrect the retired src_filter syntax or
+    # compile direct-GPIO line sensing that bypasses the V2 MCP/LineSensorBank
+    # ownership boundary.
     assert "src_dir = main" in text
-    assert "build_src_filter = +<*>" in text
+    assert "build_src_filter =" in text
+    assert "+<*>" in text
+    assert "-<src/Application/LineFollowerApp.cpp>" in text
+    assert "-<src/Devices/Sensor.cpp>" in text
+    assert "-<src/Drivers/Sensor_TRCT5000_3CH.cpp>" in text
     assert not any(line.strip().startswith("src_filter =") for line in lines)
-    assert "legacy" not in text
