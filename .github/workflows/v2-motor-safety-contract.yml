@@ -1,0 +1,30 @@
+name: V2 Motor Safety Contract
+
+on:
+  push:
+    branches: [main_V2]
+    paths:
+      - "robot-platform/main/src/HardwareAbstraction/MotorSafety*"
+      - "robot-platform/main/src/HardwareAbstraction/IMotorSafetyGate.h"
+      - "robot-platform/main/src/Services/Robot/RobotAPI.cpp"
+      - "robot-platform/main/src/HardwareAbstraction/BoardProfile.h"
+      - "tests/v2_motor_safety/**"
+      - "run_all_tests.py"
+      - "robot-docs/Robotics_V2_Software_Development_Requirements.md"
+      - ".github/workflows/v2-motor-safety-contract.yml"
+  workflow_dispatch:
+
+jobs:
+  motor-safety-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate test runner syntax
+        run: python -m py_compile run_all_tests.py
+      - name: BoardProfile regression
+        run: python tests/v2_board_profile/run_v2_board_profile.py
+      - name: MotorSafety contract
+        run: python tests/v2_motor_safety/run_v2_motor_safety.py

@@ -627,7 +627,8 @@ Motor output must be hardware-gated and independent from student program behavio
 
 ## V2-SAFE-001 — MotorSafetyController
 
-**Priority:** P0
+**Priority:** P0  
+**Status:** PENDING_HW
 
 ### Requirement
 
@@ -680,6 +681,37 @@ Safety shall not depend only on public API-level checks.
 - Non-zero motor command before ARM produces no physical motion.
 - No alternate motion API can bypass the gate.
 - Hardware configuration MOTOR OFF still works.
+
+### Implementation / verification record
+
+Implemented architecture:
+
+- `MotorSafetyController` is the centralized owner of conceptual states `BOOT`, `SAFE`, `ARMED`, `RUNNING`, and `FAULT`.
+- minimum control API is implemented: `begin()`, `arm()`, `disarm(reason)`, `isArmed()`, `isDriverEnabled()`.
+- `MotorSafetyGpioGate` owns physical TB6612 STBY control on `BoardProfile::Pins::MOTOR_SAFE_EN = GPIO4`.
+- `begin()` configures GPIO4 output and drives it LOW before motor PWM pin initialization.
+- successful `arm()` drives STBY HIGH only when `ROBOT_FEATURE_MOTOR != 0`.
+- MOTOR feature OFF cannot enable STBY.
+- fault-class disarm reasons transition the controller to `FAULT`; normal safety disarm reasons return to `SAFE`.
+- `RobotAPI::_setMotorsRaw()` is the lowest common physical motor-output boundary and calls `allowPhysicalOutput(left,right)` before any non-zero PWM write.
+- when not armed, requested non-zero motion is converted to four zero-duty writes; public/VM/line/heading paths cannot bypass the gate because all physical motor LEDC writes remain inside `_setMotorsRaw()`.
+- zero-output commands remain allowed so PWM outputs can always be actively cleared while STBY is LOW.
+- START/ARM input ownership is intentionally not implemented here; `V2-SAFE-002` will be the permitted runtime arm source.
+
+Software regression:
+
+- `tests/v2_motor_safety/run_v2_motor_safety.py` compiles and executes the real controller with a fake STBY gate;
+- verifies BOOT->SAFE, arm, RUNNING, zero-command ARMED return, normal disarm, fault disarm, MOTOR-OFF behavior, GPIO4 ownership and no alternate physical PWM path;
+- dedicated CI: `.github/workflows/v2-motor-safety-contract.yml`.
+
+Hardware-dependent acceptance criteria:
+
+- physical GPIO4/STBY LOW at boot/reset: `PENDING_HW`;
+- physical TB6612 remains disabled for pre-ARM non-zero command: `PENDING_HW`;
+- physical STBY HIGH enables motor driver after approved ARM path: `PENDING_HW`.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ### Dependencies
 
@@ -2158,7 +2190,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 1 | V2-SW-001 | Board Profile Contract — DONE | P0 | M1 |
 | 2 | V2-SW-002 | System I2C Bus Manager — PENDING_HW | P0 | M1 |
 | 3 | V2-SW-003 | MCP23017 Driver/HAL — PENDING_HW | P0 | M1 |
-| 4 | V2-SAFE-001 | MotorSafetyController | P0 | M2 |
+| 4 | V2-SAFE-001 | MotorSafetyController — PENDING_HW | P0 | M2 |
 | 5 | V2-SAFE-002 | START/ARM Button | P0 | M2 |
 | 6 | V2-SAFE-003 | Fail-Safe Disarm Conditions | P0 | M2 |
 | 7 | V2-SAFE-004 | VM / Student Code Safety Boundary | P0 | M2 |

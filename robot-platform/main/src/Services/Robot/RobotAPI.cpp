@@ -25,6 +25,7 @@
 #include "../../HardwareAbstraction/MCP23017Platform.h"
 #include "../../HardwareAbstraction/ServoHAL.h"
 #include "../../HardwareAbstraction/ServoLEDCTransport.h"
+#include "../../HardwareAbstraction/MotorSafetyPlatform.h"
 #include "../../Services/Output/AuxOutputService.h"
 #include "../../Sensor/SensorManager.h"
 #include "../../Sensor/TCRT5000.h"
@@ -193,6 +194,16 @@ static void _setMotorsRaw(int leftSpeed, int rightSpeed) {
     int rightPWM = abs(rightSpeed) * g_motionConfig.pwmPerSpeed;
     leftPWM = constrain(leftPWM, 0, 255);
     rightPWM = constrain(rightPWM, 0, 255);
+
+    // V2-SAFE-001: this is the lowest common physical motor-output path.
+    // Non-zero PWM is forbidden unless the centralized safety controller is armed.
+    if (!systemMotorSafety().allowPhysicalOutput(leftSpeed, rightSpeed)) {
+        ledcWrite(MOTOR_L_IN1_PIN, 0);
+        ledcWrite(MOTOR_L_IN2_PIN, 0);
+        ledcWrite(MOTOR_R_IN3_PIN, 0);
+        ledcWrite(MOTOR_R_IN4_PIN, 0);
+        return;
+    }
 
     // ---- DIAGNOSTIC: Bypass hardware PWM writes ----
     if (!g_motorPwmDiagnosticEnabled) {
@@ -1191,6 +1202,11 @@ bool GetEncoderInverted(int side) { (void)side; return false; }
 
 void Initialize() {
     HardwareCapability::printStatus();
+
+    // V2-SAFE-001: claim TB6612 STBY immediately and force it LOW before
+    // any motor PWM pin is initialized. START/ARM is implemented separately.
+    systemMotorSafety().begin();
+    Serial.println("[MotorSafety] SAFE: driver STBY disabled.");
 
     // V2-SW-002: System I2C is board infrastructure, independent from optional
     // feature flags. Failure is diagnostic and non-blocking; peripheral
