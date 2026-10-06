@@ -3019,7 +3019,7 @@ Software verification evidence:
 ## V2-TEST-008 — Hardware ON/OFF Matrix Extension
 
 **Priority:** P1  
-**Status:** IMPLEMENTED
+**Status:** DONE
 
 Extend existing matrix for V2 features/configurations.
 
@@ -3054,8 +3054,15 @@ Focused CI: `.github/workflows/v2-hardware-on-off-matrix.yml`.
 
 This task is a software configuration/build-contract test; it does not require physical hardware acceptance.
 
-**Software verification status:** `IMPLEMENTED_PENDING_CI`  
-**Task status:** `IMPLEMENTED`
+Software verification evidence:
+
+- acceptance implementation: `fd1e8f5fb6b58f3484eb44bb67042309adec229d`, `7872f6e13049a963faa506d2b6544b37fdfcac85`, `3985797f4f0b1d2b0dff6acb4ed98a6c721a793d`;
+- GitHub Actions `V2 Hardware ON OFF Matrix` run `37432571347`: **PASS** on `3985797f4f0b1d2b0dff6acb4ed98a6c721a793d`;
+- GitHub Actions `V2 HardwareConfig Migration` run `37432571219`: **PASS** on the same commit;
+- existing H25-G matrix, V2 feature-isolation checks and BoardProfile non-remap checks all pass.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `DONE`
 
 ---
 
@@ -3196,7 +3203,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 27 | V2-TEST-005 | Line Response Performance — PENDING_HW | P1 | M6 |
 | 28 | V2-TEST-006 | Servo Regression — PENDING_HW | P1 | M6 |
 | 29 | V2-TEST-007 | Health Schema Contract — DONE | P1 | M6 |
-| 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension — IMPLEMENTED | P1 | M6 |
+| 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension — DONE | P1 | M6 |
 | 31 | V2-TEST-009 | Config Migration Regression | P1 | M6 |
 | 32 | V2-TEST-010 | OTA Safety Regression — DONE | P0 | M6 |
 
