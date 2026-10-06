@@ -2708,9 +2708,10 @@ Software verification evidence:
 
 ## V2-TEST-005 — Line Response Performance
 
-**Priority:** P1
+**Priority:** P1  
+**Status:** PENDING_HW
 
-Preserve existing diagnostic measurements:
+Preserve diagnostic measurements:
 
 ```text
 sensor read
@@ -2721,7 +2722,49 @@ total latency
 
 Compare V1 direct GPIO vs V2 MCP23017.
 
-Acceptance threshold shall be set after first hardware measurement.
+Acceptance threshold shall be set only after the first physical hardware measurement.
+
+### Software measurement contract
+
+Existing `RobotAPI::LineBasis()` instrumentation is preserved:
+
+- `sensorStartUs -> sensorDoneUs`: Line5 sensor acquisition;
+- `sensorDoneUs -> controlDoneUs`: LineFollower control computation;
+- `controlDoneUs -> outputDoneUs`: motor API/output submission;
+- `sensorStartUs -> outputDoneUs`: total synchronous software response;
+- `loop`: interval between consecutive LineBasis calls.
+
+Instrumentation remains change-triggered on canonical 5-bit mask transitions to limit diagnostic logging overhead.
+
+A reusable evidence tool is implemented:
+
+- `tools/line_response_report.py`;
+- parses real `[LINE-RESPONSE]` serial records;
+- exports per-event CSV when requested;
+- summarizes count/min/median/p95/max/mean for `loop_us`, `sensor_us`, `control_us`, `output_us`, and `total_us`;
+- supports explicit labels such as `v1-direct-gpio` and `v2-mcp23017`;
+- deliberately emits `acceptance_threshold=null` and `pass_fail=NOT_EVALUATED` until hardware evidence freezes a threshold.
+
+Measurement procedure is documented in `robot-docs/motor-control/H23-D_LINE_RESPONSE_LATENCY_TRACE.md` and now refers to the canonical V2 5-bit Line5 mask rather than the obsolete 3-channel wording.
+
+### Required physical comparison
+
+Collect comparable serial traces from:
+
+1. V1 direct-GPIO Line5 baseline;
+2. V2 MCP23017 Line5 implementation.
+
+Use equivalent track transitions/control conditions and retain:
+
+- raw serial logs;
+- parsed CSV files;
+- statistical summaries;
+- exact board/firmware revisions and test conditions.
+
+After the first approved hardware measurement, source-of-truth must be updated with the selected acceptance metric(s) and threshold before this task can close.
+
+**Software verification status:** `VERIFIED_SW`  
+**Task status:** `PENDING_HW`
 
 ---
 
@@ -2895,7 +2938,7 @@ If hardware is unavailable, hardware-dependent criteria must remain `PENDING_HW`
 | 24 | V2-TEST-002 | MCP23017 Unit/Mock Tests — IN_PROGRESS | P0/P1 | M6 |
 | 25 | V2-TEST-003 | Motor Safety Contract Tests — PENDING_HW | P0 | M6 |
 | 26 | V2-TEST-004 | Line5 Regression — BLOCKED (station requirement gap) | P1 | M6 |
-| 27 | V2-TEST-005 | Line Response Performance | P1 | M6 |
+| 27 | V2-TEST-005 | Line Response Performance — PENDING_HW | P1 | M6 |
 | 28 | V2-TEST-006 | Servo Regression — IN_PROGRESS | P1 | M6 |
 | 29 | V2-TEST-007 | Health Schema Contract | P1 | M6 |
 | 30 | V2-TEST-008 | Hardware ON/OFF Matrix Extension | P1 | M6 |

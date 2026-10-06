@@ -1,0 +1,31 @@
+name: V2 Line Response Performance
+
+on:
+  push:
+    branches: [main_V2]
+    paths:
+      - "robot-platform/main/src/Services/Robot/RobotAPI.cpp"
+      - "robot-platform/main/src/Communication/SerialCommandHandler.cpp"
+      - "tools/line_response_report.py"
+      - "tests/v2_line_response_performance/**"
+      - "tests/v2_line_perception/**"
+      - "robot-docs/motor-control/H23-D_LINE_RESPONSE_LATENCY_TRACE.md"
+      - "robot-docs/Robotics_V2_Software_Development_Requirements.md"
+      - "run_all_tests.py"
+      - ".github/workflows/v2-line-response-performance.yml"
+  workflow_dispatch:
+
+jobs:
+  line-response-performance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate runner syntax
+        run: python -m py_compile run_all_tests.py tools/line_response_report.py
+      - name: Line perception regression
+        run: python tests/v2_line_perception/run_v2_line_perception.py
+      - name: Line response measurement contract
+        run: python tests/v2_line_response_performance/run_v2_line_response_performance.py
