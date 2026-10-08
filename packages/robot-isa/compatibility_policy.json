@@ -2,7 +2,7 @@
   "schema_version": 1,
   "task": "H35",
   "kind": "robot_compatibility_upgrade_policy",
-  "policy_version": "1.0.0",
+  "policy_version": "1.0.1",
   "current_release": "0.1.1",
   "current": {
     "robot_language_version": "1.0.0",
@@ -31,7 +31,7 @@
     },
     "target_profiles": {
       "path": "packages/robot-isa/target_profiles.json",
-      "git_blob_sha1": "a986e5d423b6f60cab7c5c4df3544d44edc7d86e"
+      "git_blob_sha1": "958bd945f29d006a0110dbf5efc1f3a80b298d5b"
     }
   },
   "supported_pairs": [
@@ -39,13 +39,20 @@
       "compiler_generation": 1,
       "firmware_generation": 1,
       "status": "supported",
-      "operations": ["compile", "first_flash", "ota", "run"]
+      "operations": [
+        "compile",
+        "first_flash",
+        "ota",
+        "run"
+      ]
     },
     {
       "compiler_generation": 1,
       "firmware_generation": 0,
       "status": "upgrade_only",
-      "operations": ["ota_upgrade"]
+      "operations": [
+        "ota_upgrade"
+      ]
     }
   ],
   "upgrade_rules": {
@@ -65,6 +72,14 @@
       "method": "ota_full_firmware",
       "status": "supported",
       "notes": "Legacy H34 firmware uses the same discovery protocol/schema but omits compatibility_generation. H35 treats absence as generation 0 only for one-way OTA upgrade."
+    }
+  ],
+  "contract_corrections": [
+    {
+      "id": "V1-LINE5-H33",
+      "kind": "corrective_target_metadata",
+      "description": "ESP32 sensor.line.channel bound corrected from 0..2 to the already-shipped Line5 runtime contract 0..4. RoboSim 1..7 physical compatibility is handled by an explicit target-aware 7-to-5 projection before compile. No opcode, discovery schema, firmware bytecode, or physical wiring generation changes.",
+      "generation_change": false
     }
   ]
 }
