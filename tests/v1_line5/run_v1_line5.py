@@ -18,6 +18,8 @@ def require(text: str, needle: str, label: str) -> None:
 
 def test_source_contract() -> None:
     gpio = (ROOT / "robot-platform/main/src/HardwareAbstraction/GPIO.h").read_text(encoding="utf-8")
+    tcrt_header = (ROOT / "robot-platform/main/src/Sensor/TCRT5000.h").read_text(encoding="utf-8")
+    tcrt_driver_spec = (ROOT / "robot-docs/TCRT5000_DRIVER_SPEC.md").read_text(encoding="utf-8")
     sensor_id = (ROOT / "robot-platform/main/src/Sensor/SensorID.h").read_text(encoding="utf-8")
     layout = (ROOT / "robot-platform/main/src/Services/Line/LineSensorLayout.h").read_text(encoding="utf-8")
     robot_api = (ROOT / "robot-platform/main/src/Services/Robot/RobotAPI.cpp").read_text(encoding="utf-8")
@@ -38,6 +40,10 @@ def test_source_contract() -> None:
         "SENSOR_TRCT5000_FR_PIN  ROBOT_PIN_35",
     ):
         require(gpio, needle, "Line5 GPIO ownership")
+
+    require(tcrt_header, "threshold = LOW", "active-low TCRT5000 semantic default")
+    require(tcrt_driver_spec, "active-low", "active-low TCRT5000 hardware documentation")
+    require(tcrt_driver_spec, "`LOW` = line detected", "black-line LOW polarity documentation")
 
     require(sensor_id, "LineFarLeft", "far-left SensorID")
     require(sensor_id, "LineFarRight", "far-right SensorID")
