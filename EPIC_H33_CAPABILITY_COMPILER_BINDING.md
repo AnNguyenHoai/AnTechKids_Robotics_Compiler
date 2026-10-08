@@ -123,19 +123,27 @@ Bounds:
 
 ```text
 robosim : 0..6
-esp32   : 0..2
+esp32   : 0..4
 arduino : 0..2
 ```
 
-RoboSim frontend chỉ normalize representation:
+RoboSim source contract vẫn là 1..7. Rewrite mặc định/simulation giữ:
 
 ```text
 RoboSim 1..7 → canonical 0..6
 ```
 
-Frontend không quyết định physical availability.
+Khi physical target là `esp32`, frontend áp dụng compatibility projection rõ ràng lên Line5:
 
-Compiler target contract mới là owner của quyết định target compatibility.
+```text
+RoboSim 1,2 → Far Left  → physical channel 3
+RoboSim 3   → Left      → physical channel 0
+RoboSim 4   → Center    → physical channel 1
+RoboSim 5   → Right     → physical channel 2
+RoboSim 6,7 → Far Right → physical channel 4
+```
+
+Projection là `ADAPTED` và cố ý lossy: ESP32 vẫn chỉ có năm sensor vật lý. Standard Robot API không đi qua adapter này và tiếp tục dùng trực tiếp Line5 channel 0..4. Compiler target contract enforce physical range 0..4.
 
 ---
 
@@ -223,12 +231,19 @@ Ví dụ:
 
 ```text
 GetTraceV2I2CState(1, 4)
+
+target robosim
     ↓
 get_trace_state(1, 3)
+
+target esp32
+    ↓
+get_trace_state(1, 1)   # physical Center
 ```
 
-- target `robosim`: PASS
-- target `esp32`: `E_RESOURCE_OUT_OF_RANGE`
+- target `robosim`: giữ đầy đủ logical channel 1..7.
+- target `esp32`: literal 1..7 được project xuống năm mắt Line5.
+- dynamic RoboSim channel trên ESP32 vẫn fail-closed cho tới khi có runtime projection/bounds contract.
 
 ---
 
