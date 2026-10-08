@@ -10,6 +10,29 @@ TRACE_CHANNEL_APIS = {
 ROBOSIM_TRACE_CHANNEL_MIN = 1
 ROBOSIM_TRACE_CHANNEL_MAX = 7
 
+# Physical/public Line5 contract:
+#   0=Left, 1=Center, 2=Right, 3=Far Left, 4=Far Right.
+#
+# RoboSim exposes seven logical trace positions. ESP32 has five physical eyes,
+# so the physical rewrite uses an explicit center-preserving ADAPTED projection:
+#   RoboSim 1,2 -> Far Left
+#   RoboSim 3   -> Left
+#   RoboSim 4   -> Center
+#   RoboSim 5   -> Right
+#   RoboSim 6,7 -> Far Right
+#
+# This is intentionally lossy and must never be interpreted as seven
+# independent physical sensors.
+ESP32_LINE5_PROJECTION = {
+    1: 3,
+    2: 3,
+    3: 0,
+    4: 1,
+    5: 2,
+    6: 4,
+    7: 4,
+}
+
 
 def _integer_literal_value(node):
     """Return an integer source literal value, including unary +/- forms."""
@@ -30,19 +53,23 @@ def _integer_literal_value(node):
 
 
 class RoboSimTraceChannelNormalizer(ast.NodeTransformer):
-    """Normalize RoboSim 1-based trace channels to canonical 0-based channels.
+    """Normalize RoboSim trace channels for the selected target.
 
-    RoboSim exposes trace channels 1..7. The frontend only normalizes source
-    representation:
+    RoboSim source always accepts 1..7.
 
-        RoboSim 1 -> canonical 0
-        ...
-        RoboSim 7 -> canonical 6
+    Simulation/default:
+        RoboSim 1..7 -> canonical 0..6
 
-    H33 deliberately moves target availability out of the frontend. The
-    compiler target contract decides whether a canonical channel exists on the
-    selected target (for example 0..2 on ESP32 versus 0..6 in RoboSim).
+    ESP32 physical:
+        RoboSim 1..7 -> projected Line5 physical channels 0..4.
+
+    Standard Robot API callers are unaffected because this normalizer runs only
+    in the RoboSim frontend rewrite path.
     """
+
+    def __init__(self, target="robosim"):
+        super().__init__()
+        self.target = target
 
     def visit_Call(self, node):
         node = self.generic_visit(node)
@@ -52,7 +79,6 @@ class RoboSimTraceChannelNormalizer(ast.NodeTransformer):
 
         api_name = node.func.attr
         if len(node.args) != 2:
-            # Keep argument-count diagnostics owned by RoboSimTransformer.
             return node
 
         channel_arg = node.args[1]
@@ -63,11 +89,14 @@ class RoboSimTraceChannelNormalizer(ast.NodeTransformer):
                     f"RoboSim API '{api_name}()' received invalid trace channel {channel}; "
                     "RoboSim trace channels are 1..7"
                 )
-            normalized = ast.Constant(value=channel - 1)
+            if self.target == "esp32":
+                normalized = ast.Constant(value=ESP32_LINE5_PROJECTION[channel])
+            else:
+                normalized = ast.Constant(value=channel - 1)
         else:
-            # Representation normalization only. Target/resource safety remains
-            # compiler-owned, so preserve a dynamic expression and let H33
-            # reject it fail-closed until runtime bounds validation exists.
+            # Dynamic ESP32 projection is deliberately not guessed. Preserve a
+            # dynamic expression and let H33 reject it fail-closed until a
+            # runtime projection/bounds contract exists.
             normalized = ast.BinOp(
                 left=channel_arg,
                 op=ast.Sub(),
