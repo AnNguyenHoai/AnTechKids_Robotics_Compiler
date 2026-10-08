@@ -15,9 +15,9 @@ public:
      * Constructor.
      * @param pin        GPIO pin connected to sensor output.
      * @param sensorName Unique name (e.g., "line_left").
-     * @param threshold  Threshold value (default HIGH = 1 for digital).
+     * @param threshold  Threshold value (default LOW = 0 for the active-low Line5 hardware).
      */
-    TCRT5000(int pin, const char* sensorName, int threshold = HIGH);
+    TCRT5000(int pin, const char* sensorName, int threshold = LOW);
 
     virtual ~TCRT5000() = default;
 
