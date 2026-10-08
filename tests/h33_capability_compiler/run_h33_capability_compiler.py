@@ -90,17 +90,17 @@ def test_target_and_capability_binding() -> None:
 
 
 def test_resource_contract() -> None:
-    compile_source("value = read_line(2)\n", "esp32")
-    check(True, "esp32 accepts canonical line channel 2")
+    compile_source("value = read_line(4)\n", "esp32")
+    check(True, "esp32 accepts all canonical Line5 channels 0..4")
 
     exc = expect_code(
         "E_RESOURCE_OUT_OF_RANGE",
-        lambda: compile_source("value = read_line(3)\n", "esp32"),
-        "esp32 rejects canonical line channel 3",
+        lambda: compile_source("value = read_line(5)\n", "esp32"),
+        "esp32 rejects canonical line channel 5",
     )
     diagnostic = exc.to_diagnostic()
     check(diagnostic["context"]["resource"] == "sensor.line.channel", "resource diagnostic identifies line channel")
-    check(diagnostic["context"]["resource_max"] == 2, "resource diagnostic carries target max")
+    check(diagnostic["context"]["resource_max"] == 4, "resource diagnostic carries Line5 target max")
 
     compile_source("value = read_line(6)\n", "robosim")
     check(True, "robosim accepts canonical line channel 6")
@@ -124,22 +124,21 @@ def test_robosim_adapter_to_target() -> None:
                 f"state = rcu.GetTraceV2I2CState(1, {channel})\n",
                 encoding="utf-8",
             )
-            rewrite(source, rewritten)
+            rewrite(source, rewritten, target=target)
             text = rewritten.read_text(encoding="utf-8")
             program = RobotCompiler(target=target).compile(rewritten)
             return text, program
 
-        text, _ = rewrite_compile(3, "esp32")
-        check("get_trace_state(1, 2)" in text, "RoboSim channel 3 normalizes to canonical channel 2")
-
-        expect_code(
-            "E_RESOURCE_OUT_OF_RANGE",
-            lambda: rewrite_compile(4, "esp32"),
-            "RoboSim channel 4 reaches compiler and is rejected by esp32 target",
-        )
+        expected_projection = {1: 3, 2: 3, 3: 0, 4: 1, 5: 2, 6: 4, 7: 4}
+        for channel, physical in expected_projection.items():
+            text, _ = rewrite_compile(channel, "esp32")
+            check(
+                f"get_trace_state(1, {physical})" in text,
+                f"RoboSim channel {channel} projects to ESP32 Line5 channel {physical}",
+            )
 
         text, _ = rewrite_compile(7, "robosim")
-        check("get_trace_state(1, 6)" in text, "RoboSim channel 7 is valid for robosim target")
+        check("get_trace_state(1, 6)" in text, "RoboSim target retains full logical channel 1..7 representation")
 
         dynamic_source = temp / "trace_dynamic.py"
         dynamic_rewritten = temp / "trace_dynamic.rewrite.py"
@@ -147,7 +146,7 @@ def test_robosim_adapter_to_target() -> None:
             "import rcu\nchannel = 2\nstate = rcu.GetTraceV2I2CState(1, channel)\n",
             encoding="utf-8",
         )
-        rewrite(dynamic_source, dynamic_rewritten)
+        rewrite(dynamic_source, dynamic_rewritten, target="esp32")
         dynamic_text = dynamic_rewritten.read_text(encoding="utf-8")
         check("channel - 1" in dynamic_text, "RoboSim dynamic channel is representation-normalized")
         expect_code(
