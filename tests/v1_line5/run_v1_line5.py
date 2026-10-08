@@ -118,7 +118,7 @@ def test_compiler_transport_channels_0_to_4() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "line5_compile.py"
         path.write_text(source, encoding="utf-8")
-        program = RobotCompiler().compile(path)
+        program = RobotCompiler(target="esp32").compile(path)
 
     read_line_ops = [ins for ins in program.instructions if ins.opcode == Opcode.ReadLine.value]
     assert len(read_line_ops) == 5, f"Expected 5 ReadLine opcodes, got {len(read_line_ops)}"
