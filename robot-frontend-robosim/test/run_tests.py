@@ -29,12 +29,12 @@ def test_rewrite(input_file, golden_file):
         output_path.unlink(missing_ok=True)
 
 
-def rewrite_source(source):
+def rewrite_source(source, target="robosim"):
     with tempfile.TemporaryDirectory() as tmpdir:
         source_path = Path(tmpdir) / "source.py"
         output_path = Path(tmpdir) / "output.py"
         source_path.write_text(source, encoding="utf-8")
-        rewrite(source_path, output_path)
+        rewrite(source_path, output_path, target=target)
         return output_path.read_text(encoding="utf-8")
 
 
@@ -83,6 +83,26 @@ def test_trace_channel_normalization():
     output = rewrite_source("import rcu\nvalue = rcu.GetTraceV2I2CState(1, +1)\n")
     assert "get_trace_state(1, 0)" in output
     print("PASS: RoboSim trace channels 1..7 and unary +1 normalize to canonical channels")
+
+def test_esp32_line5_projection():
+    """RoboSim 1..7 literals project explicitly onto the five ESP32 Line5 eyes."""
+    expected = {1: 3, 2: 3, 3: 0, 4: 1, 5: 2, 6: 4, 7: 4}
+    api_targets = {
+        "GetTraceV2I2CState": "get_trace_state",
+        "GetTraceV2I2C": "get_trace_value",
+        "GetTraceV2I2CChxState": "read_line",
+    }
+    for api_name, target_name in api_targets.items():
+        for channel, physical in expected.items():
+            output = rewrite_source(
+                f"import rcu\\nvalue = rcu.{api_name}(1, {channel})\\n",
+                target="esp32",
+            )
+            assert f"{target_name}(1, {physical})" in output or (
+                target_name == "read_line" and f"read_line({physical})" in output
+            ), output
+    print("PASS: RoboSim channels 1..7 project onto ESP32 Line5")
+
 
 
 def test_invalid_trace_channels_rejected():
@@ -178,6 +198,7 @@ def main():
             print(f"SKIP: {py_file.name} (no golden)")
     test_invalid_sensor_args()
     test_trace_channel_normalization()
+    test_esp32_line5_projection()
     test_invalid_trace_channels_rejected()
     test_dynamic_trace_channel_normalized()
     test_set_motor_speed()
