@@ -38,6 +38,8 @@ def main():
         str(input_path),
         "--output",
         str(rewrite_output),
+        "--target",
+        args.target,
     ])
     # Compile
     subprocess.check_call([
