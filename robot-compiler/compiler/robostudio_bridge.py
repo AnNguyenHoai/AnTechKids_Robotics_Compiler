@@ -151,7 +151,7 @@ def compile_request(request: CompileRequest) -> CompileResponse:
             os.close(fd)
             Path(temp_name).unlink(missing_ok=True)
             rewritten = Path(temp_name)
-            rewrite(source, rewritten)
+            rewrite(source, rewritten, target=request.target)
             compiler_source = rewritten
         else:
             compiler_source = source
