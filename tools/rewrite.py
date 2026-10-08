@@ -12,9 +12,10 @@ def main():
     parser = argparse.ArgumentParser(description="Rewrite RoboSim source to Standard Robot API")
     parser.add_argument("--input", required=True, help="Input .py file (RoboSim)")
     parser.add_argument("--output", required=True, help="Output .rewrite.py file")
+    parser.add_argument("--target", default="robosim", help="Rewrite target profile (default: robosim)")
     args = parser.parse_args()
-    rewrite(Path(args.input), Path(args.output))
-    print(f"Rewritten to {args.output}")
+    rewrite(Path(args.input), Path(args.output), target=args.target)
+    print(f"Rewritten to {args.output} for target '{args.target}'")
 
 if __name__ == "__main__":
     main()
