@@ -6,7 +6,7 @@
   "protected_files": {
     "robot-compiler/compiler/generated/function_registry.py": "cbcbbba21ee19a108caf4aafebbfb355bc0238ed",
     "robot-compiler/compiler/generated/opcode.py": "5440f6ec43567ef749ac586f91e056256a756a47",
-    "tools/build.py": "e4aec0b7c2c7cb54481d838ae8741bb1ec821c9e",
+    "tools/build.py": "cb5abc78a239451f8a0431e2705c5fec74b87ed0",
     "tools/compile.py": "1a3a7fd3098e20fc5ea5a9fded3b2233ad7624c5",
     "tools/flash.py": "d6cf65e72d6347e5cb5f7d95e2e04127585e5298"
   },
@@ -20,6 +20,7 @@
     "canonical ISA/opcode reconciliation",
     "binary ABI reconciliation",
     "post-H33 capability evolution",
-    "firmware build integration"
+    "firmware build integration",
+    "V1 Line5 RoboSim target-aware 7-to-5 physical projection"
   ]
 }
