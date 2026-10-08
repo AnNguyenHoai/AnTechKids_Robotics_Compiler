@@ -7,7 +7,8 @@ Provide a clean, reusable driver for the TCRT5000 infrared line sensor.
 ## Hardware Interface
 
 - **GPIO**: Digital input pin.
-- **Logic**: Outputs `HIGH` when detecting a dark (black) line, `LOW` otherwise (depending on module circuit).
+- **Logic (V1 Line5 real hardware evidence)**: the digital module is **active-low** for a dark/black line: `LOW` = line detected, `HIGH` = background/no line.
+- The driver semantic default therefore uses `threshold = LOW`. `rawLevel()` still exposes the electrical GPIO level unchanged.
 
 ## Class: `TCRT5000`
 
@@ -29,11 +30,13 @@ cpp
 TCRT5000 leftSensor(SENSOR_TRCT5000_L_PIN, "line_left");
 leftSensor.initialize();
 leftSensor.update();
-if (leftSensor.read() == HIGH) {
-    // line detected
+if (leftSensor.isLineDetected()) {
+    // active-low hardware: raw LOW means black line detected
 }
 Integration with RobotAPI
-In RobotAPI::Initialize(), three TCRT5000 instances are registered with SensorManager:
+In RobotAPI::Initialize(), five TCRT5000 instances are registered with SensorManager:
+
+"line_far_left" – far-left channel
 
 "line_left" – left channel
 
@@ -41,4 +44,6 @@ In RobotAPI::Initialize(), three TCRT5000 instances are registered with SensorMa
 
 "line_right" – right channel
 
-RobotAPI::ReadLine(channel) uses SensorManager::getSensor() and returns 1 if read() == HIGH
+"line_far_right" – far-right channel
+
+RobotAPI::ReadLine(channel), GetTraceState(), GetTraceValue() and GetTraceRaw() use isLineDetected(), so semantic line detection is LOW-active while raw GPIO diagnostics remain unmodified.
