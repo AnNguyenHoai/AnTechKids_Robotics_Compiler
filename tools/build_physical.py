@@ -37,7 +37,8 @@ def main():
             sys.executable,
             str(ROOT / "tools" / "rewrite.py"),
             "--input", str(py_file),
-            "--output", str(rewrite_output)
+            "--output", str(rewrite_output),
+            "--target", "esp32"
         ]
         subprocess.run(cmd_rewrite, check=True)
         results[name] = {"rewrite": "PASS"}
