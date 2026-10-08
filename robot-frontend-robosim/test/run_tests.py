@@ -95,7 +95,7 @@ def test_esp32_line5_projection():
     for api_name, target_name in api_targets.items():
         for channel, physical in expected.items():
             output = rewrite_source(
-                f"import rcu\\nvalue = rcu.{api_name}(1, {channel})\\n",
+                f"import rcu\nvalue = rcu.{api_name}(1, {channel})\n",
                 target="esp32",
             )
             assert f"{target_name}(1, {physical})" in output or (
