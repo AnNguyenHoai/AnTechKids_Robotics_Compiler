@@ -16,66 +16,60 @@ void RecoveryStrategy::setLastDirection(Direction direction) {
 }
 
 void RecoveryStrategy::update(uint8_t mask, int &left, int &right) {
-    // If line is found, exit recovery immediately
     if (mask != 0) {
         reset();
         left = right = 0;
         return;
     }
 
-    uint32_t now = millis();
-    uint32_t elapsed = now - _phaseStart;
-    Direction direction = _lastDirection == DIR_UNKNOWN ? DIR_LEFT : _lastDirection;
+    const uint32_t now = millis();
+    const uint32_t elapsed = now - _phaseStart;
+    const Direction direction = _lastDirection == DIR_UNKNOWN ? DIR_LEFT : _lastDirection;
 
-    // H22: recovery commands stay in the normal command domain. Calibration is
-    // applied once later by RobotAPI. Avoid low commands that can hum/stall after
-    // motor scaling.
-    constexpr int RECOVERY_BASE_SPEED = 80;
+    // Recovery is intentionally progressive. A freshly confirmed line loss
+    // first uses a forward arc so neither motor reverses abruptly. Only a
+    // persistent loss escalates to in-place search.
+    constexpr int SOFT_INNER_SPEED = 25;
+    constexpr int SOFT_OUTER_SPEED = 50;
+    constexpr int DEEP_SEARCH_SPEED = 45;
+    constexpr int SWEEP_SPEED = 60;
+    constexpr uint32_t SOFT_SEARCH_MS = 300;
+    constexpr uint32_t DEEP_SEARCH_MS = 1200;
 
-    if (elapsed < 1000) {
-        // Phase 1: Gentle search - turn slowly in the last known direction
+    if (elapsed < SOFT_SEARCH_MS) {
         _phase = SOFT_SEARCH;
         if (direction == DIR_LEFT) {
-            left = -RECOVERY_BASE_SPEED;
-            right = RECOVERY_BASE_SPEED;
+            left = SOFT_INNER_SPEED;
+            right = SOFT_OUTER_SPEED;
         } else {
-            left = RECOVERY_BASE_SPEED;
-            right = -RECOVERY_BASE_SPEED;
+            left = SOFT_OUTER_SPEED;
+            right = SOFT_INNER_SPEED;
         }
         return;
     }
 
-    if (elapsed < 2500) {
-        // Phase 2: Aggressive search - faster rotation in last known direction
+    if (elapsed < DEEP_SEARCH_MS) {
         _phase = DEEP_SEARCH;
         if (direction == DIR_LEFT) {
-            left = -RECOVERY_BASE_SPEED;
-            right = RECOVERY_BASE_SPEED;
+            left = -DEEP_SEARCH_SPEED;
+            right = DEEP_SEARCH_SPEED;
         } else {
-            left = RECOVERY_BASE_SPEED;
-            right = -RECOVERY_BASE_SPEED;
-        }
-        // Add a slight forward motion to help find the line if it's just ahead
-        // but still maintain rotation
-        if (direction == DIR_LEFT) {
-            left = -RECOVERY_BASE_SPEED;
-            right = RECOVERY_BASE_SPEED;
-        } else {
-            left = RECOVERY_BASE_SPEED;
-            right = -RECOVERY_BASE_SPEED;
+            left = DEEP_SEARCH_SPEED;
+            right = -DEEP_SEARCH_SPEED;
         }
         return;
     }
 
-    // Phase 3: Sweep - alternate directions to cover more area
     _phase = SWEEP;
-    bool reverse = ((elapsed - 2500) / 800) % 2;
-    Direction sweepDir = reverse ? (direction == DIR_LEFT ? DIR_RIGHT : DIR_LEFT) : direction;
+    const bool reverse = ((elapsed - DEEP_SEARCH_MS) / 700) % 2;
+    const Direction sweepDir =
+        reverse ? (direction == DIR_LEFT ? DIR_RIGHT : DIR_LEFT) : direction;
+
     if (sweepDir == DIR_LEFT) {
-        left = -RECOVERY_BASE_SPEED;
-        right = RECOVERY_BASE_SPEED;
+        left = -SWEEP_SPEED;
+        right = SWEEP_SPEED;
     } else {
-        left = RECOVERY_BASE_SPEED;
-        right = -RECOVERY_BASE_SPEED;
+        left = SWEEP_SPEED;
+        right = -SWEEP_SPEED;
     }
 }
