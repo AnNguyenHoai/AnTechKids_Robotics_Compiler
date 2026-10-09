@@ -36,12 +36,14 @@ text
 - Zero → straight.
 
 ## Motor Mixing
-left = baseSpeed - correction * scale
-right = baseSpeed + correction * scale
+left = baseSpeed + correction * scale
+right = baseSpeed - correction * scale
 
 text
 
-- `scale` = 0.8 (tunable)
+- Positive correction makes the left wheel faster and the right wheel slower, producing a right turn.
+- Negative correction mirrors this for a left turn.
+- `scale` is tunable.
 - Clamped to [-100, 100]
 
 ## PID Integration
