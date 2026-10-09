@@ -1,12 +1,19 @@
 #include "FollowerStateMachine.h"
 #include <Arduino.h>
 
+namespace {
+constexpr uint32_t LINE_LOST_DEBOUNCE_MS = 60;
+constexpr uint32_t DEEP_SEARCH_AFTER_MS = 500;
+}
+
 FollowerStateMachine::FollowerStateMachine()
     : _state(FollowerState::FOLLOWING),
       _turnRequested(false),
       _turnDirection(0),
       _stopRequested(false),
       _lostTimer(0),
+      _zeroMaskSince(0),
+      _zeroMaskPending(false),
       _searchingDirection(0) {}
 
 void FollowerStateMachine::update(uint8_t mask, bool intersectionDetected, bool turnRequested, bool stopRequested) {
@@ -16,20 +23,34 @@ void FollowerStateMachine::update(uint8_t mask, bool intersectionDetected, bool 
     switch (_state) {
         case FollowerState::FOLLOWING:
             if (intersectionDetected && _stopRequested) {
+                _zeroMaskPending = false;
                 transitionTo(FollowerState::INTERSECTION);
             } else if (mask == 0) {
-                transitionTo(FollowerState::LOST);
-                _lostTimer = millis();
-            } else if (_turnRequested) {
-                transitionTo(FollowerState::TURNING);
-                // direction already stored via requestTurn()
+                const uint32_t now = millis();
+                if (!_zeroMaskPending) {
+                    _zeroMaskPending = true;
+                    _zeroMaskSince = now;
+                } else if ((uint32_t)(now - _zeroMaskSince) >= LINE_LOST_DEBOUNCE_MS) {
+                    _zeroMaskPending = false;
+                    _lostTimer = now;
+                    transitionTo(FollowerState::LOST);
+                }
+            } else {
+                // A short 00000 gap is treated as sensor dropout, not a real
+                // line-loss event. Clear the debounce as soon as any eye sees line.
+                _zeroMaskPending = false;
+                _zeroMaskSince = 0;
+                if (_turnRequested) {
+                    transitionTo(FollowerState::TURNING);
+                    // direction already stored via requestTurn()
+                }
             }
             break;
 
         case FollowerState::LOST:
             if (mask != 0) {
                 transitionTo(FollowerState::FOLLOWING);
-            } else if (millis() - _lostTimer > 500) {
+            } else if ((uint32_t)(millis() - _lostTimer) > DEEP_SEARCH_AFTER_MS) {
                 transitionTo(FollowerState::SEARCHING);
                 _searchingDirection = 0; // start left
             }
@@ -86,6 +107,8 @@ void FollowerStateMachine::reset() {
     _turnRequested = false;
     _stopRequested = false;
     _lostTimer = 0;
+    _zeroMaskSince = 0;
+    _zeroMaskPending = false;
     _searchingDirection = 0;
 }
 
