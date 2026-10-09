@@ -34,6 +34,8 @@ private:
     int _turnDirection;      // 1 left, 2 right
     bool _stopRequested;
     uint32_t _lostTimer;
+    uint32_t _zeroMaskSince;
+    bool _zeroMaskPending;
     bool _searchingDirection; // 0 left first, 1 right first
 
     void transitionTo(FollowerState newState);
