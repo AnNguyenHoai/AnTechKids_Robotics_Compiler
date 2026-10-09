@@ -12,12 +12,12 @@ void Diagnostic::runAll() {
 }
 
 void Diagnostic::checkBattery() {
-    // Giả sử dùng ADC trên chân GPIO34 (không có pull-up)
-    analogRead(34); // Đọc trước để ổn định
-    int raw = analogRead(34);
-    // Giả sử cầu phân áp 2:1, Vref = 3.3V
-    float voltage = (raw / 4095.0) * 3.3 * 2.0;
-    Serial.printf("[DIAG] Battery Voltage: %.2f V\n", voltage);
+    // V1 Line5 owns GPIO34 as the Far-Left line sensor.
+    // Do not probe GPIO34 with analogRead(): Arduino-ESP32 may route the pad
+    // through the ADC path and disturb subsequent digitalRead() ownership.
+    // Battery ADC remains intentionally unavailable until a dedicated pin is
+    // defined by the hardware contract.
+    Serial.println("[DIAG] Battery check: SKIPPED (no dedicated battery ADC pin in V1 Line5)");
 }
 
 void Diagnostic::checkMotor() {
