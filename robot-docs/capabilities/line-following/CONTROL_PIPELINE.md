@@ -50,8 +50,8 @@ Zero → straight.
 ## Motor Mixing
 
 Given a `baseSpeed` and a `correction` (PID output), motor speeds are computed as:
-left = baseSpeed - correction * scaleFactor
-right = baseSpeed + correction * scaleFactor
+left = baseSpeed + correction * scaleFactor
+right = baseSpeed - correction * scaleFactor
 
 text
 
