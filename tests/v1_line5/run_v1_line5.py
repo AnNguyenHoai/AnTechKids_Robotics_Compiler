@@ -26,6 +26,7 @@ def test_source_contract() -> None:
     diagnostic = (ROOT / "robot-platform/main/src/Diagnostic/Diagnostic.cpp").read_text(encoding="utf-8")
     estimator = (ROOT / "robot-platform/main/src/Services/Line/LineErrorEstimator.cpp").read_text(encoding="utf-8")
     follower = (ROOT / "robot-platform/main/src/Services/Line/LineFollower.cpp").read_text(encoding="utf-8")
+    mixer = (ROOT / "robot-platform/main/src/Services/Line/MotorMixer.cpp").read_text(encoding="utf-8")
     follower_state = (ROOT / "robot-platform/main/src/Services/Line/FollowerStateMachine.cpp").read_text(encoding="utf-8")
     recovery = (ROOT / "robot-platform/main/src/Services/Line/RecoveryStrategy.cpp").read_text(encoding="utf-8")
     intersection = (ROOT / "robot-platform/main/src/Services/Line/IntersectionDetector.cpp").read_text(encoding="utf-8")
@@ -86,6 +87,8 @@ def test_source_contract() -> None:
     require(follower, "ERROR_FILTER_ALPHA = 0.70f", "responsive Line5 error filter")
     require(follower, "_scaleFactor(12.0f)", "responsive Line5 motor mixer scale")
     require(follower, "_pid.update(_filteredError)", "PID consumes filtered Line5 error")
+    require(mixer, "baseSpeed + delta", "positive correction speeds up left wheel")
+    require(mixer, "baseSpeed - delta", "positive correction slows right wheel")
     require(follower_state, "LINE_LOST_DEBOUNCE_MS = 40", "40ms transient line-loss debounce")
     require(follower_state, "_zeroMaskPending", "zero-mask debounce state")
     require(follower, "if (mask != 0)", "short dropout holds last valid filtered error")
@@ -138,6 +141,23 @@ def test_weighted_examples() -> None:
         assert actual == value, f"mask {mask:05b}: expected {value}, got {actual}"
 
 
+def test_motor_mixer_direction_contract() -> None:
+    def mix(base: int, correction: float, scale: float = 12.0) -> tuple[int, int]:
+        delta = round(correction * scale)
+        left = max(-100, min(100, base + delta))
+        right = max(-100, min(100, base - delta))
+        return left, right
+
+    left, right = mix(60, 1.0)
+    assert left > right, f"Positive/right error must turn right: got L={left}, R={right}"
+
+    left, right = mix(60, -1.0)
+    assert left < right, f"Negative/left error must turn left: got L={left}, R={right}"
+
+    left, right = mix(60, 0.0)
+    assert left == right == 60, f"Zero error must drive straight: got L={left}, R={right}"
+
+
 def test_compiler_transport_channels_0_to_4() -> None:
     source = "\n".join(f"line_{channel} = read_line({channel})" for channel in range(5)) + "\n"
     with tempfile.TemporaryDirectory() as tmp:
@@ -154,6 +174,8 @@ def main() -> int:
     print("PASS: Line5 source/docs/diagnostics contract")
     test_weighted_examples()
     print("PASS: Line5 weighted estimator examples")
+    test_motor_mixer_direction_contract()
+    print("PASS: Line5 motor mixer steering direction")
     test_compiler_transport_channels_0_to_4()
     print("PASS: compiler transports read_line channels 0..4")
     return 0
