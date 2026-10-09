@@ -104,11 +104,16 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
     const float rawError = LineErrorEstimator::estimate(mask);
     _lastRawError = rawError;
 
-    if (!_filterInitialized) {
-        _filteredError = rawError;
-        _filterInitialized = true;
-    } else {
-        _filteredError += ERROR_FILTER_ALPHA * (rawError - _filteredError);
+    // During a short zero-mask dropout, keep the last valid steering estimate
+    // instead of pulling the filter toward center. FollowerStateMachine owns
+    // the 60 ms decision of whether the line is truly lost.
+    if (mask != 0) {
+        if (!_filterInitialized) {
+            _filteredError = rawError;
+            _filterInitialized = true;
+        } else {
+            _filteredError += ERROR_FILTER_ALPHA * (rawError - _filteredError);
+        }
     }
     _lastFilteredError = _filteredError;
 
@@ -126,6 +131,12 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
     _stateMachine.update(mask, intersection, _turnRequested, _stopAtIntersectionRequested);
     FollowerState fs = _stateMachine.getState();
     bool recovering = (fs == FollowerState::LOST || fs == FollowerState::SEARCHING);
+
+    // Start every real recovery from phase zero. Previously _phaseStart could
+    // be stale, causing the first LOST event to jump straight into deep/sweep.
+    if (recovering && !_wasRecovering) {
+        _recovery.reset();
+    }
 
     // Keep V1 reacquire semantics for this task: any active line sensor exits
     // recovery. Center-zone-only reacquire remains a hardware-validation item.
