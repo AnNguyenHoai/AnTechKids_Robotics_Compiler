@@ -891,11 +891,13 @@ void LineBasis(int speed) {
     if (g_lineResponseDiagnosticEnabled && mask != g_lastLineTraceMask) {
         const uint8_t previous = g_lastLineTraceMask;
         Serial.printf(
-            "[LINE-RESPONSE] t=%luus mask=0x%02X prev=%s loop=%luus | sensor=%luus control=%luus output=%luus total=%luus | cmd L=%d R=%d\n",
+            "[LINE-RESPONSE] t=%luus mask=0x%02X prev=%s loop=%luus | rawErr=%.2f filtErr=%.2f corr=%.2f | sensor=%luus control=%luus output=%luus total=%luus | cmd L=%d R=%d\n",
             (unsigned long)t0,
             (unsigned)mask,
             (previous == 0xFF) ? "---" : String(previous).c_str(),
-            (unsigned long)loopDtUs,
+            follower.getLastRawError(),
+            follower.getLastFilteredError(),
+            follower.getLastCorrection(),
             (unsigned long)(sensorDoneUs - sensorStartUs),
             (unsigned long)(controlDoneUs - sensorDoneUs),
             (unsigned long)(outputDoneUs - controlDoneUs),
