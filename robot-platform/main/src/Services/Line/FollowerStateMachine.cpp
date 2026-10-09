@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 namespace {
-constexpr uint32_t LINE_LOST_DEBOUNCE_MS = 60;
+constexpr uint32_t LINE_LOST_DEBOUNCE_MS = 40;
 constexpr uint32_t DEEP_SEARCH_AFTER_MS = 500;
 }
 
