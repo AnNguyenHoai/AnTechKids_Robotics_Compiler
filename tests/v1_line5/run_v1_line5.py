@@ -23,6 +23,7 @@ def test_source_contract() -> None:
     sensor_id = (ROOT / "robot-platform/main/src/Sensor/SensorID.h").read_text(encoding="utf-8")
     layout = (ROOT / "robot-platform/main/src/Services/Line/LineSensorLayout.h").read_text(encoding="utf-8")
     robot_api = (ROOT / "robot-platform/main/src/Services/Robot/RobotAPI.cpp").read_text(encoding="utf-8")
+    diagnostic = (ROOT / "robot-platform/main/src/Diagnostic/Diagnostic.cpp").read_text(encoding="utf-8")
     estimator = (ROOT / "robot-platform/main/src/Services/Line/LineErrorEstimator.cpp").read_text(encoding="utf-8")
     follower = (ROOT / "robot-platform/main/src/Services/Line/LineFollower.cpp").read_text(encoding="utf-8")
     intersection = (ROOT / "robot-platform/main/src/Services/Line/IntersectionDetector.cpp").read_text(encoding="utf-8")
@@ -79,6 +80,13 @@ def test_source_contract() -> None:
     for weight in ("-2.0f", "-1.0f", "0.0f", "1.0f", "2.0f"):
         require(estimator, weight, f"weighted estimator {weight}")
     require(follower, "LineErrorEstimator::estimate(mask)", "mask-driven line follower")
+    require(follower, "_pid(1.0f, 0.0f, 0.0f, 0.02f)", "P-only smooth-control baseline")
+    require(follower, "ERROR_FILTER_ALPHA = 0.30f", "Line5 error low-pass filter")
+    require(follower, "_scaleFactor(5.0f)", "reduced Line5 motor mixer scale")
+    require(follower, "_pid.update(_filteredError)", "PID consumes filtered Line5 error")
+    require(robot_api, "rawErr=%.2f filtErr=%.2f corr=%.2f", "Line5 tuning diagnostics")
+    assert "analogRead(34)" not in diagnostic, "GPIO34 must remain exclusively owned by LineFarLeft"
+    require(diagnostic, "Battery check: SKIPPED", "battery diagnostic skips unowned ADC path")
     require(follower, "LAST_DIRECTION_THRESHOLD = 0.25f", "recovery direction threshold")
     require(intersection, "LineSensorLayout::isIntersectionCandidate", "5CH intersection candidate")
     assert "_history[i] == 0b111" not in intersection, "3CH intersection equality still present"
