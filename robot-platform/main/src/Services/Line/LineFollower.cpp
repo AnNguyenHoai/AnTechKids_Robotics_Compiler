@@ -7,6 +7,7 @@
 
 namespace {
 constexpr float LAST_DIRECTION_THRESHOLD = 0.25f;
+constexpr float ERROR_FILTER_ALPHA = 0.30f;
 }
 
 LineFollower& LineFollower::instance() {
@@ -15,7 +16,7 @@ LineFollower& LineFollower::instance() {
 }
 
 LineFollower::LineFollower()
-    : _pid(1.2f, 0.02f, 0.5f, 0.02f),
+    : _pid(1.0f, 0.0f, 0.0f, 0.02f),
       _speed(50),
       _stopped(false),
       _turnRequested(false),
@@ -26,7 +27,12 @@ LineFollower::LineFollower()
       _lastLineDirection(RecoveryStrategy::DIR_UNKNOWN),
       _lastControlUpdate(0),
       _wasRecovering(false),
-      _scaleFactor(15.0f)
+      _filteredError(0.0f),
+      _filterInitialized(false),
+      _lastRawError(0.0f),
+      _lastFilteredError(0.0f),
+      _lastCorrection(0.0f),
+      _scaleFactor(5.0f)
 {
     _pid.setLimits(-100, 100);
 }
@@ -49,6 +55,11 @@ void LineFollower::reset() {
     _lastLineDirection = RecoveryStrategy::DIR_UNKNOWN;
     _lastControlUpdate = 0;
     _wasRecovering = false;
+    _filteredError = 0.0f;
+    _filterInitialized = false;
+    _lastRawError = 0.0f;
+    _lastFilteredError = 0.0f;
+    _lastCorrection = 0.0f;
     _recovery.reset();
 }
 
@@ -76,6 +87,11 @@ void LineFollower::stop() {
     _stateMachine.reset();
     _pid.reset();
     _bmpActive = false;
+    _filteredError = 0.0f;
+    _filterInitialized = false;
+    _lastRawError = 0.0f;
+    _lastFilteredError = 0.0f;
+    _lastCorrection = 0.0f;
 }
 
 bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMotor) {
@@ -85,13 +101,23 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
         _bmpActive = false; _stopped = true; leftMotor = rightMotor = 0; return false;
     }
 
-    const float error = LineErrorEstimator::estimate(mask);
+    const float rawError = LineErrorEstimator::estimate(mask);
+    _lastRawError = rawError;
 
-    // Track the last meaningful side from the continuous five-eye estimate.
-    if (error < -LAST_DIRECTION_THRESHOLD) {
+    if (!_filterInitialized) {
+        _filteredError = rawError;
+        _filterInitialized = true;
+    } else {
+        _filteredError += ERROR_FILTER_ALPHA * (rawError - _filteredError);
+    }
+    _lastFilteredError = _filteredError;
+
+    // Recovery direction follows the immediate spatial observation so a mild
+    // low-pass filter cannot hide which side the line was last seen on.
+    if (rawError < -LAST_DIRECTION_THRESHOLD) {
         _lastLineDirection = RecoveryStrategy::DIR_LEFT;
         _recovery.setLastDirection(_lastLineDirection);
-    } else if (error > LAST_DIRECTION_THRESHOLD) {
+    } else if (rawError > LAST_DIRECTION_THRESHOLD) {
         _lastLineDirection = RecoveryStrategy::DIR_RIGHT;
         _recovery.setLastDirection(_lastLineDirection);
     }
@@ -106,16 +132,21 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
     if (_wasRecovering && mask != 0) {
         _pid.reset();
         _recovery.reset();
+        _filteredError = rawError;
+        _lastFilteredError = rawError;
+        _filterInitialized = true;
     }
     _wasRecovering = recovering;
 
     switch (fs) {
         case FollowerState::LOST:
         case FollowerState::SEARCHING:
+            _lastCorrection = 0.0f;
             _recovery.update(mask, leftMotor, rightMotor);
             return true;
 
         case FollowerState::INTERSECTION:
+            _lastCorrection = 0.0f;
             if (_stopAtIntersectionRequested) {
                 leftMotor = rightMotor = 0;
             } else {
@@ -125,6 +156,7 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
             break;
 
         case FollowerState::TURNING:
+            _lastCorrection = 0.0f;
             if (_turnDirection == 1) { leftMotor = -speed; rightMotor = speed; }
             else if (_turnDirection == 2) { leftMotor = speed; rightMotor = -speed; }
             else leftMotor = rightMotor = 0;
@@ -132,7 +164,8 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
 
         default: {
             const int baseSpeed = constrain(speed, 0, 100);
-            const float correction = _pid.update(error);
+            const float correction = _pid.update(_filteredError);
+            _lastCorrection = correction;
             MotorOutput out = MotorMixer::mix(baseSpeed, correction, _scaleFactor);
             leftMotor = out.left;
             rightMotor = out.right;
