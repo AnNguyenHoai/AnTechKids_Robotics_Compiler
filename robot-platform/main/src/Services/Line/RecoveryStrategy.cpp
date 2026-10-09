@@ -30,7 +30,7 @@ void RecoveryStrategy::update(uint8_t mask, int &left, int &right) {
     // first uses a forward arc so neither motor reverses abruptly. Only a
     // persistent loss escalates to in-place search.
     constexpr int SOFT_INNER_SPEED = 25;
-    constexpr int SOFT_OUTER_SPEED = 50;
+    constexpr int SOFT_OUTER_SPEED = 65;
     constexpr int DEEP_SEARCH_SPEED = 45;
     constexpr int SWEEP_SPEED = 60;
     constexpr uint32_t SOFT_SEARCH_MS = 300;
