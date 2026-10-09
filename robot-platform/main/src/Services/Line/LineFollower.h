@@ -33,6 +33,11 @@ public:
     void setScaleFactor(float scale) { _scaleFactor = scale; }
     float getScaleFactor() const { return _scaleFactor; }
 
+    // Diagnostics for real-robot tuning
+    float getLastRawError() const { return _lastRawError; }
+    float getLastFilteredError() const { return _lastFilteredError; }
+    float getLastCorrection() const { return _lastCorrection; }
+
     // Reset
     void reset();
 
@@ -62,6 +67,13 @@ private:
     RecoveryStrategy::Direction _lastLineDirection;
     uint32_t _lastControlUpdate;
     bool _wasRecovering;
+
+    // Smooth-control state
+    float _filteredError;
+    bool _filterInitialized;
+    float _lastRawError;
+    float _lastFilteredError;
+    float _lastCorrection;
 
     // Scale factor for MotorMixer
     float _scaleFactor;
