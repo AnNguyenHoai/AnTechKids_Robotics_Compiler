@@ -7,7 +7,7 @@
 
 namespace {
 constexpr float LAST_DIRECTION_THRESHOLD = 0.25f;
-constexpr float ERROR_FILTER_ALPHA = 0.30f;
+constexpr float ERROR_FILTER_ALPHA = 0.70f;
 }
 
 LineFollower& LineFollower::instance() {
@@ -32,7 +32,7 @@ LineFollower::LineFollower()
       _lastRawError(0.0f),
       _lastFilteredError(0.0f),
       _lastCorrection(0.0f),
-      _scaleFactor(5.0f)
+      _scaleFactor(12.0f)
 {
     _pid.setLimits(-100, 100);
 }
