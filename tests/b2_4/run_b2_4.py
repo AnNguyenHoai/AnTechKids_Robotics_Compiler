@@ -275,6 +275,9 @@ def test_firmware_has_no_developer_com_fallback() -> None:
     check("USB deploy invokes canonical hardware preflight", "hardware_preflight.require_serial_port" in deploy)
     check("USB deploy requires explicit upload port", '"--upload-port",selected_usb_port' in deploy or '"--upload-port", selected_usb_port' in deploy)
     check("bootstrap upload requires explicit validated port", '"--upload-port",selected_port' in deploy or '"--upload-port", selected_port' in deploy)
+    check("USB deployment has bounded recovery retry", "run_usb_upload_with_retry" in deploy)
+    ini = (ROOT / "robot-platform" / "platformio.ini").read_text(encoding="utf-8")
+    check("USB flash speed is conservative", "upload_speed = 115200" in ini)
 
 
 def main() -> int:
