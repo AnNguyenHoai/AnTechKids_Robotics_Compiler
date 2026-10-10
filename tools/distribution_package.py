@@ -205,25 +205,27 @@ def _copy_compiler(compiler_root: Path | None, frontend_root: Path | None, outpu
         raise DistributionPackageError(f"Compiler destination already exists: {destination}")
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns(*DEVELOPER_PAYLOAD_NAMES))
 
-    # The compiler safety gate is part of the application contract and must be
-    # self-contained in packaged layouts. Bundle the authoritative robot-isa
-    # manifests next to the compiler package instead of relying on repository
-    # relative paths that disappear after release assembly.
-    robot_isa_source = source.parent / "packages" / "robot-isa"
-    required_robot_isa = (
-        "resource_contract.json",
-        "capability_model.json",
-        "canonical_isa.json",
-    )
-    missing_robot_isa = [name for name in required_robot_isa if not (robot_isa_source / name).is_file()]
-    if missing_robot_isa:
-        raise DistributionPackageError(
-            "Compiler safety resources are missing: " + ", ".join(missing_robot_isa)
+    # Real production compiler builds include the safety validator and therefore
+    # must carry its authoritative robot-isa manifests. Minimal compiler fixtures
+    # used by packaging-boundary tests do not implement that safety gate and must
+    # not be forced to provide unused repository-only dependencies.
+    safety_validator = source / "compiler" / "safety_validator.py"
+    if safety_validator.is_file():
+        robot_isa_source = source.parent / "packages" / "robot-isa"
+        required_robot_isa = (
+            "resource_contract.json",
+            "capability_model.json",
+            "canonical_isa.json",
         )
-    robot_isa_destination = destination / "compiler" / "resources" / "robot-isa"
-    robot_isa_destination.mkdir(parents=True, exist_ok=True)
-    for name in required_robot_isa:
-        shutil.copy2(robot_isa_source / name, robot_isa_destination / name)
+        missing_robot_isa = [name for name in required_robot_isa if not (robot_isa_source / name).is_file()]
+        if missing_robot_isa:
+            raise DistributionPackageError(
+                "Compiler safety resources are missing: " + ", ".join(missing_robot_isa)
+            )
+        robot_isa_destination = destination / "compiler" / "resources" / "robot-isa"
+        robot_isa_destination.mkdir(parents=True, exist_ok=True)
+        for name in required_robot_isa:
+            shutil.copy2(robot_isa_source / name, robot_isa_destination / name)
 
     if frontend_root is not None:
         frontend = Path(frontend_root).resolve()
