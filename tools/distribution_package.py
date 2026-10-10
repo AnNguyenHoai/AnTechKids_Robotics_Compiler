@@ -211,11 +211,22 @@ def _copy_compiler(compiler_root: Path | None, frontend_root: Path | None, outpu
     # not be forced to provide unused repository-only dependencies.
     safety_validator = source / "compiler" / "safety_validator.py"
     if safety_validator.is_file():
-        robot_isa_source = source.parent / "packages" / "robot-isa"
         required_robot_isa = (
             "resource_contract.json",
             "capability_model.json",
             "canonical_isa.json",
+        )
+        robot_isa_candidates = (
+            source.parent / "packages" / "robot-isa",
+            Path(__file__).resolve().parents[1] / "packages" / "robot-isa",
+        )
+        robot_isa_source = next(
+            (
+                candidate
+                for candidate in robot_isa_candidates
+                if all((candidate / name).is_file() for name in required_robot_isa)
+            ),
+            robot_isa_candidates[0],
         )
         missing_robot_isa = [name for name in required_robot_isa if not (robot_isa_source / name).is_file()]
         if missing_robot_isa:
