@@ -35,6 +35,7 @@ def test_source_contract() -> None:
     serial = (ROOT / "robot-platform/main/src/Communication/SerialCommandHandler.cpp").read_text(encoding="utf-8")
     sensor_spec = (ROOT / "robot-docs/ROBOTAPI_SENSOR_SPEC.md").read_text(encoding="utf-8")
     platform_api = (ROOT / "robot-docs/ROBOT_PLATFORM_API.md").read_text(encoding="utf-8")
+    motor_mapper = (ROOT / "robot-platform/main/src/Services/Robot/MotorOutputMapper.cpp").read_text(encoding="utf-8")
 
     for needle in (
         "SENSOR_TRCT5000_FL_PIN  ROBOT_PIN_34",
@@ -99,6 +100,10 @@ def test_source_contract() -> None:
     require(recovery, "DEEP_SEARCH_SPEED = 45", "deep recovery escalation speed")
     assert "RECOVERY_BASE_SPEED = 80" not in recovery, "legacy immediate recovery spin still present"
     require(robot_api, "rawErr=%.2f filtErr=%.2f corr=%.2f", "Line5 tuning diagnostics")
+    require(robot_api, "static void _setLineMotors", "line-specific pair-aware motor output path")
+    require(robot_api, "MotorOutputMapper::mapSteeringPair", "Line5 pair-aware motor mapper usage")
+    require(motor_mapper, "dominantMapped", "pair-aware dominant wheel mapping")
+    require(motor_mapper, "calibrated / maxCal", "pair-aware steering ratio preservation")
     assert "analogRead(34)" not in diagnostic, "GPIO34 must remain exclusively owned by LineFarLeft"
     require(diagnostic, "Battery check: SKIPPED", "battery diagnostic skips unowned ADC path")
     require(follower, "LAST_DIRECTION_THRESHOLD = 0.25f", "recovery direction threshold")
@@ -158,6 +163,50 @@ def test_motor_mixer_direction_contract() -> None:
     assert left == right == 60, f"Zero error must drive straight: got L={left}, R={right}"
 
 
+def test_pair_aware_motor_mapping_examples() -> None:
+    min_drive = 65
+
+    def map_magnitude(logical: int) -> int:
+        if logical <= 0:
+            return 0
+        logical = max(1, min(100, logical))
+        mapped = min_drive + ((logical - 1) * (100 - min_drive) / 99)
+        return round(mapped)
+
+    def map_pair(left: int, right: int) -> tuple[int, int]:
+        if left == 0 and right == 0:
+            return 0, 0
+
+        left_cal = 0 if left == 0 else max(1.0, min(100.0, abs(left)))
+        right_cal = 0 if right == 0 else max(1.0, min(100.0, abs(right)))
+        max_cal = max(left_cal, right_cal)
+        dominant = map_magnitude(round(max_cal))
+
+        def side(logical: int, calibrated: float) -> int:
+            if logical == 0:
+                return 0
+            magnitude = round(dominant * calibrated / max_cal)
+            magnitude = max(min_drive, min(100, magnitude))
+            return -magnitude if logical < 0 else magnitude
+
+        return side(left, left_cal), side(right, right_cal)
+
+    assert map_pair(60, 60) == (86, 86)
+
+    left, right = map_pair(72, 48)
+    assert left == 90 and right == 65, (left, right)
+    assert left - right >= 20, "Pair-aware mapping must preserve useful steering authority"
+
+    left, right = map_pair(48, 72)
+    assert left == 65 and right == 90, (left, right)
+
+    left, right = map_pair(84, 36)
+    assert left == 94 and right == 65, (left, right)
+
+    left, right = map_pair(-45, 45)
+    assert left == -81 and right == 81, (left, right)
+
+
 def test_compiler_transport_channels_0_to_4() -> None:
     source = "\n".join(f"line_{channel} = read_line({channel})" for channel in range(5)) + "\n"
     with tempfile.TemporaryDirectory() as tmp:
@@ -176,6 +225,8 @@ def main() -> int:
     print("PASS: Line5 weighted estimator examples")
     test_motor_mixer_direction_contract()
     print("PASS: Line5 motor mixer steering direction")
+    test_pair_aware_motor_mapping_examples()
+    print("PASS: Line5 pair-aware physical motor mapping examples")
     test_compiler_transport_channels_0_to_4()
     print("PASS: compiler transports read_line channels 0..4")
     return 0
