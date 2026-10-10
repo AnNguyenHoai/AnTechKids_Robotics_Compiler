@@ -263,6 +263,49 @@ static void _setMotors(int leftSpeed, int rightSpeed) {
     _setMotorsRaw(mappedLeft, mappedRight);
 }
 
+// Line-following steering must preserve the differential between the two wheel
+// commands. Mapping each wheel independently into [minDrive, 100] compresses
+// that differential and makes a fast base speed nearly impossible to steer.
+static void _setLineMotors(int leftSpeed, int rightSpeed) {
+    const int logicalLeft = clampLogicalMotorCommand(leftSpeed);
+    const int logicalRight = clampLogicalMotorCommand(rightSpeed);
+
+    int mappedLeft = 0;
+    int mappedRight = 0;
+    MotorOutputMapper::mapSteeringPair(
+        logicalLeft,
+        logicalRight,
+        g_motionConfig.speedScale,
+        g_motionConfig.leftMotorScale,
+        g_motionConfig.rightMotorScale,
+        g_motionConfig.minSpeed,
+        mappedLeft,
+        mappedRight
+    );
+
+    if (g_motorMappingDiagnosticEnabled &&
+        (logicalLeft != g_lastMotorDiagLogicalLeft ||
+         logicalRight != g_lastMotorDiagLogicalRight ||
+         mappedLeft != g_lastMotorDiagMappedLeft ||
+         mappedRight != g_lastMotorDiagMappedRight)) {
+        const int pwmLeft = (int)(abs(mappedLeft) * g_motionConfig.pwmPerSpeed);
+        const int pwmRight = (int)(abs(mappedRight) * g_motionConfig.pwmPerSpeed);
+        Serial.printf(
+            "[MOTOR-DIAG][LINE] logical L=%d R=%d | minDrive=%d | mapped L=%d R=%d | pwm L=%d R=%d\n",
+            logicalLeft, logicalRight,
+            g_motionConfig.minSpeed,
+            mappedLeft, mappedRight,
+            pwmLeft, pwmRight
+        );
+        g_lastMotorDiagLogicalLeft = logicalLeft;
+        g_lastMotorDiagLogicalRight = logicalRight;
+        g_lastMotorDiagMappedLeft = mappedLeft;
+        g_lastMotorDiagMappedRight = mappedRight;
+    }
+
+    _setMotorsRaw(mappedLeft, mappedRight);
+}
+
 // ---- Heading Hold Controller ----
 static HeadingController g_headingController;
 
@@ -883,7 +926,7 @@ void LineBasis(int speed) {
     follower.update(mask, speed, left, right);
     const uint32_t controlDoneUs = micros();
 
-    setMotorsDirect(left, right);
+    _setLineMotors(left, right);
     const uint32_t outputDoneUs = micros();
 
     // Change-triggered: logs the exact synchronous software path for a new line state.
@@ -946,7 +989,7 @@ void LineMillisecond(int speed, int millisecond) {
         int right = 0;
 
         follower.update(mask, speed, left, right);
-        setMotorsDirect(left, right);
+        _setLineMotors(left, right);
         delay(20);
     }
 
@@ -984,7 +1027,7 @@ void LineIntersectionStop(int speed, int type) {
         uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
         int left, right;
         follower.update(mask, speed, left, right);
-        setMotorsDirect(left, right);
+        _setLineMotors(left, right);
         delay(20);
     }
 }
@@ -1009,7 +1052,7 @@ void LineTurnEncounterLine(int speed, int angle, int direction) {
         uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
         int left, right;
         follower.update(mask, speed, left, right);
-        setMotorsDirect(left, right);
+        _setLineMotors(left, right);
         if (mask != 0) break;
         delay(20);
     }
@@ -1034,7 +1077,7 @@ void LineForBmp(int speed, int degree) {
         uint8_t mask = static_cast<uint8_t>(GetTraceRaw(1));
         int left, right;
         follower.update(mask, speed, left, right);
-        setMotorsDirect(left, right);
+        _setLineMotors(left, right);
         delay(20);
     }
     Stop();
