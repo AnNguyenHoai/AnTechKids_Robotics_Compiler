@@ -39,6 +39,18 @@ class H26FSafetyTests(unittest.TestCase):
         violations = validate_instructions([ins(30, 0)], target_capabilities=["motion.basic"])
         self.assertTrue(any(v.rule == "unsupported_capability" for v in violations))
 
+    def test_robostudio_bridge_enforces_safety_gate(self):
+        bridge = (ROOT / "robot-compiler" / "compiler" / "robostudio_bridge.py").read_text(encoding="utf-8")
+        self.assertIn("from compiler.safety_validator import validate_program", bridge)
+        self.assertIn("violations = validate_program(program)", bridge)
+        self.assertIn("PROGRAM_OVERFLOW", bridge)
+
+    def test_firmware_program_load_failure_keeps_recovery_services_reachable(self):
+        main = (ROOT / "robot-platform" / "main" / "main.ino").read_text(encoding="utf-8")
+        self.assertIn("g_programLoadFailed = true", main)
+        self.assertIn("SAFE RECOVERY", main)
+        self.assertNotIn('BootLogger::log("ERROR", "Failed to load program. Halted.");', main)
+
     def test_resource_limit_is_contract_driven(self):
         resources = {
             "program": {"max_instructions": 1},
