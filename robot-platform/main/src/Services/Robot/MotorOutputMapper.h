@@ -16,6 +16,19 @@ class MotorOutputMapper {
 public:
     static int map(int logicalSpeed, float speedScale, float motorScale, int minDrive);
     static int mapMagnitude(int logicalMagnitude, float scale, int minDrive);
+
+    // Pair-aware mapping for differential steering. The stronger wheel owns
+    // the physical run-range mapping; the weaker wheel preserves the logical
+    // ratio as far as the measured minDrive boundary allows.
+    static void mapSteeringPair(
+        int logicalLeft,
+        int logicalRight,
+        float speedScale,
+        float leftMotorScale,
+        float rightMotorScale,
+        int minDrive,
+        int& mappedLeft,
+        int& mappedRight);
 };
 
 } // namespace RobotAPI
