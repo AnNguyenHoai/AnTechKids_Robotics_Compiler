@@ -10,10 +10,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
-_ROOT = Path(__file__).resolve().parents[2]
-_RESOURCE_MANIFEST = _ROOT / "packages" / "robot-isa" / "resource_contract.json"
-_CAPABILITY_MANIFEST = _ROOT / "packages" / "robot-isa" / "capability_model.json"
-_ISA_MANIFEST = _ROOT / "packages" / "robot-isa" / "canonical_isa.json"
+_MODULE = Path(__file__).resolve()
+_ROOT = _MODULE.parents[2]
+
+def _resolve_robot_isa_resource(name: str) -> Path:
+    """Resolve robot-isa contracts in source and packaged RoboStudio layouts."""
+    candidates = (
+        _ROOT / "packages" / "robot-isa" / name,
+        _ROOT / "runtime" / "resources" / "robot-isa" / name,
+        _MODULE.parent / "resources" / "robot-isa" / name,
+    )
+    for path in candidates:
+        if path.is_file():
+            return path
+    # Keep a deterministic path in the error for diagnostics.
+    return candidates[0]
+
+_RESOURCE_MANIFEST = _resolve_robot_isa_resource("resource_contract.json")
+_CAPABILITY_MANIFEST = _resolve_robot_isa_resource("capability_model.json")
+_ISA_MANIFEST = _resolve_robot_isa_resource("canonical_isa.json")
 
 
 @dataclass(frozen=True)
