@@ -101,6 +101,7 @@ def main():
         result=production_distribution.build_production_distribution(production_distribution.ProductionDistributionInputs(exe,resources,inputs/"VERSION",runtime_bin,runtime_platformio,compiler_root,frontend_root,firmware),dist)
         manifest=json.loads(result.manifest.read_text(encoding="utf-8"))
         check("contract endpoint packaged",(dist/"compiler"/"robostudio_bridge.py").is_file())
+        check("compiler safety resource packaged",(dist/"compiler"/"compiler"/"resources"/"robot-isa"/"resource_contract.json").is_file())
         check("frontend packaged",(dist/"compiler"/"frontend"/"rewriter.py").is_file())
         check("firmware packaged",(dist/"firmware"/"robot-platform"/"platformio.ini").is_file())
         check("bundled Python packaged",(dist/"runtime"/"bin"/"python.exe").is_file())
