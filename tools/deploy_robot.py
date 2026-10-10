@@ -16,6 +16,25 @@ def run(command:list[str],*,env:dict[str,str]|None=None,cwd:Path=ROOT,timeout:fl
  except DeploymentRuntimeError as exc:raise RuntimeError(str(exc)) from exc
  if r.returncode!=0:raise RuntimeError(f"Command failed with exit code {r.returncode}: {' '.join(command)}")
 
+def run_usb_upload_with_retry(command:list[str],*,workspace:Path,env:dict[str,str],port:str)->None:
+ """Run a USB upload with one recovery retry after transport failure.
+
+ The retry is intentionally bounded: it re-validates that the selected serial
+ port is still visible, then repeats the same conservative-speed upload. This
+ recovers common esptool tail/USB disconnect failures without hiding persistent
+ wiring, power or driver faults.
+ """
+ try:
+  run(command,cwd=workspace,env=env)
+  return
+ except RuntimeError as first:
+  print(f"WARNING: USB upload failed; attempting one recovery retry on {port}: {first}",flush=True)
+ try:
+  hardware_preflight.require_serial_port(port,base_env=env,timeout=30.0)
+ except hardware_preflight.HardwarePreflightError as exc:
+  raise RuntimeError(f"USB upload failed and {port} is no longer visible: {exc}") from exc
+ run(command,cwd=workspace,env=env)
+
 def infer_capabilities(header:Path)->list[str]:
  text=header.read_text(encoding="utf-8"); return sorted({"runtime.control",*(CAPABILITY_BY_OPCODE[o] for o in set(re.findall(r"Opcode::([A-Za-z0-9_]+)",text)) if o in CAPABILITY_BY_OPCODE)})
 
@@ -99,7 +118,8 @@ def flash_bootstrap(config_path:Path,port:str|None)->int:
  try:
   apply_user_hardware_config(workspace)
   command=platformio_command("run","-e","esp32dev_bootstrap","-t","upload","--upload-port",selected_port)
-  run(command,cwd=workspace,env=env);print(f"FIRST-FLASH BOOTSTRAP PASS ({selected_port})");return 0
+  run_usb_upload_with_retry(command,workspace=workspace,env=env,port=selected_port)
+  print(f"FIRST-FLASH BOOTSTRAP PASS ({selected_port})");return 0
  finally:cleanup_firmware_run(workspace,project)
 
 def http_ota_upload(host:str,password:str,firmware:Path,timeout:float=180.0)->str:
@@ -172,7 +192,9 @@ def main()->int:
   if ssid:env.update({"ROBOT_WIFI_SSID":ssid,"ROBOT_WIFI_PASSWORD":wifi_password})
   if ota_password:env["ROBOT_OTA_PASSWORD"]=ota_password
   if a.mode=="build":run(platformio_command("run","-e","esp32dev"),cwd=workspace,env=env,timeout=a.process_timeout)
-  elif a.mode=="usb":run(platformio_command("run","-e","esp32dev","-t","upload","--upload-port",selected_usb_port),cwd=workspace,env=env,timeout=a.process_timeout)
+  elif a.mode=="usb":
+   command=platformio_command("run","-e","esp32dev","-t","upload","--upload-port",selected_usb_port)
+   run_usb_upload_with_retry(command,workspace=workspace,env=env,port=selected_usb_port)
   else:
    preflight_robot(a.robot);run(platformio_command("run","-e","esp32dev_ota"),cwd=workspace,env=env,timeout=a.process_timeout);firmware=build_isolation.firmware_path(project,"esp32dev_ota");http_ota_upload(a.robot,ota_password,firmware);wait_for_robot(a.robot,a.verify_timeout)
  finally:cleanup_firmware_run(workspace,project)
