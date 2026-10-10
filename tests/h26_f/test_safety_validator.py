@@ -43,7 +43,7 @@ class H26FSafetyTests(unittest.TestCase):
         bridge = (ROOT / "robot-compiler" / "compiler" / "robostudio_bridge.py").read_text(encoding="utf-8")
         self.assertIn("from compiler.safety_validator import validate_program", bridge)
         self.assertIn("violations = validate_program(program)", bridge)
-        self.assertIn("PROGRAM_OVERFLOW", bridge)
+        self.assertIn("code=first.rule.upper()", bridge)
 
     def test_firmware_program_load_failure_keeps_recovery_services_reachable(self):
         main = (ROOT / "robot-platform" / "main" / "main.ino").read_text(encoding="utf-8")
