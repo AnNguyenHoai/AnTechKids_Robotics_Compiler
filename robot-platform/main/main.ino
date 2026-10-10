@@ -52,6 +52,7 @@ HeadingEstimator g_headingEstimator;
 bool g_robotReady = false;
 bool g_manualStartEnabled = false;
 bool g_vmStarted = true;
+bool g_programLoadFailed = false;
 
 void setup() {
     Serial.begin(115200);
@@ -66,12 +67,18 @@ void setup() {
     BootLogger::log("BOOT", "Diagnostics Complete");
 
     if (!ProgramLoader::LoadFromGenerated(program)) {
-        BootLogger::log("ERROR", "Failed to load program. Halted.");
-        while (1) { }
+        g_programLoadFailed = true;
+        vm.SetRunning(false);
+        RobotAPI::Stop();
+        BootLogger::logFormat(
+            "ERROR",
+            "Student program load failed (code=%d). Entering SAFE RECOVERY; network/OTA remain available.",
+            program.GetErrorCode()
+        );
+    } else {
+        BootLogger::log("BOOT", "Binary Loaded");
+        vm.LoadProgram(&program);
     }
-    BootLogger::log("BOOT", "Binary Loaded");
-
-    vm.LoadProgram(&program);
 
 #ifdef DIAGNOSTIC_MANUAL_START
     g_manualStartEnabled = true;
@@ -151,6 +158,9 @@ void setup() {
     }
 
     BootLogger::log("EXEC", "System Ready. Type 'help' for commands.");
+    if (g_programLoadFailed) {
+        BootLogger::log("SAFE", "Student VM disabled because program load failed. OTA/USB recovery is available.");
+    }
     BootLogger::log("INFO", "Default mode: VM. Type 'mode behavior' to switch.");
 }
 
@@ -190,7 +200,11 @@ void loop() {
 
     DevelopmentConsole::instance().update();
 
-    if (useBehaviorEngine) {
+    if (g_programLoadFailed) {
+        // Keep the robot inert but continue servicing serial, network,
+        // discovery and OTA so a bad student program can always be replaced.
+        RobotAPI::Stop();
+    } else if (useBehaviorEngine) {
         scheduler.update();
     } else {
 #ifdef DIAGNOSTIC_MANUAL_START
