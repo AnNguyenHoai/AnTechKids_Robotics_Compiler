@@ -63,6 +63,7 @@ _bootstrap_import_paths()
 from compiler.compiler import RobotCompiler
 from compiler.emitter import HeaderEmitter
 from compiler.error import CompilerError
+from compiler.safety_validator import validate_program
 from frontend.rewriter import rewrite
 
 CONTRACT_SCHEMA = "antechkids.robostudio.compiler-contract"
@@ -158,6 +159,14 @@ def compile_request(request: CompileRequest) -> CompileResponse:
 
         compiler = RobotCompiler(target=request.target)
         program = compiler.compile(compiler_source)
+        violations = validate_program(program)
+        if violations:
+            first = violations[0]
+            detail = "; ".join(f"[{v.rule}] {v.message}" for v in violations)
+            raise CompilerError(
+                detail,
+                code=first.rule.upper(),
+            )
         HeaderEmitter().emit(program, output)
         report_payload = {
             "schema": CONTRACT_SCHEMA,
