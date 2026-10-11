@@ -89,4 +89,54 @@ void MotorOutputMapper::mapSteeringPair(
     mappedRight = mapLineSide(logicalRight, rightMotorScale);
 }
 
+namespace {
+constexpr int LEFT_RUN_MIN = 40;
+constexpr int RIGHT_RUN_MIN = 50;
+constexpr int RESTART_BOOST = 65;
+constexpr uint32_t RESTART_BOOST_MS = 60;
+
+int sustainableCommand(int requested, int runMin, int otherRequested, int otherRunMin) {
+    if (requested == 0) return 0;
+    const int magnitude = requested < 0 ? -requested : requested;
+    const int otherMagnitude = otherRequested < 0 ? -otherRequested : otherRequested;
+    // A weak inner wheel would hum without turning. Stop it and let the
+    // sufficiently driven outer wheel pivot the chassis.
+    if (magnitude < runMin && otherMagnitude >= otherRunMin) return 0;
+    const int sustainable = magnitude < runMin ? runMin : magnitude;
+    return requested < 0 ? -sustainable : sustainable;
+}
+
+} // namespace
+
+void LineMotorOperatingPolicy::reset() {
+    _left = Wheel{};
+    _right = Wheel{};
+}
+
+void LineMotorOperatingPolicy::apply(int requestedLeft, int requestedRight,
+                                    uint32_t nowMs, int& outputLeft, int& outputRight) {
+    const int left = sustainableCommand(requestedLeft, LEFT_RUN_MIN,
+                                        requestedRight, RIGHT_RUN_MIN);
+    const int right = sustainableCommand(requestedRight, RIGHT_RUN_MIN,
+                                         requestedLeft, LEFT_RUN_MIN);
+    auto assistRestart = [nowMs](int target, Wheel& wheel) -> int {
+        if (target == 0) {
+            wheel.running = false;
+            wheel.restartAtMs = 0;
+            return 0;
+        }
+        if (!wheel.running) {
+            wheel.running = true;
+            wheel.restartAtMs = nowMs;
+        }
+        if ((uint32_t)(nowMs - wheel.restartAtMs) < RESTART_BOOST_MS) {
+            const int magnitude = target < 0 ? -target : target;
+            if (magnitude < RESTART_BOOST) return target < 0 ? -RESTART_BOOST : RESTART_BOOST;
+        }
+        return target;
+    };
+    outputLeft = assistRestart(left, _left);
+    outputRight = assistRestart(right, _right);
+}
+
 } // namespace RobotAPI
