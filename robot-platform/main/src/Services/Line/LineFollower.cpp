@@ -1,6 +1,7 @@
 #include "LineFollower.h"
 #include "LineErrorEstimator.h"
 #include "MotorMixer.h"
+#include "LineSensorLayout.h"
 #include <Arduino.h>
 #include "../Robot/MotionConfig.h"
 #include <math.h>
@@ -9,6 +10,9 @@ namespace {
 constexpr float LAST_DIRECTION_THRESHOLD = 0.25f;
 constexpr float ERROR_FILTER_ALPHA = 0.70f;
 constexpr float GAP_DIRECTIONAL_THRESHOLD = 0.25f;
+// FAR-only / FAR+adjacent means the line has reached the edge of the array.
+// Treat it as a corner event rather than waiting for generic LOST recovery.
+constexpr uint32_t SHARP_CORNER_HOLD_MS = 350;
 }
 
 LineFollower& LineFollower::instance() {
@@ -28,6 +32,8 @@ LineFollower::LineFollower()
       _lastLineDirection(RecoveryStrategy::DIR_UNKNOWN),
       _lastControlUpdate(0),
       _wasRecovering(false),
+      _sharpDirection(0),
+      _sharpStartedMs(0),
       _filteredError(0.0f),
       _filterInitialized(false),
       _lastRawError(0.0f),
@@ -56,6 +62,8 @@ void LineFollower::reset() {
     _lastLineDirection = RecoveryStrategy::DIR_UNKNOWN;
     _lastControlUpdate = 0;
     _wasRecovering = false;
+    _sharpDirection = 0;
+    _sharpStartedMs = 0;
     _filteredError = 0.0f;
     _filterInitialized = false;
     _lastRawError = 0.0f;
@@ -88,6 +96,8 @@ void LineFollower::stop() {
     _stateMachine.reset();
     _pid.reset();
     _bmpActive = false;
+    _sharpDirection = 0;
+    _sharpStartedMs = 0;
     _filteredError = 0.0f;
     _filterInitialized = false;
     _lastRawError = 0.0f;
@@ -129,6 +139,68 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
     }
 
     bool intersection = _intersectionDetector.update(mask);
+
+    // Sharp-corner assist:
+    // - Enter immediately when the line reaches a FAR eye without center/other
+    //   side evidence. This is the earliest reliable indication that normal
+    //   proportional following no longer has enough curvature authority.
+    // - If the FAR eye is followed by 00000, keep turning in the same direction
+    //   instead of paying the 40 ms LOST debounce + 300 ms soft-recovery delay.
+    // - Exit as soon as any non-zero mask no longer satisfies the same sharp
+    //   edge condition. A bounded timeout prevents an endless turn if the line
+    //   is genuinely gone.
+    const uint8_t cleanMask = LineSensorLayout::sanitizeMask(mask);
+    const bool sharpLeftObserved =
+        (cleanMask & LineSensorLayout::MASK_FAR_LEFT) != 0 &&
+        (cleanMask & (LineSensorLayout::MASK_CENTER |
+                      LineSensorLayout::MASK_RIGHT |
+                      LineSensorLayout::MASK_FAR_RIGHT)) == 0;
+    const bool sharpRightObserved =
+        (cleanMask & LineSensorLayout::MASK_FAR_RIGHT) != 0 &&
+        (cleanMask & (LineSensorLayout::MASK_CENTER |
+                      LineSensorLayout::MASK_LEFT |
+                      LineSensorLayout::MASK_FAR_LEFT)) == 0;
+
+    if (!intersection) {
+        if (sharpLeftObserved) {
+            _sharpDirection = RecoveryStrategy::DIR_LEFT;
+            _sharpStartedMs = millis();
+        } else if (sharpRightObserved) {
+            _sharpDirection = RecoveryStrategy::DIR_RIGHT;
+            _sharpStartedMs = millis();
+        }
+    }
+
+    if (_sharpDirection != 0) {
+        const uint32_t sharpAgeMs = millis() - _sharpStartedMs;
+        const bool sameEdgeVisible =
+            (_sharpDirection == RecoveryStrategy::DIR_LEFT && sharpLeftObserved) ||
+            (_sharpDirection == RecoveryStrategy::DIR_RIGHT && sharpRightObserved);
+        const bool continueThroughCornerGap =
+            cleanMask == 0 && sharpAgeMs <= SHARP_CORNER_HOLD_MS;
+
+        if (sameEdgeVisible || continueThroughCornerGap) {
+            // One-wheel pivot around the inner wheel. The Line5 pair mapper
+            // keeps the outer wheel above the measured start threshold while
+            // preserving a true zero on the inner wheel.
+            const int outerSpeed = constrain(speed, 0, 100);
+            _lastCorrection = (_sharpDirection == RecoveryStrategy::DIR_LEFT) ? -100.0f : 100.0f;
+            if (_sharpDirection == RecoveryStrategy::DIR_LEFT) {
+                leftMotor = 0;
+                rightMotor = outerSpeed;
+            } else {
+                leftMotor = outerSpeed;
+                rightMotor = 0;
+            }
+            return true;
+        }
+
+        // Reacquired line, or sharp hold expired. Clear assist and let the
+        // normal state machine/PID decide from the current sample.
+        _sharpDirection = 0;
+        _sharpStartedMs = 0;
+    }
+
     _stateMachine.update(mask, intersection, _turnRequested, _stopAtIntersectionRequested);
     FollowerState fs = _stateMachine.getState();
     bool recovering = (fs == FollowerState::LOST || fs == FollowerState::SEARCHING);
