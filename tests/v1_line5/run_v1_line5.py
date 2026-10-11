@@ -367,6 +367,8 @@ def main() -> int:
     print("PASS: Line5 motor mixer steering direction")
     test_pair_aware_motor_mapping_examples()
     print("PASS: Line5 direct motor mapping examples")
+    test_line_motor_operating_region_contract()
+    print("PASS: Line5 motor operating region contract")
     test_startup_boost_and_progressive_schedule()
     print("PASS: Line5 startup boost and progressive speed schedule")
     test_two_tick_direction_persistence()
