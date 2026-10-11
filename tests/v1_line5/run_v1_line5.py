@@ -101,6 +101,11 @@ def test_source_contract() -> None:
     require(robot_api, "_runLineControlTick(g_lineControlSpeed)", "background Line5 control tick")
     require(robot_api, "_lineLeaseExpired(nowMs)", "Line5 lease expiry")
     require(robot_api, "g_motionControlMode == MotionControlMode::Line && g_lineControlActive", "direct-motor Line5 ownership release")
+    require(robot_api, "void setMotorsRawDiagnostic(int left, int right)", "raw motor diagnostic API")
+    require(robot_api, "_setMotorsRaw(rawLeft, rawRight)", "raw motor diagnostic bypasses mapping")
+    require(serial, 'input.startsWith("motor raw ")', "serial raw motor command")
+    require(serial, "RobotAPI::setMotorsRawDiagnostic(left, right)", "serial raw motor command dispatch")
+    assert "MotorOutputMapper::map(" not in robot_api[robot_api.index("void setMotorsRawDiagnostic"):robot_api.index("void setMotorsDirect")], "raw motor diagnostic must bypass mapper"
     require(follower, "if (recovering && !_wasRecovering)", "recovery phase resets on real LOST edge")
     require(recovery, "SOFT_INNER_SPEED = 25", "soft recovery inner wheel speed")
     require(recovery, "SOFT_OUTER_SPEED = 65", "soft recovery outer wheel speed")
