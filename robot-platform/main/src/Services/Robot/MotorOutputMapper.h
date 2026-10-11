@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 namespace RobotAPI {
 
@@ -30,6 +31,23 @@ public:
         int minDrive,
         int& mappedLeft,
         int& mappedRight);
+};
+
+// Stateful, Line5-only actuator policy. Do not use for generic motion.
+// A wheel that must rotate stays above its measured sustainable range;
+// a deliberately slowed inner wheel may instead be stopped entirely.
+class LineMotorOperatingPolicy {
+public:
+    void reset();
+    void apply(int requestedLeft, int requestedRight, uint32_t nowMs,
+               int& outputLeft, int& outputRight);
+private:
+    struct Wheel {
+        bool running = false;
+        uint32_t restartAtMs = 0;
+    };
+    Wheel _left;
+    Wheel _right;
 };
 
 } // namespace RobotAPI

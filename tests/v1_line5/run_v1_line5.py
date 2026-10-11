@@ -216,6 +216,51 @@ def test_pair_aware_motor_mapping_examples() -> None:
     assert map_pair(60, 60) == (60, 60)
 
 
+def test_line_motor_operating_region_contract() -> None:
+    header = (ROOT / "robot-platform/main/src/Services/Robot/MotorOutputMapper.h").read_text(encoding="utf-8")
+    mapper = (ROOT / "robot-platform/main/src/Services/Robot/MotorOutputMapper.cpp").read_text(encoding="utf-8")
+    api = (ROOT / "robot-platform/main/src/Services/Robot/RobotAPI.cpp").read_text(encoding="utf-8")
+    require(header, "class LineMotorOperatingPolicy", "Line-only stateful output policy")
+    require(mapper, "LEFT_RUN_MIN = 40", "left measured run floor")
+    require(mapper, "RIGHT_RUN_MIN = 50", "right measured run floor")
+    require(mapper, "RESTART_BOOST_MS = 60", "bounded per-wheel restart")
+    require(mapper, "INNER_FLOOR_MARGIN = 12", "mild steering floor margin")
+    require(mapper, "outer > innerFloor", "do not invert commanded yaw")
+    require(mapper, "if (target == 0)", "preserve true stop")
+    require(api, "g_lineMotorPolicy.apply(", "Line5 actuator policy invoked")
+    require(api, "g_lineMotorPolicy.reset()", "Line5 policy reset at motion boundaries")
+    assert "g_lineMotorPolicy.apply(" not in api[api.index("static void _setMotors("):api.index("static void _setLineMotors(")], "general Forward/Backward must stay unchanged")
+
+    def sustainable(left: int, right: int) -> tuple[int, int]:
+        if left == right == 0:
+            return 0, 0
+        if left and abs(left) == abs(right):
+            common = max(abs(left), 50)
+            return (-common if left < 0 else common), (-common if right < 0 else common)
+        left_outer = abs(left) > abs(right)
+        outer = max(abs(left if left_outer else right), 40 if left_outer else 50)
+        inner = abs(right if left_outer else left)
+        floor = 50 if left_outer else 40
+        if 0 < inner < floor:
+            inner = floor if inner + 12 >= floor and outer > floor else 0
+        lmag, rmag = (outer, inner) if left_outer else (inner, outer)
+        return (-lmag if left < 0 else lmag), (-rmag if right < 0 else rmag)
+
+    assert sustainable(60, 60) == (60, 60)
+    assert sustainable(52, 32) == (52, 0)
+    assert sustainable(32, 52) == (0, 52)
+    assert sustainable(57, 45) == (57, 50)  # mild correction keeps inner spinning
+    assert sustainable(45, 57) == (45, 57)  # left already above reliable floor
+    assert sustainable(48, 40) == (48, 0)   # never invert requested right yaw
+    assert sustainable(36, 24) == (40, 0)
+    assert sustainable(24, 36) == (0, 50)
+    assert sustainable(35, 35) == (50, 50)
+    assert sustainable(-45, 45) == (-50, 50)
+    assert sustainable(0, 60) == (0, 60)
+    assert sustainable(60, 0) == (60, 0)
+    assert sustainable(0, 0) == (0, 0)
+
+
 def test_startup_boost_and_progressive_schedule() -> None:
     start_boost = 65
 
@@ -332,6 +377,8 @@ def main() -> int:
     print("PASS: Line5 motor mixer steering direction")
     test_pair_aware_motor_mapping_examples()
     print("PASS: Line5 direct motor mapping examples")
+    test_line_motor_operating_region_contract()
+    print("PASS: Line5 motor operating region contract")
     test_startup_boost_and_progressive_schedule()
     print("PASS: Line5 startup boost and progressive speed schedule")
     test_two_tick_direction_persistence()
