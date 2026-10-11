@@ -95,15 +95,44 @@ constexpr int RIGHT_RUN_MIN = 50;
 constexpr int RESTART_BOOST = 65;
 constexpr uint32_t RESTART_BOOST_MS = 60;
 
-int sustainableCommand(int requested, int runMin, int otherRequested, int otherRunMin) {
-    if (requested == 0) return 0;
-    const int magnitude = requested < 0 ? -requested : requested;
-    const int otherMagnitude = otherRequested < 0 ? -otherRequested : otherRequested;
-    // A weak inner wheel would hum without turning. Stop it and let the
-    // sufficiently driven outer wheel pivot the chassis.
-    if (magnitude < runMin && otherMagnitude >= otherRunMin) return 0;
-    const int sustainable = magnitude < runMin ? runMin : magnitude;
-    return requested < 0 ? -sustainable : sustainable;
+constexpr int INNER_FLOOR_MARGIN = 12;
+
+// Preserve the commanded outer/inner ordering instead of naively applying
+// two independent floors, which can invert yaw when L=48/R=40.
+void sustainablePair(int left, int right, int& outputLeft, int& outputRight) {
+    const int leftMag = left < 0 ? -left : left;
+    const int rightMag = right < 0 ? -right : right;
+    if (leftMag == 0 && rightMag == 0) {
+        outputLeft = outputRight = 0;
+        return;
+    }
+    if (leftMag == rightMag && leftMag != 0) {
+        // Straight motion and same-magnitude opposite-direction turns must not
+        // acquire an artificial left/right imbalance from unlike motor floors.
+        const int equalFloor = RIGHT_RUN_MIN;
+        const int common = leftMag < equalFloor ? equalFloor : leftMag;
+        outputLeft = left < 0 ? -common : common;
+        outputRight = right < 0 ? -common : common;
+        return;
+    }
+    const bool leftOuter = leftMag > rightMag;
+    const int outerRequested = leftOuter ? leftMag : rightMag;
+    const int innerRequested = leftOuter ? rightMag : leftMag;
+    const int outerFloor = leftOuter ? LEFT_RUN_MIN : RIGHT_RUN_MIN;
+    const int innerFloor = leftOuter ? RIGHT_RUN_MIN : LEFT_RUN_MIN;
+    const int outer = outerRequested < outerFloor ? outerFloor : outerRequested;
+
+    int inner = innerRequested;
+    if (inner != 0 && inner < innerFloor) {
+        // Small steering differences: keep the inner wheel moving reliably.
+        // Strong steering or a floor that would invert yaw: true inner stop.
+        inner = (inner + INNER_FLOOR_MARGIN >= innerFloor && outer > innerFloor)
+                    ? innerFloor : 0;
+    }
+    const int leftOutputMag = leftOuter ? outer : inner;
+    const int rightOutputMag = leftOuter ? inner : outer;
+    outputLeft = left < 0 ? -leftOutputMag : leftOutputMag;
+    outputRight = right < 0 ? -rightOutputMag : rightOutputMag;
 }
 
 } // namespace
@@ -115,10 +144,9 @@ void LineMotorOperatingPolicy::reset() {
 
 void LineMotorOperatingPolicy::apply(int requestedLeft, int requestedRight,
                                     uint32_t nowMs, int& outputLeft, int& outputRight) {
-    const int left = sustainableCommand(requestedLeft, LEFT_RUN_MIN,
-                                        requestedRight, RIGHT_RUN_MIN);
-    const int right = sustainableCommand(requestedRight, RIGHT_RUN_MIN,
-                                         requestedLeft, LEFT_RUN_MIN);
+    int left = 0;
+    int right = 0;
+    sustainablePair(requestedLeft, requestedRight, left, right);
     auto assistRestart = [nowMs](int target, Wheel& wheel) -> int {
         if (target == 0) {
             wheel.running = false;
