@@ -100,6 +100,7 @@ def test_source_contract() -> None:
     require(recovery, "DEEP_SEARCH_SPEED = 45", "deep recovery escalation speed")
     assert "RECOVERY_BASE_SPEED = 80" not in recovery, "legacy immediate recovery spin still present"
     require(robot_api, "rawErr=%.2f filtErr=%.2f corr=%.2f", "Line5 tuning diagnostics")
+    require(robot_api, "(unsigned long)loopDtUs", "Line5 response diagnostic loop timing argument")
     require(robot_api, "static void _setLineMotors", "line-specific pair-aware motor output path")
     require(robot_api, "MotorOutputMapper::mapSteeringPair", "Line5 pair-aware motor mapper usage")
     require(motor_mapper, "dominantMapped", "pair-aware dominant wheel mapping")
