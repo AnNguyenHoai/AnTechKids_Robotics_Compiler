@@ -46,6 +46,7 @@ void SerialCommandHandler::handle() {
         Serial.println("  config set <key> <value> - set motion config");
         Serial.println("  config save         - save motion config");
         Serial.println("  speed <left> <right> - set motor speeds directly");
+        Serial.println("  motor raw <left> <right> - RAW motor test: bypass minSpeed/scale/calibration");
         Serial.println("  sensor show         - show sensor config");
         Serial.println("  sensor set <key> <value> - set sensor config");
         Serial.println("  behavior list       - list registered behaviors");
@@ -163,6 +164,21 @@ void SerialCommandHandler::handle() {
     else if (input.startsWith("config save")) {
         RobotAPI::saveMotionConfigToStorage();
         Serial.println("Config saved.");
+    }
+    else if (input.startsWith("motor raw ")) {
+        String rest = input.substring(10);
+        int space = rest.indexOf(' ');
+        if (space == -1) {
+            Serial.println("Usage: motor raw <left> <right>");
+            return;
+        }
+        int left = rest.substring(0, space).toInt();
+        int right = rest.substring(space + 1).toInt();
+        if (left < -100 || left > 100 || right < -100 || right > 100) {
+            Serial.println("Error: raw motor values must be between -100 and 100");
+            return;
+        }
+        RobotAPI::setMotorsRawDiagnostic(left, right);
     }
     else if (input.startsWith("speed ")) {
         String rest = input.substring(6);
