@@ -938,6 +938,7 @@ void LineBasis(int speed) {
             (unsigned long)t0,
             (unsigned)mask,
             (previous == 0xFF) ? "---" : String(previous).c_str(),
+            (unsigned long)loopDtUs,
             follower.getLastRawError(),
             follower.getLastFilteredError(),
             follower.getLastCorrection(),
