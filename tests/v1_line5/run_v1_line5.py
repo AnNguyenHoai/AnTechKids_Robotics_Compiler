@@ -250,7 +250,7 @@ def test_line_motor_operating_region_contract() -> None:
     assert sustainable(52, 32) == (52, 0)
     assert sustainable(32, 52) == (0, 52)
     assert sustainable(57, 45) == (57, 50)  # mild correction keeps inner spinning
-    assert sustainable(45, 57) == (40, 57)  # left already above reliable floor
+    assert sustainable(45, 57) == (45, 57)  # left already above reliable floor
     assert sustainable(48, 40) == (48, 0)   # never invert requested right yaw
     assert sustainable(36, 24) == (40, 0)
     assert sustainable(24, 36) == (0, 50)
