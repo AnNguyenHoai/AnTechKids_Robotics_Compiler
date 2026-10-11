@@ -118,6 +118,7 @@ def test_source_contract() -> None:
     require(robot_api, "MotorOutputMapper::mapSteeringPair", "Line5 pair-aware motor mapper usage")
     require(motor_mapper, "dominantMapped", "pair-aware dominant wheel mapping")
     require(motor_mapper, "calibrated / maxCal", "pair-aware steering ratio preservation")
+    assert "if (magnitude < minDrive) magnitude = minDrive;" not in motor_mapper[motor_mapper.index("void MotorOutputMapper::mapSteeringPair"):], "Line5 inner wheel must not be floored to minDrive"
     assert "analogRead(34)" not in diagnostic, "GPIO34 must remain exclusively owned by LineFarLeft"
     require(diagnostic, "Battery check: SKIPPED", "battery diagnostic skips unowned ADC path")
     require(follower, "LAST_DIRECTION_THRESHOLD = 0.25f", "recovery direction threshold")
@@ -187,20 +188,22 @@ def test_pair_aware_motor_mapping_examples() -> None:
         mapped = min_drive + ((logical - 1) * (100 - min_drive) / 99)
         return round(mapped)
 
-    def map_pair(left: int, right: int) -> tuple[int, int]:
+    def map_pair(left: int, right: int, speed_scale: float = 1.0) -> tuple[int, int]:
         if left == 0 and right == 0:
             return 0, 0
 
-        left_cal = 0 if left == 0 else max(1.0, min(100.0, abs(left)))
-        right_cal = 0 if right == 0 else max(1.0, min(100.0, abs(right)))
+        left_cal = 0 if left == 0 else max(1.0, min(100.0, abs(left) * speed_scale))
+        right_cal = 0 if right == 0 else max(1.0, min(100.0, abs(right) * speed_scale))
         max_cal = max(left_cal, right_cal)
         dominant = map_magnitude(round(max_cal))
 
         def side(logical: int, calibrated: float) -> int:
             if logical == 0:
                 return 0
+            # Dominant wheel remains in the physical run/start range, while
+            # the inner wheel preserves the ratio below minDrive for steering.
             magnitude = round(dominant * calibrated / max_cal)
-            magnitude = max(min_drive, min(100, magnitude))
+            magnitude = max(0, min(100, magnitude))
             return -magnitude if logical < 0 else magnitude
 
         return side(left, left_cal), side(right, right_cal)
@@ -208,18 +211,25 @@ def test_pair_aware_motor_mapping_examples() -> None:
     assert map_pair(60, 60) == (86, 86)
 
     left, right = map_pair(72, 48)
-    assert left == 90 and right == 65, (left, right)
-    assert left - right >= 20, "Pair-aware mapping must preserve useful steering authority"
+    assert left == 90 and right == 60, (left, right)
+    assert left - right == 30, "Inner wheel must preserve steering ratio below minDrive"
 
     left, right = map_pair(48, 72)
-    assert left == 65 and right == 90, (left, right)
+    assert left == 60 and right == 90, (left, right)
 
     left, right = map_pair(84, 36)
-    assert left == 94 and right == 65, (left, right)
+    assert left == 94 and right == 40, (left, right)
+    assert right < min_drive, "Sharp turn inner wheel must be allowed below minDrive"
 
     left, right = map_pair(-45, 45)
     assert left == -81 and right == 81, (left, right)
 
+    # Physical test configuration used during V1 validation: speedScale=0.5.
+    # Center remains above measured ~65 start threshold, while sharp-turn inner
+    # wheel can drop into the measured running/coast region.
+    assert map_pair(60, 60, 0.5) == (75, 75)
+    assert map_pair(72, 48, 0.5) == (77, 51)
+    assert map_pair(84, 36, 0.5) == (79, 34)
 
 def test_compiler_transport_channels_0_to_4() -> None:
     source = "\n".join(f"line_{channel} = read_line({channel})" for channel in range(5)) + "\n"
