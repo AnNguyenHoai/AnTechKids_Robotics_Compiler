@@ -61,59 +61,32 @@ void MotorOutputMapper::mapSteeringPair(
     logicalLeft = clampLogicalMotorCommand(logicalLeft);
     logicalRight = clampLogicalMotorCommand(logicalRight);
 
-    if (logicalLeft == MOTOR_STOP && logicalRight == MOTOR_STOP) {
-        mappedLeft = MOTOR_STOP;
-        mappedRight = MOTOR_STOP;
-        return;
-    }
+    // Line5 deliberately does NOT use the general-motion [minDrive,100]
+    // remap. Real-robot measurements show ~65 is needed to start from rest,
+    // but once moving the motors can run lower (L~40, R~50). Lifting every
+    // steering command into [65,100] destroys speed resolution and produces
+    // limit-cycle zigzag. Startup torque is handled separately by RobotAPI.
+    (void)speedScale;
+    (void)minDrive;
 
-    if (minDrive < 0) minDrive = 0;
-    if (minDrive > 100) minDrive = 100;
-    if (speedScale < 0.0f) speedScale = 0.0f;
     if (leftMotorScale < 0.0f) leftMotorScale = 0.0f;
     if (rightMotorScale < 0.0f) rightMotorScale = 0.0f;
 
-    auto calibratedMagnitude = [&](int logical, float motorScale) -> float {
-        if (logical == MOTOR_STOP) return 0.0f;
-        float magnitude = (float)(logical < 0 ? -logical : logical);
-        float calibrated = magnitude * speedScale * motorScale;
-        // Preserve H23-B's non-zero run guarantee even when calibration is tiny.
-        if (calibrated < 1.0f) calibrated = 1.0f;
-        if (calibrated > 100.0f) calibrated = 100.0f;
-        return calibrated;
-    };
-
-    const float leftCal = calibratedMagnitude(logicalLeft, leftMotorScale);
-    const float rightCal = calibratedMagnitude(logicalRight, rightMotorScale);
-    const float maxCal = leftCal > rightCal ? leftCal : rightCal;
-
-    if (maxCal <= 0.0f) {
-        mappedLeft = mappedRight = MOTOR_STOP;
-        return;
-    }
-
-    // Only the dominant wheel is lifted into the measured start/run range.
-    // The inner wheel MUST preserve the steering ratio all the way toward zero.
-    // Physical tests show both TT motors need about 65 to start from rest, but
-    // once moving they can continue below that threshold (L~40, R~50). Flooring
-    // both wheels to minDrive destroys sharp-turn authority (e.g. 84/36 became
-    // 94/65). Keeping the dominant wheel >= minDrive guarantees propulsion/
-    // restart while allowing the inner wheel to slow deeply or stop for turns.
-    const int dominantLogical = (int)lroundf(maxCal);
-    const int dominantMapped = mapMagnitude(dominantLogical, 1.0f, minDrive);
-
-    auto mapSide = [&](int logical, float calibrated) -> int {
+    auto mapLineSide = [](int logical, float motorScale) -> int {
         if (logical == MOTOR_STOP) return MOTOR_STOP;
 
-        int magnitude = (int)lroundf((float)dominantMapped * (calibrated / maxCal));
+        float calibrated = (float)(logical < 0 ? -logical : logical) * motorScale;
+        if (calibrated > 100.0f) calibrated = 100.0f;
+
+        int magnitude = (int)lroundf(calibrated);
         if (magnitude < 0) magnitude = 0;
         if (magnitude > 100) magnitude = 100;
 
         return logical < 0 ? -magnitude : magnitude;
     };
 
-    mappedLeft = mapSide(logicalLeft, leftCal);
-    mappedRight = mapSide(logicalRight, rightCal);
+    mappedLeft = mapLineSide(logicalLeft, leftMotorScale);
+    mappedRight = mapLineSide(logicalRight, rightMotorScale);
 }
 
 } // namespace RobotAPI
