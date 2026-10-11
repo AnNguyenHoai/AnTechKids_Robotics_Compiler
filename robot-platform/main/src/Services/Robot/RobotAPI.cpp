@@ -87,6 +87,7 @@ static int g_lastMotorDiagMappedRight = 1000;
 constexpr int LINE_START_BOOST_SPEED = 65;
 constexpr uint32_t LINE_START_BOOST_MS = 60;
 static uint32_t g_lineStartupBoostUntilMs = 0;
+static LineMotorOperatingPolicy g_lineMotorPolicy;
 // ---- STOP Reason Diagnostics ----
 enum StopReason {
     STOP_REASON_UNKNOWN = 0,
@@ -306,6 +307,14 @@ static void _setLineMotors(int leftSpeed, int rightSpeed) {
 
     mappedLeft = applyStartupBoost(mappedLeft);
     mappedRight = applyStartupBoost(mappedRight);
+    // Per-wheel sustainable region and bounded restart kick; applies to all
+    // Line5 paths (normal steering, recovery, and sharp corners) only.
+    int sustainableLeft = 0;
+    int sustainableRight = 0;
+    g_lineMotorPolicy.apply(mappedLeft, mappedRight, millis(),
+                            sustainableLeft, sustainableRight);
+    mappedLeft = sustainableLeft;
+    mappedRight = sustainableRight;
 
     if (g_motorMappingDiagnosticEnabled &&
         (logicalLeft != g_lastMotorDiagLogicalLeft ||
@@ -389,6 +398,7 @@ static void _stopMotion(StopReason reason) {
     g_lineControlLastTickMs = 0;
     g_lineControlLeaseDeadlineMs = 0;
     g_lineStartupBoostUntilMs = 0;
+    g_lineMotorPolicy.reset();
     g_motionControlMode = MotionControlMode::None;
     g_headingController.stop();
     _setMotorsRaw(0, 0);
@@ -695,6 +705,7 @@ void setMotorsDirect(int left, int right) {
         g_lineControlLastTickMs = 0;
         g_lineControlLeaseDeadlineMs = 0;
         g_lineStartupBoostUntilMs = 0;
+    g_lineMotorPolicy.reset();
         g_motionControlMode = MotionControlMode::None;
     }
     _setMotors(left, right);
@@ -716,6 +727,7 @@ void SetMotorSpeed(int left, int right) {
         g_lineControlLastTickMs = 0;
         g_lineControlLeaseDeadlineMs = 0;
         g_lineStartupBoostUntilMs = 0;
+    g_lineMotorPolicy.reset();
         g_motionControlMode = MotionControlMode::None;
     }
     _setMotors(left, right);
@@ -794,6 +806,7 @@ void updateMotion() {
             g_lineControlLastTickMs = 0;
             g_lineControlLeaseDeadlineMs = 0;
             g_lineStartupBoostUntilMs = 0;
+    g_lineMotorPolicy.reset();
             LineFollower::instance().stop();
             _setMotorsRaw(0, 0);
             return;
@@ -1091,6 +1104,7 @@ void LineBasis(int speed) {
         LineFollower::instance().reset();
         g_lineControlLastTickMs = 0;
         g_lastLineBasisUs = 0;
+        g_lineMotorPolicy.reset();
         g_lineStartupBoostUntilMs = nowMs + LINE_START_BOOST_MS;
     }
 
