@@ -224,28 +224,38 @@ def test_line_motor_operating_region_contract() -> None:
     require(mapper, "LEFT_RUN_MIN = 40", "left measured run floor")
     require(mapper, "RIGHT_RUN_MIN = 50", "right measured run floor")
     require(mapper, "RESTART_BOOST_MS = 60", "bounded per-wheel restart")
-    require(mapper, "otherMagnitude >= otherRunMin", "stalled inner wheel intentional stop")
+    require(mapper, "INNER_FLOOR_MARGIN = 12", "mild steering floor margin")
+    require(mapper, "outer > innerFloor", "do not invert commanded yaw")
     require(mapper, "if (target == 0)", "preserve true stop")
     require(api, "g_lineMotorPolicy.apply(", "Line5 actuator policy invoked")
     require(api, "g_lineMotorPolicy.reset()", "Line5 policy reset at motion boundaries")
     assert "g_lineMotorPolicy.apply(" not in api[api.index("static void _setMotors("):api.index("static void _setLineMotors(")], "general Forward/Backward must stay unchanged")
 
-    # Reference oracle for actuator-domain choices; the native C++ policy is
-    # also compiled/exercised by the separate unit-test executable.
     def sustainable(left: int, right: int) -> tuple[int, int]:
-        def side(speed: int, minimum: int, other: int, other_min: int) -> int:
-            if not speed:
-                return 0
-            if abs(speed) < minimum and abs(other) >= other_min:
-                return 0
-            return (-1 if speed < 0 else 1) * max(abs(speed), minimum)
-        return side(left, 40, right, 50), side(right, 50, left, 40)
+        if left == right == 0:
+            return 0, 0
+        if left and abs(left) == abs(right):
+            common = max(abs(left), 50)
+            return (-common if left < 0 else common), (-common if right < 0 else common)
+        left_outer = abs(left) > abs(right)
+        outer = max(abs(left if left_outer else right), 40 if left_outer else 50)
+        inner = abs(right if left_outer else left)
+        floor = 50 if left_outer else 40
+        if 0 < inner < floor:
+            inner = floor if inner + 12 >= floor and outer > floor else 0
+        lmag, rmag = (outer, inner) if left_outer else (inner, outer)
+        return (-lmag if left < 0 else lmag), (-rmag if right < 0 else rmag)
 
     assert sustainable(60, 60) == (60, 60)
     assert sustainable(52, 32) == (52, 0)
     assert sustainable(32, 52) == (0, 52)
+    assert sustainable(57, 45) == (57, 50)  # mild correction keeps inner spinning
+    assert sustainable(45, 57) == (40, 57)  # left already above reliable floor
+    assert sustainable(48, 40) == (48, 0)   # never invert requested right yaw
     assert sustainable(36, 24) == (40, 0)
-    assert sustainable(24, 36) == (40, 50)  # neither side has a stable outer-wheel command
+    assert sustainable(24, 36) == (0, 50)
+    assert sustainable(35, 35) == (50, 50)
+    assert sustainable(-45, 45) == (-50, 50)
     assert sustainable(0, 60) == (0, 60)
     assert sustainable(60, 0) == (60, 0)
     assert sustainable(0, 0) == (0, 0)
