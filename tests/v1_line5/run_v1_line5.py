@@ -90,9 +90,9 @@ def test_source_contract() -> None:
     require(follower, "_pid.update(controlError)", "PID consumes deadbanded Line5 error")
     require(follower, "CONTROL_DEADBAND = 0.20f", "Line5 center deadband")
     require(follower, "STEER_CONFIRM_TICKS = 2", "two-tick steering persistence")
-    require(follower, "SPEED_FACTOR_MILD = 0.85f", "mild progressive speed schedule")
-    require(follower, "SPEED_FACTOR_MEDIUM = 0.70f", "medium progressive speed schedule")
-    require(follower, "SPEED_FACTOR_STRONG = 0.60f", "strong progressive speed schedule")
+    require(follower, "SPEED_FACTOR_MILD = 0.90f", "mild progressive speed schedule")
+    require(follower, "SPEED_FACTOR_MEDIUM = 0.80f", "medium progressive speed schedule")
+    require(follower, "SPEED_FACTOR_STRONG = 0.70f", "strong progressive speed schedule")
     require(follower, "_pendingSteerTicks", "steering persistence state")
     require(follower, "scheduleError", "progressive speed scheduling input")
     require(mixer, "baseSpeed + delta", "positive correction speeds up left wheel")
@@ -224,7 +224,9 @@ def test_line_motor_operating_region_contract() -> None:
     require(mapper, "LEFT_RUN_MIN = 40", "left measured run floor")
     require(mapper, "RIGHT_RUN_MIN = 50", "right measured run floor")
     require(mapper, "RESTART_BOOST_MS = 60", "bounded per-wheel restart")
-    require(mapper, "INNER_STOP_THRESHOLD = 20", "strong-steering pivot threshold")
+    require(mapper, "INNER_PIVOT_ENTER = 15", "pivot entry")
+    require(mapper, "INNER_PIVOT_EXIT = 28", "pivot exit")
+    require(mapper, "PIVOT_OUTER_MIN = 70", "loaded pivot speed")
     require(mapper, "outer > innerFloor", "do not invert commanded yaw")
     require(mapper, "direction == 0", "preserve true stop")
     require(mapper, "wheel.direction != direction", "restart on direction reversal")
@@ -233,37 +235,14 @@ def test_line_motor_operating_region_contract() -> None:
     require(api, "g_lineMotorPolicy.reset()", "Line5 policy reset at motion boundaries")
     assert "g_lineMotorPolicy.apply(" not in api[api.index("static void _setMotors("):api.index("static void _setLineMotors(")], "general Forward/Backward must stay unchanged")
 
-    def sustainable(left: int, right: int) -> tuple[int, int]:
-        if left == right == 0:
-            return 0, 0
-        if left and abs(left) == abs(right):
-            common = max(abs(left), 50)
-            return (-common if left < 0 else common), (-common if right < 0 else common)
-        left_outer = abs(left) > abs(right)
-        outer = max(abs(left if left_outer else right), 40 if left_outer else 50)
-        inner = abs(right if left_outer else left)
-        floor = 50 if left_outer else 40
-        if 0 < inner < floor:
-            inner = floor if inner >= 20 and outer > floor else 0
-        lmag, rmag = (outer, inner) if left_outer else (inner, outer)
-        return (-lmag if left < 0 else lmag), (-rmag if right < 0 else rmag)
-
-    assert sustainable(60, 60) == (60, 60)
-    assert sustainable(52, 32) == (52, 50)
-    assert sustainable(32, 52) == (40, 52)
-    assert sustainable(57, 45) == (57, 50)  # mild correction keeps inner spinning
-    assert sustainable(45, 57) == (45, 57)  # left already above reliable floor
-    assert sustainable(48, 40) == (48, 0)   # never invert requested right yaw
-    assert sustainable(36, 24) == (40, 0)
-    assert sustainable(24, 36) == (40, 50)
-    assert sustainable(35, 35) == (50, 50)
-    assert sustainable(-45, 45) == (-50, 50)
-    assert sustainable(0, 60) == (0, 60)
-    assert sustainable(60, 0) == (60, 0)
-    assert sustainable(0, 0) == (0, 0)
-    assert sustainable(65, 15) == (65, 0)
-    assert sustainable(15, 65) == (0, 65)
-    # Follow and recovery source policies must preserve restart on sign change.
+    # Check actual source semantics; stateful behavior is exercised in
+    # the native firmware test suite and verified on the physical chassis.
+    require(mapper, "pivotSide == innerSide", "persist pivot side")
+    require(mapper, "pivotSide = pivot ? innerSide : 0", "pivot latch transition")
+    require(mapper, "if (outer < PIVOT_OUTER_MIN)", "pivot floor enforcement")
+    require(mapper, "if (outer <= inner) outer = inner + 1;", "preserve yaw when lifted")
+    require(mapper, "if (leftMag == rightMag", "preserve straight and counterrotation")
+    require(header, "int8_t _pivotSide = 0", "pivot latch is stateful")
 
 
 def test_startup_boost_and_progressive_schedule() -> None:
@@ -283,17 +262,17 @@ def test_startup_boost_and_progressive_schedule() -> None:
         e = abs(error)
         factor = 1.0
         if e > 1.25:
-            factor = 0.60
-        elif e > 0.75:
             factor = 0.70
+        elif e > 0.75:
+            factor = 0.80
         elif e > 0.20:
-            factor = 0.85
+            factor = 0.90
         return round(speed * factor)
 
     assert scheduled_base(60, 0.0) == 60
-    assert scheduled_base(60, 0.5) == 51
-    assert scheduled_base(60, 1.0) == 42
-    assert scheduled_base(60, 1.5) == 36
+    assert scheduled_base(60, 0.5) == 54
+    assert scheduled_base(60, 1.0) == 48
+    assert scheduled_base(60, 1.5) == 42
 
 
 def test_two_tick_direction_persistence() -> None:
