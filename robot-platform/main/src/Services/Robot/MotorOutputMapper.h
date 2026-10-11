@@ -17,10 +17,10 @@ public:
     static int map(int logicalSpeed, float speedScale, float motorScale, int minDrive);
     static int mapMagnitude(int logicalMagnitude, float scale, int minDrive);
 
-    // Pair-aware mapping for differential steering. The stronger wheel owns
-    // the physical start/run-range mapping and remains >= minDrive. The weaker
-    // wheel preserves the logical ratio below minDrive when needed so line
-    // following retains enough yaw authority for sharp corners.
+    // Line5 steering mapping. Unlike general motion, this preserves the
+    // logical 0..100 speed domain directly (plus per-motor calibration) and
+    // does not lift non-zero commands into [minDrive,100]. Startup torque is
+    // supplied by a short RobotAPI line-mode boost instead.
     static void mapSteeringPair(
         int logicalLeft,
         int logicalRight,
