@@ -68,6 +68,11 @@ private:
     uint32_t _lastControlUpdate;
     bool _wasRecovering;
 
+    // Sharp-corner assist for V1 Line5. Direction uses RecoveryStrategy
+    // semantics: -1=left, 0=inactive, +1=right.
+    int _sharpDirection;
+    uint32_t _sharpStartedMs;
+
     // Smooth-control state
     float _filteredError;
     bool _filterInitialized;
