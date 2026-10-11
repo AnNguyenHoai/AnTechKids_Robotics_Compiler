@@ -87,7 +87,14 @@ def test_source_contract() -> None:
     require(follower, "_pid(1.0f, 0.0f, 0.0f, 0.02f)", "P-only smooth-control baseline")
     require(follower, "ERROR_FILTER_ALPHA = 0.70f", "responsive Line5 error filter")
     require(follower, "_scaleFactor(12.0f)", "responsive Line5 motor mixer scale")
-    require(follower, "_pid.update(_filteredError)", "PID consumes filtered Line5 error")
+    require(follower, "_pid.update(controlError)", "PID consumes deadbanded Line5 error")
+    require(follower, "CONTROL_DEADBAND = 0.20f", "Line5 center deadband")
+    require(follower, "STEER_CONFIRM_TICKS = 2", "two-tick steering persistence")
+    require(follower, "SPEED_FACTOR_MILD = 0.85f", "mild progressive speed schedule")
+    require(follower, "SPEED_FACTOR_MEDIUM = 0.70f", "medium progressive speed schedule")
+    require(follower, "SPEED_FACTOR_STRONG = 0.60f", "strong progressive speed schedule")
+    require(follower, "_pendingSteerTicks", "steering persistence state")
+    require(follower, "scheduleError", "progressive speed scheduling input")
     require(mixer, "baseSpeed + delta", "positive correction speeds up left wheel")
     require(mixer, "baseSpeed - delta", "positive correction slows right wheel")
     require(follower_state, "LINE_LOST_DEBOUNCE_MS = 40", "40ms transient line-loss debounce")
@@ -120,9 +127,14 @@ def test_source_contract() -> None:
     require(robot_api, "(unsigned long)loopDtUs", "Line5 response diagnostic loop timing argument")
     require(robot_api, "static void _setLineMotors", "line-specific pair-aware motor output path")
     require(robot_api, "MotorOutputMapper::mapSteeringPair", "Line5 pair-aware motor mapper usage")
-    require(motor_mapper, "dominantMapped", "pair-aware dominant wheel mapping")
-    require(motor_mapper, "calibrated / maxCal", "pair-aware steering ratio preservation")
-    assert "if (magnitude < minDrive) magnitude = minDrive;" not in motor_mapper[motor_mapper.index("void MotorOutputMapper::mapSteeringPair"):], "Line5 inner wheel must not be floored to minDrive"
+    require(motor_mapper, "(void)speedScale;", "Line5 ignores global speedScale")
+    require(motor_mapper, "(void)minDrive;", "Line5 ignores continuous minDrive remap")
+    require(motor_mapper, "mapLineSide", "Line5 direct per-wheel mapping")
+    assert "mapMagnitude(" not in motor_mapper[motor_mapper.index("void MotorOutputMapper::mapSteeringPair"):], "Line5 steering must not use general minDrive remap"
+    require(robot_api, "LINE_START_BOOST_SPEED = 65", "measured Line5 startup boost")
+    require(robot_api, "LINE_START_BOOST_MS = 60", "bounded Line5 startup boost")
+    require(robot_api, "g_lineStartupBoostUntilMs", "Line5 startup boost state")
+    require(robot_api, "startupBoostActive", "Line5 startup boost application")
     assert "analogRead(34)" not in diagnostic, "GPIO34 must remain exclusively owned by LineFarLeft"
     require(diagnostic, "Battery check: SKIPPED", "battery diagnostic skips unowned ADC path")
     require(follower, "LAST_DIRECTION_THRESHOLD = 0.25f", "recovery direction threshold")
@@ -183,57 +195,88 @@ def test_motor_mixer_direction_contract() -> None:
 
 
 def test_pair_aware_motor_mapping_examples() -> None:
-    min_drive = 65
-
-    def map_magnitude(logical: int) -> int:
-        if logical <= 0:
-            return 0
-        logical = max(1, min(100, logical))
-        mapped = min_drive + ((logical - 1) * (100 - min_drive) / 99)
-        return round(mapped)
-
-    def map_pair(left: int, right: int, speed_scale: float = 1.0) -> tuple[int, int]:
-        if left == 0 and right == 0:
-            return 0, 0
-
-        left_cal = 0 if left == 0 else max(1.0, min(100.0, abs(left) * speed_scale))
-        right_cal = 0 if right == 0 else max(1.0, min(100.0, abs(right) * speed_scale))
-        max_cal = max(left_cal, right_cal)
-        dominant = map_magnitude(round(max_cal))
-
-        def side(logical: int, calibrated: float) -> int:
+    def map_pair(left: int, right: int, left_scale: float = 1.0, right_scale: float = 1.0) -> tuple[int, int]:
+        def side(logical: int, scale: float) -> int:
             if logical == 0:
                 return 0
-            # Dominant wheel remains in the physical run/start range, while
-            # the inner wheel preserves the ratio below minDrive for steering.
-            magnitude = round(dominant * calibrated / max_cal)
+            magnitude = round(abs(logical) * max(0.0, scale))
             magnitude = max(0, min(100, magnitude))
             return -magnitude if logical < 0 else magnitude
 
-        return side(left, left_cal), side(right, right_cal)
+        return side(left, left_scale), side(right, right_scale)
 
-    assert map_pair(60, 60) == (86, 86)
+    # Line5 now preserves the logical speed domain directly.
+    assert map_pair(60, 60) == (60, 60)
+    assert map_pair(72, 48) == (72, 48)
+    assert map_pair(48, 72) == (48, 72)
+    assert map_pair(84, 36) == (84, 36)
+    assert map_pair(-45, 45) == (-45, 45)
 
-    left, right = map_pair(72, 48)
-    assert left == 90 and right == 60, (left, right)
-    assert left - right == 30, "Inner wheel must preserve steering ratio below minDrive"
+    # Global speedScale is intentionally not part of Line5 steering mapping.
+    assert map_pair(60, 60) == (60, 60)
 
-    left, right = map_pair(48, 72)
-    assert left == 60 and right == 90, (left, right)
 
-    left, right = map_pair(84, 36)
-    assert left == 94 and right == 40, (left, right)
-    assert right < min_drive, "Sharp turn inner wheel must be allowed below minDrive"
+def test_startup_boost_and_progressive_schedule() -> None:
+    start_boost = 65
 
-    left, right = map_pair(-45, 45)
-    assert left == -81 and right == 81, (left, right)
+    def boost(value: int, active: bool) -> int:
+        if not active or value == 0:
+            return value
+        sign = -1 if value < 0 else 1
+        return sign * max(abs(value), start_boost)
 
-    # Physical test configuration used during V1 validation: speedScale=0.5.
-    # Center remains above measured ~65 start threshold, while sharp-turn inner
-    # wheel can drop into the measured running/coast region.
-    assert map_pair(60, 60, 0.5) == (75, 75)
-    assert map_pair(72, 48, 0.5) == (77, 51)
-    assert map_pair(84, 36, 0.5) == (79, 34)
+    assert (boost(60, True), boost(60, True)) == (65, 65)
+    assert (boost(60, False), boost(60, False)) == (60, 60)
+    assert boost(0, True) == 0, "Sharp-turn inner wheel must remain a true stop"
+
+    def scheduled_base(speed: int, error: float) -> int:
+        e = abs(error)
+        factor = 1.0
+        if e > 1.25:
+            factor = 0.60
+        elif e > 0.75:
+            factor = 0.70
+        elif e > 0.20:
+            factor = 0.85
+        return round(speed * factor)
+
+    assert scheduled_base(60, 0.0) == 60
+    assert scheduled_base(60, 0.5) == 51
+    assert scheduled_base(60, 1.0) == 42
+    assert scheduled_base(60, 1.5) == 36
+
+
+def test_two_tick_direction_persistence() -> None:
+    stable = 0
+    pending = 0
+    ticks = 0
+
+    def step(observed: int) -> tuple[int, int, int, bool]:
+        nonlocal stable, pending, ticks
+        confirmed = observed == stable
+        if not confirmed:
+            if observed == pending:
+                ticks += 1
+            else:
+                pending = observed
+                ticks = 1
+            if ticks >= 2:
+                stable = observed
+                pending = 0
+                ticks = 0
+                confirmed = True
+        else:
+            pending = 0
+            ticks = 0
+        return stable, pending, ticks, confirmed
+
+    # A single opposite-side sample cannot reverse steering.
+    assert step(-1)[3] is False
+    assert step(-1)[0] == -1
+    assert step(1)[3] is False
+    assert stable == -1
+    assert step(1)[0] == 1
+
 
 def test_sharp_corner_policy() -> None:
     FAR_LEFT = 0x10
@@ -288,7 +331,11 @@ def main() -> int:
     test_motor_mixer_direction_contract()
     print("PASS: Line5 motor mixer steering direction")
     test_pair_aware_motor_mapping_examples()
-    print("PASS: Line5 pair-aware physical motor mapping examples")
+    print("PASS: Line5 direct motor mapping examples")
+    test_startup_boost_and_progressive_schedule()
+    print("PASS: Line5 startup boost and progressive speed schedule")
+    test_two_tick_direction_persistence()
+    print("PASS: Line5 two-tick steering persistence")
     test_sharp_corner_policy()
     print("PASS: Line5 sharp-corner policy")
     test_compiler_transport_channels_0_to_4()
