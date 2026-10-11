@@ -48,6 +48,7 @@ private:
     };
     Wheel _left;
     Wheel _right;
+    int8_t _pivotSide = 0;
 };
 
 } // namespace RobotAPI
