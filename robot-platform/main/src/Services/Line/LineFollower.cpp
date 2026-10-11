@@ -10,6 +10,11 @@ namespace {
 constexpr float LAST_DIRECTION_THRESHOLD = 0.25f;
 constexpr float ERROR_FILTER_ALPHA = 0.70f;
 constexpr float GAP_DIRECTIONAL_THRESHOLD = 0.25f;
+constexpr float CONTROL_DEADBAND = 0.20f;
+constexpr uint8_t STEER_CONFIRM_TICKS = 2;
+constexpr float SPEED_FACTOR_MILD = 0.85f;
+constexpr float SPEED_FACTOR_MEDIUM = 0.70f;
+constexpr float SPEED_FACTOR_STRONG = 0.60f;
 // FAR-only / FAR+adjacent means the line has reached the edge of the array.
 // Treat it as a corner event rather than waiting for generic LOST recovery.
 constexpr uint32_t SHARP_CORNER_HOLD_MS = 350;
@@ -34,6 +39,9 @@ LineFollower::LineFollower()
       _wasRecovering(false),
       _sharpDirection(0),
       _sharpStartedMs(0),
+      _stableSteerDirection(0),
+      _pendingSteerDirection(0),
+      _pendingSteerTicks(0),
       _filteredError(0.0f),
       _filterInitialized(false),
       _lastRawError(0.0f),
@@ -64,6 +72,9 @@ void LineFollower::reset() {
     _wasRecovering = false;
     _sharpDirection = 0;
     _sharpStartedMs = 0;
+    _stableSteerDirection = 0;
+    _pendingSteerDirection = 0;
+    _pendingSteerTicks = 0;
     _filteredError = 0.0f;
     _filterInitialized = false;
     _lastRawError = 0.0f;
@@ -98,6 +109,9 @@ void LineFollower::stop() {
     _bmpActive = false;
     _sharpDirection = 0;
     _sharpStartedMs = 0;
+    _stableSteerDirection = 0;
+    _pendingSteerDirection = 0;
+    _pendingSteerTicks = 0;
     _filteredError = 0.0f;
     _filterInitialized = false;
     _lastRawError = 0.0f;
@@ -115,15 +129,44 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
     const float rawError = LineErrorEstimator::estimate(mask);
     _lastRawError = rawError;
 
-    // During a short zero-mask dropout, keep the last valid steering estimate
-    // instead of pulling the filter toward center. FollowerStateMachine owns
-    // the 60 ms decision of whether the line is truly lost.
+    // Direction persistence: a new left/right/center observation must survive
+    // two consecutive 5 ms ticks before it is allowed to reverse/establish
+    // steering direction. This rejects one-sample L+C <-> C <-> C+R chatter
+    // without delaying FAR sharp-corner handling below.
+    int observedDirection = 0;
+    if (rawError < -LAST_DIRECTION_THRESHOLD) observedDirection = -1;
+    else if (rawError > LAST_DIRECTION_THRESHOLD) observedDirection = 1;
+
+    bool directionConfirmed = (observedDirection == _stableSteerDirection);
+    if (!directionConfirmed) {
+        if (observedDirection == _pendingSteerDirection) {
+            if (_pendingSteerTicks < 255) _pendingSteerTicks++;
+        } else {
+            _pendingSteerDirection = observedDirection;
+            _pendingSteerTicks = 1;
+        }
+
+        if (_pendingSteerTicks >= STEER_CONFIRM_TICKS) {
+            _stableSteerDirection = observedDirection;
+            _pendingSteerDirection = 0;
+            _pendingSteerTicks = 0;
+            directionConfirmed = true;
+        }
+    } else {
+        _pendingSteerDirection = 0;
+        _pendingSteerTicks = 0;
+    }
+
+    // A transient unconfirmed direction contributes zero steering error rather
+    // than immediately flipping the chassis. Confirmed samples feed the normal
+    // low-pass filter. Zero-mask still holds the last valid estimate.
     if (mask != 0) {
+        const float filterInput = directionConfirmed ? rawError : 0.0f;
         if (!_filterInitialized) {
-            _filteredError = rawError;
+            _filteredError = filterInput;
             _filterInitialized = true;
         } else {
-            _filteredError += ERROR_FILTER_ALPHA * (rawError - _filteredError);
+            _filteredError += ERROR_FILTER_ALPHA * (filterInput - _filteredError);
         }
     }
     _lastFilteredError = _filteredError;
@@ -247,16 +290,12 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
             break;
 
         default: {
-            const int baseSpeed = constrain(speed, 0, 100);
+            const int requestedSpeed = constrain(speed, 0, 100);
 
             // Real Line5 hardware commonly reports a brief 00000 while the line
             // crosses the physical gap between adjacent eyes. During the LOST
             // debounce window we must not keep driving straight at full line
-            // speed when the last steering estimate was centered: that is the
-            // exact CENTER -> 00000 overshoot observed on the robot. Coast for
-            // this ambiguous centered gap; if a directional estimate exists,
-            // preserve it so LEFT/RIGHT -> 00000 continues correcting toward
-            // the last visible side.
+            // speed when the last steering estimate was centered.
             if (mask == 0 &&
                 (!_filterInitialized || fabsf(_filteredError) < GAP_DIRECTIONAL_THRESHOLD)) {
                 _lastCorrection = 0.0f;
@@ -265,7 +304,32 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
                 break;
             }
 
-            const float correction = _pid.update(_filteredError);
+            // Progressive speed scheduling: the further the line moves from
+            // center, the less forward velocity we carry into the correction.
+            // This reduces chassis overshoot on arcs and gives the FAR sharp
+            // turn a much smaller outward momentum to arrest.
+            const float scheduleError = fmaxf(
+                fabsf(_filteredError),
+                (_stableSteerDirection != 0) ? fabsf(rawError) : 0.0f
+            );
+
+            float speedFactor = 1.0f;
+            if (scheduleError > 1.25f) speedFactor = SPEED_FACTOR_STRONG;
+            else if (scheduleError > 0.75f) speedFactor = SPEED_FACTOR_MEDIUM;
+            else if (scheduleError > CONTROL_DEADBAND) speedFactor = SPEED_FACTOR_MILD;
+
+            const int baseSpeed = constrain(
+                (int)lroundf((float)requestedSpeed * speedFactor),
+                0,
+                100
+            );
+
+            // Small residual error around CENTER is ignored to prevent the
+            // controller from hunting left/right on a wide digital line.
+            const float controlError =
+                fabsf(_filteredError) < CONTROL_DEADBAND ? 0.0f : _filteredError;
+
+            const float correction = _pid.update(controlError);
             _lastCorrection = correction;
             MotorOutput out = MotorMixer::mix(baseSpeed, correction, _scaleFactor);
             leftMotor = out.left;
