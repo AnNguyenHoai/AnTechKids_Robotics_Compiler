@@ -92,9 +92,13 @@ void MotorOutputMapper::mapSteeringPair(
         return;
     }
 
-    // Map only the dominant magnitude into the physical run range. The other
-    // wheel keeps its relative steering ratio instead of being independently
-    // compressed into [minDrive, 100].
+    // Only the dominant wheel is lifted into the measured start/run range.
+    // The inner wheel MUST preserve the steering ratio all the way toward zero.
+    // Physical tests show both TT motors need about 65 to start from rest, but
+    // once moving they can continue below that threshold (L~40, R~50). Flooring
+    // both wheels to minDrive destroys sharp-turn authority (e.g. 84/36 became
+    // 94/65). Keeping the dominant wheel >= minDrive guarantees propulsion/
+    // restart while allowing the inner wheel to slow deeply or stop for turns.
     const int dominantLogical = (int)lroundf(maxCal);
     const int dominantMapped = mapMagnitude(dominantLogical, 1.0f, minDrive);
 
@@ -102,7 +106,7 @@ void MotorOutputMapper::mapSteeringPair(
         if (logical == MOTOR_STOP) return MOTOR_STOP;
 
         int magnitude = (int)lroundf((float)dominantMapped * (calibrated / maxCal));
-        if (magnitude < minDrive) magnitude = minDrive;
+        if (magnitude < 0) magnitude = 0;
         if (magnitude > 100) magnitude = 100;
 
         return logical < 0 ? -magnitude : magnitude;
