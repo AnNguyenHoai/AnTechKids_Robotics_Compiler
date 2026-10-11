@@ -27,14 +27,15 @@ void RecoveryStrategy::update(uint8_t mask, int &left, int &right) {
     const Direction direction = _lastDirection == DIR_UNKNOWN ? DIR_LEFT : _lastDirection;
 
     // Recovery is intentionally progressive. A freshly confirmed line loss
-    // first uses a forward arc so neither motor reverses abruptly. Only a
-    // persistent loss escalates to in-place search.
-    constexpr int SOFT_INNER_SPEED = 25;
-    constexpr int SOFT_OUTER_SPEED = 65;
-    constexpr int DEEP_SEARCH_SPEED = 45;
-    constexpr int SWEEP_SPEED = 60;
-    constexpr uint32_t SOFT_SEARCH_MS = 300;
-    constexpr uint32_t DEEP_SEARCH_MS = 1200;
+    // first uses a reliable one-wheel pivot, rather than trying to run an
+    // inner wheel in its stall region. Persistent loss uses a stronger
+    // counter-rotation to reacquire the line.
+    constexpr int SOFT_INNER_SPEED = 0;
+    constexpr int SOFT_OUTER_SPEED = 70;
+    constexpr int DEEP_SEARCH_SPEED = 70;
+    constexpr int SWEEP_SPEED = 70;
+    constexpr uint32_t SOFT_SEARCH_MS = 150;
+    constexpr uint32_t DEEP_SEARCH_MS = 1050;
 
     if (elapsed < SOFT_SEARCH_MS) {
         _phase = SOFT_SEARCH;
