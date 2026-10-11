@@ -118,10 +118,10 @@ def test_source_contract() -> None:
     require(serial, "RobotAPI::setMotorsRawDiagnostic(left, right)", "serial raw motor command dispatch")
     assert "MotorOutputMapper::map(" not in robot_api[robot_api.index("void setMotorsRawDiagnostic"):robot_api.index("void setMotorsDirect")], "raw motor diagnostic must bypass mapper"
     require(follower, "if (recovering && !_wasRecovering)", "recovery phase resets on real LOST edge")
-    require(recovery, "SOFT_INNER_SPEED = 25", "soft recovery inner wheel speed")
-    require(recovery, "SOFT_OUTER_SPEED = 65", "soft recovery outer wheel speed")
-    require(recovery, "SOFT_SEARCH_MS = 300", "soft recovery duration")
-    require(recovery, "DEEP_SEARCH_SPEED = 45", "deep recovery escalation speed")
+    require(recovery, "SOFT_INNER_SPEED = 0", "soft recovery true inner stop")
+    require(recovery, "SOFT_OUTER_SPEED = 70", "reliable recovery outer speed")
+    require(recovery, "SOFT_SEARCH_MS = 150", "short initial recovery pivot")
+    require(recovery, "DEEP_SEARCH_SPEED = 70", "reliable deep recovery speed")
     assert "RECOVERY_BASE_SPEED = 80" not in recovery, "legacy immediate recovery spin still present"
     require(robot_api, "rawErr=%.2f filtErr=%.2f corr=%.2f", "Line5 tuning diagnostics")
     require(robot_api, "(unsigned long)loopDtUs", "Line5 response diagnostic loop timing argument")
@@ -224,9 +224,11 @@ def test_line_motor_operating_region_contract() -> None:
     require(mapper, "LEFT_RUN_MIN = 40", "left measured run floor")
     require(mapper, "RIGHT_RUN_MIN = 50", "right measured run floor")
     require(mapper, "RESTART_BOOST_MS = 60", "bounded per-wheel restart")
-    require(mapper, "INNER_FLOOR_MARGIN = 12", "mild steering floor margin")
+    require(mapper, "INNER_STOP_THRESHOLD = 20", "strong-steering pivot threshold")
     require(mapper, "outer > innerFloor", "do not invert commanded yaw")
-    require(mapper, "if (target == 0)", "preserve true stop")
+    require(mapper, "direction == 0", "preserve true stop")
+    require(mapper, "wheel.direction != direction", "restart on direction reversal")
+    require(mapper, "wheel.restartAtMs = nowMs", "bounded reversal kick reset")
     require(api, "g_lineMotorPolicy.apply(", "Line5 actuator policy invoked")
     require(api, "g_lineMotorPolicy.reset()", "Line5 policy reset at motion boundaries")
     assert "g_lineMotorPolicy.apply(" not in api[api.index("static void _setMotors("):api.index("static void _setLineMotors(")], "general Forward/Backward must stay unchanged")
@@ -242,13 +244,13 @@ def test_line_motor_operating_region_contract() -> None:
         inner = abs(right if left_outer else left)
         floor = 50 if left_outer else 40
         if 0 < inner < floor:
-            inner = floor if inner + 12 >= floor and outer > floor else 0
+            inner = floor if inner >= 20 and outer > floor else 0
         lmag, rmag = (outer, inner) if left_outer else (inner, outer)
         return (-lmag if left < 0 else lmag), (-rmag if right < 0 else rmag)
 
     assert sustainable(60, 60) == (60, 60)
-    assert sustainable(52, 32) == (52, 0)
-    assert sustainable(32, 52) == (0, 52)
+    assert sustainable(52, 32) == (52, 50)
+    assert sustainable(32, 52) == (40, 52)
     assert sustainable(57, 45) == (57, 50)  # mild correction keeps inner spinning
     assert sustainable(45, 57) == (45, 57)  # left already above reliable floor
     assert sustainable(48, 40) == (48, 0)   # never invert requested right yaw
@@ -259,6 +261,9 @@ def test_line_motor_operating_region_contract() -> None:
     assert sustainable(0, 60) == (0, 60)
     assert sustainable(60, 0) == (60, 0)
     assert sustainable(0, 0) == (0, 0)
+    assert sustainable(65, 15) == (65, 0)
+    assert sustainable(15, 65) == (0, 65)
+    # Follow and recovery source policies must preserve restart on sign change.
 
 
 def test_startup_boost_and_progressive_schedule() -> None:
