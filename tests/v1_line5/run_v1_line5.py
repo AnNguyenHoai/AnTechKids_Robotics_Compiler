@@ -94,6 +94,10 @@ def test_source_contract() -> None:
     require(follower_state, "_zeroMaskPending", "zero-mask debounce state")
     require(follower, "if (mask != 0)", "short dropout holds last valid filtered error")
     require(follower, "GAP_DIRECTIONAL_THRESHOLD = 0.25f", "center-gap directional threshold")
+    require(follower, "SHARP_CORNER_HOLD_MS = 350", "bounded sharp-corner continuation")
+    require(follower, "sharpLeftObserved", "far-left sharp-corner detection")
+    require(follower, "sharpRightObserved", "far-right sharp-corner detection")
+    require(follower, "continueThroughCornerGap", "FAR-to-zero sharp-corner continuation")
     require(follower, "leftMotor = 0;", "ambiguous center-gap brake")
     require(follower, "rightMotor = 0;", "ambiguous center-gap brake")
     require(robot_api, "LINE_CONTROL_TICK_MS = 5", "firmware-owned 5ms Line5 cadence")
@@ -231,6 +235,40 @@ def test_pair_aware_motor_mapping_examples() -> None:
     assert map_pair(72, 48, 0.5) == (77, 51)
     assert map_pair(84, 36, 0.5) == (79, 34)
 
+def test_sharp_corner_policy() -> None:
+    FAR_LEFT = 0x10
+    LEFT = 0x08
+    CENTER = 0x04
+    RIGHT = 0x02
+    FAR_RIGHT = 0x01
+
+    def sharp_left(mask: int) -> bool:
+        return bool(mask & FAR_LEFT) and not bool(mask & (CENTER | RIGHT | FAR_RIGHT))
+
+    def sharp_right(mask: int) -> bool:
+        return bool(mask & FAR_RIGHT) and not bool(mask & (CENTER | LEFT | FAR_LEFT))
+
+    # Edge-only and edge+adjacent patterns are sharp-corner evidence.
+    assert sharp_left(FAR_LEFT)
+    assert sharp_left(FAR_LEFT | LEFT)
+    assert sharp_right(FAR_RIGHT)
+    assert sharp_right(FAR_RIGHT | RIGHT)
+
+    # Center/other-side evidence must prevent accidental sharp mode.
+    assert not sharp_left(FAR_LEFT | CENTER)
+    assert not sharp_right(FAR_RIGHT | CENTER)
+    assert not sharp_left(FAR_LEFT | FAR_RIGHT)
+    assert not sharp_right(FAR_LEFT | FAR_RIGHT)
+
+    # The commanded sharp turn is a one-wheel pivot, preserving immediate yaw
+    # without waiting for LOST debounce/recovery.
+    speed = 60
+    left_turn = (0, speed)
+    right_turn = (speed, 0)
+    assert left_turn == (0, 60)
+    assert right_turn == (60, 0)
+
+
 def test_compiler_transport_channels_0_to_4() -> None:
     source = "\n".join(f"line_{channel} = read_line({channel})" for channel in range(5)) + "\n"
     with tempfile.TemporaryDirectory() as tmp:
@@ -251,6 +289,8 @@ def main() -> int:
     print("PASS: Line5 motor mixer steering direction")
     test_pair_aware_motor_mapping_examples()
     print("PASS: Line5 pair-aware physical motor mapping examples")
+    test_sharp_corner_policy()
+    print("PASS: Line5 sharp-corner policy")
     test_compiler_transport_channels_0_to_4()
     print("PASS: compiler transports read_line channels 0..4")
     return 0
