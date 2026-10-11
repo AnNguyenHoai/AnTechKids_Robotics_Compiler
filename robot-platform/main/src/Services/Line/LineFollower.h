@@ -73,6 +73,12 @@ private:
     int _sharpDirection;
     uint32_t _sharpStartedMs;
 
+    // Two-sample steering persistence prevents a single L/C/R mask change from
+    // immediately reversing yaw on the next 5 ms control tick.
+    int _stableSteerDirection;
+    int _pendingSteerDirection;
+    uint8_t _pendingSteerTicks;
+
     // Smooth-control state
     float _filteredError;
     bool _filterInitialized;
