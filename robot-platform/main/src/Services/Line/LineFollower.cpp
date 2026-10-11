@@ -12,9 +12,9 @@ constexpr float ERROR_FILTER_ALPHA = 0.70f;
 constexpr float GAP_DIRECTIONAL_THRESHOLD = 0.25f;
 constexpr float CONTROL_DEADBAND = 0.20f;
 constexpr uint8_t STEER_CONFIRM_TICKS = 2;
-constexpr float SPEED_FACTOR_MILD = 0.85f;
-constexpr float SPEED_FACTOR_MEDIUM = 0.70f;
-constexpr float SPEED_FACTOR_STRONG = 0.60f;
+constexpr float SPEED_FACTOR_MILD = 0.90f;
+constexpr float SPEED_FACTOR_MEDIUM = 0.80f;
+constexpr float SPEED_FACTOR_STRONG = 0.70f;
 // FAR-only / FAR+adjacent means the line has reached the edge of the array.
 // Treat it as a corner event rather than waiting for generic LOST recovery.
 constexpr uint32_t SHARP_CORNER_HOLD_MS = 350;
