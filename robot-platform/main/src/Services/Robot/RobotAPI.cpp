@@ -322,6 +322,16 @@ static int g_currentBaseSpeed = 0;
 static int g_currentDirection = 0;
 static int g_effectiveLeft = 0;
 static int g_effectiveRight = 0;
+
+// V1 Line5 runtime cadence is owned by firmware, not by student WAIT timing.
+// A repeated line_basis() call refreshes a short lease while updateMotion()
+// samples and steers at 5 ms cadence between VM instructions.
+constexpr uint32_t LINE_CONTROL_TICK_MS = 5;
+constexpr uint32_t LINE_CONTROL_LEASE_MS = 120;
+static bool g_lineControlActive = false;
+static int g_lineControlSpeed = 0;
+static uint32_t g_lineControlLastTickMs = 0;
+static uint32_t g_lineControlLeaseDeadlineMs = 0;
 // ---- H15: Motion/Ultrasonic correlation diagnostics ----
 static uint32_t g_motionSessionId = 0;
 static uint32_t g_motionStartMs = 0;
@@ -350,6 +360,10 @@ static void _stopMotion(StopReason reason) {
         Serial.printf("[STOP] vmState=%s\n", vm.IsRunning() ? "RUNNING" : "STOPPED");
     }
     g_isMoving = false;
+    g_lineControlActive = false;
+    g_lineControlSpeed = 0;
+    g_lineControlLastTickMs = 0;
+    g_lineControlLeaseDeadlineMs = 0;
     g_motionControlMode = MotionControlMode::None;
     g_headingController.stop();
     _setMotorsRaw(0, 0);
@@ -681,8 +695,33 @@ void Stop() {
 }
 
 void updateMotion() {
-    if (g_motionControlMode == MotionControlMode::Heading && g_isMoving && g_robotReady) {
+    if (!g_robotReady) {
+        return;
+    }
+
+    if (g_motionControlMode == MotionControlMode::Heading && g_isMoving) {
         _applyMotion();
+        return;
+    }
+
+    if (g_motionControlMode == MotionControlMode::Line && g_lineControlActive) {
+        const uint32_t nowMs = millis();
+
+        if (_lineLeaseExpired(nowMs)) {
+            g_lineControlActive = false;
+            g_lineControlSpeed = 0;
+            g_lineControlLastTickMs = 0;
+            g_lineControlLeaseDeadlineMs = 0;
+            LineFollower::instance().stop();
+            _setMotorsRaw(0, 0);
+            return;
+        }
+
+        if (g_lineControlLastTickMs == 0 ||
+            (uint32_t)(nowMs - g_lineControlLastTickMs) >= LINE_CONTROL_TICK_MS) {
+            _runLineControlTick(g_lineControlSpeed);
+            g_lineControlLastTickMs = nowMs;
+        }
     }
 }
 
@@ -899,22 +938,15 @@ void Wait(uint32_t ms) {
 
 // ===== Line Following =====
 
-void LineBasis(int speed) {
-#if !ROBOT_FEATURE_LINE_SENSOR
-    Serial.println("[RobotAPI] Line feature disabled by hardware configuration");
-    Stop();
-    return;
-#endif
-    if (!g_robotReady) {
-        Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
-        return;
-    }
+static bool _lineLeaseExpired(uint32_t nowMs) {
+    return (int32_t)(nowMs - g_lineControlLeaseDeadlineMs) >= 0;
+}
 
+static void _runLineControlTick(int speed) {
     const uint32_t t0 = micros();
     const uint32_t loopDtUs = (g_lastLineBasisUs == 0) ? 0 : (uint32_t)(t0 - g_lastLineBasisUs);
     g_lastLineBasisUs = t0;
 
-    _enterLineControlMode();
     auto& follower = LineFollower::instance();
 
     const uint32_t sensorStartUs = micros();
@@ -930,7 +962,8 @@ void LineBasis(int speed) {
     const uint32_t outputDoneUs = micros();
 
     // Change-triggered: logs the exact synchronous software path for a new line state.
-    // totalUs measures sensor sampling -> follower decision -> motor API/PWM submission.
+    // loopDtUs now measures the firmware-owned Line5 control cadence rather than
+    // the student's line_basis()/WAIT round trip.
     if (g_lineResponseDiagnosticEnabled && mask != g_lastLineTraceMask) {
         const uint8_t previous = g_lastLineTraceMask;
         Serial.printf(
@@ -953,6 +986,39 @@ void LineBasis(int speed) {
     }
 }
 
+void LineBasis(int speed) {
+#if !ROBOT_FEATURE_LINE_SENSOR
+    Serial.println("[RobotAPI] Line feature disabled by hardware configuration");
+    Stop();
+    return;
+#endif
+    if (!g_robotReady) {
+        Serial.println("[RobotAPI] Line motion blocked: Robot not ready");
+        return;
+    }
+
+    const uint32_t nowMs = millis();
+    const bool wasActive = g_lineControlActive;
+
+    _enterLineControlMode();
+    g_lineControlSpeed = constrain(speed, 0, 100);
+    g_lineControlActive = true;
+    g_lineControlLeaseDeadlineMs = nowMs + LINE_CONTROL_LEASE_MS;
+
+    if (!wasActive) {
+        LineFollower::instance().reset();
+        g_lineControlLastTickMs = 0;
+        g_lastLineBasisUs = 0;
+    }
+
+    // First call reacts immediately. Repeated VM calls merely refresh the lease
+    // if the firmware control loop has already produced a recent tick.
+    if (g_lineControlLastTickMs == 0 ||
+        (uint32_t)(nowMs - g_lineControlLastTickMs) >= LINE_CONTROL_TICK_MS) {
+        _runLineControlTick(g_lineControlSpeed);
+        g_lineControlLastTickMs = nowMs;
+    }
+}
 void LineFollow(int speed) {
     LineBasis(speed);
 }
