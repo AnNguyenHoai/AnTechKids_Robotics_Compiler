@@ -227,7 +227,7 @@ def test_line_motor_operating_region_contract() -> None:
     require(mapper, "INNER_PIVOT_ENTER = 15", "pivot entry")
     require(mapper, "INNER_PIVOT_EXIT = 28", "pivot exit")
     require(mapper, "PIVOT_OUTER_MIN = 70", "loaded pivot speed")
-    require(mapper, "outer > innerFloor", "do not invert commanded yaw")
+    require(mapper, "if (outer <= inner) outer = inner + 1;", "do not invert commanded yaw")
     require(mapper, "direction == 0", "preserve true stop")
     require(mapper, "wheel.direction != direction", "restart on direction reversal")
     require(mapper, "wheel.restartAtMs = nowMs", "bounded reversal kick reset")
