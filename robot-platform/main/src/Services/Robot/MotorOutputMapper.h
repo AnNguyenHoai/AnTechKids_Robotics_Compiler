@@ -18,8 +18,9 @@ public:
     static int mapMagnitude(int logicalMagnitude, float scale, int minDrive);
 
     // Pair-aware mapping for differential steering. The stronger wheel owns
-    // the physical run-range mapping; the weaker wheel preserves the logical
-    // ratio as far as the measured minDrive boundary allows.
+    // the physical start/run-range mapping and remains >= minDrive. The weaker
+    // wheel preserves the logical ratio below minDrive when needed so line
+    // following retains enough yaw authority for sharp corners.
     static void mapSteeringPair(
         int logicalLeft,
         int logicalRight,
