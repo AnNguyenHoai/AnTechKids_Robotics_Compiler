@@ -616,6 +616,46 @@ static void _startMotion(int speed, int direction) {
 
 // ===== Public API =====
 
+void setMotorsRawDiagnostic(int left, int right) {
+#if !ROBOT_FEATURE_MOTOR
+    (void)left; (void)right;
+    Serial.println("[RAW-MOTOR] Motor feature disabled by hardware configuration.");
+    return;
+#endif
+    if (!g_robotReady) {
+        Serial.println("[RAW-MOTOR] Motion blocked: Robot not ready");
+        return;
+    }
+
+    // Diagnostic command owns the motors directly. Cancel any background line
+    // control so a 5 ms Line5 tick cannot overwrite the raw test output.
+    g_isMoving = false;
+    g_lineControlActive = false;
+    g_lineControlSpeed = 0;
+    g_lineControlLastTickMs = 0;
+    g_lineControlLeaseDeadlineMs = 0;
+    g_motionControlMode = MotionControlMode::None;
+    g_headingController.stop();
+
+    const int rawLeft = constrain(left, -100, 100);
+    const int rawRight = constrain(right, -100, 100);
+    const int pwmLeft = constrain((int)(abs(rawLeft) * g_motionConfig.pwmPerSpeed), 0, 255);
+    const int pwmRight = constrain((int)(abs(rawRight) * g_motionConfig.pwmPerSpeed), 0, 255);
+
+    Serial.printf(
+        "[RAW-MOTOR] input L=%d R=%d | bypass minSpeed=%d speedScale=%.3f calib L=%.3f R=%.3f | raw L=%d R=%d | pwm L=%d R=%d\n",
+        left, right,
+        g_motionConfig.minSpeed,
+        g_motionConfig.speedScale,
+        g_motionConfig.leftMotorScale,
+        g_motionConfig.rightMotorScale,
+        rawLeft, rawRight,
+        pwmLeft, pwmRight
+    );
+
+    _setMotorsRaw(rawLeft, rawRight);
+}
+
 void setMotorsDirect(int left, int right) {
 #if !ROBOT_FEATURE_MOTOR
     (void)left; (void)right;
