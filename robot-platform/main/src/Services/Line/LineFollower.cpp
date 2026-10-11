@@ -8,6 +8,7 @@
 namespace {
 constexpr float LAST_DIRECTION_THRESHOLD = 0.25f;
 constexpr float ERROR_FILTER_ALPHA = 0.70f;
+constexpr float GAP_DIRECTIONAL_THRESHOLD = 0.25f;
 }
 
 LineFollower& LineFollower::instance() {
@@ -175,6 +176,23 @@ bool LineFollower::update(uint8_t mask, int speed, int &leftMotor, int &rightMot
 
         default: {
             const int baseSpeed = constrain(speed, 0, 100);
+
+            // Real Line5 hardware commonly reports a brief 00000 while the line
+            // crosses the physical gap between adjacent eyes. During the LOST
+            // debounce window we must not keep driving straight at full line
+            // speed when the last steering estimate was centered: that is the
+            // exact CENTER -> 00000 overshoot observed on the robot. Coast for
+            // this ambiguous centered gap; if a directional estimate exists,
+            // preserve it so LEFT/RIGHT -> 00000 continues correcting toward
+            // the last visible side.
+            if (mask == 0 &&
+                (!_filterInitialized || fabsf(_filteredError) < GAP_DIRECTIONAL_THRESHOLD)) {
+                _lastCorrection = 0.0f;
+                leftMotor = 0;
+                rightMotor = 0;
+                break;
+            }
+
             const float correction = _pid.update(_filteredError);
             _lastCorrection = correction;
             MotorOutput out = MotorMixer::mix(baseSpeed, correction, _scaleFactor);
