@@ -216,6 +216,41 @@ def test_pair_aware_motor_mapping_examples() -> None:
     assert map_pair(60, 60) == (60, 60)
 
 
+def test_line_motor_operating_region_contract() -> None:
+    header = (ROOT / "robot-platform/main/src/Services/Robot/MotorOutputMapper.h").read_text(encoding="utf-8")
+    mapper = (ROOT / "robot-platform/main/src/Services/Robot/MotorOutputMapper.cpp").read_text(encoding="utf-8")
+    api = (ROOT / "robot-platform/main/src/Services/Robot/RobotAPI.cpp").read_text(encoding="utf-8")
+    require(header, "class LineMotorOperatingPolicy", "Line-only stateful output policy")
+    require(mapper, "LEFT_RUN_MIN = 40", "left measured run floor")
+    require(mapper, "RIGHT_RUN_MIN = 50", "right measured run floor")
+    require(mapper, "RESTART_BOOST_MS = 60", "bounded per-wheel restart")
+    require(mapper, "otherMagnitude >= otherRunMin", "stalled inner wheel intentional stop")
+    require(mapper, "if (target == 0)", "preserve true stop")
+    require(api, "g_lineMotorPolicy.apply(", "Line5 actuator policy invoked")
+    require(api, "g_lineMotorPolicy.reset()", "Line5 policy reset at motion boundaries")
+    assert "g_lineMotorPolicy.apply(" not in api[api.index("static void _setMotors("):api.index("static void _setLineMotors(")], "general Forward/Backward must stay unchanged")
+
+    # Reference oracle for actuator-domain choices; the native C++ policy is
+    # also compiled/exercised by the separate unit-test executable.
+    def sustainable(left: int, right: int) -> tuple[int, int]:
+        def side(speed: int, minimum: int, other: int, other_min: int) -> int:
+            if not speed:
+                return 0
+            if abs(speed) < minimum and abs(other) >= other_min:
+                return 0
+            return (-1 if speed < 0 else 1) * max(abs(speed), minimum)
+        return side(left, 40, right, 50), side(right, 50, left, 40)
+
+    assert sustainable(60, 60) == (60, 60)
+    assert sustainable(52, 32) == (52, 0)
+    assert sustainable(32, 52) == (0, 52)
+    assert sustainable(36, 24) == (40, 0)
+    assert sustainable(24, 36) == (40, 50)  # neither side has a stable outer-wheel command
+    assert sustainable(0, 60) == (0, 60)
+    assert sustainable(60, 0) == (60, 0)
+    assert sustainable(0, 0) == (0, 0)
+
+
 def test_startup_boost_and_progressive_schedule() -> None:
     start_boost = 65
 
