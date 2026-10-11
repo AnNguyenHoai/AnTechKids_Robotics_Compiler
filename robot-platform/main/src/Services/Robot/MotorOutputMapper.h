@@ -43,7 +43,7 @@ public:
                int& outputLeft, int& outputRight);
 private:
     struct Wheel {
-        bool running = false;
+        int8_t direction = 0; // -1 reverse, 0 stop, +1 forward
         uint32_t restartAtMs = 0;
     };
     Wheel _left;

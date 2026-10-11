@@ -95,7 +95,7 @@ constexpr int RIGHT_RUN_MIN = 50;
 constexpr int RESTART_BOOST = 65;
 constexpr uint32_t RESTART_BOOST_MS = 60;
 
-constexpr int INNER_FLOOR_MARGIN = 12;
+constexpr int INNER_STOP_THRESHOLD = 20; // do not pivot on ordinary small corrections
 
 // Preserve the commanded outer/inner ordering instead of naively applying
 // two independent floors, which can invert yaw when L=48/R=40.
@@ -126,7 +126,7 @@ void sustainablePair(int left, int right, int& outputLeft, int& outputRight) {
     if (inner != 0 && inner < innerFloor) {
         // Small steering differences: keep the inner wheel moving reliably.
         // Strong steering or a floor that would invert yaw: true inner stop.
-        inner = (inner + INNER_FLOOR_MARGIN >= innerFloor && outer > innerFloor)
+        inner = (inner >= INNER_STOP_THRESHOLD && outer > innerFloor)
                     ? innerFloor : 0;
     }
     const int leftOutputMag = leftOuter ? outer : inner;
@@ -148,13 +148,16 @@ void LineMotorOperatingPolicy::apply(int requestedLeft, int requestedRight,
     int right = 0;
     sustainablePair(requestedLeft, requestedRight, left, right);
     auto assistRestart = [nowMs](int target, Wheel& wheel) -> int {
-        if (target == 0) {
-            wheel.running = false;
+        const int8_t direction = (target > 0) - (target < 0);
+        if (direction == 0) {
+            wheel.direction = 0;
             wheel.restartAtMs = 0;
             return 0;
         }
-        if (!wheel.running) {
-            wheel.running = true;
+        // Changing sign reverses wheel torque and requires a fresh bounded
+        // startup kick even if the previous command never passed through zero.
+        if (wheel.direction != direction) {
+            wheel.direction = direction;
             wheel.restartAtMs = nowMs;
         }
         if ((uint32_t)(nowMs - wheel.restartAtMs) < RESTART_BOOST_MS) {
