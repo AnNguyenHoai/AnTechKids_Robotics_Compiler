@@ -157,6 +157,8 @@ bool isLineResponseDiagnosticEnabled() {
 // ---- Forward declarations ----
 static void _stopMotion(StopReason reason = STOP_REASON_COMMAND_STOP);
 static void _applyMotion();
+static bool _lineLeaseExpired(uint32_t nowMs);
+static void _runLineControlTick(int speed);
 
 // ---- Motor control internal ----
 // ---- Heading Startup Diagnostic Functions ----
@@ -624,6 +626,13 @@ void setMotorsDirect(int left, int right) {
         Serial.println("[RobotAPI] Motion blocked: Robot not ready");
         return;
     }
+    if (g_motionControlMode == MotionControlMode::Line && g_lineControlActive) {
+        g_lineControlActive = false;
+        g_lineControlSpeed = 0;
+        g_lineControlLastTickMs = 0;
+        g_lineControlLeaseDeadlineMs = 0;
+        g_motionControlMode = MotionControlMode::None;
+    }
     _setMotors(left, right);
 }
 
@@ -636,6 +645,13 @@ void SetMotorSpeed(int left, int right) {
     if (!g_robotReady) {
         Serial.println("[RobotAPI] Motion blocked: Robot not ready");
         return;
+    }
+    if (g_motionControlMode == MotionControlMode::Line && g_lineControlActive) {
+        g_lineControlActive = false;
+        g_lineControlSpeed = 0;
+        g_lineControlLastTickMs = 0;
+        g_lineControlLeaseDeadlineMs = 0;
+        g_motionControlMode = MotionControlMode::None;
     }
     _setMotors(left, right);
 }
