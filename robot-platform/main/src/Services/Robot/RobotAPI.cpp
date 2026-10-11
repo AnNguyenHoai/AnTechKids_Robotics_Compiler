@@ -80,6 +80,13 @@ static int g_lastMotorDiagLogicalLeft = 1000;
 static int g_lastMotorDiagLogicalRight = 1000;
 static int g_lastMotorDiagMappedLeft = 1000;
 static int g_lastMotorDiagMappedRight = 1000;
+
+// V1 Line5 motor characterization (real robot):
+// both sides need ~65 to reliably start from rest, while running speed can be
+// lower. Apply this floor only for a short line-mode startup window.
+constexpr int LINE_START_BOOST_SPEED = 65;
+constexpr uint32_t LINE_START_BOOST_MS = 60;
+static uint32_t g_lineStartupBoostUntilMs = 0;
 // ---- STOP Reason Diagnostics ----
 enum StopReason {
     STOP_REASON_UNKNOWN = 0,
@@ -285,6 +292,21 @@ static void _setLineMotors(int leftSpeed, int rightSpeed) {
         mappedRight
     );
 
+    const bool startupBoostActive =
+        g_lineStartupBoostUntilMs != 0 &&
+        (int32_t)(g_lineStartupBoostUntilMs - millis()) > 0;
+
+    auto applyStartupBoost = [&](int mapped) -> int {
+        if (!startupBoostActive || mapped == 0) return mapped;
+        const int sign = mapped < 0 ? -1 : 1;
+        int magnitude = abs(mapped);
+        if (magnitude < LINE_START_BOOST_SPEED) magnitude = LINE_START_BOOST_SPEED;
+        return sign * magnitude;
+    };
+
+    mappedLeft = applyStartupBoost(mappedLeft);
+    mappedRight = applyStartupBoost(mappedRight);
+
     if (g_motorMappingDiagnosticEnabled &&
         (logicalLeft != g_lastMotorDiagLogicalLeft ||
          logicalRight != g_lastMotorDiagLogicalRight ||
@@ -293,9 +315,9 @@ static void _setLineMotors(int leftSpeed, int rightSpeed) {
         const int pwmLeft = (int)(abs(mappedLeft) * g_motionConfig.pwmPerSpeed);
         const int pwmRight = (int)(abs(mappedRight) * g_motionConfig.pwmPerSpeed);
         Serial.printf(
-            "[MOTOR-DIAG][LINE] logical L=%d R=%d | minDrive=%d | mapped L=%d R=%d | pwm L=%d R=%d\n",
+            "[MOTOR-DIAG][LINE] logical L=%d R=%d | direct=1 startupBoost=%d | mapped L=%d R=%d | pwm L=%d R=%d\n",
             logicalLeft, logicalRight,
-            g_motionConfig.minSpeed,
+            startupBoostActive ? 1 : 0,
             mappedLeft, mappedRight,
             pwmLeft, pwmRight
         );
@@ -366,6 +388,7 @@ static void _stopMotion(StopReason reason) {
     g_lineControlSpeed = 0;
     g_lineControlLastTickMs = 0;
     g_lineControlLeaseDeadlineMs = 0;
+    g_lineStartupBoostUntilMs = 0;
     g_motionControlMode = MotionControlMode::None;
     g_headingController.stop();
     _setMotorsRaw(0, 0);
@@ -671,6 +694,7 @@ void setMotorsDirect(int left, int right) {
         g_lineControlSpeed = 0;
         g_lineControlLastTickMs = 0;
         g_lineControlLeaseDeadlineMs = 0;
+        g_lineStartupBoostUntilMs = 0;
         g_motionControlMode = MotionControlMode::None;
     }
     _setMotors(left, right);
@@ -691,6 +715,7 @@ void SetMotorSpeed(int left, int right) {
         g_lineControlSpeed = 0;
         g_lineControlLastTickMs = 0;
         g_lineControlLeaseDeadlineMs = 0;
+        g_lineStartupBoostUntilMs = 0;
         g_motionControlMode = MotionControlMode::None;
     }
     _setMotors(left, right);
@@ -768,6 +793,7 @@ void updateMotion() {
             g_lineControlSpeed = 0;
             g_lineControlLastTickMs = 0;
             g_lineControlLeaseDeadlineMs = 0;
+            g_lineStartupBoostUntilMs = 0;
             LineFollower::instance().stop();
             _setMotorsRaw(0, 0);
             return;
@@ -1065,6 +1091,7 @@ void LineBasis(int speed) {
         LineFollower::instance().reset();
         g_lineControlLastTickMs = 0;
         g_lastLineBasisUs = 0;
+        g_lineStartupBoostUntilMs = nowMs + LINE_START_BOOST_MS;
     }
 
     // First call reacts immediately. Repeated VM calls merely refresh the lease
