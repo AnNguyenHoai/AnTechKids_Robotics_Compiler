@@ -148,6 +148,8 @@ int16_t ReadLine(int channel);
 void Wait(uint32_t ms);
 
 void setMotorsDirect(int left, int right);
+// Diagnostic only: bypasses minSpeed, speedScale and motor calibration.
+void setMotorsRawDiagnostic(int left, int right);
 void SetServo(int port, int angle);
 void Set3CLed(int port, int state);
 void SetLightSensorLed(int port, int state);
