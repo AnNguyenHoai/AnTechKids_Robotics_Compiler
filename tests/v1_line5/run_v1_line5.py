@@ -237,7 +237,13 @@ def test_line_motor_operating_region_contract() -> None:
     require(header, "class TTMotorAwareOutput", "shared V1 TT motor output boundary")
     require(api, "g_lineMotorPolicy.reset()", "Line5 policy reset at motion boundaries")
     assert "TTMotorAwareOutput::applyLinePair(" not in api[api.index("static void _setMotors("):api.index("static void _setLineMotors(")], "general Forward/Backward must stay unchanged"
-    assert "TTMotorAwareOutput::applyLinePair(" not in api[api.index("void SetMotorSpeed("):api.index("void Forward(")], "student control must remain unchanged in S2"
+    student_api = api[api.index("void SetMotorSpeed("):api.index("void Forward(")]
+    require(student_api, "TTMotorAwareOutput::applyLinePair(", "S3 student uses TT-aware output")
+    require(student_api, "g_studentMotorPolicy", "student policy is isolated")
+    require(student_api, "_setMotorsRaw(mappedLeft, mappedRight)", "student output bypasses minSpeed remap")
+    assert "_setMotors(left, right);" not in student_api, "student must not use general minSpeed remap"
+    require(api, "MotionControlMode::Student", "student owns motor mode")
+    require(api, "g_studentMotorPolicy.reset()", "student policy reset at motion boundaries")
 
     # Check actual source semantics; stateful behavior is exercised in
     # the native firmware test suite and verified on the physical chassis.
