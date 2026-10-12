@@ -33,7 +33,8 @@ public:
         int& mappedRight);
 };
 
-// Stateful, Line5-only actuator policy. Do not use for generic motion.
+// V1 TT-specific actuator policy, reusable by future student control.
+// Preserve a distinct policy instance per motion owner; do not mix sessions.
 // A wheel that must rotate stays above its measured sustainable range;
 // a deliberately slowed inner wheel may instead be stopped entirely.
 class LineMotorOperatingPolicy {
@@ -49,6 +50,18 @@ private:
     Wheel _left;
     Wheel _right;
     int8_t _pivotSide = 0;
+};
+
+// Shared TT output pipeline. S2 switches only autonomous Line5 to this
+// wrapper; S3 may add Student Control with a separate policy instance.
+class TTMotorAwareOutput {
+public:
+    static void applyLinePair(int logicalLeft, int logicalRight,
+                              float speedScale, float leftMotorScale,
+                              float rightMotorScale, int minDrive,
+                              bool startupBoostActive, uint32_t nowMs,
+                              LineMotorOperatingPolicy& policy,
+                              int& mappedLeft, int& mappedRight);
 };
 
 } // namespace RobotAPI
