@@ -282,39 +282,21 @@ static void _setLineMotors(int leftSpeed, int rightSpeed) {
 
     int mappedLeft = 0;
     int mappedRight = 0;
-    MotorOutputMapper::mapSteeringPair(
-        logicalLeft,
-        logicalRight,
+    const uint32_t nowMs = millis();
+    const bool startupBoostActive =
+        g_lineStartupBoostUntilMs != 0 &&
+        (int32_t)(g_lineStartupBoostUntilMs - nowMs) > 0;
+
+    // S2: same Line5 motor processing, now shared at a reusable TT boundary.
+    // Student Control remains on the original general mapper until S3.
+    TTMotorAwareOutput::applyLinePair(
+        logicalLeft, logicalRight,
         g_motionConfig.speedScale,
         g_motionConfig.leftMotorScale,
         g_motionConfig.rightMotorScale,
         g_motionConfig.minSpeed,
-        mappedLeft,
-        mappedRight
-    );
-
-    const bool startupBoostActive =
-        g_lineStartupBoostUntilMs != 0 &&
-        (int32_t)(g_lineStartupBoostUntilMs - millis()) > 0;
-
-    auto applyStartupBoost = [&](int mapped) -> int {
-        if (!startupBoostActive || mapped == 0) return mapped;
-        const int sign = mapped < 0 ? -1 : 1;
-        int magnitude = abs(mapped);
-        if (magnitude < LINE_START_BOOST_SPEED) magnitude = LINE_START_BOOST_SPEED;
-        return sign * magnitude;
-    };
-
-    mappedLeft = applyStartupBoost(mappedLeft);
-    mappedRight = applyStartupBoost(mappedRight);
-    // Per-wheel sustainable region and bounded restart kick; applies to all
-    // Line5 paths (normal steering, recovery, and sharp corners) only.
-    int sustainableLeft = 0;
-    int sustainableRight = 0;
-    g_lineMotorPolicy.apply(mappedLeft, mappedRight, millis(),
-                            sustainableLeft, sustainableRight);
-    mappedLeft = sustainableLeft;
-    mappedRight = sustainableRight;
+        startupBoostActive, nowMs, g_lineMotorPolicy,
+        mappedLeft, mappedRight);
 
     if (g_motorMappingDiagnosticEnabled &&
         (logicalLeft != g_lastMotorDiagLogicalLeft ||
