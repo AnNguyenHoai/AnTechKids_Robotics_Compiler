@@ -252,7 +252,8 @@ def test_line_motor_operating_region_contract() -> None:
     student_tick = api[api.index("void updateMotion() {"):api.index("bool isRobotReady()")]
     require(student_tick, "g_motionControlMode == MotionControlMode::Student", "student watchdog polled in firmware")
     require(student_tick, "_setMotorsRaw(0, 0)", "expired student command stops motors")
-    heading_entry = api[api.index("void _startMotion(int speed, int direction) {"):api.index("void Forward(int16_t speed)")] if False else api[api.index("void _startMotion(int speed, int direction) {"):api.index("void _startMotion(int speed, int direction) {") + 1050]
+    heading_entry_start = api.index("void _startMotion(int speed, int direction) {")
+    heading_entry = api[heading_entry_start:heading_entry_start + 1050]
     require(heading_entry, "g_studentControlDeadlineMs = 0;", "heading clears student lease")
 
     # Check actual source semantics; stateful behavior is exercised in
