@@ -183,4 +183,30 @@ void LineMotorOperatingPolicy::apply(int requestedLeft, int requestedRight,
     outputRight = assistRestart(right, _right);
 }
 
+void TTMotorAwareOutput::applyLinePair(int logicalLeft, int logicalRight,
+                                      float speedScale, float leftMotorScale,
+                                      float rightMotorScale, int minDrive,
+                                      bool startupBoostActive, uint32_t nowMs,
+                                      LineMotorOperatingPolicy& policy,
+                                      int& mappedLeft, int& mappedRight) {
+    MotorOutputMapper::mapSteeringPair(logicalLeft, logicalRight, speedScale,
+                                      leftMotorScale, rightMotorScale, minDrive,
+                                      mappedLeft, mappedRight);
+    // Preserve the V1 Line5 first-session boost exactly; the per-wheel
+    // restart policy remains responsible for later stops and reversals.
+    constexpr int INITIAL_BOOST = 65;
+    auto boost = [startupBoostActive](int value) -> int {
+        if (!startupBoostActive || value == 0) return value;
+        const int magnitude = value < 0 ? -value : value;
+        const int target = magnitude < INITIAL_BOOST ? INITIAL_BOOST : magnitude;
+        return value < 0 ? -target : target;
+    };
+    int sustainableLeft = 0;
+    int sustainableRight = 0;
+    policy.apply(boost(mappedLeft), boost(mappedRight), nowMs,
+                 sustainableLeft, sustainableRight);
+    mappedLeft = sustainableLeft;
+    mappedRight = sustainableRight;
+}
+
 } // namespace RobotAPI
