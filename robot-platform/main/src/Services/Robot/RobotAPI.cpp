@@ -349,6 +349,10 @@ static bool g_lineControlActive = false;
 static int g_lineControlSpeed = 0;
 static uint32_t g_lineControlLastTickMs = 0;
 static uint32_t g_lineControlLeaseDeadlineMs = 0;
+// Student commands are refreshed by VM loops, not firmware-autonomous Line5.
+// On command loss, stop wheels rather than indefinitely retaining the PWM.
+constexpr uint32_t STUDENT_CONTROL_LEASE_MS = 300;
+static uint32_t g_studentControlDeadlineMs = 0;
 // ---- H15: Motion/Ultrasonic correlation diagnostics ----
 static uint32_t g_motionSessionId = 0;
 static uint32_t g_motionStartMs = 0;
@@ -384,6 +388,7 @@ static void _stopMotion(StopReason reason) {
     g_lineStartupBoostUntilMs = 0;
     g_lineMotorPolicy.reset();
     g_studentMotorPolicy.reset();
+    g_studentControlDeadlineMs = 0;
     g_motionControlMode = MotionControlMode::None;
     g_headingController.stop();
     _setMotorsRaw(0, 0);
@@ -397,6 +402,7 @@ static void _stopMotion(StopReason reason) {
 static void _enterLineControlMode() {
     if (g_motionControlMode != MotionControlMode::Line) {
         g_studentMotorPolicy.reset();
+        g_studentControlDeadlineMs = 0;
         Serial.println("[MOTION-MODE] LINE: heading control disabled, line sensors own motor steering");
     }
 
@@ -554,6 +560,13 @@ static void _startMotion(int speed, int direction) {
     bool newSession = !g_isMoving;
 
     g_studentMotorPolicy.reset();
+    g_studentControlDeadlineMs = 0;
+    g_lineControlActive = false;
+    g_lineControlSpeed = 0;
+    g_lineControlLeaseDeadlineMs = 0;
+    g_lineControlLastTickMs = 0;
+    g_lineStartupBoostUntilMs = 0;
+    g_lineMotorPolicy.reset();
     // Explicit ownership transition: normal forward/backward motion is
     // controlled by the heading controller, not by any previous line mode.
     g_motionControlMode = MotionControlMode::Heading;
@@ -655,6 +668,10 @@ void setMotorsRawDiagnostic(int left, int right) {
     g_lineControlLastTickMs = 0;
     g_lineControlLeaseDeadlineMs = 0;
     g_motionControlMode = MotionControlMode::None;
+    g_studentControlDeadlineMs = 0;
+    g_studentMotorPolicy.reset();
+    g_lineMotorPolicy.reset();
+    g_lineStartupBoostUntilMs = 0;
     g_headingController.stop();
 
     const int rawLeft = constrain(left, -100, 100);
@@ -695,6 +712,13 @@ void setMotorsDirect(int left, int right) {
     g_lineMotorPolicy.reset();
         g_motionControlMode = MotionControlMode::None;
     }
+    // Legacy direct output remains general-motion mapped, but must not
+    // leave a background Student or Heading controller writing over it.
+    g_studentMotorPolicy.reset();
+    g_studentControlDeadlineMs = 0;
+    g_isMoving = false;
+    g_headingController.stop();
+    g_motionControlMode = MotionControlMode::None;
     _setMotors(left, right);
 }
 
@@ -723,6 +747,7 @@ void SetMotorSpeed(int left, int right) {
     g_isMoving = false;
     g_headingController.stop();
     g_motionControlMode = MotionControlMode::Student;
+    g_studentControlDeadlineMs = millis() + STUDENT_CONTROL_LEASE_MS;
 
     const int requestedLeft = clampLogicalMotorCommand(left);
     const int requestedRight = clampLogicalMotorCommand(right);
@@ -797,6 +822,19 @@ void Stop() {
 
 void updateMotion() {
     if (!g_robotReady) {
+        return;
+    }
+
+    if (g_motionControlMode == MotionControlMode::Student) {
+        // Signed subtraction is rollover-safe for a lease shorter than 2^31ms.
+        if (g_studentControlDeadlineMs != 0 &&
+            (int32_t)(millis() - g_studentControlDeadlineMs) >= 0) {
+            Serial.println("[MOTION-WATCHDOG] Student command lease expired");
+            g_studentControlDeadlineMs = 0;
+            g_studentMotorPolicy.reset();
+            g_motionControlMode = MotionControlMode::None;
+            _setMotorsRaw(0, 0);
+        }
         return;
     }
 
