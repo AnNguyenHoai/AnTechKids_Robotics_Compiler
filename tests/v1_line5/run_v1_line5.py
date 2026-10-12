@@ -231,9 +231,12 @@ def test_line_motor_operating_region_contract() -> None:
     require(mapper, "direction == 0", "preserve true stop")
     require(mapper, "wheel.direction != direction", "restart on direction reversal")
     require(mapper, "wheel.restartAtMs = nowMs", "bounded reversal kick reset")
-    require(api, "g_lineMotorPolicy.apply(", "Line5 actuator policy invoked")
+    require(api, "TTMotorAwareOutput::applyLinePair(", "Line5 uses shared TT motor output")
+    require(mapper, "policy.apply(boost(mappedLeft), boost(mappedRight), nowMs,", "shared TT wrapper executes unchanged policy")
+    require(header, "class TTMotorAwareOutput", "shared V1 TT motor output boundary")
     require(api, "g_lineMotorPolicy.reset()", "Line5 policy reset at motion boundaries")
-    assert "g_lineMotorPolicy.apply(" not in api[api.index("static void _setMotors("):api.index("static void _setLineMotors(")], "general Forward/Backward must stay unchanged")
+    assert "TTMotorAwareOutput::applyLinePair(" not in api[api.index("static void _setMotors("):api.index("static void _setLineMotors(")], "general Forward/Backward must stay unchanged"
+    assert "TTMotorAwareOutput::applyLinePair(" not in api[api.index("void SetMotorSpeed("):api.index("void Forward(")], "student control must remain unchanged in S2")
 
     # Check actual source semantics; stateful behavior is exercised in
     # the native firmware test suite and verified on the physical chassis.
