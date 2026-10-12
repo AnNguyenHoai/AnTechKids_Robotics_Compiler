@@ -195,7 +195,7 @@ void TTMotorAwareOutput::applyLinePair(int logicalLeft, int logicalRight,
     // Preserve the V1 Line5 first-session boost exactly; the per-wheel
     // restart policy remains responsible for later stops and reversals.
     constexpr int INITIAL_BOOST = 65;
-    auto boost = [startupBoostActive](int value) -> int {
+    auto boost = [startupBoostActive, INITIAL_BOOST](int value) -> int {
         if (!startupBoostActive || value == 0) return value;
         const int magnitude = value < 0 ? -value : value;
         const int target = magnitude < INITIAL_BOOST ? INITIAL_BOOST : magnitude;
