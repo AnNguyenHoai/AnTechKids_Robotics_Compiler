@@ -244,17 +244,15 @@ def test_line_motor_operating_region_contract() -> None:
     assert "_setMotors(left, right);" not in student_api, "student must not use general minSpeed remap"
     require(api, "MotionControlMode::Student", "student owns motor mode")
     require(api, "g_studentMotorPolicy.reset()", "student policy reset at motion boundaries")
-    require(api, "STUDENT_CONTROL_LEASE_MS = 300", "bounded student command lease")
-    require(student_api, "g_studentControlDeadlineMs = millis() + STUDENT_CONTROL_LEASE_MS", "student refreshes lease each command")
-    require(api, "[MOTION-WATCHDOG] Student command lease expired", "student watchdog diagnostic")
-    require(api, "(int32_t)(millis() - g_studentControlDeadlineMs) >= 0", "rollover-safe student lease expiry")
-    require(api, "g_studentControlDeadlineMs = 0;", "student lease reset on transition")
+    # S4B: SetMoveSpeed latches until a subsequent command or VM lifecycle stop.
+    assert "STUDENT_CONTROL_LEASE_MS" not in api, "Student must not expire during Wait"
+    assert "g_studentControlDeadlineMs" not in api, "No hidden student deadline"
     student_tick = api[api.index("void updateMotion() {"):api.index("bool isRobotReady()")]
-    require(student_tick, "g_motionControlMode == MotionControlMode::Student", "student watchdog polled in firmware")
-    require(student_tick, "_setMotorsRaw(0, 0)", "expired student command stops motors")
-    heading_entry_start = api.index("void _startMotion(int speed, int direction) {")
-    heading_entry = api[heading_entry_start:heading_entry_start + 1050]
-    require(heading_entry, "g_studentControlDeadlineMs = 0;", "heading clears student lease")
+    require(student_tick, "MotionControlMode::Student) return;", "student output remains latched")
+    main_loop = (ROOT / "robot-platform/main/main.ino").read_text(encoding="utf-8")
+    require(main_loop, "g_programExecutionFinished = true;", "VM completion and fault state")
+    require(main_loop, "VM stability test completed; motors stopped.", "completion stop")
+    require(main_loop, "RobotAPI::Stop();", "VM lifecycle output stop")
 
     # Check actual source semantics; stateful behavior is exercised in
     # the native firmware test suite and verified on the physical chassis.
