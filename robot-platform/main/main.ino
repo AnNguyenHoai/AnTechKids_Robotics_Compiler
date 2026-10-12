@@ -53,6 +53,8 @@ bool g_robotReady = false;
 bool g_manualStartEnabled = false;
 bool g_vmStarted = true;
 bool g_programLoadFailed = false;
+// Once execution finishes/fails, keep loop servicing safety, serial and OTA.
+bool g_programExecutionFinished = false;
 
 void setup() {
     Serial.begin(115200);
@@ -217,38 +219,42 @@ void loop() {
         }
 #endif
 
-        if (!vm.IsRunning()) {
+        if (!vm.IsRunning() && !g_programExecutionFinished) {
 #ifdef DIAGNOSTIC_MANUAL_START
             if (g_vmStarted) {
 #else
             if (true) {
 #endif
-                uint8_t err = vm.GetErrorCode();
+                // Safety first: a completed/failed program never leaves
+                // SetMoveSpeed (or another motion owner) running indefinitely.
+                RobotAPI::Stop();
+                const uint8_t err = vm.GetErrorCode();
                 if (err != 0) {
                     BootLogger::logFormat("ERROR", "VM stopped with error code: %d", err);
-                    while (1) { }
-                }
-                executionCounter++;
-                BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
-
-                if (executionCounter < STABILITY_ITERATIONS) {
-                    BootLogger::log("STABILITY", "Restarting VM...");
-                    vm.Reset();
-                    vm.LoadProgram(&program);
-#ifdef DIAGNOSTIC_MANUAL_START
-                    vm.SetRunning(false);
-                    g_vmStarted = false;
-                    BootLogger::log("VM-DIAG", "Waiting for manual execution again");
-#endif
+                    g_programExecutionFinished = true;
                 } else {
-                    BootLogger::log("STABILITY", "VM stability test completed.");
-                    while (1) {
-                        SerialCommandHandler::handle();
-                        RobotNetworkService::update();
-                        delay(30);
+                    executionCounter++;
+                    BootLogger::logFormat("EXEC", "Execution #%d finished", executionCounter);
+                    if (executionCounter < STABILITY_ITERATIONS) {
+                        BootLogger::log("STABILITY", "Restarting VM...");
+                        vm.Reset();
+                        vm.LoadProgram(&program);
+#ifdef DIAGNOSTIC_MANUAL_START
+                        vm.SetRunning(false);
+                        g_vmStarted = false;
+                        BootLogger::log("VM-DIAG", "Waiting for manual execution again");
+#endif
+                    } else {
+                        BootLogger::log("STABILITY", "VM stability test completed; motors stopped.");
+                        g_programExecutionFinished = true;
                     }
                 }
             }
+        }
+        if (g_programExecutionFinished) {
+            // Even if a later diagnostic wrote to the motor outputs, remain
+            // inert while allowing USB/OTA recovery and diagnostics.
+            RobotAPI::Stop();
         }
     }
 
