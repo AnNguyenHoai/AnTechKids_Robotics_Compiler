@@ -126,7 +126,8 @@ def test_source_contract() -> None:
     require(robot_api, "rawErr=%.2f filtErr=%.2f corr=%.2f", "Line5 tuning diagnostics")
     require(robot_api, "(unsigned long)loopDtUs", "Line5 response diagnostic loop timing argument")
     require(robot_api, "static void _setLineMotors", "line-specific pair-aware motor output path")
-    require(robot_api, "MotorOutputMapper::mapSteeringPair", "Line5 pair-aware motor mapper usage")
+    require(robot_api, "TTMotorAwareOutput::applyLinePair(", "Line5 invokes shared TT motor-aware pipeline")
+    require(motor_mapper, "MotorOutputMapper::mapSteeringPair(", "shared pipeline preserves pair-aware steering map")
     require(motor_mapper, "(void)speedScale;", "Line5 ignores global speedScale")
     require(motor_mapper, "(void)minDrive;", "Line5 ignores continuous minDrive remap")
     require(motor_mapper, "mapLineSide", "Line5 direct per-wheel mapping")
@@ -231,9 +232,12 @@ def test_line_motor_operating_region_contract() -> None:
     require(mapper, "direction == 0", "preserve true stop")
     require(mapper, "wheel.direction != direction", "restart on direction reversal")
     require(mapper, "wheel.restartAtMs = nowMs", "bounded reversal kick reset")
-    require(api, "g_lineMotorPolicy.apply(", "Line5 actuator policy invoked")
+    require(api, "TTMotorAwareOutput::applyLinePair(", "Line5 uses shared TT motor output")
+    require(mapper, "policy.apply(boost(mappedLeft), boost(mappedRight), nowMs,", "shared TT wrapper executes unchanged policy")
+    require(header, "class TTMotorAwareOutput", "shared V1 TT motor output boundary")
     require(api, "g_lineMotorPolicy.reset()", "Line5 policy reset at motion boundaries")
-    assert "g_lineMotorPolicy.apply(" not in api[api.index("static void _setMotors("):api.index("static void _setLineMotors(")], "general Forward/Backward must stay unchanged")
+    assert "TTMotorAwareOutput::applyLinePair(" not in api[api.index("static void _setMotors("):api.index("static void _setLineMotors(")], "general Forward/Backward must stay unchanged"
+    assert "TTMotorAwareOutput::applyLinePair(" not in api[api.index("void SetMotorSpeed("):api.index("void Forward(")], "student control must remain unchanged in S2"
 
     # Check actual source semantics; stateful behavior is exercised in
     # the native firmware test suite and verified on the physical chassis.
