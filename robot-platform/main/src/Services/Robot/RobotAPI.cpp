@@ -88,6 +88,7 @@ constexpr int LINE_START_BOOST_SPEED = 65;
 constexpr uint32_t LINE_START_BOOST_MS = 60;
 static uint32_t g_lineStartupBoostUntilMs = 0;
 static LineMotorOperatingPolicy g_lineMotorPolicy;
+static LineMotorOperatingPolicy g_studentMotorPolicy;
 // ---- STOP Reason Diagnostics ----
 enum StopReason {
     STOP_REASON_UNKNOWN = 0,
@@ -328,6 +329,7 @@ enum class MotionControlMode : uint8_t {
     None = 0,
     Heading,
     Line,
+    Student,
 };
 
 static MotionControlMode g_motionControlMode = MotionControlMode::None;
@@ -381,6 +383,7 @@ static void _stopMotion(StopReason reason) {
     g_lineControlLeaseDeadlineMs = 0;
     g_lineStartupBoostUntilMs = 0;
     g_lineMotorPolicy.reset();
+    g_studentMotorPolicy.reset();
     g_motionControlMode = MotionControlMode::None;
     g_headingController.stop();
     _setMotorsRaw(0, 0);
@@ -393,6 +396,7 @@ static void _stopMotion(StopReason reason) {
 // allowed to write motor corrections while LINE mode is active.
 static void _enterLineControlMode() {
     if (g_motionControlMode != MotionControlMode::Line) {
+        g_studentMotorPolicy.reset();
         Serial.println("[MOTION-MODE] LINE: heading control disabled, line sensors own motor steering");
     }
 
@@ -549,6 +553,7 @@ static void _startMotion(int speed, int direction) {
 
     bool newSession = !g_isMoving;
 
+    g_studentMotorPolicy.reset();
     // Explicit ownership transition: normal forward/backward motion is
     // controlled by the heading controller, not by any previous line mode.
     g_motionControlMode = MotionControlMode::Heading;
@@ -703,16 +708,37 @@ void SetMotorSpeed(int left, int right) {
         Serial.println("[RobotAPI] Motion blocked: Robot not ready");
         return;
     }
-    if (g_motionControlMode == MotionControlMode::Line && g_lineControlActive) {
-        g_lineControlActive = false;
-        g_lineControlSpeed = 0;
-        g_lineControlLastTickMs = 0;
-        g_lineControlLeaseDeadlineMs = 0;
-        g_lineStartupBoostUntilMs = 0;
-    g_lineMotorPolicy.reset();
-        g_motionControlMode = MotionControlMode::None;
+
+    // S3: Student owns wheel decisions; TT output corrects motor mechanics
+    // only. Never let Line5/heading background ticks overwrite student PWM.
+    if (g_motionControlMode != MotionControlMode::Student) {
+        g_studentMotorPolicy.reset();
     }
-    _setMotors(left, right);
+    g_lineControlActive = false;
+    g_lineControlSpeed = 0;
+    g_lineControlLastTickMs = 0;
+    g_lineControlLeaseDeadlineMs = 0;
+    g_lineStartupBoostUntilMs = 0;
+    g_lineMotorPolicy.reset();
+    g_isMoving = false;
+    g_headingController.stop();
+    g_motionControlMode = MotionControlMode::Student;
+
+    const int requestedLeft = clampLogicalMotorCommand(left);
+    const int requestedRight = clampLogicalMotorCommand(right);
+    int mappedLeft = 0;
+    int mappedRight = 0;
+    // Separate state from Line5 so restart and pivot hysteresis do not leak.
+    // Zero remains zero; reverse sign remains negative. No [65,100] remap.
+    TTMotorAwareOutput::applyLinePair(
+        requestedLeft, requestedRight,
+        g_motionConfig.speedScale,
+        g_motionConfig.leftMotorScale,
+        g_motionConfig.rightMotorScale,
+        g_motionConfig.minSpeed,
+        false, millis(), g_studentMotorPolicy,
+        mappedLeft, mappedRight);
+    _setMotorsRaw(mappedLeft, mappedRight);
 }
 
 void Forward(int16_t speed) {
