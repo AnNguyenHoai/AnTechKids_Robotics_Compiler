@@ -15,6 +15,7 @@ def check_samples() -> None:
         "v1_s5_01_motor_commands.py": (0, 3),
         "v1_s5_02_student_line3.py": (3, 1),
         "v1_s5_03_student_line5.py": (5, 1),
+        "v1_s5_04_student_to_line5.py": (0, 1),
     }
     for filename, (sensor_count, min_stop) in expected.items():
         content = (SAMPLES / filename).read_text(encoding="utf-8")
@@ -25,6 +26,14 @@ def check_samples() -> None:
         assert names.count("GetTraceV2I2CChxState") == sensor_count, filename
         assert names.count("SetMoveStop") >= min_stop, filename
         assert "SetMoveSpeed" in names and "SetWaitForTime" in names, filename
+        if filename == "v1_s5_04_student_to_line5.py":
+            assert names.count("line_basis") == 1, "T7-R1 must invoke Line5"
+            assert names.index("SetMoveSpeed") < names.index("line_basis"), "Student takes control first"
+            assert "range" in [n.id for n in ast.walk(tree) if isinstance(n, ast.Name)], "T7-R1 refresh loop required"
+            waits = [c.args[0].value for c in calls if c.func.attr == "SetWaitForTime"
+                     and c.args and isinstance(c.args[0], ast.Constant)]
+            assert 0.02 in waits, "T7-R1 Line5 lease refresh cadence"
+            continue
         assert "line_basis" not in names, filename
         if sensor_count:
             channels = sorted(node.args[1].value for node in calls
@@ -47,9 +56,12 @@ def check_contract() -> None:
     assert "g_programExecutionFinished" in main
     assert "RobotAPI::Stop();" in main
     assert "LINE_CONTROL_LEASE_MS = 120" in api
+    line = api[api.index("void LineBasis("):api.index("void LineFollow(")]
+    assert "_enterLineControlMode();" in line, "Line5 claims control from Student"
+    assert "g_lineControlLeaseDeadlineMs = nowMs + LINE_CONTROL_LEASE_MS;" in line
 
 if __name__ == "__main__":
     check_samples()
     check_contract()
     print("PASS V1-S5: student RoboSim samples and V1 lifecycle/TT contracts")
-    print("PENDING PHYSICAL: requires supervised ESP32 robot tests and recorded evidence")
+    print("PHYSICAL: user-reported 8/8 T1-T8 PASS (T7 via T7-R1); other safety and quantitative checks pending")
