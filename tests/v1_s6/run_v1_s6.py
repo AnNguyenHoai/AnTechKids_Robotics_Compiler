@@ -34,5 +34,20 @@ assert "ledcWrite(OUTPUT_BUZZER_PIN, duty)" in api
 assert "port != 1 || angle < 0 || angle > 180" in api
 compiler = (ROOT / "robot-compiler/compiler/handlers/servo_handler.py").read_text()
 assert "compiler.program.emit(Opcode.SetServo.value, port, angle, 0)" in compiler
+
+# UI state must be committed atomically so default buzzer -> servo switching works.
+ui = (ROOT / "robostudio/ui/hardware_tab.py").read_text(encoding="utf-8")
+assert "candidate = HardwareConfig.from_dict" in ui
+assert "self._config_service.save(candidate)" in ui
+assert 'self._config.set_enabled(device_id, checkbox.isChecked())' not in ui
+candidate = HardwareConfig.from_dict({"devices": {"buzzer": False, "servo": True}})
+assert candidate.is_enabled("servo") and not candidate.is_enabled("buzzer")
+# The reverse transition and invalid both-on selection remain guarded.
+reverse = HardwareConfig.from_dict({"devices": {"buzzer": True, "servo": False}})
+assert reverse.is_enabled("buzzer") and not reverse.is_enabled("servo")
+script = (ROOT / "examples/physical/v1_s6_01_servo_sh90_acceptance.py").read_text(encoding="utf-8")
+import ast
+ast.parse(script)
+assert script.count("rcu.SetServo(") == 4
 print("PASS V1-S6 GPIO19 exclusivity, config rollback, servo codepath source contracts")
 print("PHYSICAL PENDING: verify GPIO19 wiring, SH90 power, PWM output and motor/buzzer regression")
