@@ -30,6 +30,9 @@ def configure_user_state(*, ultrasonic: bool, servo: bool, buzzer: bool) -> Hard
     config.set_enabled("motor", True)
     config.set_enabled("line_sensor", True)
     config.set_enabled("ultrasonic", ultrasonic)
+    # GPIO19 has exclusive ownership: release the previous output first.
+    config.set_enabled("servo", False)
+    config.set_enabled("buzzer", False)
     config.set_enabled("servo", servo)
     config.set_enabled("buzzer", buzzer)
     service.save(config)
