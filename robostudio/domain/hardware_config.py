@@ -36,6 +36,7 @@ class HardwareConfig:
                 for device_id, enabled in DeviceRegistry.defaults().items()
             }
         self._normalize_known_devices()
+        self._validate_shared_gpio19()
 
     @classmethod
     def create_default(cls) -> "HardwareConfig":
@@ -88,7 +89,17 @@ class HardwareConfig:
 
     def set_enabled(self, device_id: str, enabled: bool) -> None:
         DeviceRegistry.require(device_id)
+        previous = self.devices[device_id]
         self.devices[device_id] = DeviceConfig(device_id, bool(enabled))
+        try:
+            self._validate_shared_gpio19()
+        except ValueError:
+            self.devices[device_id] = previous
+            raise
+
+    def _validate_shared_gpio19(self) -> None:
+        if self.devices["servo"].enabled and self.devices["buzzer"].enabled:
+            raise ValueError("GPIO19 conflict: disable Buzzer before enabling Servo (or vice versa)")
 
     def enabled_devices(self) -> Iterable[str]:
         return tuple(
