@@ -44,6 +44,10 @@ class HardwareBuildMatrix:
         generator = HardwareMacroGenerator()
         for case in cls.cases():
             config = HardwareConfig.create_default()
+            if case.device_id == "servo" and case.enabled:
+                config.set_enabled("buzzer", False)
+            if case.device_id == "buzzer" and case.enabled:
+                config.set_enabled("servo", False)
             config.set_enabled(case.device_id, case.enabled)
             header = generator.render(config)
             macro = cls._macro_name(case.device_id)
