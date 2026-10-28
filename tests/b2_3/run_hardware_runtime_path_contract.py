@@ -168,7 +168,7 @@ def packaged_mode_contract(base: Path) -> None:
     os.environ[runtime_paths.DEPENDENCY_MODE_ENV] = "artifact-closed"
     os.environ.pop(runtime_paths.PORTABLE_DATA_ENV, None)
 
-    config_service = configure_user_state(ultrasonic=True, servo=True, buzzer=True)
+    config_service = configure_user_state(ultrasonic=True, servo=True, buzzer=False)
     macro = HardwareMacroService(config_service=config_service)
     output = macro.generate()
     expected = state.resolve() / "generated" / "generated_device_config.h"
@@ -186,7 +186,7 @@ def packaged_mode_contract(base: Path) -> None:
         "packaged deployment regenerates stale hardware header",
         "STALE PACKAGED HEADER" not in staged
         and "ROBOT_FEATURE_SERVO              1" in staged
-        and "ROBOT_FEATURE_BUZZER             1" in staged,
+        and "ROBOT_FEATURE_BUZZER             0" in staged,
     )
     check(
         "packaged deployment never mutates release template",
