@@ -6,6 +6,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QPushButton, QGroupBox, QMessageBox
 
 from domain.device_registry import DeviceRegistry
+from domain.hardware_config import HardwareConfig
 from domain.hardware_config_service import HardwareConfigService
 from services.hardware_macro_service import HardwareMacroService
 
@@ -54,8 +55,16 @@ class HardwareTab(QWidget):
     def save(self):
         try:
             if self._config is None: self._config = self._config_service.load()
-            for device_id, checkbox in self._checkboxes.items(): self._config.set_enabled(device_id, checkbox.isChecked())
-            self._config_service.save(self._config)
+            # Validate the complete requested state atomically. Individual
+            # set_enabled calls otherwise reject a valid Buzzer -> Servo swap
+            # depending on checkbox iteration order.
+            requested = {
+                device_id: checkbox.isChecked()
+                for device_id, checkbox in self._checkboxes.items()
+            }
+            candidate = HardwareConfig.from_dict({"devices": requested})
+            self._config_service.save(candidate)
+            self._config = candidate
             macro_path = Path(self._macro_service.generate()).expanduser().resolve()
             config_path = Path(self._config_service.config_path).expanduser().resolve()
             artifact_text = (
