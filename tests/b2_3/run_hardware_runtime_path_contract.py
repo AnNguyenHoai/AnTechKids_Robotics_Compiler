@@ -30,6 +30,9 @@ def configure_user_state(*, ultrasonic: bool, servo: bool, buzzer: bool) -> Hard
     config.set_enabled("motor", True)
     config.set_enabled("line_sensor", True)
     config.set_enabled("ultrasonic", ultrasonic)
+    # GPIO19 has exclusive ownership: release the previous output first.
+    config.set_enabled("servo", False)
+    config.set_enabled("buzzer", False)
     config.set_enabled("servo", servo)
     config.set_enabled("buzzer", buzzer)
     service.save(config)
@@ -165,7 +168,7 @@ def packaged_mode_contract(base: Path) -> None:
     os.environ[runtime_paths.DEPENDENCY_MODE_ENV] = "artifact-closed"
     os.environ.pop(runtime_paths.PORTABLE_DATA_ENV, None)
 
-    config_service = configure_user_state(ultrasonic=True, servo=True, buzzer=True)
+    config_service = configure_user_state(ultrasonic=True, servo=True, buzzer=False)
     macro = HardwareMacroService(config_service=config_service)
     output = macro.generate()
     expected = state.resolve() / "generated" / "generated_device_config.h"
@@ -183,7 +186,7 @@ def packaged_mode_contract(base: Path) -> None:
         "packaged deployment regenerates stale hardware header",
         "STALE PACKAGED HEADER" not in staged
         and "ROBOT_FEATURE_SERVO              1" in staged
-        and "ROBOT_FEATURE_BUZZER             1" in staged,
+        and "ROBOT_FEATURE_BUZZER             0" in staged,
     )
     check(
         "packaged deployment never mutates release template",

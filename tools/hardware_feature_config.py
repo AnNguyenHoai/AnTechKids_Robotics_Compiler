@@ -142,6 +142,8 @@ def normalize_hardware_payload(data: Any) -> dict[str, bool]:
                 f"Device '{device_id}' must be a boolean or object with 'enabled'"
             )
         state[device_id] = bool(enabled)
+    if state["servo"] and state["buzzer"]:
+        raise ValueError("GPIO19 conflict: Servo and Buzzer cannot both be enabled")
     return state
 
 
@@ -152,6 +154,9 @@ def render_generated_header(devices: Mapping[str, bool]) -> str:
         if device_id not in _BY_ID:
             raise ValueError(f"Unknown device: {device_id}")
         normalized[device_id] = bool(enabled)
+
+    if normalized["servo"] and normalized["buzzer"]:
+        raise ValueError("GPIO19 conflict: Servo and Buzzer cannot both be enabled")
 
     lines = [
         "// AUTO-GENERATED FILE. DO NOT EDIT.",

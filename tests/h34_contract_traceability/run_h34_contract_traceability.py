@@ -74,9 +74,8 @@ def main() -> int:
         by_api["get_light_sensor_data"]["emitted_opcodes"] == ["LoadConst"],
     )
     check(
-        "stub servo API is explicitly no-emit instead of undeliverable Nop",
-        by_api["set_servo"]["lowering_kind"] == "no_emit"
-        and by_api["set_servo"]["emitted_opcodes"] == [],
+        "V1-S6 servo opcode reaches VM dispatch",
+        by_api["set_servo"]["emitted_opcodes"] == ["SetServo"],
     )
     for api in (
         "set_move_initialize",

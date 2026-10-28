@@ -14,6 +14,10 @@
 #include <Arduino.h>
 #include <esp32-hal-ledc.h>
 
+#if ROBOT_FEATURE_SERVO && ROBOT_FEATURE_BUZZER
+#error "GPIO19 is shared: enable either SERVO or BUZZER, never both"
+#endif
+
 // Sửa đường dẫn: từ Services/Robot lên src, rồi vào Devices
 #include "../../Devices/Touch.h"
 #include "../../Devices/LineSensor.h"
@@ -1283,7 +1287,19 @@ void SetServo(int port, int angle) {
     (void)port; (void)angle;
     return;
 #else
-    Serial.printf("[DUMMY][SetServo] port=%d angle=%d\n", port, angle);
+    // V1 GPIO19 offers exactly one servo output. Reject unsupported ports
+    // rather than silently controlling another attached device.
+    if (port != 1 || angle < 0 || angle > 180) {
+        Serial.println("[SERVO] Invalid port or angle (port=1, angle=0..180)");
+        return;
+    }
+    // Standard 50Hz hobby servo pulse; safe initial calibration range.
+    // 16-bit duty: 1000us..2000us out of 20,000us (50Hz).
+    const uint32_t pulseUs = 1000U + (uint32_t)angle * 1000U / 180U;
+    const uint32_t duty = pulseUs * 65535U / 20000U;
+    ledcWrite(OUTPUT_BUZZER_PIN, duty);
+    Serial.printf("[SERVO] port=%d angle=%d pulse=%luus\\n",
+                  port, angle, (unsigned long)pulseUs);
 #endif
 }
 
@@ -1487,6 +1503,15 @@ void Initialize() {
     pinMode(OUTPUT_BUZZER_PIN, OUTPUT);
     digitalWrite(OUTPUT_BUZZER_PIN, LOW);
     Serial.println("[RobotAPI] Buzzer initialized (OFF)");
+#endif
+#if ROBOT_FEATURE_SERVO
+    // GPIO19 is never shared at runtime; hardware configuration selects owner.
+    if (!ledcAttach(OUTPUT_BUZZER_PIN, 50, 16)) {
+        Serial.println("[SERVO] GPIO19 PWM attach failed");
+    } else {
+        ledcWrite(OUTPUT_BUZZER_PIN, 0);
+        Serial.println("[SERVO] GPIO19 PWM ready (50Hz, initial duty 0)");
+    }
 #endif
 
     loadSensorConfigFromStorage();
