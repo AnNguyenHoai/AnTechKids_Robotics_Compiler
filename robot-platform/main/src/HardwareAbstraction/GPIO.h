@@ -4,7 +4,7 @@
 #include "Arduino.h"
 
 // --- ĐỊNH NGHĨA TIỀN TỐ CHÂN CHO ROBOT (Dập tắt hoàn toàn nguy cơ trùng tên hệ thống) ---
-#define ROBOT_PIN_5     5
+#define ROBOT_PIN_5     5  // Reserved: boot strapping; never use for Touch
 #define ROBOT_PIN_14    14
 #define ROBOT_PIN_16    16
 #define ROBOT_PIN_17    17
@@ -53,7 +53,9 @@
 #define MPU6050_SDA_PIN ROBOT_PIN_21
 #define MPU6050_SCL_PIN ROBOT_PIN_13
 
-// GPIO36/39 remain reserved input-only pins in the V1 hardware contract.
+#define TOUCH_SENSOR_PIN         ROBOT_PIN_36  // V1 single touch, digital input only
+
+// GPIO39 remains reserved input-only; GPIO36 is dedicated to single Touch.
 // Encoder pin ownership is intentionally not defined for the V1 Line5 baseline.
 
 #endif

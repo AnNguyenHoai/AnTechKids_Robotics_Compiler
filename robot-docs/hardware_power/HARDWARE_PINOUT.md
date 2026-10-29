@@ -57,7 +57,8 @@ Main Supply
 | GPIO16 | Line Sensor | CENTER | Input | ✅ |
 | GPIO17 | Line Sensor | RIGHT | Input | ✅ |
 | GPIO18 | Line Sensor | LEFT | Input | ✅ |
-| GPIO19 | Active Buzzer | BUZZER | Output | ✅ |
+| GPIO19 | Buzzer / Servo (exclusive) | Shared output | Output | ✅ |
+| GPIO36 | Single Touch | DIGITAL OUT from sensor | Input-only | V1-S7 |
 | GPIO22 | HC-SR04 | ECHO | Input | ✅ |
 | GPIO23 | HC-SR04 | TRIGGER | Output | ✅ |
 | GPIO25 | Motor Driver | MOTOR_L_IN1 | Output | ✅ |
@@ -401,3 +402,14 @@ GPIO sẽ được bổ sung trong các phiên bản sau.
 - Dual Status LED
 - HC-SR04
 - GPIO Architecture Freeze
+
+## V1-S7 Touch GPIO Migration
+
+- One Touch sensor is mapped to GPIO36 (VP), input-only and not an ESP32 boot strapping pin.
+- GPIO5 must remain disconnected from Touch due to observed boot/reset interference.
+- Logical port: `rcu.GetTouch(1)`; the digital driver currently treats HIGH as true.
+- GPIO36 has no internal pull resistors; external pull resistor is required for a bare mechanical switch. Sensor OUT must be 3.3V-safe.
+- V1 Light Sensor has been retired; GPIO5 is not a supported analog Light input.
+- GPIO39 is reserved; original GPIO14/16/17/18/19/22/23/25/26/27/32/33 and 34/35 allocations remain unchanged.
+
+See `docs/V1-S7_SINGLE_TOUCH_GPIO36.md` for validation.
