@@ -73,9 +73,7 @@ static const int PWM_CH_R_IN3 = 2;
 static const int PWM_CH_R_IN4 = 3;
 
 // Định nghĩa các đối tượng cảm biến (toàn cục trong namespace)
-static Touch touch0(ROBOT_PIN_5);
-static Touch touch1(ROBOT_PIN_5);
-static LightSensor lightSensor(ROBOT_PIN_5);
+static Touch touch1(TOUCH_SENSOR_PIN);
 static ColorSensor colorSensor;
 static bool g_headingStartupDiagnosticEnabled = true; 
 static bool g_motorPwmDiagnosticEnabled = true;
@@ -910,17 +908,15 @@ uint32_t getUltraFailCount() {
 
 int16_t ReadTouch(int port) {
     bool state = false;
-    if (port == 0) state = touch0.read();
-    else if (port == 1) state = touch1.read();
+    if (port == 1) state = touch1.read();
     Serial.printf("[%lu] ReadTouch port %d: %d\n", millis(), port, state);
     return state ? 1 : 0;
 }
 
 int16_t ReadLight(int channel) {
-    int raw = lightSensor.readRaw();
-    int corrected = (int)(raw * g_sensorConfig.lightGain + g_sensorConfig.lightOffset);
-    Serial.printf("[%lu] ReadLight ch %d: %d\n", millis(), channel, corrected);
-    return corrected;
+    // V1 has no light sensor. Preserve the API with a neutral value.
+    (void)channel;
+    return 0;
 }
 
 int16_t ReadColor() {
@@ -1460,7 +1456,6 @@ void Initialize() {
     _setMotorsRaw(0, 0);
     Serial.println("[RobotAPI] Motors initialized with MotionConfig.");
 
-    touch0.init();
     touch1.init();
 
     pinMode(OUTPUT_LED_LEFT_PIN, OUTPUT);
@@ -1469,7 +1464,6 @@ void Initialize() {
     digitalWrite(OUTPUT_LED_RIGHT_PIN, LOW);
     Serial.println("[RobotAPI] LEDs initialized (OFF)");
 
-    lightSensor.init();
     colorSensor.init();
 
     auto& mgr = SensorManager::instance();
