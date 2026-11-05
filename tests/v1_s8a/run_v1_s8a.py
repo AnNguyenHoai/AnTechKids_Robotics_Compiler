@@ -31,7 +31,9 @@ example = (ROOT / "tests/v1_s8a/fixtures/user_line7_overflow.py").read_text(enco
 program = compile_robosim(example)
 instructions, variables = footprint(program)
 violations = validate_program(program)
-print(f"S8-A USER LINE7: instructions={instructions}/128; variable_index_span={variables}/32")
+from compiler.safety_validator import load_resource_contract
+limits = load_resource_contract()
+print(f"S8-A USER LINE7: instructions={instructions}/{limits[\'program\'][\'max_instructions\']}; variable_index_span={variables}/{limits[\'runtime\'][\'max_variables\']}")
 print("S8-A violations:", [(v.rule, v.message) for v in violations][:8])
 # Baseline from actual reported failing program: 182 instructions, 106+ indices.
 assert instructions < 182, "direct condition branch lowering should reduce instructions"
