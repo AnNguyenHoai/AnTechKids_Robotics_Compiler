@@ -20,9 +20,23 @@ class H26FSafetyTests(unittest.TestCase):
         violations = validate_instructions([ins(250)])
         self.assertTrue(any(v.rule == "invalid_opcode" for v in violations))
 
+    def test_accepts_new_variable_limit(self):
+        self.assertEqual(validate_instructions([ins(2, 127)]), ())
+
     def test_rejects_variable_index_overflow(self):
-        violations = validate_instructions([ins(2, 32)])
+        violations = validate_instructions([ins(2, 128)])
         self.assertTrue(any(v.rule == "invalid_variable" for v in violations))
+
+    def test_accepts_full_instruction_capacity(self):
+        self.assertEqual(validate_instructions([ins(2, 0)] * 512), ())
+
+    def test_rejects_instruction_capacity_overflow(self):
+        violations = validate_instructions([ins(2, 0)] * 513)
+        self.assertTrue(any(v.rule == "program_overflow" for v in violations))
+
+    def test_jump_target_above_original_limit(self):
+        rows = [ins(14, 0, 300)] + [ins(2, 0)] * 300
+        self.assertEqual(validate_instructions(rows), ())
 
     def test_rejects_invalid_jump_target(self):
         violations = validate_instructions([ins(14, 0, 2)])
