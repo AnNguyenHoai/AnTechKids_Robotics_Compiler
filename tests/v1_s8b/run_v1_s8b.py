@@ -51,7 +51,7 @@ source = ROOT / "tests/v1_s8a/fixtures/user_line7_overflow.py"
 with TemporaryDirectory() as temp:
     canonical = Path(temp) / "canonical.py"
     rewrite(source, canonical)
-    program = RobotCompiler(target="esp32").compile(canonical)
+    program = RobotCompiler().compile(canonical)
 count = len(program.instructions)
 indices = set()
 for instruction in program.instructions:
