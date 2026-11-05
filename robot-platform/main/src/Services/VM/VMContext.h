@@ -17,7 +17,7 @@
  * Configuration
  *---------------------------------------------------------------------------*/
 
-constexpr uint8_t MAX_VARIABLE_COUNT = 32;
+constexpr uint16_t MAX_VARIABLE_COUNT = 128;
 constexpr uint8_t MAX_LOOP_DEPTH = 8;
 constexpr uint8_t MAX_CALL_STACK = 8;
 
