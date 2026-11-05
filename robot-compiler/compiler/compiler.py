@@ -316,11 +316,52 @@ class RobotCompiler(ast.NodeVisitor):
         return
 
     # ---------- If ----------
+    def _jump_if_false(self, expr, false_label):
+        """Lower condition control flow without materializing boolean values.
+
+        Short-circuit order and side effects are preserved. This is used only
+        when the boolean result is consumed directly by a branch; expressions
+        assigned to variables retain normal 0/1 value semantics.
+        """
+        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.And):
+            for value in expr.values:
+                self._jump_if_false(value, false_label)
+            return
+        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.Or):
+            true_label = self.program.new_label()
+            for value in expr.values[:-1]:
+                self._jump_if_true(value, true_label)
+            self._jump_if_false(expr.values[-1], false_label)
+            self.program.emit_label(true_label)
+            return
+        if isinstance(expr, ast.UnaryOp) and isinstance(expr.op, ast.Not):
+            self._jump_if_true(expr.operand, false_label)
+            return
+        result = self.compile_expression(expr)
+        self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, false_label)
+
+    def _jump_if_true(self, expr, true_label):
+        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.Or):
+            for value in expr.values:
+                self._jump_if_true(value, true_label)
+            return
+        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.And):
+            false_label = self.program.new_label()
+            for value in expr.values[:-1]:
+                self._jump_if_false(value, false_label)
+            self._jump_if_true(expr.values[-1], true_label)
+            self.program.emit_label(false_label)
+            return
+        if isinstance(expr, ast.UnaryOp) and isinstance(expr.op, ast.Not):
+            self._jump_if_false(expr.operand, true_label)
+            return
+        result = self.compile_expression(expr)
+        self.program.emit_jump_if_true(Opcode.JumpIfTrue.value, result, true_label)
+
     def visit_If(self, node):
-        result = self.compile_expression(node.test)
         else_label = self.program.new_label()
         end_label = self.program.new_label()
-        self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, else_label)
+        self._jump_if_false(node.test, else_label)
         for stmt in node.body:
             self.visit(stmt)
         if len(node.orelse) > 0:
@@ -390,8 +431,7 @@ class RobotCompiler(ast.NodeVisitor):
         self.loop_stack.append({"continue": begin_label, "end": end_label})
         self.program.emit_label(begin_label)
         if not (isinstance(node.test, ast.Constant) and node.test.value in (True, 1)):
-            result = self.compile_expression(node.test)
-            self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, end_label)
+            self._jump_if_false(node.test, end_label)
         for stmt in node.body:
             self.visit(stmt)
         self.program.emit_jump(Opcode.Jump.value, begin_label)
