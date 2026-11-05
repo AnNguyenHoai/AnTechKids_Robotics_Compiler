@@ -8,8 +8,8 @@ H26-F adds an explicit, versioned safety boundary between compiler output and fi
 
 `packages/robot-isa/resource_contract.json` defines the current runtime resource limits:
 
-- maximum program size: 128 instructions;
-- maximum variables: 32;
+- maximum program size: 512 instructions (expanded by V1-S8-B; original H26-F baseline was 128);
+- maximum variables: 128 (expanded by V1-S8-B; original H26-F baseline was 32);
 - maximum call stack depth: 8;
 - maximum loop depth: 8;
 - signed 32-bit operand range;
