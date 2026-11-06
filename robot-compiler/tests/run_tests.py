@@ -48,9 +48,15 @@ def expect_program(program, expected):
         assert Opcode(ins.opcode).name == name, (
             f"At instruction {i}: expected {name}, got {Opcode(ins.opcode).name}"
         )
-        variable_positions = set(_required_variable_indices(
-            Opcode[name].value, (0, 1, 2, 3)
-        ))
+        # The validator returns referenced values, not operand positions.
+        # Unique sentinels allow positions to be recovered without creating
+        # an independent opcode-role table that can drift from the validator.
+        sentinels = (101, 102, 103, 104)
+        referenced_values = _required_variable_indices(Opcode[name].value, sentinels)
+        variable_positions = {
+            index for index, value in enumerate(sentinels)
+            if value in referenced_values
+        }
         for pos, expected_value in enumerate((p1, p2, p3)):
             if pos not in variable_positions:
                 actual_value = (ins.p1, ins.p2, ins.p3)[pos]
