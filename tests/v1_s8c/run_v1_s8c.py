@@ -139,6 +139,29 @@ for name, raised, expected in cases:
 no_line = {i: 0 for i in range(5)}
 regs = [0] * 128
 print("NOTE S8-C: no-line fallback in source is pass (does NOT automatically stop motors)")
+# Exercise the capacity increase independently of compiler optimizations.
+# Jump over 299 intermediate instructions to PC=300, and write variable 127.
+# This asserts 16-bit PC/size and widened variable indices in generated C++.
+from compiler.program import Program
+from compiler.emitter import HeaderEmitter
+long_program = Program()
+long_program.emit(Opcode.Jump.value, 0, 300)
+for _ in range(299):
+    long_program.emit(Opcode.LoadConst.value, 127, 23)
+long_program.emit(Opcode.LoadConst.value, 127, 77)
+long_program.emit(Opcode.Stop.value)
+assert len(long_program.instructions) == 302
+assert not validate_program(long_program)
+with TemporaryDirectory() as td:
+    output = Path(td) / "generated_program.h"
+    HeaderEmitter().emit(long_program, output)
+    header = output.read_text(encoding="utf-8")
+    assert "const uint16_t generatedProgramSize = 302;" in header
+    assert "Instruction(Opcode::Jump, 0, 300, 0, 0)" in header
+    assert "Instruction(Opcode::LoadConst, 127, 77, 0, 0)" in header
+assert [i.p2 for i in long_program.instructions if i.opcode == Opcode.Jump.value] == [300]
+print("PASS S8-C 302-instruction generated firmware header, PC=300, var=127")
+
 # Never allow an empty evidence template to be interpreted as acceptance.
 from validate_physical_evidence import validate
 valid, evidence_issues = validate(
