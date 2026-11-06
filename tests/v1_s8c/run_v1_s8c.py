@@ -87,6 +87,11 @@ def first_line_decision(physical):
                 Opcode.CompareGE: a >= b,
             }
             regs[ins.p3] = int(funcs[op])
+        elif op == Opcode.Neg:
+            # Match ESP32 VM.cpp: p3 is destination; p1 is the source.
+            # Negative turn speeds (-70) in the student's program compile
+            # to Neg rather than a signed LoadConst.
+            regs[ins.p3] = -regs[ins.p1]
         elif op == Opcode.GetTraceState:
             port, channel = regs[ins.p1], regs[ins.p2]
             assert port == 1 and 0 <= channel <= 4, (port, channel)
