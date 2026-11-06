@@ -18,6 +18,8 @@ class RobotCompiler(ast.NodeVisitor):
         self.global_scope = Scope()
         self.current_scope = self.global_scope
         self.temp_id = 0
+        self._free_temp_slots = []
+        self._active_temp_slots = set()
         self.functions = {}
         self.loop_stack = []
         self.in_function = False
@@ -53,7 +55,31 @@ class RobotCompiler(ast.NodeVisitor):
     def allocate_temp(self):
         name = f"__temp{self.temp_id}"
         self.temp_id += 1
-        return self.current_scope.allocate(name)
+        if self._free_temp_slots:
+            # Reuse a dead scratch slot without recycling persistent user
+            # variables. The shared Scope counter only advances when needed.
+            index = self._free_temp_slots.pop()
+            self.current_scope.variables[name] = index
+        else:
+            index = self.current_scope.allocate(name)
+        self._active_temp_slots.add(index)
+        return index
+
+    def _release_temps_since(self, snapshot):
+        # Scratch results are only reusable after all their reads have been
+        # emitted. In particular, an enclosing for-loop bound remains live.
+        for index in sorted(self._active_temp_slots - snapshot):
+            self._active_temp_slots.remove(index)
+            self._free_temp_slots.append(index)
+
+    def visit(self, node):
+        if isinstance(node, ast.stmt):
+            snapshot = set(self._active_temp_slots)
+            try:
+                return super().visit(node)
+            finally:
+                self._release_temps_since(snapshot)
+        return super().visit(node)
 
     def allocate_result(self):
         return self.allocate_temp()
@@ -316,11 +342,54 @@ class RobotCompiler(ast.NodeVisitor):
         return
 
     # ---------- If ----------
+    def _jump_if_false(self, expr, false_label):
+        """Lower condition control flow without materializing boolean values.
+
+        Short-circuit order and side effects are preserved. This is used only
+        when the boolean result is consumed directly by a branch; expressions
+        assigned to variables retain normal 0/1 value semantics.
+        """
+        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.And):
+            for value in expr.values:
+                self._jump_if_false(value, false_label)
+            return
+        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.Or):
+            true_label = self.program.new_label()
+            for value in expr.values[:-1]:
+                self._jump_if_true(value, true_label)
+            self._jump_if_false(expr.values[-1], false_label)
+            self.program.emit_label(true_label)
+            return
+        if isinstance(expr, ast.UnaryOp) and isinstance(expr.op, ast.Not):
+            self._jump_if_true(expr.operand, false_label)
+            return
+        result = self.compile_expression(expr)
+        self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, false_label)
+
+    def _jump_if_true(self, expr, true_label):
+        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.Or):
+            for value in expr.values:
+                self._jump_if_true(value, true_label)
+            return
+        if isinstance(expr, ast.BoolOp) and isinstance(expr.op, ast.And):
+            false_label = self.program.new_label()
+            for value in expr.values[:-1]:
+                self._jump_if_false(value, false_label)
+            self._jump_if_true(expr.values[-1], true_label)
+            self.program.emit_label(false_label)
+            return
+        if isinstance(expr, ast.UnaryOp) and isinstance(expr.op, ast.Not):
+            self._jump_if_false(expr.operand, true_label)
+            return
+        result = self.compile_expression(expr)
+        self.program.emit_jump_if_true(Opcode.JumpIfTrue.value, result, true_label)
+
     def visit_If(self, node):
-        result = self.compile_expression(node.test)
         else_label = self.program.new_label()
         end_label = self.program.new_label()
-        self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, else_label)
+        snapshot = set(self._active_temp_slots)
+        self._jump_if_false(node.test, else_label)
+        self._release_temps_since(snapshot)
         for stmt in node.body:
             self.visit(stmt)
         if len(node.orelse) > 0:
@@ -390,8 +459,9 @@ class RobotCompiler(ast.NodeVisitor):
         self.loop_stack.append({"continue": begin_label, "end": end_label})
         self.program.emit_label(begin_label)
         if not (isinstance(node.test, ast.Constant) and node.test.value in (True, 1)):
-            result = self.compile_expression(node.test)
-            self.program.emit_jump_if_false(Opcode.JumpIfFalse.value, result, end_label)
+            snapshot = set(self._active_temp_slots)
+            self._jump_if_false(node.test, end_label)
+            self._release_temps_since(snapshot)
         for stmt in node.body:
             self.visit(stmt)
         self.program.emit_jump(Opcode.Jump.value, begin_label)
