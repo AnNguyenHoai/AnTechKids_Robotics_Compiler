@@ -63,7 +63,7 @@ def _operand_values(instruction) -> tuple[int, ...]:
 
 
 def _required_variable_indices(opcode: int, operands: Sequence[int]) -> tuple[int, ...]:
-    """Return operand positions whose values are variable indices.
+    """Return operand *values* for operands that reference VM variables.
 
     The mapping intentionally follows the current production instruction semantics.
     Constants/targets are excluded so a literal value cannot be mistaken for a
@@ -72,7 +72,8 @@ def _required_variable_indices(opcode: int, operands: Sequence[int]) -> tuple[in
     roles = {
         1: (0,), 2: (0,), 3: (0,), 4: (0,), 5: (0,), 6: (), 7: (0,),
         8: (0, 1, 2), 9: (0, 1, 2), 10: (0, 1, 2), 11: (0, 1, 2),
-        12: (0, 1, 2), 13: (0, 1, 2), 20: (0, 1, 2), 21: (0, 1, 2),
+        12: (0, 1, 2), 13: (0, 1, 2), 15: (0,), 16: (0,),
+        20: (0, 1, 2), 21: (0, 1, 2),
         22: (0, 1, 2), 23: (0, 1, 2), 24: (0, 1, 2), 25: (0, 1, 2),
         26: (0, 2), 27: (0,), 29: (0, 1), 30: (0,), 31: (0, 1),
         32: (0, 1), 33: (0,), 34: (0, 1), 35: (0, 1), 36: (0, 1),
