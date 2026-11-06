@@ -139,4 +139,11 @@ for name, raised, expected in cases:
 no_line = {i: 0 for i in range(5)}
 regs = [0] * 128
 print("NOTE S8-C: no-line fallback in source is pass (does NOT automatically stop motors)")
+# Never allow an empty evidence template to be interpreted as acceptance.
+from validate_physical_evidence import validate
+valid, evidence_issues = validate(
+    ROOT / "tests/v1_s8c/physical_evidence_TEMPLATE.csv"
+)
+assert not valid and evidence_issues
+print("PASS S8-C physical evidence gate rejects empty, unverified template")
 print("PASS S8-C bounded VM-ISA semantic regression (NOT physical acceptance)")
