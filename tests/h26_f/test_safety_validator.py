@@ -24,6 +24,21 @@ class H26FSafetyTests(unittest.TestCase):
         violations = validate_instructions([ins(2, 32)])
         self.assertTrue(any(v.rule == "invalid_variable" for v in violations))
 
+    def test_rejects_invalid_conditional_registers(self):
+        from compiler.safety_validator import load_resource_contract
+        limit = load_resource_contract()["runtime"]["max_variables"]
+        for opcode in (15, 16):
+            with self.subTest(opcode=opcode):
+                violations = validate_instructions([ins(opcode, limit, 1)])
+                self.assertTrue(any(v.rule == "invalid_variable" for v in violations))
+
+    def test_allows_highest_legal_conditional_register(self):
+        from compiler.safety_validator import load_resource_contract
+        highest = load_resource_contract()["runtime"]["max_variables"] - 1
+        for opcode in (15, 16):
+            with self.subTest(opcode=opcode):
+                self.assertEqual(validate_instructions([ins(opcode, highest, 1)]), ())
+
     def test_rejects_invalid_jump_target(self):
         violations = validate_instructions([ins(14, 0, 2)])
         self.assertTrue(any(v.rule == "invalid_jump" for v in violations))
